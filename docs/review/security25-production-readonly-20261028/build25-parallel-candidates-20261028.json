@@ -1,0 +1,610 @@
+{
+  "schema": 1,
+  "date_jst": "2026-10-28",
+  "main": "7355d28f341d1044db726d946edcde2c305d66ee",
+  "candidates": [
+    {
+      "pr": 1420,
+      "head": "ee22ddeac662a8ddb3bb0313df69eab2829f25d8",
+      "branch": "review/apple-registered-login-candidate-20261026",
+      "runs": [
+        {
+          "id": 40669164080,
+          "name": "Checkout native reminder bridge",
+          "status": "queued",
+          "conclusion": null
+        },
+        {
+          "id": 40669164098,
+          "name": "Apple and Google preparation ports",
+          "status": "queued",
+          "conclusion": null
+        },
+        {
+          "id": 40669164108,
+          "name": "Apple native MethodChannel OFF integration",
+          "status": "queued",
+          "conclusion": null
+        },
+        {
+          "id": 40669164081,
+          "name": "Apple native-only hosted-version boundary",
+          "status": "queued",
+          "conclusion": null
+        },
+        {
+          "id": 40669164116,
+          "name": "Apple password successor real broker",
+          "status": "in_progress",
+          "conclusion": null
+        },
+        {
+          "id": 40669164115,
+          "name": "Apple owner policy GoTrue proof",
+          "status": "in_progress",
+          "conclusion": null
+        },
+        {
+          "id": 40669164128,
+          "name": "Existing session and secondary recovery chain",
+          "status": "in_progress",
+          "conclusion": null
+        },
+        {
+          "id": 40669164158,
+          "name": "Existing Google login isolated client",
+          "status": "in_progress",
+          "conclusion": null
+        },
+        {
+          "id": 40669164092,
+          "name": "Google UID protection and direct Apple linking boundary",
+          "status": "in_progress",
+          "conclusion": null
+        },
+        {
+          "id": 40669164074,
+          "name": "Apple self recovery notice candidate",
+          "status": "in_progress",
+          "conclusion": null
+        },
+        {
+          "id": 40669164063,
+          "name": "Secret Scan",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40669164032,
+          "name": "Route visit reports check",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40669164068,
+          "name": "Registered Apple login candidate",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40669164045,
+          "name": "Apple OFF deployment and root recovery",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40669164162,
+          "name": "Apple native credential source proof",
+          "status": "in_progress",
+          "conclusion": null
+        },
+        {
+          "id": 40669164017,
+          "name": "Invoice PDFKit Preview",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40669164105,
+          "name": "Apple native enrollment core",
+          "status": "in_progress",
+          "conclusion": null
+        },
+        {
+          "id": 40669154178,
+          "name": "Secret Scan",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "pr": 1515,
+      "head": "19544f7f90003c3c7939ba951f2759ae61547c7e",
+      "branch": "review/master-new-device-proof-20261028",
+      "runs": [
+        {
+          "id": 40669217429,
+          "name": "Route visit reports check",
+          "status": "queued",
+          "conclusion": null
+        },
+        {
+          "id": 40669213023,
+          "name": "Isolated deception lab",
+          "status": "queued",
+          "conclusion": null
+        },
+        {
+          "id": 40669213010,
+          "name": "Security incident records",
+          "status": "queued",
+          "conclusion": null
+        },
+        {
+          "id": 40669213097,
+          "name": "Master new device proof candidate",
+          "status": "queued",
+          "conclusion": null
+        },
+        {
+          "id": 40669213153,
+          "name": "Security collector storage candidate",
+          "status": "queued",
+          "conclusion": null
+        },
+        {
+          "id": 40669212998,
+          "name": "Master enrollment intent candidate",
+          "status": "queued",
+          "conclusion": null
+        },
+        {
+          "id": 40669212867,
+          "name": "Secret Scan",
+          "status": "queued",
+          "conclusion": null
+        },
+        {
+          "id": 40669212978,
+          "name": "Collector current-core roleless connection",
+          "status": "queued",
+          "conclusion": null
+        },
+        {
+          "id": 40669207139,
+          "name": "Secret Scan",
+          "status": "queued",
+          "conclusion": null
+        }
+      ]
+    },
+    {
+      "pr": 1520,
+      "head": "63d3733a832ee1fe8e44089bdafe0460bf8f8229",
+      "branch": "review/invoice25-notice-integration-20261028",
+      "runs": [
+        {
+          "id": 40665998474,
+          "name": "Secret Scan",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40665998469,
+          "name": "Checkout report notification routing",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40665998532,
+          "name": "Invoice notice seal composition review",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40665998548,
+          "name": "Four document totals PDF proof",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40665998629,
+          "name": "Uploaded company PNG seal",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40665998562,
+          "name": "Expense review flow and receipt contracts",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40665998580,
+          "name": "Trade document confirmation client",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40665998551,
+          "name": "Resident tax notification integration",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40665998460,
+          "name": "Invoice month close review",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40665998453,
+          "name": "Route visit reports check",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40665998450,
+          "name": "Invoice PDFKit Preview",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40665998647,
+          "name": "Vehicle document notification target",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40665998542,
+          "name": "R33 preview initial text",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40665998597,
+          "name": "Notification target regressions",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40665998523,
+          "name": "Invoice order acceptance PDF proof",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40665998560,
+          "name": "Invoice runtime read check",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40665998606,
+          "name": "Invoice approval readiness review",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40665998536,
+          "name": "Qualification photo attention",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40665998598,
+          "name": "Trade document real Auth review",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40665998625,
+          "name": "Company seal style contracts",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40665998553,
+          "name": "Invoice automatic acceptance for frozen sources",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40665998581,
+          "name": "Reciprocal trade business gate review",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40665998495,
+          "name": "Document numbered guidance",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40665998544,
+          "name": "Trade document adjustments",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40665998594,
+          "name": "iOS CI",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40665998490,
+          "name": "Flutter CI",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40665989909,
+          "name": "Secret Scan",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "pr": 1517,
+      "head": "4c967891949746996c390b343036f4e401876c12",
+      "branch": "review/shift25-main-integration-20261028",
+      "runs": [
+        {
+          "id": 40667263965,
+          "name": "Shift draft storage candidate",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40667264110,
+          "name": "QR device signature candidate",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40667264136,
+          "name": "Flutter CI",
+          "status": "in_progress",
+          "conclusion": null
+        },
+        {
+          "id": 40667263991,
+          "name": "QR attendance preflight candidate",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40667264189,
+          "name": "Attendance week and calendar details",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40667264013,
+          "name": "Shift complete attendance read",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40667264161,
+          "name": "Checkout report resume",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40667263963,
+          "name": "Secret Scan",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40667263986,
+          "name": "Shift publication candidate",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40667264043,
+          "name": "Company seal central master gate",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40667264046,
+          "name": "Weekly attendance registered allowance display",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40667263943,
+          "name": "Company seal image tools",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40667263951,
+          "name": "Own published shift candidate",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40667264112,
+          "name": "Document numbered guidance",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40667264084,
+          "name": "iOS CI",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40667263841,
+          "name": "Route visit reports check",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40667263818,
+          "name": "Shift status comparison",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40667263837,
+          "name": "Checkout component entry integration",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40667263834,
+          "name": "Checkout report registration gate",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40667263850,
+          "name": "QR master gate candidate",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40667251417,
+          "name": "Secret Scan",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "pr": 1522,
+      "head": "ef0971453ba635a73ee8b54ca760f55bceb84f06",
+      "branch": "review/personal-vault25-main-integration-20261028",
+      "runs": [
+        {
+          "id": 40669211263,
+          "name": "Flutter CI",
+          "status": "queued",
+          "conclusion": null
+        },
+        {
+          "id": 40669211265,
+          "name": "Secret Scan",
+          "status": "queued",
+          "conclusion": null
+        },
+        {
+          "id": 40669211270,
+          "name": "Route visit reports check",
+          "status": "queued",
+          "conclusion": null
+        },
+        {
+          "id": 40669211255,
+          "name": "iOS CI",
+          "status": "queued",
+          "conclusion": null
+        },
+        {
+          "id": 40669211177,
+          "name": "Document numbered guidance",
+          "status": "in_progress",
+          "conclusion": null
+        },
+        {
+          "id": 40669211192,
+          "name": "Payroll fixed footer and common allowance UI",
+          "status": "queued",
+          "conclusion": null
+        },
+        {
+          "id": 40669211188,
+          "name": "Personal vault bounded Storage transport",
+          "status": "queued",
+          "conclusion": null
+        },
+        {
+          "id": 40669211222,
+          "name": "Personal PDF vault candidate",
+          "status": "queued",
+          "conclusion": null
+        },
+        {
+          "id": 40669200656,
+          "name": "Secret Scan",
+          "status": "queued",
+          "conclusion": null
+        }
+      ]
+    },
+    {
+      "pr": 1509,
+      "head": "10cabf1ee71981a96f030e116b183824e7f4cf3c",
+      "branch": "review/security-notice-archive-isolated-20261027",
+      "runs": [
+        {
+          "id": 40669201762,
+          "name": "Isolated deception lab",
+          "status": "queued",
+          "conclusion": null
+        },
+        {
+          "id": 40669201693,
+          "name": "Security incident records",
+          "status": "queued",
+          "conclusion": null
+        },
+        {
+          "id": 40669201697,
+          "name": "Secret Scan",
+          "status": "queued",
+          "conclusion": null
+        },
+        {
+          "id": 40669201714,
+          "name": "Document numbered guidance",
+          "status": "queued",
+          "conclusion": null
+        },
+        {
+          "id": 40669201759,
+          "name": "Isolated notice archive candidate",
+          "status": "queued",
+          "conclusion": null
+        },
+        {
+          "id": 40669201701,
+          "name": "Route visit reports check",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40669201684,
+          "name": "Flutter CI",
+          "status": "in_progress",
+          "conclusion": null
+        },
+        {
+          "id": 40669189144,
+          "name": "Secret Scan",
+          "status": "queued",
+          "conclusion": null
+        }
+      ]
+    }
+  ],
+  "production_changed": false,
+  "main_merged": false,
+  "build25_created": false,
+  "limits": [
+    "Point-in-time CI state; queued or running checks are not success.",
+    "Each candidate has a separate owner; no simultaneous shared Auth/DB edits.",
+    "Owner/device activation and production security conditions remain incomplete.",
+    "Existing test invoice and old IPA artifacts remain untouched."
+  ]
+}
