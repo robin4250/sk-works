@@ -70,3 +70,10 @@ The local fixture now verifies its entire retained nonce chain and its local hea
 The signed recovery checkpoint transition validator is stateless: a new regression test shows that two callers given the same valid receipt and stale checkpoint both pass verification. Signature validation alone neither consumes the nonce nor commits a new trusted checkpoint. Any actual integration must atomically compare and advance an independently protected checkpoint and consume the nonce, fail closed when freshness cannot be authenticated, and test retries/crashes across the independent boundary. This synthetic test does not implement those controls or authorize recovery.
 
 The synthetic anchored witness now caps its ledger at 10,000 records and rejects further consumption without changing its checkpoint, and bounds scope to 256 UTF-8 bytes. A 10,000-row local test checks fail-closed capacity; the limit is an experiment, not a production retention, performance, alerting, availability or recovery policy. No data is pruned or exported. Independent authenticated checkpoints, rollback-resistant custody and safe lifecycle handling remain unimplemented.
+
+
+## Review-only witness transport
+
+`src/recovery-witness-transport-candidate.mjs` implements a bounded HTTPS POST client for signed witness consume/lookup responses. Each call creates a fresh challenge, authenticates with an externally provisioned bearer, forbids redirects, limits response bytes, enforces a timeout, validates the pinned signature and scope, and never automatically retries an uncertain consume. Lookup is a separate explicit operation. Errors deliberately omit credentials and response content.
+
+Tests use a synthetic fetch adapter only; no actual service was contacted. This is not an authenticated production witness deployment: endpoint/bearer/key provisioning, independent custody, rollback-resistant checkpoints, durable outcome reconciliation and recovery activation remain absent. Keep the feature OFF.
