@@ -24,7 +24,7 @@ create function private.consume_reauthentication_proof(operation text,target jso
 returns void language plpgsql as $$ begin
  if operation is distinct from 'master.feature.set' or target is distinct from
    jsonb_build_object('feature_key','qr_attendance','enabled',proof='fixture-bound-proof')
-   or proof not in ('fixture-bound-proof','fixture-off-proof') or (select used from private.proof_fixture) then
+   or proof is null or proof not in ('fixture-bound-proof','fixture-off-proof') or (select used from private.proof_fixture) then
    raise sqlstate '42501' using message='invalid proof';
  end if;
  update private.proof_fixture set used=true;
@@ -57,6 +57,10 @@ do $$ begin
  begin
    perform qr_attendance_private.set_master_feature_with_proof(true,'wrong');
    raise exception 'wrong proof accepted';
+ exception when insufficient_privilege then null; end;
+ begin
+   perform qr_attendance_private.set_master_feature_with_proof(false,null);
+   raise exception 'missing proof accepted';
  exception when insufficient_privilege then null; end;
  if exists(select 1 from private.master_feature_settings where feature_key='qr_attendance') then
    raise exception 'rejected request changed flag';
