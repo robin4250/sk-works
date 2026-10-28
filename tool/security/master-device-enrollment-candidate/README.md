@@ -143,3 +143,10 @@ The trusted challenge issuer, database-backed nonce storage/atomic consumption,
 second-password/independent owner approval, platform key custody and the actual
 migration adapter remain unimplemented. This verifier is not connected to the
 pending storage adapter or an endpoint and cannot activate or replace a key.
+
+
+## Proof-to-pending atomic candidate (not key approval)
+
+`key-migration-proven-adapter.mjs` joins the existing key possession verifier to a server-owned, row-locked challenge and pending proposal in one PostgreSQL transaction. It reads time from the database, rejects replay/expiry/foreign sessions before insertion, rechecks the live owner session and expiry before consuming the nonce, and rolls both pending insertion and consumption back on failure. An identical consumed challenge is rejected rather than automatically resent. The existing unproven inventory adapter remains an inventory-only candidate; neither path grants signing authority or activates a key.
+
+`key-migration-challenges.sql.review-only` is a private RLS-enabled table with no client grants. Trusted challenge issuance/delivery, independent owner approval, retention and owner/device deletion compatibility, hardware-backed keys, production integration and recovery remain unimplemented. A synthetic-auth PostgreSQL CI races two connections and requires exactly one proof consumption. Local Node and PGlite tests are synthetic, not actual owner or device enrollment. No endpoint, public grants, activation or production changes are introduced.
