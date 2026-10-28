@@ -101,7 +101,11 @@ void main() {
   });
   test('SDK verifies same UID, Google identities and companies in memory without global adoption', () async {
     final preparation = make(enabled: true);
-    await preparation.prepare(requestId: requestId, receiveOnce: () async => envelope());
+    try {
+      await preparation.prepare(requestId: requestId, receiveOnce: () async => envelope());
+    } catch (_) {
+      fail('Preparation rejected: app paths=${applicationRequests.map((r) => r.url.path).toList()}; isolated paths=${isolatedRequests.map((r) => r.url.path).toList()}; initial actor match=${application.auth.currentUser?.id == actor}');
+    }
     expect(preparation.ready, isTrue);expect(isolatedCreations, 1);
     expect(isolatedRequests.where((request) => request.url.path.endsWith('/user')).length, 1);
     expect(isolatedRequests.every((request) => request.method == 'GET'), isTrue);unchanged();
