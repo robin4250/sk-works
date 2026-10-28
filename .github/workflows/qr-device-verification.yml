@@ -15,4 +15,4 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --test tool/qr-attendance/qr-device-verification.test.mjs
+      - run: node --test tool/qr-attendance/qr-device-verification.test.mjs tool/qr-attendance/qr-scan-coordinator.test.mjs
