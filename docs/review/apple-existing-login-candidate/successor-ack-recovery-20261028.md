@@ -34,17 +34,18 @@ the original caller cannot infer its status. Losing all successor credentials
 therefore still needs separately reviewed recovery, not a token resend here.
 
 Tests import the existing owner-policy/native enrollment/successor SQL verbatim.
-Local Node contract tests: 6 passed. PGlite 0.5.8: 7 passed, 2 Native-only skipped.
+Local Node contract tests: 6 passed. PGlite 0.5.8: 8 passed, 2 Native-only skipped.
 They cover OFF/ACL/RLS, exact successor-only access, stale company/identity/
 credential/account evidence, record immutability, rollback, no Auth/business
 writes, and lost post-COMMIT response recovery. Dedicated PostgreSQL 17.6 CI
-adds real two-connection ACK races and token expiry during a lock wait; its
+adds real two-connection ACK races and JWT/session-not_after expiry during a lock wait; its
 result is pending and must not be presented as successful before completion.
 Auth tables and verifier responses here are explicit synthetic fixtures, not
 an actual GoTrue/provider/iPhone test.
 
 Still required: managed Auth configuration/session validity review (the existing
 context alone does not prove inactivity timeout), deployed least-privilege
+and complete source-writer serialization (row locks alone do not serialize new membership/identity inserts),
 JWT-to-DB composition, bounded HTTP/rate-limit boundary, app-side ACK integration,
 global Auth-write serialization/CAS and secure persistent adoption, device and
 restart checks, retention/deletion compatibility, guarded install/unused restore,
