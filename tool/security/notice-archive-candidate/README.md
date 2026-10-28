@@ -1,5 +1,47 @@
 # Independent notice archive — isolated proof of concept
 
+## Signed full-byte readback observation (2026-10-28, OFF)
+
+`archive-readback-receipt-candidate.mjs` connects the byte store's actual restore
+to a narrow external-signature boundary. The attestor accepts only the exact
+configured authority, a challenge and a snapshotted expected byte descriptor.
+It restores and independently rechecks both the full opaque payload hash and
+the content-addressed object binding before asking a server-configured signer
+callback to sign domain-separated canonical observation bytes. The public key
+is pinned in trusted construction-time configuration; request/response keys do
+not establish trust and private keys are rejected. Returned signatures and
+30-second observation times are verified before any receipt is returned.
+
+The verifier generates a fresh cryptographic challenge for each explicit call,
+binds the reply to its exact authority/company/event/revision/snapshot/object/
+payload hashes and byte length, and rejects cached replies, changed bindings,
+wrong keys/domains, accessors and stale/future observations. Metadata and keys
+are copied before asynchronous callbacks. It returns only
+`readback_verified_unattested`; the signed statement is `archive_bytes_observed`,
+not a retention guarantee, independent custody, source authenticity or release
+permit. There is no `passed`, retention expiry guarantee, delete or unpin action.
+
+Twelve new tests use real temporary-file restore and Ed25519 signatures, and
+exercise byte loss/corruption, adversarial callback/input/signature mutation,
+deadline/unknown signing outcomes, fresh-challenge replay rejection and rollback.
+The rollback test retains a newer expected descriptor outside the store and
+detects its missing bytes, but also deliberately shows that rollback of both
+the store and expected descriptor can still obtain a freshly signed observation
+of older bytes. No independent rollback-resistant checkpoint is established.
+
+This remains an unhosted default-OFF boundary with trusted callbacks, **not an
+authenticated remote service or independent signer/KMS deployment**. The attestor
+does not durably consume a challenge: repeated read-only observation of the
+same challenge is possible and explicitly tested. The verifier never reuses a
+prior challenge or automatically retries after an unknown result; a subsequent
+explicit verification generates a new challenge. Timeout rejects late results
+and prevents a late restore from starting signing, but cannot abort a signer or
+transport already executing. Pending callback resources, admission/rate limits,
+real transport authentication, private-key custody, protected expected-descriptor
+checkpoints and operational retention/restore policy still need implementation.
+Neither successful signature validation nor a new fresh observation authorizes
+source reference release, purge, capacity recovery or production enablement.
+
 ## Review-only full-byte retention candidate (2026-10-28)
 
 `src/archive-byte-store-candidate.mjs` adds a default-OFF Node filesystem adapter

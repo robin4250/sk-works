@@ -31,7 +31,8 @@ void main() {
   late Future<http.StreamedResponse> Function(http.BaseRequest)? beforeResponse;
   setUp(() {
     invalidated = Completer<void>(); canceled = checked = sent = 0;
-    headers = {'Authorization':'Bearer fixture-only','apikey':'fixture-public'};
+    headers = {'Authorization':'Bearer fixture-only','apikey':'fixture-public',
+      'aCcEpT-EnCoDiNg':'gzip'};
     status = 200; responseHeaders = {'content-type':'application/pdf'}; contentLength = null;
     beforeResponse = null;
     body = StreamController<List<int>>(onCancel: () { canceled++; });
@@ -39,6 +40,8 @@ void main() {
       sent++;
       expect(request.method, 'GET'); expect(request.url, uri);
       expect(request.followRedirects, isFalse);
+      expect(request.headers['Accept-Encoding'], 'identity');
+      expect(request.headers.keys.where((name) => name.toLowerCase() == 'accept-encoding').length, 1);
       expect(request.headers['Authorization'], 'Bearer fixture-only');
       if (beforeResponse != null) { return beforeResponse!(request); }
       return http.StreamedResponse(body.stream, status,

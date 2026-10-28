@@ -30,6 +30,17 @@ function descriptor(value){
 }
 function encoded(b,payload){return Buffer.from(JSON.stringify({schema:1,...b,payload_base64:payload.toString('base64')}));}
 
+// Pure binding checks for a separately configured readback attestor. A valid
+// descriptor or byte hash does not establish source authenticity or custody.
+export function snapshotArchiveByteDescriptorCandidate(expected){return descriptor(expected);}
+export function verifyArchiveByteReadbackCandidate(expected,bytes){
+ const d=descriptor(expected);
+ if(!(bytes instanceof Uint8Array)||bytes.length!==d.byte_length)throw fail();
+ const payload=Buffer.from(bytes),b=Object.fromEntries(bindingFields.map(k=>[k,d[k]]));
+ if(sha(payload)!==d.payload_sha256||sha(encoded(b,payload))!==d.object_id)throw fail();
+ return d;
+}
+
 // `directory` and IO are trusted deployment configuration, never request input.
 // The directory must already exist, be private and remain protected from rename
 // and operator mutation. No namespace is created or production path selected.
