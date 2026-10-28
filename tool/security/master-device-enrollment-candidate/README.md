@@ -114,3 +114,8 @@ referenced; retention, safe cancellation and owner/device deletion compatibility
 are unresolved and must be designed before deployment. Node and SQL tests use
 synthetic identities only. Real public-key custody, user-presence verification,
 atomic approval, bootstrap/recovery and platform testing remain incomplete.
+
+
+## Pending-key storage adapter candidate
+
+`key-migration-pending-adapter.mjs` uses a trusted PostgreSQL pool and a single transaction to reuse the existing live-session and master checks, lock the owned device, validate canonical P-256 material, and persist only a pending proposal. It does not install caller JWT context, expose an endpoint, grant a role access, activate a key, or make legacy devices trusted. The pool must carry independently verified auth context and the required private privileges. The adapter has only mock database tests so far; actual PostgreSQL/GoTrue, concurrency, pool-context isolation and production ACL verification remain required. A commit failure is returned as unknown and is never automatically retried. An explicit identical retry reads the same pending record.
