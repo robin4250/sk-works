@@ -1,0 +1,38 @@
+{
+  "observed_at_utc": "2026-10-28T07:24:44.913Z",
+  "scope": "read-only production advisory and function catalog observation",
+  "main": "2582d9420dc06b2cd7599090962292b62022ae6e",
+  "production_changed": false,
+  "advisories": [
+    {
+      "name": "rls_enabled_no_policy",
+      "level": "INFO",
+      "count": 228,
+      "interpretation": "Includes private tables; absence of a policy can intentionally deny direct client access. Not an authorization test."
+    },
+    {
+      "name": "authenticated_security_definer_function_executable",
+      "level": "WARN",
+      "count": 212,
+      "interpretation": "Callable definer functions require individual authorization review; count alone does not prove an exploit."
+    },
+    {
+      "name": "auth_leaked_password_protection",
+      "level": "WARN",
+      "count": 1,
+      "remediation": "https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection"
+    }
+  ],
+  "public_functions_md5": {
+    "current_master_feature_flags": "2f6cace9d6708815b24119ec741bceef",
+    "set_master_feature_enabled": "033df095333e095bb223eb99f50d3502",
+    "set_master_feature_enabled_with_proof": "c87ee2e8d564c6428555fee31166877c"
+  },
+  "limits": [
+    "Point-in-time catalog metadata, not a backup or authorization proof.",
+    "Observed hashes must not replace independently reviewed installation guard expectations.",
+    "No passwords, tokens, user rows, or signing keys read.",
+    "No production SQL, policy, key, or Auth setting changed.",
+    "Release security conditions remain incomplete."
+  ]
+}
