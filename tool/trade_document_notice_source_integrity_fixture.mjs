@@ -51,6 +51,7 @@ export async function verifyNoticeSourceIntegrity(db,c){
  await db.exec(core);
  check(await q('select invoice_month_close_candidate.approver_core_intact() v'),true);
  check(await q('select invoice_month_close_candidate.notice_core_intact() v'),true);
+ await (await import('./trade_document_notice_daily_preview_fixture.mjs')).verifyNoticeDailyPreview(db,c);
  const fp=await fingerprint();
  const original=await q("select encode(sha256(convert_to(to_jsonb(i)::text,'UTF8')),'hex') v from public.invoices i where id=$1",[pending.parent]);
  await db.query('select invoice_month_close_candidate.revalidate_for_approver($1,$2,$3)',[pending.parent,fp,original]);

@@ -55,3 +55,20 @@ This extension runs the actual fingerprint, source-locking revalidators and
 catalog guards, **not the full source calculator's successful preview**. It is
 not full source-calculation/GoTrue integration and is not production evidence.
 The broad existing table locks remain unchanged.
+
+## Actual daily-price preview extension
+
+The extension now executes the pinned generated preview body against a closed
+synthetic month containing one linked attendance/report day. It reuses the
+existing rate-formula functions and the existing adjustment-aware refresh body
+with its expected independent MD5. Fixture-only missing columns are added;
+product SQL is not changed. The real daily-price preview computes 100,000 yen
+plus 10,000 yen tax, and its exact saved result passes the real approval and
+notification readiness functions. A duplicated source day recalculates to
+220,000 yen and the real guard returns `data_changed`; rollback restores ready.
+
+Route components, expense components and named adjustments are explicitly empty
+fixture providers in this extension. The successful financial/seal composition
+still runs before this extension with its synthetic proposal. This is a minimal
+actual daily-calculator-to-readiness bridge, not full route/expense/adjustment
+calculation or a single end-to-end real-Auth financial/seal approval proof.
