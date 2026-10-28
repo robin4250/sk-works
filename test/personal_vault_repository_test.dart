@@ -34,7 +34,7 @@ void main() {
     return {'access_token': '${part({'alg':'HS256'})}.${part({'sub':id,'exp':4102444800})}.$marker',
       'refresh_token':'synthetic-refresh', 'token_type':'bearer', 'expires_in':3600,
       'user': {'id':id,'aud':'authenticated','created_at':'2026-01-01T00:00:00Z',
-        'app_metadata':{},'user_metadata':{}}};
+        'app_metadata':<String,dynamic>{},'user_metadata':<String,dynamic>{}}};
   }
   Session authSession(String id, String marker) => Session.fromJson(session(id, marker))!;
   void history(Session changed) {
@@ -50,13 +50,13 @@ void main() {
         paths.add(request.url.path); authorizations.add(request.headers['Authorization']);
         if (request.url.path.contains(emitAt) && emitAt.isNotEmpty) { emit(); }
         if (request.url.path.contains('/storage/')) {
-          return http.Response.bytes(pdf, 200, headers:{'content-type':'application/pdf'});
+          return http.Response.bytes(pdf, 200, headers:{'content-type':'application/pdf'}, request:request);
         }
         final result = request.url.path.endsWith('personal_vault24_list_mine') ? [row] : [{
           'object_path':'personal-vault/$actor/${'a'*64}.pdf',
           'object_version':'fixture-version', 'pdf_hash':sha256.convert(pdf).toString(),
           'byte_length':pdf.length}];
-        return http.Response(jsonEncode(result), 200, headers:{'content-type':'application/json'});
+        return http.Response(jsonEncode(result), 200, headers:{'content-type':'application/json'}, request:request);
       }));
     await client.auth.setInitialSession(jsonEncode(session(actor, 'original')));
   });
