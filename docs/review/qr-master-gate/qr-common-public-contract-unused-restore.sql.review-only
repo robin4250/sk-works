@@ -1,0 +1,66 @@
+-- REVIEW ONLY: restore ONLY an unused, never-enabled common QR bridge.
+-- After any QR setting/audit or enabled rollout, stop and use a separately
+-- reviewed forward/OFF recovery that retains all business and audit evidence.
+begin;
+set local lock_timeout='3s';
+set local statement_timeout='30s';
+lock table qr_attendance_private.public_contract_rollout in access exclusive mode;
+lock table private.master_feature_settings in share row exclusive mode;
+lock table private.master_admin_audit_log in share mode;
+lock table qr_attendance_private.public_contract_restore_functions,
+ qr_attendance_private.public_contract_restore_check in access exclusive mode;
+do $guard$
+declare r record; expected text; actual text;
+begin
+ if (select count(*) from qr_attendance_private.public_contract_rollout)<>1 or
+    exists(select from qr_attendance_private.public_contract_rollout where enabled) or
+    exists(select from private.master_feature_settings where feature_key='qr_attendance') or
+    exists(select from private.master_admin_audit_log where details->>'feature_key'='qr_attendance') then
+  raise exception 'QR bridge used or enabled; unused restore refused';
+ end if;
+ if (select count(*) from qr_attendance_private.public_contract_restore_functions)<>5 or
+    (select count(*) from qr_attendance_private.public_contract_restore_check)<>1 then
+  raise exception 'QR restore evidence incomplete';
+ end if;
+ for r in select * from qr_attendance_private.public_contract_restore_functions loop
+  expected:=current_setting('sko.restore.qr_'||md5(r.signature),true);
+  if expected is null or expected !~ '^[a-f0-9]{32}$' or
+   r.installed_md5 is distinct from expected or to_regprocedure(r.signature) is null or
+   md5(pg_get_functiondef(to_regprocedure(r.signature))) is distinct from expected or
+   r.original_md5 is distinct from current_setting('sko.review.qr_'||md5(r.signature),true) or
+   md5(r.original_definition) is distinct from r.original_md5 or
+   not exists(select from pg_proc where oid=to_regprocedure(r.signature)
+    and proowner=r.original_owner and proacl is not distinct from r.original_acl) then
+   raise exception 'QR restore function evidence differs: %',r.signature;
+  end if;
+ end loop;
+ select * into strict r from qr_attendance_private.public_contract_restore_check;
+ expected:=current_setting('sko.restore.qr_check_md5',true);
+ select md5(pg_get_constraintdef(oid)) into actual from pg_constraint
+ where conrelid='private.master_feature_settings'::regclass
+ and conname='master_feature_settings_feature_key_check';
+ if expected is null or expected !~ '^[a-f0-9]{32}$' or
+  actual is distinct from expected or r.installed_md5 is distinct from expected or
+  r.original_md5 is distinct from current_setting('sko.review.qr_check_md5',true) or
+  md5(r.original_definition) is distinct from r.original_md5 or
+  r.original_definition not like 'CHECK (%)' then
+  raise exception 'QR restore CHECK evidence differs';
+ end if;
+end $guard$;
+do $restore$
+declare r record;
+begin
+ for r in select * from qr_attendance_private.public_contract_restore_functions order by signature loop
+  execute r.original_definition;
+ end loop;
+ select * into strict r from qr_attendance_private.public_contract_restore_check;
+ alter table private.master_feature_settings drop constraint master_feature_settings_feature_key_check;
+ execute 'alter table private.master_feature_settings add constraint master_feature_settings_feature_key_check '||r.original_definition;
+end $restore$;
+-- Never use CASCADE: an unexpected dependent object must abort the whole restore.
+drop function public.current_master_feature_flags_before_qr_candidate();
+drop function qr_attendance_private.public_contract_enabled();
+drop table qr_attendance_private.public_contract_rollout;
+drop table qr_attendance_private.public_contract_restore_functions;
+drop table qr_attendance_private.public_contract_restore_check;
+commit;

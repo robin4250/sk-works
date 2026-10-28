@@ -44,6 +44,12 @@ test('uncommitted held link can be released only under active global guard; late
  assert.equal((await f.q('select count(*)::int n from apple_owner_policy.subject_permits'))[0].n,0);
  await assert.rejects(f.db.query("insert into auth.identities values(gen_random_uuid(),$1,'apple','apple-subject',jsonb_build_object('sub','apple-subject'))",[uid]),/identity verification/);
  assert.equal((await f.state(r)).token_sha256,r.token_sha256);
+ // Expired credentials remain consumed after root recovery; only a new
+ // independently verified Apple credential can establish a new reservation.
+ const c=(await f.q('select public.read_apple_native_enrollment_context($1,$2)c',[uid,sid]))[0].c;
+ delete c.account_allowed;delete c.primary_password_configured;
+ const raw=JSON.stringify(c), replay=(await f.q("select public.reserve_apple_native_subject($1,$2,'apple-subject',$3,$4,$5,floor(extract(epoch from clock_timestamp()))::bigint)r",[uid,sid,r.token_sha256,hash(raw),raw]))[0].r;
+ assert.equal(replay,null);assert.deepEqual(await f.identities(),before);
  const fresh=await f.reserve();assert.ok(fresh);assert.notEqual(fresh.request_id,r.request_id);
  assert.equal((await f.q('select user_id from apple_google_protection.google_subject_owners'))[0].user_id,uid);
 }));
@@ -93,4 +99,85 @@ test('Native in-flight identity commit is drained before held-request reconcilia
   const result=await outcome;if(result.error)throw result.error;assert.equal(result.value.status,'completed');
   assert.equal((await f.q("select count(*)::int n from auth.identities where user_id=$1 and provider='apple'and provider_id='apple-subject'",[uid]))[0].n,1);
  }catch(error){await writer.query('rollback');await outcome;throw error;}
+}));
+
+test('self recovery commands are durable, owner scoped and inaccessible to app roles',()=>fixture(async f=>{
+ await f.db.exec(fs.readFileSync(new URL('self-recovery/self-recovery-command.sql.review-only',import.meta.url),'utf8'));
+ const r=await f.reserve();await f.hold(r);const sql='select apple_native_enrollment_private.self_recovery_command($1,$2,$3) c';
+ const a=(await f.q(sql,[r.request_id,uid,sid]))[0].c,b=(await f.q(sql,[r.request_id,uid,sid]))[0].c;assert.deepEqual(a,b);
+ assert.equal(a.actor_id,uid);assert.equal(a.session_id,sid);
+ for(const role of ['anon','authenticated','service_role']){const v=(await f.q("select has_function_privilege($1,'apple_native_enrollment_private.self_recovery_command(uuid,uuid,uuid)','EXECUTE')e, has_function_privilege($1,'apple_native_enrollment_private.self_recovery_reconcile(uuid,uuid,uuid,uuid)','EXECUTE')r",[role]))[0];assert.equal(v.e,false);assert.equal(v.r,false);}
+ await assert.rejects(f.q(sql,[r.request_id,randomUUID(),sid]),/unavailable/);
+ await assert.rejects(f.q(sql,[r.request_id,uid,randomUUID()]),/unavailable/);
+ await f.reconcile(r,a.command_id);assert.deepEqual((await f.q(sql,[r.request_id,uid,sid]))[0].c,a);
+ assert.equal((await f.q('select count(*)::int n from apple_native_enrollment_private.self_recovery_commands'))[0].n,1);
+}));
+
+test('isolated PostgreSQL port binds owner, session, durable command and audited reconciliation',()=>fixture(async f=>{
+ await f.db.exec(fs.readFileSync(new URL('self-recovery/self-recovery-command.sql.review-only',import.meta.url),'utf8'));
+ const {createSelfRecoveryPostgresPort}=await import('./self-recovery/self-recovery-postgres-port.mjs');
+ const transaction=async fn=>{await f.db.exec('begin');try{const value=await fn((...args)=>f.db.query(...args));await f.db.exec('commit');return value;}catch(e){await f.db.exec('rollback');throw e;}};
+ const port=createSelfRecoveryPostgresPort({enabled:true,operatorBoundaryReviewed:true,transaction});
+ const r=await f.reserve();await f.hold(r);const before=await f.identities(),i={request_id:r.request_id,actor_id:uid,session_id:sid};
+ assert.equal((await port.readOwnRequest(i)).status,'held');
+ await assert.rejects(port.readOwnRequest({...i,actor_id:randomUUID()}),/unavailable/);
+ await assert.rejects(port.readOwnRequest({...i,session_id:randomUUID()}),/unavailable/);
+ const c=await port.getOrCreateRecoveryCommand(i);assert.deepEqual(await port.getOrCreateRecoveryCommand(i),c);
+ await assert.rejects(port.reconcileOwnHeld({...i,command_id:randomUUID()}),/unavailable/);
+ const done=await port.reconcileOwnHeld({...i,command_id:c.command_id});assert.equal(done.status,'cancelled');
+ assert.deepEqual(await port.reconcileOwnHeld({...i,command_id:c.command_id}),done);assert.deepEqual(await f.identities(),before);
+ assert.equal((await f.q('select count(*)::int n from apple_native_enrollment_private.recovery_events'))[0].n,1);
+ await f.q("update auth.users set banned_until=now()+interval '1 day' where id=$1",[uid]);
+ await assert.rejects(port.reconcileOwnHeld({...i,command_id:c.command_id}),/unavailable/);
+ await assert.rejects(f.db.exec('delete from apple_native_enrollment_private.self_recovery_commands'),/append_only/);
+ await assert.rejects(f.db.exec('truncate apple_native_enrollment_private.self_recovery_commands'),/append_only/);
+}));
+
+test('Native owner recovery serializes disable and session deletion in both orders',{skip:!native},()=>fixture(async f=>{
+ await f.db.exec(fs.readFileSync(new URL('self-recovery/self-recovery-command.sql.review-only',import.meta.url),'utf8'));
+ const r=await f.reserve();await f.hold(r);const c=(await f.q('select apple_native_enrollment_private.self_recovery_command($1,$2,$3) c',[r.request_id,uid,sid]))[0].c;
+ const a=await f.db.peer(),b=await f.db.peer(),sql='select apple_native_enrollment_private.self_recovery_reconcile($1,$2,$3,$4) r',args=[c.command_id,r.request_id,uid,sid];
+ for(const writer of ["update auth.users set banned_until=now()+interval '1 day' where id=$1",'delete from auth.sessions where id=$1']){
+  await a.query('begin');await a.query(writer,[writer.startsWith('update')?uid:sid]);
+  await b.query('begin');await b.query("set local lock_timeout='250ms'");await assert.rejects(b.query(sql,args));await b.query('rollback');await a.query('rollback');
+ }
+ await a.query('begin');const done=(await a.query(sql,args)).rows[0].r;assert.equal(done.status,'cancelled');
+ for(const writer of ["update auth.users set banned_until=now()+interval '1 day' where id=$1",'delete from auth.sessions where id=$1']){
+  await b.query('begin');await b.query("set local lock_timeout='250ms'");await assert.rejects(b.query(writer,[writer.startsWith('update')?uid:sid]));await b.query('rollback');
+ }
+ await a.query('rollback');assert.equal((await f.state(r)).status,'held');
+}));
+
+test('Native existing root reconciliation blocks unrelated identity writes until transaction ends',{skip:!native},()=>fixture(async f=>{
+ await f.db.exec(fs.readFileSync(new URL('self-recovery/self-recovery-command.sql.review-only',import.meta.url),'utf8'));
+ const other=randomUUID(),otherIdentity=randomUUID();await f.q("insert into auth.users(id,encrypted_password,raw_user_meta_data)values($1,'fixture','{}')",[other]);
+ const r=await f.reserve();await f.hold(r);const c=(await f.q('select apple_native_enrollment_private.self_recovery_command($1,$2,$3) c',[r.request_id,uid,sid]))[0].c;
+ const a=await f.db.peer(),b=await f.db.peer();await a.query('begin');
+ await a.query('select apple_native_enrollment_private.self_recovery_reconcile($1,$2,$3,$4)',[c.command_id,r.request_id,uid,sid]);
+ await b.query('begin');await b.query("set local lock_timeout='250ms'");
+ const insert="insert into auth.identities values($1,$2,'google','other-google',jsonb_build_object('sub','other-google'))";
+ await assert.rejects(b.query(insert,[otherIdentity,other]),/lock timeout/);await b.query('rollback');await a.query('rollback');
+ await b.query('begin');await b.query(insert,[otherIdentity,other]);await b.query('rollback');
+ assert.equal((await f.state(r)).status,'held');
+}));
+
+
+test('expired not_after blocks owner reconciliation without consuming held request',()=>fixture(async f=>{
+ await f.db.exec(fs.readFileSync(new URL('self-recovery/self-recovery-command.sql.review-only',import.meta.url),'utf8'));
+ const r=await f.reserve();await f.hold(r);
+ const command=(await f.q('select apple_native_enrollment_private.self_recovery_command($1,$2,$3) c',[r.request_id,uid,sid]))[0].c;
+ const before=await f.identities();
+ await f.q("update auth.sessions set not_after=now()-interval '1 second' where id=$1",[sid]);
+ assert.equal((await f.q('select apple_native_enrollment_private.context($1,$2) c',[uid,sid]))[0].c,null);
+ await assert.rejects(f.q('select apple_native_enrollment_private.self_recovery_reconcile($1,$2,$3,$4)',[command.command_id,r.request_id,uid,sid]),/unavailable/);
+ assert.equal((await f.state(r)).status,'held');assert.deepEqual(await f.identities(),before);
+ assert.equal((await f.q('select count(*)::int n from apple_native_enrollment_private.recovery_events'))[0].n,0);
+}));
+
+test('synthetic stale activity is not a validated Supabase inactivity policy',()=>fixture(async f=>{
+ // Regression evidence only: the candidate lacks a policy input. A stale
+ // timestamp alone does not establish actual hosted-session invalidity.
+ await f.db.exec("alter table auth.sessions add column updated_at timestamptz");
+ await f.q("update auth.sessions set updated_at=now()-interval '90 days',not_after=now()+interval '1 day' where id=$1",[sid]);
+ assert.notEqual((await f.q('select apple_native_enrollment_private.context($1,$2) c',[uid,sid]))[0].c,null);
 }));

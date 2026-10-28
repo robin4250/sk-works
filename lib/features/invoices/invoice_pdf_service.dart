@@ -23,6 +23,8 @@ import '../../domain/invoice_engine.dart';
 import '../../international/language_controller.dart';
 import '../shared/company_seal_pdf.dart';
 import 'invoice_approval_repository.dart';
+import 'invoice_approval_entry_actions.dart';
+import 'invoice_notice_candidate_rpc.dart';
 import 'invoice_preview_raster.dart';
 import 'invoice_preview_failure.dart';
 import 'invoice_native_pdf_view.dart';
@@ -1002,11 +1004,15 @@ class InvoicePdfPreviewPage extends StatefulWidget {
     required this.invoices,
     this.title,
     this.allowLegacyApprovalInitialization = true,
+    this.approvalFromNotification = false,
+    this.approvalNotificationId,
   });
 
   final List<InvoiceCalculationResult> invoices;
   final String? title;
   final bool allowLegacyApprovalInitialization;
+  final bool approvalFromNotification;
+  final String? approvalNotificationId;
 
   @override
   State<InvoicePdfPreviewPage> createState() => _InvoicePdfPreviewPageState();
@@ -1019,9 +1025,16 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
   bool _approving = false;
   bool _openingAcceptance = false;
   final _actorLease = TradeDocumentActorLease();
+  // OFF until the server readiness receipt, grants and production tests pass.
+  late final _noticeController = invoiceNoticeApprovalReleased && SupabaseBackend.isInitialized
+      ? createInvoiceNoticeCandidateController(client: SupabaseBackend.client,
+          enabled: invoiceNoticeApprovalReleased,
+          actor: () => SupabaseBackend.client.auth.currentUser?.id,
+          session: () => SupabaseBackend.client.auth.currentSession?.accessToken)
+      : null;
 
   @override
-  void dispose() { _actorLease.dispose(); super.dispose(); }
+  void dispose() { _noticeController?.invalidate(); _actorLease.dispose(); super.dispose(); }
 
   @override
   void initState() {
@@ -1304,6 +1317,36 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
               final canApprove = approvals.any(
                 (item) => item.canCurrentUserApprove,
               );
+              final actorId = SupabaseBackend.isInitialized
+                  ? SupabaseBackend.client.auth.currentUser?.id : null;
+              final isPendingApprover = actorId != null && approvals.any(
+                (item) => item.userId == actorId && item.status == 'pending',
+              );
+              final approvalEntry = InvoiceApprovalEntryActions(
+                notificationOnly: invoiceNoticeApprovalReleased,
+                canApprove: canApprove,
+                isPendingApprover: isPendingApprover,
+                fromNotification: widget.approvalFromNotification,
+                busy: _approving,
+                onLegacyApprove: invoiceNoticeApprovalReleased ? null : _approve,
+                controller: _noticeController,
+                notificationId: widget.approvalNotificationId ?? '',
+                invoiceId: _singleInvoice?.invoiceId ?? '',
+                revision: _singleInvoice?.documentUpdatedAt ?? '',
+                confirmSavedApproval: () async {
+                  final actor = SupabaseBackend.isInitialized
+                      ? SupabaseBackend.client.auth.currentUser?.id : null;
+                  if (actor == null) { return false; }
+                  final data = await _buildPreviewData().timeout(const Duration(seconds: 90));
+                  if (!mounted || !SupabaseBackend.isInitialized ||
+                      SupabaseBackend.client.auth.currentUser?.id != actor) { return false; }
+                  final saved = data.approvals.any((row) => row.userId == actor && row.approved);
+                  if (saved) {
+                    setState(() { _previewRevision++; _previewData = Future.value(data); });
+                  }
+                  return saved;
+                },
+              );
               return Column(
                 children: [
                   if (previewData.missingAcceptanceCount == 0 &&
@@ -1348,16 +1391,14 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                               icon: const Icon(Icons.badge_outlined),
                               label: Text(SkoLanguageController.isEnglish ? 'Seal surname' : '名字設定'),
                             ),
-                          if (canApprove)
-                            FilledButton.icon(
-                              onPressed: _approving ? null : _approve,
-                              icon: const Icon(Icons.approval_outlined),
-                              label: Text(_approving
-                                  ? (SkoLanguageController.isEnglish ? 'Approving…' : '承認中…')
-                                  : (SkoLanguageController.isEnglish ? 'Approve' : '承認')),
-                            ),
+                          if (!invoiceNoticeApprovalReleased) approvalEntry,
                         ],
                       ),
+                    ),
+                  if (invoiceNoticeApprovalReleased)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+                      child: approvalEntry,
                     ),
                   if (_singleInvoice != null)
                     TradeConfirmationAction(kind: 'invoice', parentId: _singleInvoice!.invoiceId,

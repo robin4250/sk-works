@@ -1,0 +1,115 @@
+-- Internal review candidate only. No public RPC, grant, rollout or attendance write.
+-- The shared issuer/scope/consumer are not replaced. QR gets an exact-target
+-- private proof path using the existing proof ledger and password verifier.
+begin;
+do $$begin
+ if to_regprocedure('qr_attendance_private.load_scanner_key_challenge(uuid)') is null
+ or to_regprocedure('public.verify_secondary_password(text)') is null
+ or to_regprocedure('private.reauthentication_required(text)') is null
+ or to_regclass('private.reauthentication_proofs') is null
+ or to_regclass('public.user_secondary_credentials') is null
+ or not exists(select 1 from pg_proc where oid=to_regprocedure('qr_attendance_private.register_own_scanner_with_proof(uuid,uuid,text,text)')
+   and md5(prosrc)='8c6218154521472849cca95059a8b02a' and prosecdef and proowner=(select oid from pg_roles where rolname=current_user)) then
+  raise sqlstate '55000' using message='qr_registration_proof_catalog_mismatch';
+ end if;
+end$$;
+
+create function qr_attendance_private.issue_registration_proof(p_challenge uuid,p_password text,p_proof_hash text)
+returns timestamptz language plpgsql security definer set search_path='' as $$
+declare c jsonb;principal jsonb;stamp timestamptz;expiry timestamptz;fingerprint text;v_target jsonb;
+begin
+ if p_password is null or length(p_password)>1024 or p_proof_hash is null or p_proof_hash !~ '^[0-9a-f]{64}$'
+ or private.reauthentication_required('secondary_password') is distinct from true then
+  raise sqlstate '42501' using message='qr_registration_proof_denied';
+ end if;
+ c:=qr_attendance_private.load_scanner_key_challenge(p_challenge);
+ -- FALSE must commit normally at the request boundary: never throw it away by
+ -- raising after a wrong password, or failure counters would be rolled back.
+ if public.verify_secondary_password(p_password) is distinct from true then return null;end if;
+ c:=qr_attendance_private.load_scanner_key_challenge(p_challenge);
+ select encode(extensions.digest(password_hash,'sha256'),'hex') into fingerprint
+  from public.user_secondary_credentials where user_id=auth.uid() for share;
+ if not found then raise sqlstate '42501' using message='qr_registration_proof_denied';end if;
+ stamp:=clock_timestamp();expiry:=least(stamp+interval '90 seconds',to_timestamp((c->>'expiresMs')::numeric/1000));
+ if expiry<=stamp then raise sqlstate '42501' using message='qr_registration_proof_denied';end if;
+ v_target:=jsonb_build_object('company_id',(c->>'company')::uuid,'device_id',(c->>'device')::uuid,
+  'actor_id',auth.uid(),'public_key_hex',c->>'keyHex');
+ insert into private.reauthentication_proofs(proof_hash,actor_id,session_id,operation,target,issued_at,expires_at,secondary_credential_fingerprint)
+  values(p_proof_hash,auth.uid(),(c->>'session')::uuid,'qr.scanner.register',v_target,stamp,expiry,fingerprint);
+ return expiry;
+end$$;
+revoke all on function qr_attendance_private.issue_registration_proof(uuid,text,text) from public,anon,authenticated,service_role;
+
+create function qr_attendance_private.consume_registration_proof(p_company uuid,p_device uuid,p_key text,p_proof text)
+returns void language plpgsql security definer set search_path='' as $$
+declare principal jsonb;fingerprint text;consumed text;v_target jsonb;
+begin
+ principal:=qr_attendance_private.require_registration_actor(p_company);
+ if private.reauthentication_required('secondary_password') is distinct from true
+ or p_device is null or p_key is null or p_key !~ '^302a300506032b6570032100[0-9a-f]{64}$'
+ or p_proof is null or p_proof !~ '^[0-9a-f]{64}$' then raise sqlstate '42501' using message='qr_registration_proof_denied';end if;
+ select encode(extensions.digest(password_hash,'sha256'),'hex') into fingerprint
+  from public.user_secondary_credentials where user_id=auth.uid() for share;
+ if not found then raise sqlstate '42501' using message='qr_registration_proof_denied';end if;
+ v_target:=jsonb_build_object('company_id',p_company,'device_id',p_device,'actor_id',auth.uid(),'public_key_hex',p_key);
+ update private.reauthentication_proofs p set consumed_at=clock_timestamp()
+ where p.proof_hash=encode(extensions.digest(p_proof,'sha256'),'hex') and p.actor_id=auth.uid()
+  and p.session_id=(principal->>'session')::uuid and p.operation='qr.scanner.register' and p.target=v_target
+  and p.secondary_credential_fingerprint=fingerprint and p.consumed_at is null and p.issued_at<=clock_timestamp() and p.expires_at>clock_timestamp()
+ returning proof_hash into consumed;
+ if consumed is null then raise sqlstate '42501' using message='qr_registration_proof_denied';end if;
+end$$;
+revoke all on function qr_attendance_private.consume_registration_proof(uuid,uuid,text,text) from public,anon,authenticated,service_role;
+create or replace function qr_attendance_private.register_own_scanner_with_proof(
+ p_company uuid,p_device uuid,p_public_key_hex text,p_proof text
+) returns uuid language plpgsql security definer set search_path='' as $$
+declare actor uuid:=auth.uid();sid uuid;existing qr_attendance_private.registered_scanners%rowtype;
+ key_bytes bytea;target jsonb;v_action text;
+begin
+ perform qr_attendance_private.require_enabled();
+ sid:=private.require_reauthentication_session();
+ if actor is null or sid is null or p_company is null or p_device is null
+ or p_public_key_hex is null or p_public_key_hex !~ '^302a300506032b6570032100[0-9a-f]{64}$' then
+  raise sqlstate '42501' using message='qr_registration_denied';
+ end if;
+ -- Never impersonate the subject employee: this registers only the requesting
+ -- manager's own scanner. Context checks remain mandatory on every later scan.
+ perform 1 from auth.users where id=actor and deleted_at is null
+  and coalesce(is_anonymous,false)=false and (banned_until is null or banned_until<=clock_timestamp()) for share;
+ if not found then raise sqlstate '42501' using message='qr_registration_denied';end if;
+ perform 1 from auth.sessions where id=sid and user_id=actor for share;
+ if not found then raise sqlstate '42501' using message='qr_registration_denied';end if;
+ perform 1 from public.company_members where company_id=p_company and user_id=actor for share;
+ if not found then raise sqlstate '42501' using message='qr_registration_denied';end if;
+ if private.has_company_feature(p_company,'can_manage_attendance') is distinct from true
+ or sid is distinct from private.require_reauthentication_session() then
+  raise sqlstate '42501' using message='qr_registration_denied';
+ end if;
+ -- Fail fast instead of waiting behind an enrollment/key-maintenance transition.
+ if not pg_try_advisory_xact_lock(hashtextextended('sko-qr-scanner-registration:'||p_device::text,0)) then
+  raise sqlstate '55P03' using message='qr_registration_busy';
+ end if;
+ key_bytes:=decode(p_public_key_hex,'hex');
+ select * into existing from qr_attendance_private.registered_scanners where device_id=p_device for update;
+ if found then
+  if existing.company_id is distinct from p_company or existing.actor_id is distinct from actor
+   or existing.public_key_der is distinct from key_bytes or existing.revoked_at is not null then
+   raise sqlstate '42501' using message='qr_registration_denied';
+  end if;
+  v_action:='confirmed_existing';
+ else v_action:='registered';end if;
+ target:=jsonb_build_object('company_id',p_company,'device_id',p_device,
+   'actor_id',actor,'public_key_hex',p_public_key_hex);
+ perform qr_attendance_private.consume_registration_proof(p_company,p_device,p_public_key_hex,p_proof);
+ if v_action='registered' then
+  insert into qr_attendance_private.registered_scanners(device_id,company_id,actor_id,public_key_der)
+   values(p_device,p_company,actor,key_bytes);
+ end if;
+ insert into qr_attendance_private.scanner_registration_events(device_id,company_id,actor_id,session_id,action)
+  values(p_device,p_company,actor,sid,v_action);
+ return p_device;
+end$$;
+revoke all on function qr_attendance_private.register_own_scanner_with_proof(uuid,uuid,text,text)
+ from public,anon,authenticated,service_role;
+
+commit;

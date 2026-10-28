@@ -1,0 +1,138 @@
+-- Isolated candidate: this file does not alter existing device RPCs and does
+-- not register, trust, lock, unlock or revoke any device. Do not deploy as a
+-- complete enrollment solution. Existing authentication is unchanged.
+begin;
+create schema if not exists master_device_enrollment_candidate;
+revoke all on schema master_device_enrollment_candidate from public, anon, authenticated;
+
+create table master_device_enrollment_candidate.rollout (
+  singleton boolean primary key default true check (singleton),
+  enabled boolean not null default false
+);
+insert into master_device_enrollment_candidate.rollout(singleton) values (true);
+create table master_device_enrollment_candidate.intents (
+  id uuid primary key default gen_random_uuid(),
+  actor uuid not null,
+  session_id uuid not null,
+  device_key_sha256 text not null check (device_key_sha256 ~ '^[0-9a-f]{64}$'),
+  device_type text not null check (device_type in ('iphone', 'ipad', 'mac')),
+  challenge_nonce text not null unique check (challenge_nonce ~ '^[0-9a-f]{64}$'),
+  created_at timestamptz not null default clock_timestamp(),
+  expires_at timestamptz not null,
+  approved_hash text check (approved_hash is null or approved_hash ~ '^[0-9a-f]{64}$'),
+  approval_kind text check (approval_kind is null or approval_kind in ('trusted_device','owner_recovery')),
+  consumed_at timestamptz,
+  check (expires_at > created_at)
+);
+alter table master_device_enrollment_candidate.rollout enable row level security;
+alter table master_device_enrollment_candidate.intents enable row level security;
+revoke all on all tables in schema master_device_enrollment_candidate from public, anon, authenticated;
+
+-- Preparatory intent only. Actual enrollment additionally requires a trusted
+-- device signature or an independent, verified owner recovery channel.
+-- Crucially a bad second password returns normally, allowing the existing
+-- verifier's failed-attempt counter to commit rather than being rolled back.
+create function public.prepare_master_device_enrollment_candidate(
+  p_device_key_sha256 text, p_device_type text, p_second_password text
+) returns jsonb language plpgsql security definer set search_path='' as $$
+declare v_actor uuid := auth.uid(); v_session uuid; v_enabled boolean;
+  v_intent uuid; v_nonce text; v_count integer; v_ok boolean;
+begin
+  if v_actor is null or not public.is_current_user_master_admin() then
+    raise sqlstate '42501' using message='master_access_required';
+  end if;
+  v_session := private.require_reauthentication_session();
+  select enabled into v_enabled from master_device_enrollment_candidate.rollout
+    where singleton for share;
+  if not found or not v_enabled then
+    raise sqlstate '42501' using message='master_device_enrollment_unavailable';
+  end if;
+  if p_device_key_sha256 is null or p_device_key_sha256 !~ '^[0-9a-f]{64}$'
+      or p_device_type is null or p_device_type not in ('iphone','ipad','mac') then
+    raise sqlstate '22023' using message='master_device_request_invalid';
+  end if;
+  -- Shared lock order for concurrent intents; no credential or device mutation.
+  perform pg_advisory_xact_lock(hashtextextended('sko-master-enrollment:' || v_actor::text, 0));
+  select count(*) into v_count from master_device_enrollment_candidate.intents
+    where actor=v_actor and consumed_at is null and expires_at>clock_timestamp();
+  if v_count >= 3 then
+    raise sqlstate '42501' using message='master_device_request_limit';
+  end if;
+  v_ok := public.verify_secondary_password(p_second_password);
+  if not coalesce(v_ok,false) then
+    return jsonb_build_object('accepted',false);
+  end if;
+  -- Two server-generated random UUIDs supply 244 random bits. The nonce is
+  -- signed along with the authoritative intent, session and device key.
+  v_nonce := replace(gen_random_uuid()::text,'-','') || replace(gen_random_uuid()::text,'-','');
+  insert into master_device_enrollment_candidate.intents(
+    actor,session_id,device_key_sha256,device_type,expires_at,challenge_nonce
+  ) values (
+    v_actor,v_session,p_device_key_sha256,p_device_type,clock_timestamp()+interval '2 minutes',v_nonce
+  ) returning id into v_intent;
+  return jsonb_build_object('accepted',true,'intent_id',v_intent,
+    'registration_complete',false);
+end $$;
+revoke all on function public.prepare_master_device_enrollment_candidate(text,text,text) from public,anon;
+grant execute on function public.prepare_master_device_enrollment_candidate(text,text,text) to authenticated;
+
+-- TRUST BOUNDARY: only a separately deployed service may call this after it
+-- verifies an existing device's signature or an independently verified owner
+-- recovery. That verifier is not implemented here. Never deploy/enable this
+-- candidate while an unverified service can call it.
+create function public.approve_master_device_intent_candidate(
+ p_intent uuid,p_approval_hash text,p_approval_kind text
+) returns boolean language plpgsql security definer set search_path='' as $$
+declare v_enabled boolean;
+begin
+ select enabled into v_enabled from master_device_enrollment_candidate.rollout where singleton for share;
+ if not found or not v_enabled then raise sqlstate '42501' using message='master_device_enrollment_unavailable'; end if;
+ if p_intent is null or p_approval_hash is null or p_approval_hash !~ '^[0-9a-f]{64}$'
+   or p_approval_kind is null or p_approval_kind not in ('trusted_device','owner_recovery') then
+  raise sqlstate '22023' using message='master_device_approval_invalid';
+ end if;
+ update master_device_enrollment_candidate.intents set approved_hash=p_approval_hash, approval_kind=p_approval_kind
+  where id=p_intent and approved_hash is null and consumed_at is null and expires_at>clock_timestamp();
+ return found;
+end $$;
+revoke all on function public.approve_master_device_intent_candidate(uuid,text,text) from public,anon,authenticated;
+grant execute on function public.approve_master_device_intent_candidate(uuid,text,text) to service_role;
+
+-- The proof is short lived, one-use, bound to actor/session/device key and
+-- must be approved by the independent verifier above. Three means active
+-- devices, not pending intents. A shared per-owner lock protects concurrent
+-- completions. Existing devices are never removed or modified.
+create function public.complete_master_device_intent_candidate(
+ p_intent uuid,p_device_key text,p_device_name text,p_approval_token text
+) returns jsonb language plpgsql security definer set search_path='' as $$
+declare v_actor uuid:=auth.uid(); v_session uuid; v_enabled boolean;
+ v_item master_device_enrollment_candidate.intents%rowtype; v_count integer; v_device uuid;
+begin
+ if v_actor is null or not public.is_current_user_master_admin() then raise sqlstate '42501' using message='master_access_required'; end if;
+ v_session:=private.require_reauthentication_session();
+ select enabled into v_enabled from master_device_enrollment_candidate.rollout where singleton for share;
+ if not found or not v_enabled then raise sqlstate '42501' using message='master_device_enrollment_unavailable'; end if;
+ if p_intent is null or p_device_key is null or length(p_device_key)<32 or length(p_device_key)>256
+   or p_device_name is null or length(trim(p_device_name))<1 or length(p_device_name)>120
+   or p_approval_token is null or length(p_approval_token)<32 or length(p_approval_token)>256 then
+  raise sqlstate '22023' using message='master_device_request_invalid'; end if;
+ perform pg_advisory_xact_lock(hashtextextended('sko-master-enrollment:' || v_actor::text, 0));
+ select * into v_item from master_device_enrollment_candidate.intents where id=p_intent for update;
+ if not found or v_item.actor<>v_actor or v_item.session_id<>v_session or v_item.consumed_at is not null
+   or v_item.expires_at<=clock_timestamp() or v_item.approved_hash is null
+   or v_item.device_key_sha256<>encode(extensions.digest(p_device_key,'sha256'),'hex')
+   or v_item.approved_hash<>encode(extensions.digest(p_approval_token,'sha256'),'hex') then
+  raise sqlstate '42501' using message='master_device_approval_unavailable'; end if;
+ select count(*) into v_count from private.master_devices where master_user_id=v_actor and revoked_at is null;
+ if v_count>=3 then raise sqlstate '42501' using message='master_device_limit'; end if;
+ insert into private.master_devices(master_user_id,device_key,device_name,device_type,last_used_at)
+ values(v_actor,p_device_key,trim(p_device_name),v_item.device_type,clock_timestamp()) returning id into v_device;
+ update master_device_enrollment_candidate.intents set consumed_at=clock_timestamp() where id=p_intent;
+ insert into private.master_admin_audit_log(actor_user_id,action,target_user_id,details)
+ values(v_actor,'master_device_enrollment_candidate',v_actor,
+  jsonb_build_object('device_id',v_device,'approval_kind',v_item.approval_kind));
+ return jsonb_build_object('trusted',true,'device_id',v_device);
+end $$;
+revoke all on function public.complete_master_device_intent_candidate(uuid,text,text,text) from public,anon;
+grant execute on function public.complete_master_device_intent_candidate(uuid,text,text,text) to authenticated;
+commit;

@@ -1,0 +1,77 @@
+-- Review-only internal registration subset: the logged-in attendance manager's
+-- own scanner key. No public endpoint, proof issuer extension, kiosk delegation,
+-- device key proof-of-possession, key replacement or revocation is provided.
+-- The new qr.scanner.register operation is deliberately unsupported by the
+-- existing proof issuer. It must fail closed until that separate flow is reviewed.
+begin;
+do $$begin
+ if to_regprocedure('private.consume_reauthentication_proof(text,jsonb,text)') is null
+ or to_regclass('qr_attendance_private.registered_scanners') is null then
+  raise exception 'qr_registration_dependencies_missing';
+ end if;
+end$$;
+create table qr_attendance_private.scanner_registration_events(
+ id bigint generated always as identity primary key,
+ device_id uuid not null references qr_attendance_private.registered_scanners(device_id) on delete no action,
+ company_id uuid not null,
+ actor_id uuid not null,
+ session_id uuid not null,
+ action text not null check(action in ('registered','confirmed_existing')),
+ created_at timestamptz not null default clock_timestamp()
+);
+alter table qr_attendance_private.scanner_registration_events enable row level security;
+revoke all on qr_attendance_private.scanner_registration_events from public,anon,authenticated,service_role;
+revoke all on sequence qr_attendance_private.scanner_registration_events_id_seq from public,anon,authenticated,service_role;
+
+create function qr_attendance_private.register_own_scanner_with_proof(
+ p_company uuid,p_device uuid,p_public_key_hex text,p_proof text
+) returns uuid language plpgsql security definer set search_path='' as $$
+declare actor uuid:=auth.uid();sid uuid;existing qr_attendance_private.registered_scanners%rowtype;
+ key_bytes bytea;target jsonb;v_action text;
+begin
+ perform qr_attendance_private.require_enabled();
+ sid:=private.require_reauthentication_session();
+ if actor is null or sid is null or p_company is null or p_device is null
+ or p_public_key_hex is null or p_public_key_hex !~ '^302a300506032b6570032100[0-9a-f]{64}$' then
+  raise sqlstate '42501' using message='qr_registration_denied';
+ end if;
+ -- Never impersonate the subject employee: this registers only the requesting
+ -- manager's own scanner. Context checks remain mandatory on every later scan.
+ perform 1 from auth.users where id=actor and deleted_at is null
+  and coalesce(is_anonymous,false)=false and (banned_until is null or banned_until<=clock_timestamp()) for share;
+ if not found then raise sqlstate '42501' using message='qr_registration_denied';end if;
+ perform 1 from auth.sessions where id=sid and user_id=actor for share;
+ if not found then raise sqlstate '42501' using message='qr_registration_denied';end if;
+ perform 1 from public.company_members where company_id=p_company and user_id=actor for share;
+ if not found then raise sqlstate '42501' using message='qr_registration_denied';end if;
+ if private.has_company_feature(p_company,'can_manage_attendance') is distinct from true
+ or sid is distinct from private.require_reauthentication_session() then
+  raise sqlstate '42501' using message='qr_registration_denied';
+ end if;
+ -- Fail fast instead of waiting behind an enrollment/key-maintenance transition.
+ if not pg_try_advisory_xact_lock(hashtextextended('sko-qr-scanner-registration:'||p_device::text,0)) then
+  raise sqlstate '55P03' using message='qr_registration_busy';
+ end if;
+ key_bytes:=decode(p_public_key_hex,'hex');
+ select * into existing from qr_attendance_private.registered_scanners where device_id=p_device for update;
+ if found then
+  if existing.company_id is distinct from p_company or existing.actor_id is distinct from actor
+   or existing.public_key_der is distinct from key_bytes or existing.revoked_at is not null then
+   raise sqlstate '42501' using message='qr_registration_denied';
+  end if;
+  v_action:='confirmed_existing';
+ else v_action:='registered';end if;
+ target:=jsonb_build_object('company_id',p_company,'device_id',p_device,
+   'actor_id',actor,'public_key_hex',p_public_key_hex);
+ perform private.consume_reauthentication_proof('qr.scanner.register',target,p_proof);
+ if v_action='registered' then
+  insert into qr_attendance_private.registered_scanners(device_id,company_id,actor_id,public_key_der)
+   values(p_device,p_company,actor,key_bytes);
+ end if;
+ insert into qr_attendance_private.scanner_registration_events(device_id,company_id,actor_id,session_id,action)
+  values(p_device,p_company,actor,sid,v_action);
+ return p_device;
+end$$;
+revoke all on function qr_attendance_private.register_own_scanner_with_proof(uuid,uuid,text,text)
+ from public,anon,authenticated,service_role;
+commit;

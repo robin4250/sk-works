@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -12,8 +13,10 @@ import 'invoice_cloud_repository.dart';
 import 'invoice_list_card.dart';
 
 /// Notification previews never initialize approval data via a legacy lookup.
-InvoicePreviewPage invoiceNotificationPreview(InvoiceCalculationResult invoice) =>
-    InvoicePreviewPage(invoice: invoice, allowLegacyApprovalInitialization: false);
+InvoicePreviewPage invoiceNotificationPreview(InvoiceCalculationResult invoice, {String? notificationId}) =>
+    InvoicePreviewPage(invoice: invoice, allowLegacyApprovalInitialization: false,
+      approvalFromNotification: notificationId != null && RegExp(r'^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$').hasMatch(notificationId),
+      approvalNotificationId: notificationId);
 
 abstract interface class InvoiceNoticeSource {
   String? get actor;
@@ -27,10 +30,34 @@ class SupabaseInvoiceNoticeSource implements InvoiceNoticeSource {
   final SupabaseClient client;
   final InvoiceCloudRepository repository;
   @override
-  String? get actor => client.auth.currentUser?.id;
+  String? get actor => sessionKey(client.auth.currentSession);
   @override
   Stream<String?> get actorChanges =>
-      client.auth.onAuthStateChange.map((state) => state.session?.user.id);
+      client.auth.onAuthStateChange.map((state) => sessionKey(state.session));
+
+  /// UI invalidation only; the server verifies the session and permissions.
+  @visibleForTesting
+  static String? sessionKey(Session? session) {
+    if (session == null) return null;
+    return sessionKeyForToken(session.accessToken, session.user.id);
+  }
+
+  @visibleForTesting
+  static String? sessionKeyForToken(String token, String userId) {
+    try {
+      final parts = token.split('.');
+      if (parts.length != 3) return null;
+      final claims = jsonDecode(utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))));
+      final sid = claims is Map ? claims['session_id'] : null;
+      if (claims is! Map || claims['sub'] != userId || sid is! String ||
+          !RegExp(r'^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$').hasMatch(sid)) {
+        return null;
+      }
+      return '$userId/$sid';
+    } catch (_) {
+      return null;
+    }
+  }
   @override
   Future<List<InvoiceCalculationResult>> load() => repository.loadAll();
 }
@@ -39,10 +66,12 @@ class InvoiceNotificationPage extends StatefulWidget {
   const InvoiceNotificationPage({
     super.key,
     required this.invoiceId,
+    this.notificationId,
     this.source,
     this.previewBuilder,
   });
   final String invoiceId;
+  final String? notificationId;
   final InvoiceNoticeSource? source;
   @visibleForTesting
   final Widget Function(InvoiceCalculationResult)? previewBuilder;
@@ -90,7 +119,8 @@ class _InvoiceNotificationPageState extends State<InvoiceNotificationPage>
   void didUpdateWidget(covariant InvoiceNotificationPage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.source != widget.source ||
-        oldWidget.invoiceId != widget.invoiceId) {
+        oldWidget.invoiceId != widget.invoiceId ||
+        oldWidget.notificationId != widget.notificationId) {
       _invalidate();
     }
   }
@@ -200,7 +230,7 @@ class _InvoiceNotificationPageState extends State<InvoiceNotificationPage>
     if (visible && target != null && _preview && _canPreview(target)) {
       return NotificationPreviewHost(
         builder: (_) => widget.previewBuilder?.call(target) ??
-            invoiceNotificationPreview(target),
+            invoiceNotificationPreview(target, notificationId: widget.notificationId),
         onClose: () {
           if (mounted) setState(() => _preview = false);
         },

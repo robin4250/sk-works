@@ -52,7 +52,7 @@ func TestSKOAppleGlobalGoogleProtection(t *testing.T){
  })}
  ctx:=oidc.ClientContext(context.Background(),client)
  type tokenResult struct{AccessToken string `json:"access_token"`;RefreshToken string `json:"refresh_token"`;User struct{ID string `json:"id"`} `json:"user"`}
- for _,name:=range []string{"existing Google unknown Apple direct native","new Google registration protected immediately","returning Google and primary password remain usable","same-UID enrolled native Apple admitted","PKCE identity-stage commit is now rejected","reverse Google automatic merge denied","user metadata cannot remove protection","token-hook flag drift retains write guard","deleted Google subject cannot become new UID","official soft deletion keeps old subject ownership","lost Google response retry keeps original UID","unlink retains protection and Google can resume same UID"}{t.Run(name,func(t *testing.T){
+ for _,name:=range []string{"single session same UID successor adoption preserves account","single session wrong password preserves usable current session","single session rejected Apple link preserves adopted password session","single session Apple native link while original refresh races","single session Apple native cleanup before original refresh","single session original refresh while temporary session remains","single session temporary logout before refresh preserves original","inactivity refresh rejects despite live session row","existing Google unknown Apple direct native","new Google registration protected immediately","returning Google and primary password remain usable","same-UID enrolled native Apple admitted","PKCE identity-stage commit is now rejected","reverse Google automatic merge denied","user metadata cannot remove protection","token-hook flag drift retains write guard","deleted Google subject cannot become new UID","official soft deletion keeps old subject ownership","lost Google response retry keeps original UID","unlink retains protection and Google can resume same UID","Apple subject cannot transfer between existing users"}{t.Run(name,func(t *testing.T){
   models.TruncateAll(api.db)
   require.NoError(t,api.db.RawQuery("truncate apple_owner_policy.subject_permits,apple_owner_policy.protected_users,apple_owner_policy.rollout,apple_google_protection.rollout,apple_google_protection.google_subject_owners,apple_google_protection.company_snapshot").Exec())
   createUser:=func(email,googleSub string)*models.User{
@@ -86,6 +86,22 @@ func TestSKOAppleGlobalGoogleProtection(t *testing.T){
    owner:=createUser("apple-first@example.test","");require.NoError(t,api.db.RawQuery("update auth.users set raw_app_meta_data='{\"provider\":\"apple\",\"providers\":[\"apple\"]}'::jsonb where id=?",owner.ID).Exec());i,e:=models.NewIdentity(owner,"apple",map[string]interface{}{"sub":"apple-first","email":string(owner.Email),"email_verified":true});require.NoError(t,e);require.NoError(t,api.db.Create(i));enable()
    before:=counts();denied(idToken("google","new-google",string(owner.Email),"",false),before);return
   }
+  if name=="Apple subject cannot transfer between existing users"{
+   owner:=createUser("owner@example.test","owner-google-sub")
+   other:=createUser("other@example.test","other-google-sub")
+   require.NoError(t,api.db.RawQuery("insert into apple_owner_policy.protected_users values(?)",other.ID).Exec())
+   require.NoError(t,api.db.RawQuery("insert into apple_owner_policy.subject_permits values('foreign-apple-sub',?)",other.ID).Exec())
+   identity,e:=models.NewIdentity(other,"apple",map[string]interface{}{"sub":"foreign-apple-sub","email":"other@example.test","email_verified":true});require.NoError(t,e);require.NoError(t,api.db.Create(identity))
+   enable();beforeOwner,beforeOther:=snapshot(owner),snapshot(other)
+   ownerSession:=result(idToken("google","owner-google-sub",string(owner.Email),"",false))
+   otherSession:=result(idToken("google","other-google-sub",string(other.Email),"",false))
+   require.Equal(t,owner.ID.String(),ownerSession.User.ID);require.Equal(t,other.ID.String(),otherSession.User.ID)
+   before:=counts();denied(idToken("apple","foreign-apple-sub",string(owner.Email),ownerSession.AccessToken,true),before)
+   require.Equal(t,beforeOwner,snapshot(owner));require.Equal(t,beforeOther,snapshot(other))
+   var bound string;require.NoError(t,api.db.RawQuery("select user_id::text from auth.identities where provider='apple' and provider_id='foreign-apple-sub'").First(&bound));require.Equal(t,other.ID.String(),bound)
+   ownerAgain:=result(idToken("google","owner-google-sub",string(owner.Email),"",false));otherAgain:=result(idToken("google","other-google-sub",string(other.Email),"",false))
+   require.Equal(t,owner.ID.String(),ownerAgain.User.ID);require.Equal(t,other.ID.String(),otherAgain.User.ID);return
+  }
   owner:=createUser("existing-google@example.test","existing-google-sub");enable();originalSnapshot:=snapshot(owner)
   if name=="token-hook flag drift retains write guard"{require.NoError(t,api.db.RawQuery("update apple_owner_policy.rollout set enabled=false").Exec())}
   if name=="PKCE identity-stage commit is now rejected"{
@@ -101,6 +117,118 @@ func TestSKOAppleGlobalGoogleProtection(t *testing.T){
    var old string;require.NoError(t,api.db.RawQuery("select user_id::text from apple_google_protection.google_subject_owners where provider_id='existing-google-sub'").First(&old));require.Equal(t,owner.ID.String(),old);return
   }
   original:=result(idToken("google","existing-google-sub",string(owner.Email),"",false));require.Equal(t,owner.ID.String(),original.User.ID)
+  if name=="single session same UID successor adoption preserves account"||name=="single session wrong password preserves usable current session"||name=="single session rejected Apple link preserves adopted password session"{
+   // Account continuity is not refresh-token continuity. Exercise the official
+   // password -> native link -> successor refresh chain without restoring or
+   // logging out a successfully adopted successor session. This does not wire
+   // credentials into the app or establish secure handoff/reauthentication.
+   config.Sessions.SinglePerUser=true
+   defer func(){config.Sessions.SinglePerUser=false}()
+   refresh:=func(token string)tokenResult{
+    require.NotEmpty(t,token)
+    next:=result(call("/token?grant_type=refresh_token",map[string]interface{}{"refresh_token":token},""))
+    require.Equal(t,owner.ID.String(),next.User.ID)
+    require.NotEmpty(t,next.RefreshToken)
+    require.Equal(t,originalSnapshot,snapshot(owner),"same UID, Google identity, profile and company must survive session replacement")
+    return next
+   }
+   if name=="single session wrong password preserves usable current session"{
+    failed:=call("/token?grant_type=password",map[string]interface{}{"email":string(owner.Email),"password":"fixture-wrong-password"},"")
+    require.NotEqual(t,http.StatusOK,failed.Code)
+    refresh(original.RefreshToken)
+    return
+   }
+   verified:=result(call("/token?grant_type=password",map[string]interface{}{"email":string(owner.Email),"password":"fixture-primary-password"},""))
+   require.Equal(t,owner.ID.String(),verified.User.ID)
+   require.NotEqual(t,http.StatusOK,call("/token?grant_type=refresh_token",map[string]interface{}{"refresh_token":original.RefreshToken},"").Code)
+   current:=refresh(verified.RefreshToken)
+   if name=="single session rejected Apple link preserves adopted password session"{
+    before:=counts()
+    denied(idToken("apple","not-permitted-successor","private-relay@example.test",current.AccessToken,true),before)
+    refresh(current.RefreshToken)
+    return
+   }
+   require.NoError(t,api.db.RawQuery("insert into apple_owner_policy.subject_permits values('verified-successor-subject',?)",owner.ID).Exec())
+   linked:=result(idToken("apple","verified-successor-subject","private-relay@example.test",current.AccessToken,true))
+   require.Equal(t,owner.ID.String(),linked.User.ID)
+   require.NotEqual(t,http.StatusOK,call("/token?grant_type=refresh_token",map[string]interface{}{"refresh_token":current.RefreshToken},"").Code)
+   adopted:=refresh(linked.RefreshToken)
+   refresh(adopted.RefreshToken)
+   var n int
+   require.NoError(t,api.db.RawQuery("select count(*) from auth.identities where user_id=? and provider='apple' and provider_id='verified-successor-subject'",owner.ID).First(&n))
+   require.Equal(t,1,n)
+   return
+  }
+  if name=="single session Apple native link while original refresh races"||name=="single session Apple native cleanup before original refresh"{
+   // A native identity link issues its own new session, independently of the
+   // primary-password verifier. Do not infer whole-flow safety from PW cleanup.
+   config.Sessions.SinglePerUser=true
+   defer func(){config.Sessions.SinglePerUser=false}()
+   require.NoError(t,api.db.RawQuery("insert into apple_owner_policy.subject_permits values('verified-native-subject',?)",owner.ID).Exec())
+   linked:=result(idToken("apple","verified-native-subject","private-relay@example.test",original.AccessToken,true))
+   require.Equal(t,owner.ID.String(),linked.User.ID)
+   if name=="single session Apple native link while original refresh races"{
+    oldRefresh:=call("/token?grant_type=refresh_token",map[string]interface{}{"refresh_token":original.RefreshToken},"")
+    require.NotEqual(t,http.StatusOK,oldRefresh.Code,"a native-link session can disrupt a concurrent original-device refresh")
+   }
+   logout:=httptest.NewRequest(http.MethodPost,"http://localhost/logout?scope=local",nil)
+   logout.Header.Set("Authorization","Bearer "+linked.AccessToken)
+   closed:=httptest.NewRecorder();api.handler.ServeHTTP(closed,logout)
+   require.Equal(t,http.StatusNoContent,closed.Code)
+   if name=="single session Apple native cleanup before original refresh"{
+    oldRefresh:=call("/token?grant_type=refresh_token",map[string]interface{}{"refresh_token":original.RefreshToken},"")
+    require.Equal(t,http.StatusOK,oldRefresh.Code,"serialized native cleanup is a control case, not concurrency safety")
+   }
+   require.Equal(t,originalSnapshot,snapshot(owner),"native session handling must preserve original UID, Google identity, profile and company")
+   return
+  }
+  if name=="single session original refresh while temporary session remains"{
+   // An original-device refresh can race the password verifier's temporary
+   // session cleanup; test the live official endpoint, not getUser alone.
+   config.Sessions.SinglePerUser=true
+   defer func(){config.Sessions.SinglePerUser=false}()
+   temporary:=result(call("/token?grant_type=password",map[string]interface{}{"email":string(owner.Email),"password":"fixture-primary-password"},""))
+   require.Equal(t,owner.ID.String(),temporary.User.ID)
+   oldRefresh:=call("/token?grant_type=refresh_token",map[string]interface{}{"refresh_token":original.RefreshToken},"")
+   require.NotEqual(t,http.StatusOK,oldRefresh.Code,"original refresh while temporary session exists must be treated as a possible disruption")
+   require.Equal(t,originalSnapshot,snapshot(owner),"UID, Google identity, profile and company preserved")
+   return
+  }
+  if name=="single session temporary logout before refresh preserves original"{
+   // Isolated official Auth only: verify the original session's refresh after
+   // a same-user password login while the single-session policy is enabled.
+   config.Sessions.SinglePerUser=true
+   defer func(){config.Sessions.SinglePerUser=false}()
+   temporary:=result(call("/token?grant_type=password",map[string]interface{}{"email":string(owner.Email),"password":"fixture-primary-password"},""))
+   require.Equal(t,owner.ID.String(),temporary.User.ID)
+   require.NotEmpty(t,temporary.AccessToken)
+   logout:=httptest.NewRequest(http.MethodPost,"http://localhost/logout?scope=local",nil)
+   logout.Header.Set("Authorization","Bearer "+temporary.AccessToken)
+   closed:=httptest.NewRecorder();api.handler.ServeHTTP(closed,logout)
+   require.Equal(t,http.StatusNoContent,closed.Code)
+   oldRefresh:=call("/token?grant_type=refresh_token",map[string]interface{}{"refresh_token":original.RefreshToken},"")
+   require.Equal(t,http.StatusOK,oldRefresh.Code,"this particular serialized cleanup preserves original refresh")
+   require.Equal(t,originalSnapshot,snapshot(owner),"UID, Google identity, profile and company preserved")
+   return
+  }
+  if name=="inactivity refresh rejects despite live session row"{
+   // Isolated official Auth v2.197.0: config is changed only in this fixture.
+   timeout:=time.Hour;config.Sessions.InactivityTimeout=&timeout
+   defer func(){config.Sessions.InactivityTimeout=nil}()
+   parsed,_,e:=jwt.NewParser().ParseUnverified(original.AccessToken,jwt.MapClaims{});require.NoError(t,e)
+   claims,ok:=parsed.Claims.(jwt.MapClaims);require.True(t,ok)
+   sid,ok:=claims["session_id"].(string);require.True(t,ok);require.NotEmpty(t,sid)
+   require.NoError(t,api.db.RawQuery("update auth.sessions set refreshed_at=now()-interval '2 hours' where id=?",sid).Exec())
+   var n int;require.NoError(t,api.db.RawQuery("select count(*) from auth.sessions where id=?",sid).First(&n));require.Equal(t,1,n)
+   req:=httptest.NewRequest(http.MethodGet,"http://localhost/user",nil);req.Header.Set("Authorization","Bearer "+original.AccessToken)
+   user:=httptest.NewRecorder();api.handler.ServeHTTP(user,req)
+   require.Equal(t,http.StatusOK,user.Code,"getUser can accept an unexpired access token before refresh checks inactivity")
+   require.NotEmpty(t,original.RefreshToken)
+   refreshed:=call("/token?grant_type=refresh_token",map[string]interface{}{"refresh_token":original.RefreshToken},"")
+   require.NotEqual(t,http.StatusOK,refreshed.Code,"the real refresh endpoint enforces inactivity")
+   require.Contains(t,strings.ToLower(refreshed.Body.String()),"inactivity")
+   return
+  }
   if name=="official soft deletion keeps old subject ownership"{
    require.NoError(t,api.db.RawQuery("insert into apple_owner_policy.subject_permits values('registered-old-subject',?)",owner.ID).Exec())
    i,e:=models.NewIdentity(owner,"apple",map[string]interface{}{"sub":"registered-old-subject","email":string(owner.Email),"email_verified":true});require.NoError(t,e);require.NoError(t,api.db.Create(i))

@@ -13,6 +13,8 @@ import 'attendance_week_date_label.dart';
 import 'paid_leave_page.dart';
 import 'worker_attendance_sheet_repository.dart';
 import 'checkout_report_resume_action.dart';
+import '../shifts/own_published_shift_page.dart';
+import '../shifts/own_published_shift_repository.dart';
 
 class WorkerAttendanceSheetPage extends StatefulWidget {
   const WorkerAttendanceSheetPage({
@@ -208,6 +210,11 @@ class _WorkerAttendanceSheetPageState extends State<WorkerAttendanceSheetPage> {
           style: const TextStyle(fontWeight: FontWeight.w900),
         ),
         actions: [
+          if (ownShiftEntryReleased && widget.workerId == null)
+            IconButton(tooltip: SkoLanguageController.tr('シフト予定'),
+              icon: const Icon(Icons.event_note_outlined),
+              onPressed: () => Navigator.of(context).push<void>(MaterialPageRoute(
+                builder: (_) => OwnPublishedShiftPage(month: _month)))),
           IconButton(key: const ValueKey('checkout-report-resume-help'),
             tooltip: SkoLanguageController.tr('退勤後の日報'),
             onPressed: () => showCheckoutReportResumeHelp(context),

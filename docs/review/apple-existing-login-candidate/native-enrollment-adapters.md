@@ -90,3 +90,185 @@ Official references reviewed 2026-10-26: Supabase `signInWithPassword`, native
 `linkIdentityWithIdToken`, supported custom access-token hooks, and PostgreSQL 17
 `sha256(bytea)`/`convert_to`/`encode`. No production schema or Auth settings were
 read or changed by this candidate's tests.
+
+
+## Successor-session completion candidate (OFF, internal only)
+
+The real GoTrue successor tests establish that account UID, Google identity and
+company data can remain intact while adopting a new same-UID Auth session. They
+do not require keeping the original refresh token valid.
+
+`native-enrollment-successor.sql.review-only` adds a separate default-OFF gate
+and an ungranted private completion function. It atomically locks the existing
+reservation, checks a fresh same-UID successor SID and the exact password/profile,
+Google and membership snapshot, checks the reserved Apple subject and owner permit,
+then records both original and successor SIDs without rewriting the original SID.
+Repeat completion, wrong SID/actor, old/future/expired sessions and changed evidence
+are rejected. No tokens, users, sessions, identities or companies are written by
+this SQL. Tests use isolated synthetic Auth tables, not a real JWT boundary.
+
+This is NOT a deployed handoff or a new enrollment route. The existing reservation
+still uses the old password-isolation review gate; a reviewed primary-password
+successor flow is not connected. The broker must independently authenticate the
+exact returned successor bearer, bind the issued SID to this reserved operation,
+transfer the refresh credential only to the initiating client through a protected
+single-use channel, and handle uncertain results without fallback to an invalid
+old session. Those broker/client adapters, secure delivery, rollout/restore guards,
+concurrent behavior, real-GoTrue SQL composition and iPhone validation remain
+unimplemented. There are no service/client grants; keep every enrollment gate OFF.
+
+
+## Durable successor attempt candidate (2026-10-28, OFF)
+
+The private successor SQL now commits one request-bound attempt before external
+Auth linking. Its primary key plus request/advisory locks reject repeat and
+concurrent claims. Completion requires this exact actor/original SID/snapshot
+claim. A failed or uncertain external result never releases the claim for retry.
+The claim revalidates the original live session, account and immutable snapshot;
+completion still validates the new same-UID session independently.
+
+`native_apple_successor_db_port.mjs` is an internal request-scoped adapter for a
+separately provisioned privileged server pool and trusted exact-bearer verifier.
+It commits the private claim before returning it, uses parameterized SQL,
+transaction-local service context and bounded SQL/lock waits, rolls back failures,
+and permits only one completion call. An unknown COMMIT leaves no reusable local
+binding; the durable database claim may already exist and must be reconciled.
+No credentials are stored or included in query arguments. Node mocks cover commit
+ordering/OFF/foreign claims/unknown commits; PGlite validates exact SQL and Native
+CI additionally races two connections. This is not real JWT-to-DB composition.
+
+The adapter has no public endpoint. The following internal broker candidate wires it to the handoff runtime. A trusted
+bearer verifier, deployment-scoped pool, durable receipt reconciliation and secure
+client delivery remain required. Password successor reservation, rollout/restore
+guards and iPhone session adoption are still incomplete. No grant, production
+connection or activation was made. Existing account UID/Google/company data is
+preserved; retaining an obsolete refresh token is not a requirement.
+
+
+## Request-scoped successor broker composition (2026-10-28, OFF)
+
+`native_apple_successor_broker.mjs` connects the existing Auth HTTP adapter,
+private transactional DB adapter and verified handoff in one request-scoped
+composition. It binds and verifies the original bearer using Auth, commits the
+durable reserved-request claim before linking, verifies the issued same-UID
+successor, completes private SQL bookkeeping and invokes the trusted delivery
+sink only after a matching receipt. An unknown delivery is never retried or
+rewritten as a held completed request. Failed or unknown completion may hold
+only the originally claimed request/actor/SID through the existing SQL, which
+cannot change a completed row. Local duplicate invocation is rejected.
+
+All independent gates default OFF. The composition accepts an already-reserved
+request and DOES NOT solve primary-password successor reservation or expose a
+public route. The delivery sink, deployment-specific privileged pool and key
+resolver are externally trusted dependencies, not proof of a deployed service.
+The new Node tests execute the adapter modules against synthetic HTTP/DB services:
+commit/link/complete/deliver order, denied claim, OFF, lost completion/delivery,
+credential non-output and no successor logout. They are not real GoTrue-to-DB
+composition, TLS delivery or iPhone adoption tests. Durable reconciliation,
+public endpoint authentication/rate limits, rollout/restore, PW reservation and
+client adoption remain incomplete. No production setting or grant changed.
+
+
+## Primary-password successor Auth transport (2026-10-28, OFF)
+
+`authenticatePrimaryPasswordSuccessor` is an internal opt-in port on the existing
+Auth transport. It verifies the originally bound bearer, derives the email/phone
+only from that verified actor, performs the password login once, and independently
+verifies the same-UID, different-SID result and bounded refresh credential. It
+retains that new credential for a future reviewed reservation/handoff instead of
+logging it out or asserting that the obsolete Google refresh remains usable.
+The existing handler and broker do not enable this port. It does not rebind the
+Apple link operation, reserve a subject, deliver to a client, or update any password,
+Google identity, company or profile. A failed/unknown attempt is never automatically
+retried. Any created session is deliberately not revoked to pretend rollback.
+
+The caller must still revalidate the original versus successor company/Google/
+credential/profile snapshot atomically in SQL and create the PW-successor-bound
+reservation, with failure reconciliation and a safe client handoff. None of those
+steps or public endpoint wiring is implemented by this Auth-only change. Same UID
+alone is not sufficient evidence of the full enrollment policy. The three new
+HTTP-fixture tests and the eleven existing Auth/handler tests pass locally; these
+are synthetic transport tests, not a new real-GoTrue reservation proof. All gates
+remain OFF and no production configuration or grant changed.
+
+
+## PW-successor snapshot transfer (2026-10-28, internal OFF)
+
+The new private SQL in `native-enrollment-password-successor.sql.review-only`
+anchors the original authenticated SID, company/Google/password/profile snapshot,
+Apple subject and token hash BEFORE the password login. That intent commits before
+the external Auth call and stores no credentials. The internal transfer then locks
+the intent, verifies the fresh same-user password SID against the official GoTrue
+v2.197.0 `auth.mfa_amr_claims` password record and DB time, compares the snapshot
+without SID, and calls the existing reservation SQL inside the same transaction.
+A request-bound trace retains the initial SID even if its Auth row is deleted.
+The final existing successor receipt references the PW SID; the intent links it
+back to the initial SID. Neither a failed audit nor a failed reservation creates a
+partial permit/transfer. Replayed intents and changed snapshots are rejected.
+
+`createNativeApplePasswordSuccessorBroker` connects the new Auth password port,
+intent/reservation DB adapter and existing durable successor broker. Apple token
+verification precedes all password operations; freshness is checked again at slow
+boundaries. The order is intent commit -> password login -> snapshot reservation
+commit -> durable pre-link claim -> Apple link -> completion -> trusted sink.
+All independent gates default OFF, the current public handler never calls this
+composition, and the functions have no client/service grants. A failed/unknown
+password flow may obsolete the original refresh and require a real sign-in;
+there is no fictional rollback/logout or automatic resubmission.
+
+Local validation: 21 PGlite tests succeeded, 4 Native-only tests skipped; the new
+Native test races the same PW intent on two real PostgreSQL connections. Node
+broker/DB composition tests: 10 succeeded. These are synthetic HTTP and Auth-table
+fixtures, not proof of managed Auth schema compatibility, real GoTrue-to-DB
+composition or client delivery. The official AMR model source is
+https://github.com/supabase/auth/blob/v2.197.0/internal/models/amr.go . Managed Auth
+schema/AMR timestamp compatibility, complete session-validity policy, deployment
+least privilege/rate limits, immutable delivery reconciliation, client adoption,
+owner iPhone/Face ID and recovery remain incomplete. This is not a deployable
+production activation or migration. No production settings, identities or company
+records were changed.
+
+
+## Real Auth to PW-successor broker integration candidate (2026-10-28)
+
+`native_password_broker_gotrue_test.go` and the fixture-only Node runner exercise the existing PW-successor broker, Auth HTTP port, PostgreSQL adapter and exact private intent/reservation/claim/completion SQL in one chain. A dedicated workflow reuses the pinned official GoTrue commit and native Apple provider fixture. The Node fetch bridge only maps the pinned project-origin requests to the explicit loopback test server; it does not relax the application's production issuer or origin validation. The issuer string in the disposable fixture is synthetic configuration, not a request to the hosted project.
+
+The added cases require same-UID password and Apple successors, preserved Google identity/profile/company/password snapshot, one completed receipt, one delivery and continued refresh of the final successor, plus wrong-password rejection before native linking. Credentials remain in fixture process memory/stdin and are never printed or persisted. They do not establish real Apple credential acquisition, managed Auth schema compatibility, a least-privilege deployed pool, an actual TLS client delivery/adoption channel or failure recovery. No public route/grant or production change is added. Local Node syntax verification passed; real GoTrue/PG execution is pending the new CI result and must not be reported as passed before it completes.
+
+
+### Executed official-Auth integration evidence
+
+Head `3c6690524c3f6f511353a487803bc4c95763a920`, workflow `Apple password successor real broker`, run `40657896428`, job `122713309692`: success. Both the successful PW→atomic reservation→durable claim→native Apple→private completion→one in-memory delivery→two final refreshes case and wrong-password rejection case passed against the pinned official GoTrue HTTP and PostgreSQL fixture. The final UID, original Google identity, profile, company record and credential-version snapshot are unchanged.
+
+The integration first exposed an actual Auth-port compatibility defect: a verified singleton audience array was rejected. The port now accepts exactly the existing `authenticated` string or a singleton array containing that same string. Empty, multiple, duplicate, foreign and non-string audiences remain rejected; Auth `/user`, issuer, role, SID and expiry checks remain in place. The 12 Node Auth-port tests passed before CI execution.
+
+A separate fixture issue was isolated using only boolean diagnostics: official `setupAPIForTest` selects bcrypt MinCost and test DB encryption, causing a newly created plain fixture hash to migrate during password authentication. The successful unchanged-credential case now starts with ordinary bcrypt cost and the fixture's configured encrypted-at-rest format. Application credential snapshot guards were not loosened. A real credential hash/encryption migration or password change during enrollment must still fail closed; it may require an explicit fresh sign-in and a new enrollment attempt, and the recovery/user experience is not complete. No automatic retry or password reset was added.
+
+This evidence is not a production activation: the provider is a signed synthetic Apple fixture, HTTPS delivery is replaced with an acknowledged in-memory sink, project-origin requests use an explicit loopback-only bridge, and the DB pool is an isolated privileged fixture. Managed schema verification, deployed JWT→least-privilege DB integration, safe real delivery/client adoption, restart reconciliation and owner iPhone testing remain incomplete.
+
+
+## Original TLS response successor sink (review-only, 2026-10-28)
+
+`native_apple_successor_tls_response.mjs` provides a Node HTTPS response sink for an independently authenticated, reserved request. It never POSTs session credentials to a caller-supplied URL. It requires the original IncomingMessage/ServerResponse/TLSSocket pair, exact configured Host, one exact Authorization header, same verified actor/request, a different successor SID, bounded tokens, no-store headers, one local attempt and a deadline. Plain HTTP plus forwarded-TLS headers, another bearer, another actor/request/SID, reused response and duplicate delivery are rejected. It has no listener, public route, Auth grant, production secrets, or automatic activation.
+
+The dedicated test generates a disposable localhost certificate, verifies it through a pinned test CA, and performs actual HTTPS exchanges with synthetic credentials. Five Node tests pass locally. This is real TLS at the isolated Node server boundary, not a deployed production certificate, managed gateway, real device, or full broker delivery integration. A production TLS-terminating proxy cannot be trusted by setting an x-forwarded-proto header: this implementation fails closed unless its own socket is TLS.
+
+A true return means Node emitted response finish (handed bytes to the transport), **not** device receipt or Supabase SDK adoption. Connection loss after completion remains an unknown outcome; there is no blind relink/resend, durable client acknowledgement or restart reconciliation. The sink is not connected to the current public handler. A deployment must bind its configuration to verified endpoint context and prove certificate/origin management, least-privilege Auth-to-DB handling, rate limits, app-side identity checks and recovery before activation. Existing credentials, Google identity, company data and production are unchanged.
+
+Primary references: https://nodejs.org/api/https.html and https://nodejs.org/api/http.html#event-finish . Client SDK adoption is separately incomplete; Supabase setSession exchanges a refresh credential, so it requires a guarded client integration rather than treating the server's delivered SID as the final client SID.
+
+
+## Isolated Dart SDK successor preparation (OFF, 2026-10-28)
+
+`AppleSuccessorClientPreparation` is an iOS-only/default-OFF verification boundary. It captures the original verified Google identity and company membership before the single receive operation, validates the exact request/UID/SID/freshness envelope, then uses the pinned SDK's normal `setSession(refreshToken, accessToken: accessToken)` on a separate memory-only SupabaseClient with auto refresh disabled. It rechecks Auth user, unchanged Google identities and company memberships before exposing only a ready boolean. No token is returned as an ordinary result or written by application code to SharedPreferences. App Auth events (including A→B→A), stream failure, lifecycle pause/dispose, unknown transport result and late verification invalidate the operation. Failed operations are not retried automatically. The original application client is never mutated or signed out by this preparer.
+
+This is deliberately **not global client adoption**. Pinned gotrue 2.27.2's `setSession` with accessToken awaits `getUser` then unconditionally saves into its client; calling it on the global client can resurrect an old operation after a concurrent sign-out/account switch or timeout. `recoverSession`'s same-UID path also does not emit a new Auth event and is not substituted as an unreviewed persistence shortcut. Exclusive global-auth transition coordination, compare-and-swap adoption, correct SDK persistence/notifications, restart/unknown-result reconciliation and owner iPhone testing remain unimplemented. The prepared isolated client has no public credential getter or commit method. The current UI/public route does not use this boundary.
+
+Nine Flutter tests cover OFF/no network, SDK preparation without global mutation, foreign/expired envelopes, Auth user/Google/company mismatch, A→B→A, background late response, generic failure and one receive attempt. They are synthetic HTTP fixtures, not server authorization proof. Local Flutter/Dart was not run; the existing preparation workflow analyzes and executes these tests in CI. Official pinned source: https://github.com/supabase/supabase-flutter/blob/gotrue-v2.27.2/packages/gotrue/lib/src/gotrue_client.dart . SDK API: https://supabase.com/docs/reference/dart/auth-setsession .
+
+
+### Per-client preparation lease and pinned-parser fixture correction
+
+A private per-application-client lease now prevents two separately constructed preparers from concurrently receiving successor credentials. Disposing a rejected/non-owning preparer cannot release the active owner's lease. The owner holds it through successful preparation and releases it on invalidation/disposal. This is **only preparation mutual exclusion**, not an implementation of global SDK compare-and-swap or coordination of existing Google/password/deep-link/sign-out paths. No global session commit was added.
+
+The first preparation CI exposed a fixture incompatibility: pinned PostgREST 2.9.1 reads `response.request.method`, but new MockClient responses omitted their originating Request. The fixture responses now preserve that Request. Product authorization, origin, expiry, identity and company checks were not loosened. Temporary path/type diagnostics were removed. The positive and one-receive tests plus the new two-preparer lease test run in CI; no local Flutter/Dart execution occurred. New-head CI results are separate from these implementation claims.

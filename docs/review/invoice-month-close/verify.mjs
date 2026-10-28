@@ -1,0 +1,168 @@
+import {readFile} from 'node:fs/promises';
+import assert from 'node:assert/strict';
+const {PGlite}=await import(process.argv[2]);const db=new PGlite();
+const id=n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
+const [company,customer,site,worker,invoice,early,late,outEarly,outLate,reportEarly,reportLate,otherCustomer,otherSite]=Array.from({length:13},(_,i)=>id(i+1));
+await db.exec(`create role anon;create role authenticated;create role service_role;create schema auth;create function auth.uid() returns uuid language sql as $$select nullif(current_setting('test.uid',true),'')::uuid$$;
+create table public.invoices(id uuid primary key,company_id uuid,customer_id uuid,billing_period_start date,billing_period_end date,calculation_blocked boolean default false,snapshot jsonb default '{}',subtotal integer default 10,tax integer default 1,welfare_amount integer default 0,grand_total integer default 11);
+create table public.sites(id uuid primary key,company_id uuid,customer_id uuid);
+create table public.attendance_verifications(id uuid primary key,company_id uuid,worker_id uuid,site_id uuid,work_date date,event_type text,confirmed_at timestamptz,source_clock_in_id uuid,daily_report_id uuid,route_assignment_id uuid);
+create table public.daily_reports(id uuid primary key,company_id uuid,site_id uuid,report_date date,status text,signed_at timestamptz,representative_signature_json jsonb,supervisor_signature_json jsonb,route_assignment_id uuid);
+create schema private;create table public.route_stops(id uuid,route_assignment_id uuid,site_id uuid);create table private.route_journey_captures(id uuid,company_id uuid,source_clock_in_id uuid,route_assignment_id uuid,work_date date,worker_id uuid,route_stop_id uuid,recorded_at timestamptz);create table private.route_journey_visit_events(source_clock_in_id uuid,kind text,capture_id uuid,start_capture_id uuid,route_stop_id uuid);create table private.route_billing_quantity_requests(company_id uuid,customer_id uuid,work_date date);create table private.route_fixture(report_id uuid,worker_id uuid,customer_id uuid,source_clock_in_id uuid,source_ready boolean);create table private.route_blocked(flag boolean);insert into private.route_blocked values(false);
+create function private.route_signed_checkout_sources(uuid,date,date) returns table(report_id uuid,worker_id uuid,customer_id uuid,source_clock_in_id uuid,source_ready boolean) language sql as $$select report_id,worker_id,customer_id,source_clock_in_id,source_ready from private.route_fixture$$;
+create function private.route_billing_invoice_blocked(uuid,uuid,date,date) returns boolean language sql as $$select flag from private.route_blocked$$;
+create table public.daily_report_workers(report_id uuid,worker_id uuid);
+create table public.attendance_entries(id uuid default gen_random_uuid(),company_id uuid,worker_id uuid,source_report_id uuid,route_assignment_id uuid,site_id uuid,work_date date,base_man_days numeric,work_category text,overtime_hours numeric,early_hours numeric,allowance_names text[],updated_at timestamptz,updated_by uuid);`);
+await db.exec(await readFile(process.env.SKO_MONTH_CLOSE_SQL,'utf8'));await db.exec(await readFile(process.env.SKO_GUARDED_SQL,'utf8'));
+await db.query("insert into invoices(id,company_id,customer_id,billing_period_start,billing_period_end) values($1,$2,$3,date_trunc('month',current_date),date_trunc('month',current_date)+interval '1 month - 1 day')",[invoice,company,customer]);
+const check=async()=>(await db.query('select invoice_month_close_candidate.precheck($1) v',[invoice])).rows[0].v;
+assert.equal(await check(),'period_open');
+await db.query("update invoices set billing_period_end=date_trunc('month',current_date)+interval '14 days' where id=$1",[invoice]);assert.equal(await check(),'period_unverified');
+await db.query("update invoices set billing_period_start=date_trunc('month',current_date)-interval '1 month',billing_period_end=date_trunc('month',current_date)-interval '1 day' where id=$1",[invoice]);assert.equal(await check(),'work_unverified');
+await db.query('insert into sites values($1,$2,$3),($4,$2,$5)',[site,company,customer,otherSite,otherCustomer]);
+await db.query("insert into attendance_verifications(id,company_id,worker_id,site_id,work_date,event_type,confirmed_at) values($1,$2,$3,$4,date_trunc('month',current_date)-interval '4 day','clock_in',now()),($5,$2,$3,$4,date_trunc('month',current_date)-interval '2 day','clock_in',now()),($6,$2,$3,$7,date_trunc('month',current_date)-interval '1 day','clock_in',now())",[early,company,worker,site,late,id(99),otherSite]);
+assert.equal(await check(),'checkout_pending');
+await db.query("insert into attendance_verifications(id,company_id,worker_id,site_id,work_date,event_type,confirmed_at,source_clock_in_id,daily_report_id) values($1,$2,$3,$4,date_trunc('month',current_date)-interval '2 day','clock_out',now(),$5,$6)",[outLate,company,worker,site,late,reportLate]);
+assert.equal(await check(),'checkout_pending');
+await db.query("insert into attendance_verifications(id,company_id,worker_id,site_id,work_date,event_type,confirmed_at,source_clock_in_id,daily_report_id) values($1,$2,$3,$4,date_trunc('month',current_date)-interval '4 day','clock_out',now(),$5,$6)",[outEarly,company,worker,site,early,reportEarly]);
+assert.equal(await check(),'report_pending');
+await db.query("insert into daily_reports(id,company_id,site_id,report_date,status,signed_at,representative_signature_json,supervisor_signature_json) values($1,$2,$3,date_trunc('month',current_date)-interval '2 day','signed',now(),'{}','{}'),($4,$2,$3,date_trunc('month',current_date)-interval '4 day','draft',null,'{}','{}')",[reportLate,company,site,reportEarly]);
+await db.query('insert into daily_report_workers values($1,$2),($3,$2)',[reportLate,worker,reportEarly]);assert.equal(await check(),'report_pending');
+await db.query("update daily_reports set status='signed',signed_at=now() where id=$1",[reportEarly]);assert.equal(await check(),'data_changed');
+await db.query("insert into public.attendance_entries(company_id,worker_id,source_report_id,site_id,work_date) values($1,$2,$3,$4,date_trunc('month',current_date)-interval '4 day'),($1,$2,$5,$4,date_trunc('month',current_date)-interval '2 day')",[company,worker,reportEarly,site,reportLate]);assert.equal(await check(),'source_proof_missing');
+await db.query("update daily_reports set representative_signature_json='[]' where id=$1",[reportEarly]);assert.equal(await check(),'report_pending');await db.query("update daily_reports set representative_signature_json='{}' where id=$1",[reportEarly]);
+await db.query('update daily_reports set supervisor_signature_json=null where id=$1',[reportEarly]);assert.equal(await check(),'report_pending');
+await db.query("update daily_reports set supervisor_signature_json='{}' where id=$1",[reportEarly]);
+await db.query('delete from public.attendance_entries where source_report_id=$1',[reportLate]);
+await db.query("update attendance_verifications set route_assignment_id=$1 where id in ($2,$3)",[id(98),late,outLate]);
+await db.query('update daily_reports set route_assignment_id=$1 where id=$2',[id(98),reportLate]);assert.equal(await check(),'route_unverified');
+await db.query('insert into private.route_fixture values($1,$2,$3,$4,true)',[reportLate,worker,customer,late]);assert.equal(await check(),'source_proof_missing');
+const guarded=async()=>(await db.query('select invoice_month_close_candidate.guarded($1) v',[invoice])).rows[0].v;
+assert.equal(await guarded(),'source_proof_missing');
+await db.exec("create function invoice_month_close_candidate.approver_core_intact() returns boolean language sql as $$select true$$;create function invoice_month_close_candidate.preview_for_approver(i uuid) returns jsonb language sql as $$select jsonb_build_object('original_invoice_id',i,'source_fingerprint',repeat('a',64),'original_invoice_fingerprint',repeat('b',64),'calculation_blocked',false,'proposed_snapshot','{}'::jsonb,'subtotal',10,'tax',1,'welfare',0,'grand_total',11)$$;create function invoice_month_close_candidate.revalidate_for_approver(uuid,text,text) returns void language sql as $$select$$;");
+assert.equal(await guarded(),'ready');
+await db.query('update invoices set grand_total=12 where id=$1',[invoice]);assert.equal(await guarded(),'data_changed');
+await db.query('update invoices set grand_total=11 where id=$1',[invoice]);
+console.log(JSON.stringify({fixture_candidate_snapshot_match_ready:true,fixture_changed_total_rejected:true,financial_preview_and_gate_stubs:true}));
+await db.query("insert into private.route_billing_quantity_requests values($1,$2,date_trunc('month',current_date)-interval '2 days')",[company,customer]);
+await db.query('delete from private.route_fixture');assert.equal(await check(),'route_unverified');
+await db.query('insert into private.route_fixture values($1,$2,$3,$4,true)',[reportLate,worker,customer,late]);
+await db.query('update private.route_fixture set source_ready=false');assert.equal(await check(),'route_unverified');
+await db.query('update private.route_fixture set source_ready=true');await db.query('update private.route_blocked set flag=true');assert.equal(await check(),'route_unverified');
+// Replace synthetic route helpers with exact production source and blocked bodies.
+// The components helper is deliberately a stub; this is not full route integration.
+await db.exec(`drop function private.route_signed_checkout_sources(uuid,date,date);drop function private.route_billing_invoice_blocked(uuid,uuid,date,date);
+ create function private.route_signed_checkout_components(uuid,uuid,date,date) returns jsonb language sql as $$select jsonb_build_object('blocked',false)$$;
+ create function private.route_signed_site_rates(uuid,uuid,text) returns jsonb language sql as $$select jsonb_build_object('daily',true,'unit_price_yen',100,'welfare_rate',0,'overtime_rate',20,'early_rate',20,'allowance_rates',jsonb_build_object('合成手当',10))$$;
+ create table public.companies(id uuid,tax_rate numeric);create table public.customers(id uuid,company_id uuid,notes text);
+ alter table private.route_billing_quantity_requests add column worker_id uuid;alter table private.route_billing_quantity_requests add column status text;
+ alter table public.daily_reports add column signature_json jsonb;
+ alter table public.sites add column formal_name text;alter table public.sites add column name text;
+
+
+`);
+await db.exec(await readFile(process.env.SKO_ROUTE_HELPERS,'utf8'));await db.exec(await readFile(process.env.SKO_ROUTE_COMPONENTS,'utf8'));
+await db.query('insert into public.companies values($1,10)',[company]);await db.query('insert into public.customers values($1,$2,null)',[customer,company]);
+const helperHashes=(await db.query("select proname,md5(prosrc) h from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='private' and proname in ('route_signed_checkout_sources','route_billing_invoice_blocked')")).rows;
+const componentHash=(await db.query("select md5(prosrc) h from pg_proc where oid='private.route_signed_checkout_components(uuid,uuid,date,date)'::regprocedure")).rows[0].h;assert.equal(componentHash,'55ec3b7eaaf288986bea1c32c3e0be50');
+assert.equal(helperHashes.find(x=>x.proname==='route_signed_checkout_sources').h,'657a3e0a3511f600e440e23026d8a73d');assert.equal(helperHashes.find(x=>x.proname==='route_billing_invoice_blocked').h,'2601bbc4fe21fa0a609c52686e315ee7');
+await db.query("update public.sites set name='合成現場' where id=$1",[site]);
+await db.query("update public.attendance_verifications set site_id=null,daily_report_id=$1 where id in ($2,$3)",[reportLate,late,outLate]);
+await db.query("update public.daily_reports set site_id=null,signature_json='[1]' where id=$1",[reportLate]);
+await db.query("insert into public.attendance_entries(company_id,worker_id,source_report_id,route_assignment_id,site_id,work_date,base_man_days,work_category,overtime_hours,early_hours,allowance_names) values($1,$2,$3,$4,null,date_trunc('month',current_date)-interval '2 day',1,'day',1,0,ARRAY['合成手当'])",[company,worker,reportLate,id(98)]);
+await db.query('insert into public.route_stops values($1,$2,$3)',[id(80),id(98),site]);
+await db.query("insert into private.route_journey_captures values($1,$2,$3,$4,date_trunc('month',current_date)-interval '2 day',$5,$6,(select confirmed_at from public.attendance_verifications where id=$3)),($7,$2,$3,$4,date_trunc('month',current_date)-interval '2 day',$5,$6,(select confirmed_at from public.attendance_verifications where id=$3))",[id(81),company,late,id(98),worker,id(80),id(82)]);
+await db.query("insert into private.route_journey_visit_events values($1,'start',$2,$2,$3),($1,'end',$4,$2,$3)",[late,id(81),id(80),id(82)]);
+const realRoute=(await db.query('select count(*)::int n from private.route_signed_checkout_sources($1,$2::date,$3::date) where source_ready and customer_id=$4',[company,(await db.query('select billing_period_start from invoices where id=$1',[invoice])).rows[0].billing_period_start,(await db.query('select billing_period_end from invoices where id=$1',[invoice])).rows[0].billing_period_end,customer])).rows[0].n;
+assert.equal(realRoute,1);const realComponent=(await db.query("select private.route_signed_checkout_components($1,$2,(select billing_period_start from invoices where id=$3),(select billing_period_end from invoices where id=$3)) v",[company,customer,invoice])).rows[0].v;assert.equal(realComponent.blocked,false);assert.equal(realComponent.has_sources,true);assert.ok(realComponent.subtotal>0);assert.equal(await check(),'source_proof_missing');
+// An attributed route for another customer does not block this invoice;
+// an unknown attribution still fails closed.
+await db.query("insert into public.route_stops values($1,$2,$3)",[id(70),id(71),otherSite]);
+await db.query("update public.attendance_verifications set route_assignment_id=$1 where id=$2",[id(71),id(99)]);
+await db.query("insert into private.route_journey_captures values($1,$2,$3,$4,date_trunc('month',current_date)-interval '1 day',$5,$6,now())",[id(72),company,id(99),id(71),worker,id(70)]);
+await db.query("insert into private.route_journey_visit_events values($1,'start',$2,$2,$3)",[id(99),id(72),id(70)]);
+assert.equal(await check(),'source_proof_missing');
+await db.query('delete from private.route_journey_visit_events where capture_id=$1',[id(72)]);
+assert.equal(await check(),'route_unverified'); // Unknown attribution remains fail-closed.
+await db.query('delete from private.route_journey_captures where id=$1',[id(72)]);
+await db.query('delete from public.route_stops where id=$1',[id(70)]);
+await db.query('update public.attendance_verifications set route_assignment_id=null where id=$1',[id(99)]);
+assert.equal(await check(),'source_proof_missing');
+console.log(JSON.stringify({other_customer_attributed_route_does_not_block:true,unknown_route_still_fails_closed:true}));
+await db.query('delete from private.route_journey_visit_events where capture_id=$1',[id(82)]);assert.equal(await check(),'route_unverified');
+console.log(JSON.stringify({production_route_source_body:true,production_route_blocked_body:true,synthetic_complete_route:true,route_missing_exit_rejected:true,rate_helper_stub:true,production_route_component_body:true}));
+// Review-only notification intent, no enqueue or external delivery.
+await db.exec("alter table public.invoices add column updated_at timestamptz default now();create table public.company_members(company_id uuid,user_id uuid);create table public.invoice_approvals(invoice_id uuid,company_id uuid,approver_user_id uuid,status text);");
+await db.query('insert into public.company_members values($1,$2)',[company,worker]);await db.query("insert into public.invoice_approvals values($1,$2,$3,'pending')",[invoice,company,worker]);
+await db.exec("create function private.require_reauthentication_session() returns uuid language sql as $$select nullif(current_setting('test.sid',true),'')::uuid$$;");
+await db.exec(await readFile(process.env.SKO_NOTICE_SQL,'utf8'));
+const notice=()=>db.query('select invoice_month_close_candidate.prepare_notice($1,$2) v',[invoice,worker]);
+await assert.rejects(notice(),/notice_disabled/);await db.exec('update invoice_month_close_candidate.notice_settings set enabled=true');
+await assert.rejects(notice(),/notice_readiness_unavailable/);
+await db.exec("create function invoice_month_close_candidate.notification_readiness(i uuid,u uuid) returns jsonb language sql as $$select jsonb_build_object('status',coalesce(nullif(current_setting('test.notice_status',true),''),'ready'),'invoice_revision',updated_at::text,'source_fingerprint',coalesce(nullif(current_setting('test.notice_fp',true),''),repeat('a',64))) from public.invoices where id=i$$;");
+await db.query("select set_config('test.notice_status','pending',false)");await assert.rejects(notice(),/notice_not_ready/);
+await db.query("select set_config('test.notice_status','ready',false)");const firstNotice=(await notice()).rows[0].v;assert.equal((await notice()).rows[0].v,firstNotice);
+assert.equal((await db.query('select count(*)::int n from invoice_month_close_candidate.notice_intents')).rows[0].n,1);
+const current=async n=>(await db.query('select invoice_month_close_candidate.notice_current($1) v',[n])).rows[0].v;
+assert.equal(await current(firstNotice),true);
+await db.query("select set_config('test.uid',$1,false),set_config('test.sid',$2,false)",[worker,id(70)]);
+const issue=async()=>(await db.query('select invoice_month_close_candidate.issue_notice_ticket($1) v',[firstNotice])).rows[0].v.ticket_id;
+const use=async ticket=>(await db.query('select invoice_month_close_candidate.consume_notice_ticket($1) v',[ticket])).rows[0].v;
+let ticket=await issue();assert.equal(await issue(),ticket);assert.equal((await db.query('select count(*)::int n from invoice_month_close_candidate.notice_open_tickets where notice_id=$1',[firstNotice])).rows[0].n,1);await db.query("select set_config('test.uid',$1,false)",[id(71)]);await assert.rejects(use(ticket),/notice_unavailable/);
+await db.query("select set_config('test.uid',$1,false),set_config('test.sid',$2,false)",[worker,id(72)]);await assert.rejects(use(ticket),/notice_unavailable/);
+await db.query("select set_config('test.sid',$1,false)",[id(70)]);assert.equal(await use(ticket),invoice);await assert.rejects(use(ticket),/notice_unavailable/);
+ticket=await issue();await db.query("update invoice_month_close_candidate.notice_open_tickets set expires_at=clock_timestamp()-interval '1 second' where id=$1",[ticket]);await assert.rejects(use(ticket),/notice_unavailable/);const expired=ticket;ticket=await issue();assert.notEqual(ticket,expired);assert.equal((await db.query('select count(*)::int n from invoice_month_close_candidate.notice_open_tickets where id=$1',[expired])).rows[0].n,0);
+for(let j=0;j<19;j++){await db.query("select set_config('test.sid',$1,false)",[id(500+j)]);await issue();}
+await db.query("select set_config('test.sid',$1,false)",[id(600)]);await assert.rejects(issue(),/notice_unavailable/);
+await db.query("select set_config('test.sid',$1,false)",[id(70)]);assert.equal(await issue(),ticket);
+await db.query("update public.invoice_approvals set status='approved' where invoice_id=$1",[invoice]);await assert.rejects(use(ticket),/notice_unavailable/);await db.query("update public.invoice_approvals set status='pending' where invoice_id=$1",[invoice]);
+await db.query("select set_config('test.notice_fp',repeat('b',64),false)");assert.equal(await current(firstNotice),false);await db.query("select set_config('test.notice_fp',repeat('a',64),false)");
+await db.query("update public.invoice_approvals set status='approved' where invoice_id=$1",[invoice]);assert.equal(await current(firstNotice),false);await assert.rejects(notice(),/notice_unavailable/);
+await db.query("update public.invoice_approvals set status='pending' where invoice_id=$1",[invoice]);await db.query("update public.invoices set updated_at=updated_at+interval '1 second' where id=$1",[invoice]);
+assert.equal(await current(firstNotice),false);assert.notEqual((await notice()).rows[0].v,firstNotice);assert.equal((await db.query('select count(*)::int n from invoice_month_close_candidate.notice_intents')).rows[0].n,2);
+if(process.env.SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL){
+ await db.query('delete from invoice_month_close_candidate.notice_intents');const {connectFixture}=await import(process.argv[2]);const a=await connectFixture(),b=await connectFixture();
+ try{
+  const items=await Promise.all([a.query('select invoice_month_close_candidate.prepare_notice($1,$2) v',[invoice,worker]),b.query('select invoice_month_close_candidate.prepare_notice($1,$2) v',[invoice,worker])]);assert.equal(items[0].rows[0].v,items[1].rows[0].v);assert.equal((await db.query('select count(*)::int n from invoice_month_close_candidate.notice_intents')).rows[0].n,1);
+  const fresh=items[0].rows[0].v;
+  for(const c of [a,b])await c.query("select set_config('test.uid',$1,false),set_config('test.sid',$2,false)",[worker,id(70)]);
+  const issued=await Promise.all([a.query('select invoice_month_close_candidate.issue_notice_ticket($1) v',[fresh]),b.query('select invoice_month_close_candidate.issue_notice_ticket($1) v',[fresh])]);const token=issued[0].rows[0].v.ticket_id;assert.equal(issued[1].rows[0].v.ticket_id,token);
+  const results=await Promise.allSettled([a.query('select invoice_month_close_candidate.consume_notice_ticket($1) v',[token]),b.query('select invoice_month_close_candidate.consume_notice_ticket($1) v',[token])]);
+  assert.equal(results.filter(x=>x.status==='fulfilled').length,1);assert.equal(results.filter(x=>x.status==='rejected'&&/notice_unavailable/.test(x.reason.message)).length,1);
+  console.log(JSON.stringify({fixture_concurrent_ticket_exactly_once:true}));
+ }finally{await a.end();await b.end();}
+}
+// Maintenance is bounded, private and never deletes a currently valid ticket.
+const gcExpired=id(770),gcActive=id(771);
+await db.query("insert into invoice_month_close_candidate.notice_open_tickets(id,notice_id,actor_id,session_id,expires_at) values($1,$3,$4,$5,clock_timestamp()-interval '1 second'),($2,$3,$4,$5,clock_timestamp()+interval '5 minutes')",[gcExpired,gcActive,firstNotice,worker,id(70)]);
+await assert.rejects(db.query('select invoice_month_close_candidate.cleanup_expired_notice_tickets(0)'),/invalid cleanup batch/);
+await assert.rejects(db.query('select invoice_month_close_candidate.cleanup_expired_notice_tickets(501)'),/invalid cleanup batch/);
+if(process.env.SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL){
+ const {connectFixture}=await import(process.argv[2]);const a=await connectFixture(),b=await connectFixture();
+ try{
+  await a.query('begin');await a.query('select id from invoice_month_close_candidate.notice_open_tickets where id=$1 for update',[gcExpired]);
+  await b.query("set statement_timeout='1s'");await b.query('select invoice_month_close_candidate.cleanup_expired_notice_tickets(500)');
+  assert.equal((await db.query('select count(*)::int n from invoice_month_close_candidate.notice_open_tickets where id=$1',[gcExpired])).rows[0].n,1);
+  await a.query('rollback');
+ }finally{await a.end();await b.end();}
+}
+await db.query('select invoice_month_close_candidate.cleanup_expired_notice_tickets(500)');
+assert.equal((await db.query('select count(*)::int n from invoice_month_close_candidate.notice_open_tickets where id=$1',[gcExpired])).rows[0].n,0);
+assert.equal((await db.query('select count(*)::int n from invoice_month_close_candidate.notice_open_tickets where id=$1',[gcActive])).rows[0].n,1);
+for(const role of ['anon','authenticated','service_role']){assert.equal((await db.query("select has_function_privilege($1,'invoice_month_close_candidate.cleanup_expired_notice_tickets(integer)','EXECUTE') v",[role])).rows[0].v,false);assert.equal((await db.query("select has_function_privilege($1,'invoice_month_close_candidate.issue_notice_ticket(uuid)','EXECUTE') v",[role])).rows[0].v,false);assert.equal((await db.query("select has_function_privilege($1,'invoice_month_close_candidate.consume_notice_ticket(uuid)','EXECUTE') v",[role])).rows[0].v,false);assert.equal((await db.query("select has_function_privilege($1,'invoice_month_close_candidate.prepare_notice(uuid,uuid)','EXECUTE') v",[role])).rows[0].v,false);assert.equal((await db.query("select has_function_privilege($1,'invoice_month_close_candidate.notice_current(uuid)','EXECUTE') v",[role])).rows[0].v,false);}
+console.log(JSON.stringify({fixture_notice_off_by_default:true,missing_trusted_readiness_denied:true,pending_approver_checked:true,duplicate_intent_deduplicated:true,changed_revision_new_intent:true,recipient_session_expiry_replay_checked:true,stale_notice_rejected:true,actual_delivery_absent:true}));
+// Site-only late-change audit experiment: no invoice rewrite and no delivery.
+await db.exec(await readFile(process.env.SKO_LATE_CHANGE_SQL,'utf8'));
+await db.exec("alter table public.invoices add column approval_finalized_at timestamptz;create trigger fixture_late_change after insert or update or delete on public.attendance_entries for each row execute function invoice_month_close_candidate.record_site_attendance_change()");
+await db.query('update public.invoices set approval_finalized_at=now() where id=$1',[invoice]);
+await db.query('update public.attendance_entries set overtime_hours=5 where source_report_id=$1',[reportEarly]);assert.equal((await db.query('select count(*)::int n from invoice_month_close_candidate.late_change_events')).rows[0].n,0);
+await db.exec('update invoice_month_close_candidate.late_change_settings set enabled=true');
+await db.query('update public.attendance_entries set overtime_hours=6 where source_report_id=$1',[reportEarly]);assert.equal((await db.query('select count(*)::int n from invoice_month_close_candidate.late_change_events')).rows[0].n,1);
+await db.query('update public.attendance_entries set updated_at=now() where source_report_id=$1',[reportEarly]);assert.equal((await db.query('select count(*)::int n from invoice_month_close_candidate.late_change_events')).rows[0].n,1);
+await db.query('begin');await db.query("insert into public.attendance_entries(company_id,worker_id,site_id,work_date) values($1,$2,$3,date_trunc('month',current_date)-interval '3 day')",[company,worker,site]);
+assert.equal((await db.query('select count(*)::int n from invoice_month_close_candidate.late_change_events')).rows[0].n,2);
+await db.query("delete from public.attendance_entries where company_id=$1 and site_id=$2 and work_date=date_trunc('month',current_date)-interval '3 day'",[company,site]);assert.equal((await db.query('select count(*)::int n from invoice_month_close_candidate.late_change_events')).rows[0].n,3);await db.query('rollback');
+assert.equal((await db.query('select count(*)::int n from invoice_month_close_candidate.late_change_events')).rows[0].n,1);
+console.log(JSON.stringify({site_only_late_change_audited:true,late_change_does_not_rewrite_invoice:true,other_dependencies_uncovered:true,delivery_absent:true}));
+for(const role of ['anon','authenticated','service_role']){assert.equal((await db.query("select has_function_privilege($1,'invoice_month_close_candidate.precheck(uuid)','EXECUTE') v",[role])).rows[0].v,false);assert.equal((await db.query("select has_function_privilege($1,'invoice_month_close_candidate.guarded(uuid)','EXECUTE') v",[role])).rows[0].v,false);}
+console.log(JSON.stringify({fixture_month_end:true,all_days_and_customer_scope:true,missing_signatures_fail_closed:true,route_fixture_ready_and_blocked:true,precheck_never_ready:true,no_public_grant:true}));await db.close();

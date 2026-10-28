@@ -1,0 +1,38 @@
+name: Own published shift candidate
+on:
+  pull_request:
+    paths:
+      - 'lib/features/shifts/own_published_shift_gateway.dart'
+      - 'test/own_published_shift_gateway_test.dart'
+      - 'lib/features/shifts/own_published_shift_view.dart'
+      - 'test/own_published_shift_view_test.dart'
+      - 'lib/features/shifts/own_published_shift_repository.dart'
+      - 'lib/features/shifts/own_published_shift_page.dart'
+      - 'lib/features/attendance/worker_attendance_sheet_page.dart'
+      - 'test/own_published_shift_page_test.dart'
+      - 'test/own_published_shift_repository_test.dart'
+      - 'test/own_published_shift_replay_baseline_test.dart'
+      - 'tool/verify_own_shift_replay_baseline.sh'
+      - 'lib/features/settings/master_feature_availability.dart'
+      - 'test/master_feature_availability_test.dart'
+      - '.github/workflows/own-published-shift.yml'
+permissions:
+  contents: read
+jobs:
+  flutter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+      - run: flutter pub get --enforce-lockfile
+      - name: Observe exact original adapter with pinned SDK initial replay
+        run: bash tool/verify_own_shift_replay_baseline.sh
+      - run: flutter analyze lib/features/settings/master_feature_availability.dart test/master_feature_availability_test.dart lib/features/shifts/own_published_shift_gateway.dart test/own_published_shift_gateway_test.dart lib/features/shifts/own_published_shift_view.dart test/own_published_shift_view_test.dart lib/features/shifts/own_published_shift_repository.dart lib/features/shifts/own_published_shift_page.dart lib/features/attendance/worker_attendance_sheet_page.dart test/own_published_shift_page_test.dart
+      - run: flutter analyze test/own_published_shift_repository_test.dart test/own_published_shift_replay_baseline_test.dart
+      - run: flutter test test/master_feature_availability_test.dart test/own_published_shift_gateway_test.dart test/own_published_shift_view_test.dart test/own_published_shift_page_test.dart test/own_published_shift_repository_test.dart

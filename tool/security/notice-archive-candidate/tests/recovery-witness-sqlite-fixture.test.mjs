@@ -1,0 +1,36 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtempSync,rmSync,copyFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {randomBytes,generateKeyPairSync} from 'node:crypto';
+import {validateWitnessReceipt} from '../src/recovery-witness-model.mjs';
+import {TestWitness} from './recovery-witness-sqlite-fixture.mjs';
+const token=()=>randomBytes(32).toString('hex');
+test('isolated SQLite restart and unknown-outcome reconciliation',t=>{
+ const dir=mkdtempSync(join(tmpdir(),'sko-witness-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));
+ const key=generateKeyPairSync('ed25519'),path=join(dir,'independent-fixture.sqlite');let witness=new TestWitness(path,key.privateKey);
+ const request={scope:'synthetic',nonce:token(),proposalHash:token(),challenge:token(),now:1000};
+ assert.throws(()=>witness.consume({...request,failBeforeCommit:true}),/simulated failure/);
+ assert.throws(()=>witness.lookup(request),/no matching/);
+ assert.throws(()=>witness.consume({...request,loseAfterCommit:true}),/unknown outcome/);
+ witness.close();witness=new TestWitness(path,key.privateKey);
+ assert.throws(()=>witness.consume(request),/already consumed/);
+ const fresh={...request,challenge:token(),now:1001},receipt=witness.lookup(fresh);
+ assert.equal(validateWitnessReceipt(receipt,{...fresh,key:key.publicKey.export({format:'jwk'}),minSequence:1}).sequence,1);
+ assert.throws(()=>witness.lookup({...fresh,proposalHash:token()}),/no matching/);
+ assert.throws(()=>validateWitnessReceipt(receipt,{...fresh,challenge:token(),key:key.publicKey.export({format:'jwk'}),minSequence:1}));
+ witness.close();
+});
+test('counterexample: a rolled back witness can sign a fresh replay at the same sequence',t=>{
+ const dir=mkdtempSync(join(tmpdir(),'sko-witness-rollback-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));
+ const key=generateKeyPairSync('ed25519'),path=join(dir,'witness.sqlite'),snapshot=join(dir,'before.sqlite');
+ let witness=new TestWitness(path,key.privateKey);witness.close();copyFileSync(path,snapshot);
+ const request={scope:'synthetic',nonce:token(),proposalHash:token(),challenge:token(),now:1000};
+ witness=new TestWitness(path,key.privateKey);const first=witness.consume(request);witness.close();
+ copyFileSync(snapshot,path);witness=new TestWitness(path,key.privateKey);
+ const replay={...request,challenge:token(),now:1001},receipt=witness.consume(replay);
+ assert.equal(receipt.payload.sequence,first.payload.sequence);
+ assert.equal(validateWitnessReceipt(receipt,{...replay,key:key.publicKey.export({format:'jwk'}),minSequence:first.payload.sequence}).sequence,first.payload.sequence);
+ witness.close();
+});
