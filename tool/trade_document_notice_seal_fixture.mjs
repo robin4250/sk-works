@@ -1,5 +1,5 @@
 // Existing durable notice SQL + actual financial/seal writers. Session and
-// source-readiness adapters remain synthetic: not full month-close/GoTrue proof.
+// source preview/precheck/session adapters remain synthetic; guarded/readiness SQL is real.
 import fs from 'node:fs/promises';
 export async function verifyNoticeSeal(db,c){
  const {id,A,UA,actor,q,check,deny,prepare,preview,state}=c;
@@ -8,16 +8,33 @@ export async function verifyNoticeSeal(db,c){
  create table invoice_month_close_candidate.approval_permits(tx bigint,invoice_id uuid,actor_id uuid,session_id uuid,primary key(tx,invoice_id,actor_id));
  create function private.require_reauthentication_session()returns uuid language sql as $$select nullif(current_setting('test.notice_sid',true),'')::uuid$$;
  create function invoice_month_close_candidate.notification_rollout_enabled()returns boolean language sql as $$select true$$;
- create function invoice_month_close_candidate.guarded(uuid)returns text language sql as $$select coalesce(nullif(current_setting('test.notice_ready',true),''),'ready')$$;
- create function invoice_month_close_candidate.notification_readiness(p_invoice uuid,p_actor uuid)returns jsonb language sql as $$
- select jsonb_build_object('status',coalesce(nullif(current_setting('test.notice_ready',true),''),'ready'),
- 'invoice_revision',i.updated_at::text,'source_fingerprint',repeat('a',64)) from public.invoices i where id=p_invoice$$;`);
+ alter table public.invoices add column subtotal int not null default 0;
+ alter table public.invoices add column welfare_amount int not null default 0;
+ create table invoice_month_close_candidate.fixture_proposals(invoice_id uuid primary key,value jsonb not null);
+ create function invoice_month_close_candidate.precheck(uuid)returns text language sql as $$select case coalesce(nullif(current_setting('test.notice_ready',true),''),'ready') when 'ready' then 'source_proof_missing' else current_setting('test.notice_ready',true) end$$;
+ create function invoice_month_close_candidate.approver_core_intact()returns boolean language sql as $$select true$$;
+ create function invoice_month_close_candidate.notice_core_intact()returns boolean language sql as $$select true$$;
+ create function invoice_month_close_candidate.preview_for_approver(uuid)returns jsonb language sql as $$select value from invoice_month_close_candidate.fixture_proposals where invoice_id=$1$$;
+ create function invoice_month_close_candidate.preview_for_notice(uuid,uuid)returns jsonb language sql as $$select invoice_month_close_candidate.preview_for_approver($1)$$;
+ create function invoice_month_close_candidate.revalidate_for_approver(uuid,text,text)returns void language plpgsql as $$begin
+ if current_setting('test.notice_mutate_source',true)='guarded' then update public.invoices set grand_total=grand_total+1 where id=$1;end if;end$$;
+ create function invoice_month_close_candidate.revalidate_for_notice(uuid,uuid,text,text)returns void language plpgsql as $$begin
+ if current_setting('test.notice_mutate_source',true)='notice' then update public.invoices set grand_total=grand_total+1 where id=$1;end if;end$$;`);
+ // Actual guards, including comparison after source revalidation. The proposal
+ // and precheck remain explicit fixture boundaries, not real payroll sources.
+ await db.exec(await fs.readFile('docs/review/invoice-month-close/guarded.sql.review-only','utf8'));
+ await db.exec(await fs.readFile('docs/review/invoice-month-close/notification_readiness.sql.review-only','utf8'));
  // Real prepare/current/issue/consume functions, not caller-provided ticket rows.
  await db.exec(await fs.readFile('docs/review/invoice-month-close/notification.sql.review-only','utf8'));
  await db.exec('update invoice_month_close_candidate.notice_settings set enabled=true');
  await db.exec(await fs.readFile('docs/candidates/trade_document_notice_seal_20261028.sql.review-only','utf8'));
  const sid=id(9001);await db.query("select set_config('test.notice_sid',$1,false)",[sid]);
  const issue=async(x,session=sid)=>{
+  await db.query(`insert into invoice_month_close_candidate.fixture_proposals select id,jsonb_build_object(
+   'original_invoice_id',id,'calculation_blocked',false,'source_fingerprint',repeat('a',64),
+   'original_invoice_fingerprint',repeat('b',64),'proposed_snapshot',snapshot-'company_seal_snapshot',
+   'subtotal',subtotal,'tax',tax,'welfare',welfare_amount,'grand_total',grand_total)
+   from public.invoices where id=$1 on conflict(invoice_id) do nothing`,[x.parent]);
   const notice=await q('select invoice_month_close_candidate.prepare_notice($1,$2) v',[x.parent,UA]);
   await db.query("select set_config('test.notice_sid',$1,false)",[session]);
   const ticket=await q('select invoice_month_close_candidate.issue_notice_ticket($1) v',[notice]);
@@ -32,9 +49,16 @@ export async function verifyNoticeSeal(db,c){
  const foreign=await issue(x,id(9002));await deny(()=>call(foreign),/unavailable/);check(await used(foreign),false);
  await db.exec("select set_config('test.notice_ready','data_changed',false)");await deny(()=>call(ticket),/unavailable|not_ready/);check(await used(ticket),false);check(await state(x),before);
  await db.exec("select set_config('test.notice_ready','ready',false)");
+ // A source revalidation that changes the saved amount must be caught by the
+ // actual notification readiness/guarded comparison, rolling back all writes.
+ for(const stage of ['notice','guarded']){
+  await db.query("select set_config('test.notice_mutate_source',$1,false)",[stage]);
+  await deny(()=>call(ticket),/unavailable|not_ready/);check(await used(ticket),false);check(await state(x),before);
+ }
+ await db.exec("select set_config('test.notice_mutate_source','false',false)");
  await deny(()=>call(ticket,true,false),/both explicit/);check(await used(ticket),false);check(await state(x),before);
  // The real notice_current rejects an invoice revision change even when the
- // synthetic readiness adapter still reports ready.
+ // saved source proposal remains unchanged.
  const stale=await prepare(23),staleTicket=await issue(stale);
  await db.query('update invoices set grand_total=grand_total+1 where id=$1',[stale.parent]);
  await deny(()=>call(staleTicket),/unavailable/);check(await used(staleTicket),false);
@@ -44,5 +68,5 @@ export async function verifyNoticeSeal(db,c){
  check(await q('select count(*)::int v from invoice_month_close_candidate.approval_permits'),0);
  await deny(()=>call(ticket),/unavailable/);check(await state(x),after);
  await db.exec('set role authenticated');await deny(()=>call(ticket),/permission denied/);await db.exec('reset role');
- console.log('PASS durable notice SQL + existing invoice/seal atomic composition; source readiness/session synthetic, no public grant or product delivery');
+ console.log('PASS durable notice SQL + existing invoice/seal atomic composition; actual guarded/readiness SQL; source proposal/precheck/session synthetic, no public grant or product delivery');
 }

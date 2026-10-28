@@ -6,6 +6,8 @@ on:
       - 'tool/trade_document_notice_seal_fixture.mjs'
       - 'tool/verify_trade_document_notice_seal.mjs'
       - 'docs/review/invoice-month-close/notification.sql.review-only'
+      - 'docs/review/invoice-month-close/guarded.sql.review-only'
+      - 'docs/review/invoice-month-close/notification_readiness.sql.review-only'
       - 'tool/trade_document_invoice_confirmation_fixture.mjs'
       - '.github/workflows/invoice-notice-seal-composition.yml'
 permissions:
