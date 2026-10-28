@@ -36,3 +36,24 @@ request rate limits and reconciliation, public transport/client registration,
 real-device key custody/user presence, proof lifecycle cleanup, independent
 catalog install/restore review, QR attendance mode and the regular attendance
 writer/route/photo compatibility. No production or existing account data changes.
+
+## Private challenge delivery and uncertain-result reconciliation
+
+The internal request-scoped challenge adapter now uses the actual challenge issuer and
+locked loader, validates exact company/device/canonical key and verified actor/session,
+and releases challenge data only after COMMIT. It snapshots all returned scalars before
+awaiting COMMIT and rejects further operations on that instance after any attempt.
+An uncertain COMMIT does not automatically retry issuance. A separate authenticated
+read by exact target retrieves the same live challenge/nonce/expiry without issuing or
+extending it. Missing, consumed or expired challenges return no live challenge; this
+is not permission to automatically issue again. Read requires the same current live
+session, permissions and QR gate, and all functions remain private with no client grants.
+
+The Native proof integration now uses this adapter rather than its handwritten issue
+transaction. It tests a deliberately lost COMMIT response followed by exact-target
+read, unchanged challenge identity/expiry, no duplicate row, other-session rejection,
+missing and expired reads without writes, then the existing password proof and key
+possession registration path. Four Node boundary tests and PGlite integration pass.
+Native PostgreSQL CI is pending on this commit. Auth remains synthetic in this new
+composition; no public/JWT transport, device custody, regular attendance writer, QR
+mode compatibility or production deployment is completed by this addition.

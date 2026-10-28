@@ -7,6 +7,7 @@ import {resolve,dirname} from 'node:path';
 import {generateKeyPairSync,randomBytes,sign} from 'node:crypto';
 import {scannerRegistrationSigningBytes,createScannerRegistrationPossessionAdapter} from './qr-scanner-possession.mjs';
 import {createScannerRegistrationProofIssuer} from './qr-scanner-proof-issuer.mjs';
+import {createScannerRegistrationChallengeAdapter} from './qr-scanner-challenge-adapter.mjs';
 const base=dirname(new URL(import.meta.url).pathname),root=resolve(process.argv[3]??'.');
 const id=n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const expand=p=>readFileSync(p,'utf8').split('\n').filter(x=>!x.startsWith('\\set')).map(x=>x.startsWith('\\ir ')?expand(resolve(dirname(p),x.slice(4))):x).join('\n');
@@ -26,11 +27,14 @@ const fixtureSession=async c=>{await c.query("select set_config('fixture.actor',
 const issuer=()=>createScannerRegistrationProofIssuer({pool,initializeVerifiedSession:fixtureSession});
 const registration=createScannerRegistrationPossessionAdapter({pool,initializeVerifiedSession:fixtureSession});
 async function challenge(device){const keys=generateKeyPairSync('ed25519'),keyHex=keys.publicKey.export({type:'spki',format:'der'}).toString('hex');
- const c=await pool.connect();try{await c.query('begin');await fixtureSession(c);
-  const cid=(await c.query('select qr_attendance_private.issue_scanner_key_challenge($1,$2,$3) as id',[id(1),device,keyHex])).rows[0].id;
-  const value=(await c.query('select qr_attendance_private.load_scanner_key_challenge($1) as challenge',[cid])).rows[0].challenge;
-  await c.query('commit');return {challengeId:cid,signature:sign(null,scannerRegistrationSigningBytes(value),keys.privateKey)};
- }catch(e){await c.query('rollback');throw e;}finally{c.release();}}
+ const adapter=createScannerRegistrationChallengeAdapter({pool,initializeVerifiedSession:fixtureSession});
+ const target={companyId:id(1),deviceId:device,keyHex};
+ const value=await adapter.issue(target);
+ const reread=await createScannerRegistrationChallengeAdapter({pool,initializeVerifiedSession:fixtureSession}).read(target);
+ assert.equal(reread.id,value.id);assert.equal(reread.nonce,value.nonce);assert.equal(reread.expiresMs,value.expiresMs);
+ return {challengeId:value.id,signature:sign(null,scannerRegistrationSigningBytes(value),keys.privateKey)};
+}
+
 const proofCount=async()=>(await pool.query('select count(*)::int n from private.reauthentication_proofs')).rows[0].n;
 const wrong=async challengeId=>assert.deepEqual(await issuer().issue({challengeId,password:'synthetic-wrong'}),{accepted:false});
 try{
@@ -51,6 +55,23 @@ try{
  const genericBefore=(await pool.query("select prosrc from pg_proc where oid='private.consume_reauthentication_proof(text,jsonb,text)'::regprocedure")).rows[0].prosrc;
  await pool.query(readFileSync(resolve(base,'qr-scanner-registration-proof.sql.review-only'),'utf8'));
  assert.equal((await pool.query("select prosrc from pg_proc where oid='private.consume_reauthentication_proof(text,jsonb,text)'::regprocedure")).rows[0].prosrc,genericBefore);
+ await pool.query(readFileSync(resolve(base,'qr-scanner-challenge-read.sql.review-only'),'utf8'));
+ phase='unknown-challenge-commit';
+ const unknownKeys=generateKeyPairSync('ed25519'),unknownTarget={companyId:id(1),deviceId:id(70),keyHex:unknownKeys.publicKey.export({type:'spki',format:'der'}).toString('hex')};
+ const uncertainPool={connect:async()=>{const c=await pool.connect();return {query:async(s,v)=>{const r=await c.query(s,v);if(s==='commit')throw Error('synthetic lost commit response');return r;},release:x=>c.release(x)};}};
+ const uncertain=createScannerRegistrationChallengeAdapter({pool:uncertainPool,initializeVerifiedSession:fixtureSession});
+ await assert.rejects(uncertain.issue(unknownTarget));await assert.rejects(uncertain.issue(unknownTarget));
+ const recovered=await createScannerRegistrationChallengeAdapter({pool,initializeVerifiedSession:fixtureSession}).read(unknownTarget);
+ assert.ok(recovered);assert.equal(recovered.device,id(70));
+ const recoveredAgain=await createScannerRegistrationChallengeAdapter({pool,initializeVerifiedSession:fixtureSession}).read(unknownTarget);
+ assert.equal(recoveredAgain.id,recovered.id);assert.equal(recoveredAgain.nonce,recovered.nonce);assert.equal(recoveredAgain.expiresMs,recovered.expiresMs);
+ assert.equal((await pool.query('select count(*)::int n from qr_attendance_private.scanner_key_challenges where device_id=$1',[id(70)])).rows[0].n,1);
+ const stranger=createScannerRegistrationChallengeAdapter({pool,initializeVerifiedSession:async c=>{await fixtureSession(c);await c.query("select set_config('fixture.session',$1,true)",[id(90)]);return {actor:id(5),session:id(90)};}});
+ await assert.rejects(stranger.read(unknownTarget));
+ assert.equal(await createScannerRegistrationChallengeAdapter({pool,initializeVerifiedSession:fixtureSession}).read({...unknownTarget,deviceId:id(71)}),null);
+ await pool.query("update qr_attendance_private.scanner_key_challenges set created_ms=created_ms-100000,expires_ms=expires_ms-100000 where id=$1",[recovered.id]);
+ assert.equal(await createScannerRegistrationChallengeAdapter({pool,initializeVerifiedSession:fixtureSession}).read(unknownTarget),null);
+ assert.equal((await pool.query('select count(*)::int n from qr_attendance_private.scanner_key_challenges where device_id=$1',[id(70)])).rows[0].n,1);
  phase='wrong-password';const a=await challenge(id(40));await wrong(a.challengeId);
  assert.equal((await pool.query('select failed_attempts from public.user_secondary_credentials')).rows[0].failed_attempts,1);assert.equal(await proofCount(),0);
  for(let i=0;i<4;i++)await wrong(a.challengeId);
@@ -87,6 +108,7 @@ try{
  await assert.rejects(registration.complete({...scoped,reauthenticationProof:scopedProof.proof}));
  assert.equal((await pool.query('select count(*)::int n from qr_attendance_private.registered_scanners where device_id in($1,$2)',[id(44),id(45)])).rows[0].n,0);
  assert.equal((await pool.query("select has_function_privilege('authenticated','qr_attendance_private.issue_registration_proof(uuid,text,text)','execute') or has_function_privilege('service_role','qr_attendance_private.consume_registration_proof(uuid,uuid,text,text)','execute') as exposed")).rows[0].exposed,false);
+ assert.equal((await pool.query("select has_function_privilege('authenticated','qr_attendance_private.read_own_scanner_key_challenge(uuid,uuid,text)','execute') as exposed")).rows[0].exposed,false);
  if(!process.argv[2]){phase='concurrent';const d=await challenge(id(43)),p4=await issuer().issue({challengeId:d.challengeId,password:'synthetic-correct'});
   const outcomes=await Promise.allSettled([registration.complete({...d,reauthenticationProof:p4.proof}),registration.complete({...d,reauthenticationProof:p4.proof})]);
   assert.equal(outcomes.filter(x=>x.status==='fulfilled').length,1);
@@ -95,3 +117,4 @@ try{
  console.log('QR exact-target second-password proof -> key possession -> registration: counters, lockout, credential rotation, rollback, replay, ACL passed');
  console.log('LIMIT synthetic Auth/session/permissions/rollout; no public route, real JWT boundary, device custody or attendance writer');
 }catch(error){console.error('QR proof integration failed phase='+phase+' code='+(typeof error?.code==='string'?error.code:'ASSERTION'));process.exitCode=1;}finally{tearingDown=true;if(pool)await pool.end();if(created)await admin.query(`drop database ${database} with (force)`);if(admin)await admin.end();}
+
