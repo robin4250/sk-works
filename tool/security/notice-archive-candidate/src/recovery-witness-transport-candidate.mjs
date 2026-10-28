@@ -16,24 +16,31 @@ export async function requestWitnessReceipt({endpoint,bearer,key,operation,scope
       !Number.isSafeInteger(minSequence)||minSequence<1||!Number.isSafeInteger(timeoutMs)||timeoutMs<1||timeoutMs>30000) throw fail();
   const challenge=randomBytes(32).toString('hex');
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
+  const aborted=new Promise((_,reject)=>controller.signal.addEventListener('abort',()=>reject(fail()),{once:true}));
+  const bounded=pending=>Promise.race([pending,aborted]);
   let reader;
   try {
     // Exactly one attempt. An HTTP/network error may follow a remote commit.
-    const response=await fetchImpl(url.href,{method:'POST',redirect:'error',cache:'no-store',
+    const response=await bounded(fetchImpl(url.href,{method:'POST',redirect:'error',cache:'no-store',
       signal:controller.signal,headers:{authorization:`Bearer ${bearer}`,'content-type':'application/json',accept:'application/json'},
-      body:JSON.stringify({operation,scope,nonce,proposalHash,challenge})});
+      body:JSON.stringify({operation,scope,nonce,proposalHash,challenge})}));
     if(!response.ok||response.redirected||response.url&&response.url!==url.href||
         response.headers.get('content-type')?.split(';')[0].trim()!=='application/json'||!response.body) throw fail();
     const declared=response.headers.get('content-length');
     if(declared!==null&&(!/^\d+$/.test(declared)||Number(declared)>8192)) throw fail();
     reader=response.body.getReader();
     const bytes=new Uint8Array(8192);let length=0;
-    while(true){const {done,value}=await reader.read();if(done)break;
+    while(true){const {done,value}=await bounded(reader.read());if(done)break;
       if(!(value instanceof Uint8Array)||value.length>bytes.length-length)throw fail();
       bytes.set(value,length);length+=value.length;
     }
     const receipt=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes.subarray(0,length)));
     return validateWitnessReceipt(receipt,{scope,nonce,proposalHash,challenge,key,now:now(),minSequence});
   } catch { throw fail(); }
-  finally { clearTimeout(timer);controller.abort();if(reader){try{await reader.cancel();}catch{}reader.releaseLock();} }
+  finally {
+    clearTimeout(timer);controller.abort();
+    // Cancellation itself must not hold the caller after its deadline.
+    if(reader){try{Promise.resolve(reader.cancel()).catch(()=>{});}catch{}
+      try{reader.releaseLock();}catch{}}
+  }
 }

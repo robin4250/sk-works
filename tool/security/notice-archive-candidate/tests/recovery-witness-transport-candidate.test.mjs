@@ -20,3 +20,16 @@ test('redirect, oversized streaming data and invalid signed receipts are refused
   for(const fetchImpl of [async()=>new Response('',{status:302}),async()=>new Response('x'.repeat(8193),{headers:{'content-type':'application/json'}}),async()=>Response.json({payload:{},signature:'0'.repeat(128)})])await assert.rejects(requestWitnessReceipt({...options,fetchImpl}));
   await assert.rejects(requestWitnessReceipt({...options,endpoint:'http://witness.invalid',fetchImpl:()=>{throw Error('must not call');}}));
 });
+
+test('deadline settles an uncooperative fetch without retry',async()=>{
+  let calls=0;
+  await assert.rejects(requestWitnessReceipt({...options,timeoutMs:10,fetchImpl:()=>{calls++;return new Promise(()=>{});}}),{message:'witness outcome unknown; reconcile before retry'});
+  assert.equal(calls,1);
+});
+test('deadline settles a stalled reader even when cancellation does not finish',async()=>{
+  let cancelled=0,released=0;
+  const reader={read:()=>new Promise(()=>{}),cancel:()=>{cancelled++;return new Promise(()=>{});},releaseLock:()=>{released++;}};
+  const fetchImpl=async()=>({ok:true,redirected:false,url:options.endpoint,headers:new Headers({'content-type':'application/json'}),body:{getReader:()=>reader}});
+  await assert.rejects(requestWitnessReceipt({...options,timeoutMs:10,fetchImpl}),{message:'witness outcome unknown; reconcile before retry'});
+  assert.equal(cancelled,1);assert.equal(released,1);
+});
