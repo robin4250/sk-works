@@ -5,6 +5,7 @@ import {createHash,createPublicKey,verify} from 'node:crypto';
 
 const purpose='sko-master-independent-owner-decision-v1';
 const domain='sko-master-owner-issuer-continuity-v1';
+const historyDomain='sko-master-owner-issuer-retired-keys-v1';
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const digest=/^[0-9a-f]{64}$/;
 const keyId=/^[A-Za-z0-9_-]{1,80}$/;
@@ -27,6 +28,7 @@ function signature(value){
  if(typeof value!=='string'||!/^[A-Za-z0-9_-]{86}$/.test(value))throw Error('canonical signature required');
  const bytes=Buffer.from(value,'base64url');if(bytes.length!==64||bytes.toString('base64url')!==value)throw Error('canonical signature required');return bytes;
 }
+function spkiSha256(key){return createHash('sha256').update(createPublicKey({key,format:'jwk'}).export({type:'spki',format:'der'})).digest('hex');}
 function transition(value){
  const p=snapshot(value,transitionFields);p.newPublicKeyJwk=publicKey(p.newPublicKeyJwk);
  if(p.version!==1||typeof p.authorityId!=='string'||!uuid.test(p.authorityId)||
@@ -49,9 +51,9 @@ export function verifyOwnerIssuerContinuity({enabled=false,trusted,authorityChec
   const pin=snapshot(trusted,['purpose','authorityId','epoch','keyId','publicKeyJwk','headSha256','retiredKeys']);
   // This separate checkpoint must be authenticated and fresh from the external
   // authority. A same-DB copy or caller-supplied assertion is not anti-rollback.
-  const checkpoint=snapshot(authorityCheckpoint,['authorityId','epoch','headSha256','keyId','publicKeySha256']);
+  const checkpoint=snapshot(authorityCheckpoint,['authorityId','epoch','headSha256','keyId','publicKeySha256','retiredKeysSha256']);
   pin.publicKeyJwk=publicKey(pin.publicKeyJwk);
-  const pinKeySha256=createHash('sha256').update(createPublicKey({key:pin.publicKeyJwk,format:'jwk'}).export({type:'spki',format:'der'})).digest('hex');
+  const pinKeySha256=spkiSha256(pin.publicKeyJwk);
   if(pin.purpose!==purpose||typeof pin.authorityId!=='string'||!uuid.test(pin.authorityId)||
    !Number.isSafeInteger(pin.epoch)||pin.epoch<1||pin.epoch>65||typeof pin.keyId!=='string'||!keyId.test(pin.keyId)||
    typeof pin.headSha256!=='string'||!digest.test(pin.headSha256)||!Array.isArray(pin.retiredKeys)||
@@ -68,6 +70,12 @@ export function verifyOwnerIssuerContinuity({enabled=false,trusted,authorityChec
    if(item.epoch!==index+1||typeof item.keyId!=='string'||!keyId.test(item.keyId)||ids.has(item.keyId)||keys.has(item.publicKeyJwk.x))throw Error('trusted history invalid');
    ids.add(item.keyId);keys.add(item.publicKeyJwk.x);return Object.freeze(item);
   });
+  // Derive only from the bounded, ordered, own-data snapshots above. Binding
+  // just the current key/head would let replaced local history hide a retired
+  // key and incorrectly admit its return under valid current+old signatures.
+  const retiredKeysSha256=createHash('sha256').update(JSON.stringify([historyDomain,pin.authorityId,
+   history.map(item=>[item.epoch,item.keyId,spkiSha256(item.publicKeyJwk)])])).digest('hex');
+  if(checkpoint.retiredKeysSha256!==retiredKeysSha256)throw Error('authenticated retired history required');
   const p=transition(proposal),oldSignature=signature(p.oldSignature),newSignature=signature(p.newSignature);
   if(p.authorityId!==pin.authorityId||p.fromEpoch!==pin.epoch||p.previousSha256!==pin.headSha256||p.oldKeyId!==pin.keyId||
    ids.has(p.newKeyId)||keys.has(p.newPublicKeyJwk.x)||p.issuedMs>databaseNowMs||p.expiresMs<=databaseNowMs)throw Error('issuer scope changed');
