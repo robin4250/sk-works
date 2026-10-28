@@ -25,7 +25,7 @@ jobs:
         runtime: [pglite, postgres]
     env:
       SKO_NOTICE_SOURCE_PREVIEW: ${{ github.workspace }}/invoice-calculation-candidate/docs/review/invoice-correction-preview/preview.sql.review-only
-      SKO_NOTICE_APPROVER_CORE: ${{ runner.temp }}/notice-approver-core.sql
+      SKO_NOTICE_APPROVER_CORE: /tmp/sko-notice-approver-core.sql
     services:
       database:
         image: postgres:17
