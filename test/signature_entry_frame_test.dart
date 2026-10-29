@@ -35,20 +35,23 @@ void main() {
         final surface = find.byKey(const ValueKey('signature-drawing-surface'));
         expect(surface, findsOneWidget);
         final confirm = find.byKey(const ValueKey('signature-confirm-corner'));
-        void expectConfirmOnFrame() {
+        void expectConfirmBesideFrame() {
           final frame = t.getRect(surface);
           final button = t.getRect(confirm);
-          expect(button.left, greaterThanOrEqualTo(frame.left));
-          expect(button.top, greaterThanOrEqualTo(frame.top));
-          expect(frame.right - button.right, closeTo(12, .1));
-          expect(frame.bottom - button.bottom, closeTo(12, .1));
+          final rail = t.getRect(find.byKey(const ValueKey('signature-confirm-rail')));
+          expect(button.left, greaterThanOrEqualTo(frame.right + 12));
+          expect(button.left, greaterThanOrEqualTo(rail.left));
+          expect(button.right, lessThanOrEqualTo(rail.right));
+          expect(button.top, greaterThanOrEqualTo(rail.top));
+          expect(button.bottom, lessThanOrEqualTo(rail.bottom));
+          expect(button.overlaps(frame), isFalse);
           expect(confirm.hitTestable(), findsOneWidget);
           expect(find.descendant(of: find.byType(AppBar), matching: confirm), findsNothing);
         }
-        expectConfirmOnFrame();
+        expectConfirmBesideFrame();
         await t.dragFrom(t.getCenter(surface), const Offset(60, 20));
         await t.pump();
-        expectConfirmOnFrame();
+        expectConfirmBesideFrame();
         expect(find.descendant(of: confirm, matching: find.text('確定')), findsOneWidget);
         await t.tap(confirm);
         await t.pumpAndSettle();
@@ -60,6 +63,52 @@ void main() {
         expect(t.takeException(), isNull);
       });
     }
+  }
+
+  for (final role in ['報告者', '責任者']) {
+    testWidgets('$role iPhone safe area and keyboard keep confirmation beside ink', (t) async {
+      t.view.physicalSize = const Size(926, 428);
+      t.view.devicePixelRatio = 1;
+      addTearDown(t.view.resetPhysicalSize);
+      addTearDown(t.view.resetDevicePixelRatio);
+      addTearDown(t.view.resetViewInsets);
+      SignatureResult? saved;
+      await t.pumpWidget(MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            padding: const EdgeInsets.fromLTRB(44, 0, 44, 21),
+            viewPadding: const EdgeInsets.fromLTRB(44, 0, 44, 21),
+            textScaler: TextScaler.linear(1.6)), child: child!),
+        home: Builder(builder: (context) => Scaffold(body: TextButton(
+          onPressed: () async {
+            saved = await Navigator.of(context).push<SignatureResult>(MaterialPageRoute(
+              fullscreenDialog: true, builder: (_) => SignatureCapturePage(
+                title: '$roleサイン', initialSignerName: '記入者',
+                signerNameOptions: const ['記入者'], submitLabel: '確定')));
+          }, child: const Text('サインを開く')))),
+      ));
+      await t.tap(find.text('サインを開く')); await t.pumpAndSettle();
+      final surface = find.byKey(const ValueKey('signature-drawing-surface'));
+      final confirm = find.byKey(const ValueKey('signature-confirm-corner'));
+      expect(t.getRect(surface).width, greaterThan(600));
+      await t.dragFrom(t.getCenter(surface), const Offset(70, 15)); await t.pump();
+      final rightBefore = t.getRect(confirm).right;
+      t.view.viewInsets = const FakeViewPadding(bottom: 180);
+      await t.pumpAndSettle();
+      final button = t.getRect(confirm), frame = t.getRect(surface);
+      final rail = t.getRect(find.byKey(const ValueKey('signature-confirm-rail')));
+      expect(button.left, greaterThanOrEqualTo(frame.right + 12));
+      expect(button.right, closeTo(rightBefore, .1));
+      expect(button.right, lessThanOrEqualTo(926 - 44 - 16));
+      expect(button.top, greaterThanOrEqualTo(rail.top));
+      expect(button.bottom, lessThanOrEqualTo(rail.bottom));
+      expect(confirm.hitTestable(), findsOneWidget);
+      expect(t.takeException(), isNull);
+      await t.tap(confirm); await t.pumpAndSettle();
+      expect(saved?.signerName, '記入者'); expect(saved?.strokes, isNotEmpty);
+      expect(find.byType(SignatureCapturePage), findsNothing);
+      expect(t.takeException(), isNull);
+    });
   }
 
   testWidgets('large text keeps rotated entry guidance inside a small frame', (t) async {
