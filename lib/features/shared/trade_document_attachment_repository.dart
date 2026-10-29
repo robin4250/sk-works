@@ -1,23 +1,25 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../data/supabase_backend.dart';
 import 'trade_document_attachment.dart';
+import 'trade_document_form_session.dart';
 
 class TradeDocumentAttachmentRepository {
-  TradeDocumentAttachmentRepository(this._client);
+  TradeDocumentAttachmentRepository(this._client,{TradeDocumentFormSession? session}):_session=session{
+    if(session!=null&&!session.belongsTo(_client))throw ArgumentError('Session/client mismatch');
+  }
   final SupabaseClient _client;
-  static TradeDocumentAttachmentRepository? maybeCreate() =>
+  final TradeDocumentFormSession? _session;
+  static TradeDocumentAttachmentRepository? maybeCreate({TradeDocumentFormSession? session}) =>
       SupabaseBackend.isInitialized && SupabaseBackend.client.auth.currentUser != null
-        ? TradeDocumentAttachmentRepository(SupabaseBackend.client) : null;
-  String _actor() => _client.auth.currentUser?.id ?? (throw StateError('ログインが必要です。'));
-  void _sameActor(String actor) {
-    if (_client.auth.currentUser?.id != actor) throw StateError('ログイン情報が変わりました。開き直してください。');
+        ? TradeDocumentAttachmentRepository(SupabaseBackend.client,session:session) : null;
+  Future<Object?> _call(String action,Map<String,dynamic> params)async{
+    final scope=_session??TradeDocumentFormSession(_client);
+    try{return await scope.rpc(action,params);}finally{if(_session==null)scope.dispose();}
   }
   Future<Map<String,dynamic>> loadWorkspace({required String subjectKind,
       required String subjectId, required String sourceRevision}) async {
-    final actor = _actor();
-    final raw = await _client.rpc('trade_document_attachment_workspace', params:{
+    final raw = await _call('trade_document_attachment_workspace', {
       'p_kind':subjectKind,'p_subject':subjectId,'p_source_revision':sourceRevision});
-    _sameActor(actor);
     if (raw is! Map) throw StateError('別添書類を確認できません。');
     return Map<String,dynamic>.from(raw);
   }
@@ -31,11 +33,9 @@ class TradeDocumentAttachmentRepository {
   Future<TradeDocumentAttachment> save({required String subjectKind,
       required String subjectId,required String sourceRevision,required int expectedVersion,
       required Map<String,dynamic> payload}) async {
-    final actor=_actor();
-    final raw=await _client.rpc('save_trade_document_attachment',params:{
+    final raw=await _call('save_trade_document_attachment',{
       'p_kind':subjectKind,'p_subject':subjectId,'p_source_revision':sourceRevision,
       'p_expected_version':expectedVersion,'p_payload':payload});
-    _sameActor(actor);
     if(raw is! Map) throw StateError('別添書類を保存できません。');
     return TradeDocumentAttachment.fromJson(Map<String,dynamic>.from(raw));
   }

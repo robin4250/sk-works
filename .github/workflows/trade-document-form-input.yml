@@ -4,6 +4,9 @@ on:
     paths:
       - 'lib/domain/trade_document_form_draft.dart'
       - 'test/trade_document_form_draft_test.dart'
+      - 'lib/features/shared/trade_document_form_session.dart'
+      - 'lib/features/shared/trade_document_attachment_repository.dart'
+      - 'test/trade_document_host_session_wire_test.dart'
       - '.github/workflows/trade-document-form-input.yml'
 permissions:
   contents: read
@@ -15,6 +18,6 @@ jobs:
       - uses: subosito/flutter-action@v2
         with: {flutter-version: '3.47.5', channel: stable, cache: true}
       - run: flutter pub get --enforce-lockfile
-      - run: flutter analyze lib/domain/trade_document_form_draft.dart test/trade_document_form_draft_test.dart
-      - run: flutter test test/trade_document_form_draft_test.dart
+      - run: flutter analyze lib/domain/trade_document_form_draft.dart lib/features/shared/trade_document_form_session.dart lib/features/shared/trade_document_attachment_repository.dart test/trade_document_form_draft_test.dart test/trade_document_host_session_wire_test.dart
+      - run: flutter test test/trade_document_form_draft_test.dart test/trade_document_host_session_wire_test.dart
       - run: git diff --exit-code -- pubspec.yaml pubspec.lock
