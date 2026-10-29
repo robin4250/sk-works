@@ -7,21 +7,24 @@ import 'invoice_notice_ticket_controller.dart';
 class InvoiceNoticeOperation {
   InvoiceNoticeOperation({required this.ticketId, required this.localDocumentId,
     required this.companyId, required this.revision, required this.requestId,
+    required this.expectedHash,
     required Map<String, dynamic> expectedPreview})
       : _preview = jsonEncode(expectedPreview) {
     final uuid = RegExp(r'^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$');
     if (![ticketId, localDocumentId, companyId, requestId].every(uuid.hasMatch) ||
-        revision < 1 || expectedPreview.isEmpty) {
+        revision < 1 || expectedPreview.isEmpty ||
+        !RegExp(r'^[a-f0-9]{64}$').hasMatch(expectedHash)) {
       throw ArgumentError('Invalid notice operation scope');
     }
   }
-  final String ticketId, localDocumentId, companyId, requestId;
+  final String ticketId, localDocumentId, companyId, requestId, expectedHash;
   final int revision;
   final String _preview;
   Map<String, dynamic> get parameters => {
     'ticket_id': ticketId, 'local_document_id': localDocumentId,
     'company_id': companyId, 'revision': revision,
-    'request_id': requestId, 'expected_preview': jsonDecode(_preview),
+    'request_id': requestId, 'expected_hash': expectedHash,
+    'expected_preview': jsonDecode(_preview),
   };
 }
 
@@ -93,6 +96,16 @@ class InvoiceNoticeRecoveryController {
     return false;
   }
 
+  bool _matchesRecordedScope(Object? value, InvoiceNoticeOperation operation) {
+    if (value is! Map) { return false; }
+    // The future server adapter must derive this envelope from the stored
+    // receipt, never copy request parameters into an unbound response.
+    final expected = {...operation.parameters}..remove('expected_preview');
+    expected['actor_id'] = _actor;
+    expected['session_id'] = _session;
+    return expected.entries.every((entry) => value[entry.key] == entry.value);
+  }
+
   Future<bool> reconcile() async {
     final operation = _operation;
     if (_reading || operation == null || !_current(_generation)) { return false; }
@@ -103,7 +116,8 @@ class InvoiceNoticeRecoveryController {
       if (!_current(generation)) { return false; }
       final result = receipt is Map ? receipt['result'] : null;
       final recorded = receipt is Map && receipt['found'] == true &&
-        receipt['status'] == 'recorded' && result is Map &&
+        receipt['status'] == 'recorded' &&
+        _matchesRecordedScope(receipt['scope'], operation) && result is Map &&
         result['financial_approved'] == true && result['seal_consent_recorded'] == true;
       _state = recorded ? InvoiceNoticeRecoveryState.recorded : InvoiceNoticeRecoveryState.unavailable;
       return recorded;

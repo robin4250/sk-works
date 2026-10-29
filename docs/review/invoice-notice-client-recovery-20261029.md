@@ -6,9 +6,14 @@ It does not connect the production factory, panel or candidate RPC endpoints.
 The release flag remains false and the legacy approval implementation is unchanged.
 
 The operation snapshots ticket, local document, company, revision, request ID and
-expected preview before dispatch. Confirmation is sent at most once per instance;
+expected preview and server-issued canonical expected-preview hash before dispatch. Confirmation is sent at most once per instance;
 even a successful command response remains provisional until immutable historical
-readback returns recorded financial approval and seal consent. Missing, malformed,
+readback returns recorded financial approval and seal consent, and a stored scope
+envelope exactly matches ticket/local/company/revision/request/hash/actor/SID.
+Legacy unbound envelopes and foreign/stale scopes are rejected. The future server
+adapter must derive the envelope from persisted receipt fields; it must never
+attach request scope to a response. The current private SQL reader does not yet
+return this envelope, so it cannot directly satisfy this client contract. Missing, malformed,
 failed and timed-out readback never permits reopening or resending. Readback may be
 retried only for the same captured operation, actor and SID. The server reader must
 still independently enforce its existing exact scope and live-session checks.
@@ -17,10 +22,11 @@ still independently enforce its existing exact scope and live-session checks.
 change, background and disposal. It clears memory-only operation scope, invalidates
 tickets and cancels delayed submit/read results by generation. A different SID
 invalidates the instance, even if the old SID later returns. Cross-login recovery
-is deliberately unavailable. A newly created instance does not possess an old
+is deliberately unavailable. No automatic global Auth event/history subscription
+is installed by this class; application wiring must call invalidate at the boundary. A newly created instance does not possess an old
 operation; no operation persistence or restoration is added here.
 
-Eight Flutter tests cover provisional success, ambiguous/missing/error readback,
+Ten Flutter tests cover provisional success, ambiguous/missing/error readback,
 immutable scope, SID change, delayed logout replies, concurrent read suppression,
 malformed receipts and actual Supabase SDK HTTP error/readback composition using
 synthetic loopback URLs and fixture-only RPC names. This SDK test proves client
