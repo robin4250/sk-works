@@ -9,85 +9,98 @@ const fail=()=>Error('archive readback server unavailable');
 const uuid=x=>typeof x==='string'&&/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/.test(x);
 const exact=(x,keys)=>x&&typeof x==='object'&&!Array.isArray(x)&&Object.keys(x).sort().join(',')===keys;
 const equal=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
-function material(value){if(typeof value!=='string'&&!(value inst…2472 tokens truncated…l(f.queries.filter(q=>q.includes('archive_readback_private.authorize_observation')).length,2);
-  assert.deepEqual(await f.clean(),{actor:null,jwt:null});assert.equal(f.releases.at(-1),false);
- });
- await t.test('cross-company, changed descriptor and stored-but-unregistered bytes refuse before restore/sign',async()=>{
-  const before=f.counts();await assert.rejects(s.client().verify(f.foreign));
-  await assert.rejects(s.client().verify({...f.foreign,company_id:f.company}));
-  await assert.rejects(s.client().verify({...f.own,snapshot_sha256:'b'.repeat(64)}));
-  const bytes=Buffer.from('unregistered local fixture'),{createHash}=await import('node:crypto');
-  const d=await f.store.retain({company_id:f.company,event_id:f.own.event_id,revision:3,snapshot_sha256:'c'.repeat(64),payload_sha256:createHash('sha256').update(bytes).digest('hex'),payload:bytes});
-  await assert.rejects(s.client().verify(d));assert.equal(f.counts().restores,before.restores);assert.equal(f.counts().signatures,before.signatures);
-  assert.equal((await f.db.query('select count(*)::int n from archive_readback_private.authority_records')).rows[0].n,2);
-  assert.deepEqual(await f.clean(),{actor:null,jwt:null});
- });
- await t.test('forged JWT/role and body actor/pool/metadata cannot supply authority',async()=>{
-  const before=f.counts(),valid=f.token(),parts=valid.split('.');
-  const forged=`${parts[0]}.${Buffer.from(JSON.stringify({sub:f.other,session_id:f.sid,role:'authenticated',exp:4102444800,iat:1})).toString('base64url')}.${parts[2]}`;
-  await assert.rejects(s.client(forged).verify(f.own));await assert.rejects(s.client(f.token({role:'service_role'})).verify(f.own));
-  assert.equal(f.counts().acquisitions,before.acquisitions);
-  for(const extra of [{actor:f.actor},{pool:{}},{user_metadata:{master:true}},{register:true}])assert.equal((await s.raw({...input(f.own),...extra})).status,503);
-  assert.equal(f.counts().restores,before.restores);assert.equal(f.counts().signatures,before.signatures);
- });
- await t.test('live Master/company/session/credential/deployment/account checks are actual existing SQL',async()=>{
-  const mutations=[
-   ["update private.master_admins set enabled=false where user_id=$1","update private.master_admins set enabled=true where user_id=$1"],
-   ["update company_members set role='employee'where user_id=$1","update company_members set role='owner'where user_id=$1"],
-   ["update auth.sessions set not_after=clock_timestamp()-interval '1 second'where user_id=$1","update auth.sessions set not_after=null where user_id=$1"],
-   ["update user_secondary_credentials set locked_until=clock_timestamp()+interval '1 hour'where user_id=$1","update user_secondary_credentials set locked_until=null where user_id=$1"],
-   ["update security_management_issuer_private.deployments set enabled=false where owner_id=$1","update security_management_issuer_private.deployments set enabled=true where owner_id=$1"],
-   ["update auth.users set banned_until=clock_timestamp()+interval '1 hour'where id=$1","update auth.users set banned_until=null where id=$1"],
-  ];
-  for(const [deny,restore]of mutations){const before=f.counts();await f.db.query(deny,[f.actor]);
-   await assert.rejects(s.client(f.token({metadata:{is_master:true,company_id:f.company}})).verify(f.own));
-   assert.equal(f.counts().restores,before.restores);assert.equal(f.counts().signatures,before.signatures);await f.clean();await f.db.query(restore,[f.actor]);
-  }
-  const before=f.counts();await f.db.query('delete from auth.sessions where id=$1',[f.sid]);await assert.rejects(s.client().verify(f.own));
-  assert.equal(f.counts().restores,before.restores);await f.clean();await f.db.query('insert into auth.sessions values($1,$2,null)',[f.sid,f.actor]);
- });
- await t.test('immutable saved target cannot be rewritten or read by client roles',async()=>{
-  for(const q of ["update archive_readback_private.authority_records set revision=3","delete from archive_readback_private.authority_records","truncate archive_readback_private.authority_records"])await assert.rejects(f.db.query(q),e=>e.code==='55000');
-  for(const role of ['anon','authenticated','service_role']){await f.db.exec(`begin;set local role ${role}`);await assert.rejects(f.db.query('select * from archive_readback_private.authority_records'),e=>e.code==='42501');await f.db.exec('rollback');}
- });
- await t.test('runtime role can use only narrow helper and cannot acquire raw source or guard privileges',async()=>{
-  await f.db.exec('begin;set local role archive_readback_runtime');
-  await assert.rejects(f.db.query('select * from archive_readback_private.authority_records'),e=>e.code==='42501');await f.db.exec('rollback');
-  for(const role of ['anon','authenticated','service_role'])assert.equal((await f.db.query("select has_function_privilege($1,'archive_readback_private.authorize_observation(uuid,jsonb)','execute') allowed",[role])).rows[0].allowed,false);
-  await f.db.exec('begin');
-  await f.db.query("select set_config('request.jwt.claims',$1,true)",[JSON.stringify({sub:f.actor,session_id:f.sid,role:'authenticated',is_anonymous:false})]);
-  await f.db.exec('set local role archive_readback_runtime');
-  const result=(await f.db.query('select archive_readback_private.authorize_observation($1,$2::jsonb) as observation',[f.authority,JSON.stringify(f.own)])).rows[0].observation;
-  assert.deepEqual(Object.keys(result).sort(),['descriptor','guard_token']);assert.deepEqual(result.descriptor,f.own);assert.match(result.guard_token,/^[a-f0-9]{64}$/);
-  await f.db.exec('rollback');
- });
- await t.test('session expiry after restore/sign is rechecked before commit and receipt delivery',async()=>{
-  const before=f.counts(),changing=await f.start({store:{async restore(d){const bytes=await f.store.restore(d);await f.db.query("update auth.sessions set not_after=clock_timestamp()-interval '1 second'where id=$1",[f.sid]);return bytes;}}});
-  await assert.rejects(changing.client().verify(f.own));assert.equal(f.counts().signatures,before.signatures+1);
-  // The isolated fixture mutates within the same transaction only to test the
-  // final clock recheck. Real concurrent-update blocking needs Native PG tests.
-  await f.clean();assert.equal((await f.db.query('select not_after from auth.sessions where id=$1',[f.sid])).rows[0].not_after,null);
- });
- await t.test('synchronous signer overrun cannot bypass monotonic deadline while timer callback is starved',{timeout:10000},async sub=>{
-  const monotonic=performance.now.bind(performance);let clock=0,signs=0;
-  sub.mock.method(performance,'now',()=>clock);sub.mock.timers.enable({apis:['setTimeout']});
-  const busy=await f.start({timeoutMs:50,signObservation:async bytes=>{
-   signs++;const began=monotonic();while(monotonic()-began<60){}clock=51;
-   return f.signBytes(bytes); // Valid signature must still be rejected as late.
-  }});
-  const queries=f.queries.length;await assert.rejects(busy.client().verify(f.own));assert.equal(signs,1);
-  assert.equal(f.queries.slice(queries).filter(q=>q.includes('archive_readback_private.authorize_observation')).length,1);
-  assert.equal(f.queries.slice(queries).includes('commit'),false);sub.mock.restoreAll();sub.mock.timers.reset();
-  await f.clean();assert.equal(f.releases.at(-1),true);
- });
- await t.test('a synchronously late pool lease is discarded before BEGIN',{timeout:10000},async sub=>{
-  const monotonic=performance.now.bind(performance);let clock=0;
-  sub.mock.method(performance,'now',()=>clock);sub.mock.timers.enable({apis:['setTimeout']});
-  const late=await f.start({timeoutMs:50,pool:{async connect(){
-   const client=await f.pool.connect(),began=monotonic();while(monotonic()-began<60){}clock=51;return client;
-  }}});
-  const before=f.queries.length;await assert.rejects(late.client().verify(f.own));
-  assert.equal(f.queries.length,before);assert.equal(f.releases.at(-1),true);
-  sub.mock.restoreAll();sub.mock.timers.reset();await f.clean();
- });
-});
+function material(value){if(typeof value!=='string'&&!(value instanceof Uint8Array))throw fail();const b=Buffer.from(value);if(!b.length||b.length>65536)throw fail();return b;}
+
+// The configured pool must support pg Pool semantics, including release(true)
+// destroying ONLY the checked-out connection on deadline/disconnect. A real
+// least-privilege pool and authenticated registry population remain prerequisites.
+export function createArchiveReadbackServerCandidate({enabled=false,endpoint,tls,auth,pool,store,
+ authorityId,key,signObservation,now=Date.now,timeoutMs=5000,maxConcurrent=4}={}){
+ try{
+  if(!enabled||!uuid(authorityId)||!tls||!pool||typeof pool.connect!=='function'||!store||typeof store.restore!=='function'||typeof signObservation!=='function'||typeof now!=='function'||
+   !Number.isSafeInteger(timeoutMs)||timeoutMs<50||timeoutMs>10000||!Number.isSafeInteger(maxConcurrent)||maxConcurrent<1||maxConcurrent>16)throw fail();
+  const target=new URL(endpoint);if(target.protocol!=='https:'||target.username||target.password||target.search||target.hash)throw fail();
+  // Capture trusted adapter configuration before serving. The existing Auth
+  // transport verifies /user with the exact bearer, not decoded claims alone.
+  const configuration=Object.freeze({url:auth?.url,publicKey:auth?.publicKey,serviceBearer:auth?.serviceBearer,fetchImpl:auth?.fetchImpl??fetch});
+  const connect=pool.connect.bind(pool),restore=store.restore.bind(store),sign=signObservation;
+  // Validate the pinned observation key before creating any listener.
+  createArchiveReadbackAttestorCandidate({enabled:true,authorityId,key,store:{restore},signObservation:sign,now,timeoutMs});
+  const pin=Object.freeze({kty:key.kty,crv:key.crv,x:key.x});let active=0;
+  const small=(res,status)=>{if(!res.destroyed&&!res.headersSent){res.writeHead(status,{'content-type':'application/json','cache-control':'no-store',connection:'close'});res.end('{"error":"archive readback unavailable"}');}};
+  const server=createServer({key:material(tls.key),cert:material(tls.cert),minVersion:'TLSv1.3',maxHeaderSize:8192,
+   headersTimeout:timeoutMs,requestTimeout:timeoutMs},async(req,res)=>{
+   const counts=new Map();for(let i=0;i<req.rawHeaders.length;i+=2){const h=req.rawHeaders[i].toLowerCase();counts.set(h,(counts.get(h)??0)+1);}
+   if(req.method!=='POST'||req.url!==target.pathname||req.headers.host!==target.host||
+    ['host','authorization','content-type','content-length','transfer-encoding'].some(h=>(counts.get(h)??0)>1)||
+    req.headers.origin!==undefined||req.headers['content-encoding']!==undefined){small(res,404);return;}
+   const authorization=req.headers.authorization;
+   if(typeof authorization!=='string'||!/^Bearer [A-Za-z0-9_.-]{16,16384}$/.test(authorization)){small(res,401);return;}
+   if(active>=maxConcurrent){small(res,503);return;}active++;
+   const controller=new AbortController(),deadlineAt=performance.now()+timeoutMs;let leased,released=false,committed=false,timer,cleanup=()=>{};
+   const discard=()=>{if(leased&&!released){released=true;try{leased.release(true);}catch{}}};
+   const abort=()=>{controller.abort();discard();};
+   const check=()=>{if(controller.signal.aborted||req.aborted||res.destroyed||performance.now()>=deadlineAt){abort();throw fail();}};
+   const deadline=new Promise((_,reject)=>{controller.signal.addEventListener('abort',()=>reject(fail()),{once:true});});deadline.catch(()=>{});
+   timer=setTimeout(abort,timeoutMs);req.on('error',()=>{});req.once('aborted',abort);
+   const disconnected=()=>{if(!res.writableFinished)abort();};res.once('close',disconnected);
+   const bounded=work=>Promise.race([Promise.resolve().then(()=>{check();return work();}),deadline]);
+   try{
+    if(typeof req.headers['content-type']!=='string'||!/^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(req.headers['content-type']))throw fail();
+    const bearer=authorization.slice(7);
+    const database=createManagementTransport({...configuration,callerBearer:bearer,now,timeoutMs:Math.min(timeoutMs,5000),signal:controller.signal});
+    const caller=await bounded(()=>database.authenticate());check();
+    const claims=JSON.parse(Buffer.from(bearer.split('.')[1],'base64url').toString('utf8'));
+    const actor=caller.actorId,session=caller.sessionId,expires=claims.exp*1000;
+    if(!uuid(actor)||!uuid(session)||claims.sub!==actor||claims.session_id!==session||!Number.isSafeInteger(expires))throw fail();
+    const live=()=>{check();if(!Number.isSafeInteger(now())||now()>=expires)throw fail();};live();
+    const declared=req.headers['content-length'];if(declared!==undefined&&(!/^\d+$/.test(declared)||Number(declared)>2048))throw fail();
+    const bytes=await bounded(()=>new Promise((resolve,reject)=>{
+     const buffer=Buffer.alloc(2048);let length=0;
+     const data=chunk=>{if(chunk.length>buffer.length-length){cleanup();reject(fail());return;}chunk.copy(buffer,length);length+=chunk.length;};
+     const end=()=>{cleanup();resolve(buffer.subarray(0,length));};
+     const error=()=>{cleanup();reject(fail());};
+     cleanup=()=>{req.off('data',data);req.off('end',end);req.off('aborted',error);req.off('error',error);req.pause();};
+     req.on('data',data);req.once('end',end);req.once('aborted',error);req.once('error',error);
+    }));live();
+    const input=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));
+    if(!exact(input,'authority_id,challenge,descriptor')||input.authority_id!==authorityId||typeof input.challenge!=='string'||!/^[a-f0-9]{64}$/.test(input.challenge))throw fail();
+    const expected=snapshotArchiveByteDescriptorCandidate(input.descriptor),challenge=input.challenge;
+    const acquisition=Promise.resolve().then(()=>connect()).then(client=>{if(controller.signal.aborted||performance.now()>=deadlineAt){controller.abort();try{client.release(true);}catch{}throw fail();}return client;});
+    leased=await bounded(()=>acquisition);check();
+    if(typeof leased.query!=='function'||typeof leased.release!=='function')throw fail();
+    await bounded(()=>leased.query('begin'));
+    await bounded(()=>leased.query("select set_config('statement_timeout',$1,true),set_config('lock_timeout',$1,true),set_config('request.jwt.claims',$2,true)",
+     [`${timeoutMs}ms`,JSON.stringify({sub:actor,session_id:session,role:'authenticated',is_anonymous:false})]));
+    // Only the archive helper is granted to the dedicated runtime role. It
+    // locks the exact immutable target and existing live authorization together.
+    const guard=async()=>{
+     live();const result=await bounded(()=>leased.query('select archive_readback_private.authorize_observation($1,$2::jsonb) as observation',[authorityId,JSON.stringify(expected)]));
+     live();if(result.rows.length!==1)throw fail();const observation=result.rows[0].observation;
+     if(!exact(observation,'descriptor,guard_token')||!equal(snapshotArchiveByteDescriptorCandidate(observation.descriptor),expected)||
+      typeof observation.guard_token!=='string'||!/^[a-f0-9]{64}$/.test(observation.guard_token))throw fail();
+     return observation.guard_token;
+    };
+    const before=await guard(),saved=expected;
+    const attestor=createArchiveReadbackAttestorCandidate({enabled:true,authorityId,key:pin,now,timeoutMs,
+     store:{restore:async d=>{live();const b=await restore(d);live();return b;}},
+     signObservation:async b=>{live();const signature=await sign(b);live();return signature;}});
+    const receipt=await bounded(()=>attestor.observe({authority_id:authorityId,challenge,descriptor:saved}));
+    if(await guard()!==before)throw fail();live();
+    await bounded(()=>leased.query('commit'));committed=true;live();
+    const output=Buffer.from(JSON.stringify(receipt));if(output.length>4096)throw fail();
+    live();res.writeHead(200,{'content-type':'application/json','cache-control':'no-store','content-length':output.length,connection:'close'});res.end(output);
+   }catch{small(res,503);}
+   finally{
+    clearTimeout(timer);cleanup();req.off('aborted',abort);res.off('close',disconnected);
+    if(leased&&!released){
+     if(!committed){discard();}else{released=true;try{leased.release();}catch{}}
+    }
+    controller.abort();active--;
+   }
+  });
+  server.maxHeadersCount=16;server.maxConnections=maxConcurrent*2;server.keepAliveTimeout=1;
+  server.on('clientError',(_error,socket)=>socket.destroy());server.on('tlsClientError',()=>{});
+  return server;
+ }catch{throw fail();}
+}
