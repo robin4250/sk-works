@@ -126,4 +126,37 @@ void main() {
     await expectLater(download(expectedLength:PersonalVaultPdfDownload.maxBytes+1),throwsStateError);
     expect(sent,0);
   });
+  test('synchronous session validation cannot outrun the absolute deadline', () async {
+    var calls = 0;
+    final result = PersonalVaultPdfDownload(clientFactory: () => client,
+      deadline: const Duration(milliseconds: 10)).download(
+        uri: uri, headers: headers, expectedLength: pdf.length, expectedHash: hash,
+        invalidated: invalidated.future, validateSession: () async {
+          calls++;
+          final busy = Stopwatch()..start();
+          while (busy.elapsed < const Duration(milliseconds: 30)) { /* block timer */ }
+        });
+    await expectLater(result, throwsStateError);
+    expect(calls, 1);
+    expect(sent, 0);
+    expect(client.closed, greaterThan(0));
+  });
+  test('final synchronous validation cannot return an overdue PDF', () async {
+    var calls = 0;
+    final result = PersonalVaultPdfDownload(clientFactory: () => client,
+      deadline: const Duration(milliseconds: 100)).download(
+        uri: uri, headers: headers, expectedLength: pdf.length, expectedHash: hash,
+        invalidated: invalidated.future, validateSession: () async {
+          if (++calls == 2) {
+            final busy = Stopwatch()..start();
+            while (busy.elapsed < const Duration(milliseconds: 150)) { /* block timer */ }
+          }
+        });
+    final assertion = expectLater(result, throwsStateError);
+    await started(); body.add(pdf); await body.close(); await assertion;
+    expect(calls, 2);
+    expect(sent, 1);
+    expect(client.closed, greaterThan(0));
+  });
+
 }

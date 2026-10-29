@@ -40,17 +40,24 @@ class PersonalVaultPdfDownload {
       final current = subscription;
       if (current != null) { unawaited(current.cancel().catchError((Object _) {})); }
     }
+    // Timer callbacks may be delayed by synchronous Auth/body work. Measure the
+    // elapsed budget as well, so an overdue response cannot win that race.
+    final elapsed = Stopwatch()..start();
+    bool active() {
+      if (elapsed.elapsed >= deadline) { fail(); }
+      return !result.isCompleted;
+    }
     final timer = Timer(deadline, fail);
     unawaited(invalidated.then((_) { fail(); }, onError: (Object _) { fail(); }));
     unawaited(() async {
       try {
         await validateSession();
-        if (result.isCompleted) { return; }
+        if (!active()) { return; }
         final request = http.Request('GET', uri)
           ..followRedirects = false
           ..headers.addAll(requestHeaders);
         final response = await client.send(request);
-        if (result.isCompleted) {
+        if (!active()) {
           unawaited(response.stream.listen(null, onError: (Object _) {}).cancel().catchError((Object _) {}));
           return;
         }
@@ -67,24 +74,25 @@ class PersonalVaultPdfDownload {
         final bytes = BytesBuilder(copy: true);
         var length = 0;
         subscription = response.stream.listen((chunk) {
-          if (result.isCompleted) { return; }
+          if (!active()) { return; }
           if (chunk.length > expectedLength - length) { fail(); return; }
           length += chunk.length;
           bytes.add(chunk);
         }, onError: (Object _) { fail(); }, onDone: () async {
-          if (result.isCompleted) { return; }
+          if (!active()) { return; }
           try {
             if (length != expectedLength) { fail(); return; }
             final pdf = bytes.takeBytes();
             if (sha256.convert(pdf).toString() != expectedHash) { fail(); return; }
             await validateSession();
-            if (!result.isCompleted) { result.complete(pdf); }
+            if (active()) { result.complete(pdf); }
           } catch (_) { fail(); }
         }, cancelOnError: true);
       } catch (_) { fail(); }
     }());
     try { return await result.future; }
     finally {
+      elapsed.stop();
       timer.cancel();
       client.close();
       final current = subscription;
