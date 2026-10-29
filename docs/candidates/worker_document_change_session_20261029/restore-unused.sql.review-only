@@ -13,6 +13,7 @@ drop function public.worker_document_change(text,jsonb);
 drop function private.worker_document_change(text,jsonb);
 drop function private.worker_document_change_guard();
 drop function private.worker_document_change_result(private.worker_document_changes);
+drop function private.worker_document_change_can_access(uuid,uuid);
 drop function private.worker_document_change_can_review(uuid);
 drop function private.worker_document_change_can_manage(uuid);
 drop function private.worker_document_change_snapshot(jsonb);

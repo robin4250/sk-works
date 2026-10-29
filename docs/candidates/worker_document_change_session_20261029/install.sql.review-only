@@ -25,7 +25,7 @@ alter table private.worker_document_change_events enable row level security;
 alter table private.worker_document_change_installation enable row level security;
 revoke all on private.worker_document_change_rollout,private.worker_document_change_events,private.worker_document_change_installation from public,anon,authenticated,service_role;
 revoke all on sequence private.worker_document_change_events_event_id_seq from public,anon,authenticated,service_role;
-create function private.worker_document_change_enabled() returns boolean language sql volatile security definer set search_path='' as $select coalesce((select enabled from private.worker_document_change_rollout where singleton for share),false)$;
+create function private.worker_document_change_enabled() returns boolean language sql volatile security definer set search_path='' as $$select coalesce((select enabled from private.worker_document_change_rollout where singleton for share),false)$$;
 revoke all on function private.worker_document_change_enabled() from public,anon,authenticated,service_role;
 
 do $guard$ begin
@@ -77,6 +77,12 @@ create function private.worker_document_change_can_review(cid uuid) returns bool
 language sql stable security definer set search_path='' as $$select private.worker_document_change_can_manage(cid)$$;
 revoke all on function private.worker_document_change_can_review(uuid) from public,anon,authenticated,service_role;
 
+create function private.worker_document_change_can_access(cid uuid,wid uuid) returns boolean
+language sql stable security definer set search_path='' as $$
+ select private.account_access_allowed() and exists(select 1 from public.company_members m where m.company_id=cid and m.user_id=auth.uid())
+ and (private.worker_document_change_can_manage(cid) or exists(select 1 from public.workers w where w.id=wid and w.company_id=cid and w.user_id=auth.uid())) $$;
+revoke all on function private.worker_document_change_can_access(uuid,uuid) from public,anon,authenticated,service_role;
+
 create function private.worker_document_change_guard() returns trigger
 language plpgsql security definer set search_path='' as $$
 declare before_row jsonb;after_row jsonb;ticket private.worker_document_apply_tickets%rowtype;
@@ -87,6 +93,9 @@ begin
  if tg_op='DELETE' then return old;end if;
  if tg_op='INSERT' then return new;end if;
  if not exists(select 1 from private.worker_document_changes r where r.target_id=old.id and r.status in ('draft','pending')) then return new;end if;
+ -- Status/original-only product updates (including own bank synchronization) stay with existing RLS.
+ if (to_jsonb(new)-array['status','original_verified','updated_at','updated_by'])=
+    (to_jsonb(old)-array['status','original_verified','updated_at','updated_by']) then return new;end if;
  perform private.require_reauthentication_session();
  if auth.uid() is null or not coalesce(private.account_access_allowed(),false) then
   raise exception 'Document actor unavailable' using errcode='42501';end if;
@@ -173,7 +182,7 @@ begin
   return coalesce((select jsonb_agg(private.worker_document_change_result(x) order by x.created_at desc,x.id)
    from private.worker_document_changes x where exists(select 1 from public.company_members m join public.companies c on c.id=m.company_id
     where m.company_id=x.company_id and m.user_id=actor) and
-    (x.requested_by=actor or private.worker_document_change_can_manage(x.company_id) or private.worker_document_change_can_review(x.company_id))),'[]');
+    (private.worker_document_change_can_access(x.company_id,x.worker_id) and (x.requested_by=actor or private.worker_document_change_can_manage(x.company_id)))),'[]');
  end if;
  rid:=(p_data->>'request_id')::uuid;
  if rid is null then raise exception 'Request ID required' using errcode='22023';end if;
@@ -234,7 +243,7 @@ begin
  end if;
  can_manage:=private.worker_document_change_can_manage(r.company_id);
  can_review:=private.worker_document_change_can_review(r.company_id) and r.requested_by<>actor;
- if r.requested_by<>actor and not can_manage and not can_review then raise exception 'Request unavailable' using errcode='42501';end if;
+ if not private.worker_document_change_can_access(r.company_id,r.worker_id) or (r.requested_by<>actor and not can_manage and not can_review) then raise exception 'Request unavailable' using errcode='42501';end if;
  if p_action='detail' then return private.worker_document_change_result(r);end if;
  if p_action='cancel' then
   if r.requested_by<>actor or r.status not in ('draft','cancelled') then raise exception 'Only own draft can be cancelled' using errcode='42501';end if;
@@ -296,7 +305,7 @@ end $$;
 revoke all on function private.worker_document_change(text,jsonb) from public,anon;
 revoke all on function private.worker_document_change(text,jsonb) from authenticated,service_role;
 create function public.worker_document_change(p_action text,p_data jsonb) returns jsonb
-language plpgsql security definer set search_path='' as $
+language plpgsql security definer set search_path='' as $$
  declare result jsonb;sid uuid;begin
  sid:=private.require_reauthentication_session();
  result:=private.worker_document_change(p_action,p_data);
@@ -304,18 +313,18 @@ language plpgsql security definer set search_path='' as $
   insert into private.worker_document_change_events(request_id,actor_id,session_id,action)
    values((result->>'id')::uuid,auth.uid(),sid,p_action);
  end if;
- return result;end $;
+ return result;end $$;
 revoke all on function public.worker_document_change(text,jsonb) from public,anon;
 grant execute on function public.worker_document_change(text,jsonb) to authenticated;
 -- No app/service direct access to request/ticket/event/rollout or private dispatcher.
 revoke all on private.worker_document_changes,private.worker_document_apply_tickets from service_role;
 create function private.worker_document_change_catalog() returns jsonb
-language sql stable security definer set search_path='' as $
+language sql stable security definer set search_path='' as $$
  select jsonb_build_object('functions',(select jsonb_agg(jsonb_build_object('signature',p.oid::regprocedure::text,'definition',pg_get_functiondef(p.oid),'owner',pg_get_userbyid(p.proowner),'acl',p.proacl::text,'config',p.proconfig,'definer',p.prosecdef) order by p.oid::regprocedure::text)
  from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname in ('private','public') and (p.proname like 'worker_document_change%' or p.oid in('private.require_reauthentication_session()'::regprocedure,'private.has_company_feature(uuid,text)'::regprocedure,'private.account_access_allowed()'::regprocedure))),
  'trigger',(select jsonb_agg(jsonb_build_object('definition',pg_get_triggerdef(t.oid),'enabled',t.tgenabled)) from pg_trigger t where t.tgrelid='public.worker_document_statuses'::regclass and t.tgname='zz_worker_document_change_guard'),
  'tables',(select jsonb_agg(jsonb_build_object('name',c.relname,'owner',pg_get_userbyid(c.relowner),'acl',c.relacl::text,'rls',c.relrowsecurity) order by c.relname) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='private' and c.relname in ('worker_document_changes','worker_document_apply_tickets','worker_document_change_events','worker_document_change_rollout','worker_document_change_installation')))
- $;
+ $$;
 revoke all on function private.worker_document_change_catalog() from public,anon,authenticated,service_role;
 insert into private.worker_document_change_installation(catalog) select private.worker_document_change_catalog();
 

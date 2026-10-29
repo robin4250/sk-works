@@ -5,10 +5,11 @@ import {createHash} from 'node:crypto';
 const source=await fs.readFile('docs/candidates/worker_document_change_20261019.sql.review-only','utf8');
 assert.equal(createHash('sha256').update(source).digest('hex'),'67fa8b1b2ca8027aa39a08211942c8ee00f353bc92ac27ca5432134e565f9dc5');
 let sql=source;
-const replace=(old,next)=>{assert.equal(sql.split(old).length,2,`Historical anchor changed: ${old.slice(0,60)}`);sql=sql.replace(old,next);};
+const replace=(old,next)=>{assert.equal(sql.split(old).length,2,`Historical anchor changed: ${old.slice(0,60)}`);sql=sql.replace(old,()=>next);};
 replace('begin;','begin;\n'+await fs.readFile('tool/security/worker_document_change_session/preamble.sql','utf8'));
 replace('target_id uuid not null,requested_by uuid not null,','target_id uuid not null,requested_by uuid not null,created_session_id uuid not null default private.require_reauthentication_session(),');
 replace('previous jsonb not null,next_row jsonb not null','previous jsonb not null,next_row jsonb not null,session_id uuid not null default private.require_reauthentication_session()');
+replace('(x.requested_by=actor or private.worker_document_change_can_manage(x.company_id) or private.worker_document_change_can_review(x.company_id))', '(private.worker_document_change_can_access(x.company_id,x.worker_id) and (x.requested_by=actor or private.worker_document_change_can_manage(x.company_id)))');
 const manageStart='create function private.worker_document_change_can_manage(cid uuid) returns boolean';
 const guardStart='create function private.worker_document_change_guard() returns trigger';
 const a=sql.indexOf(manageStart),b=sql.indexOf(guardStart);assert.ok(a>0&&b>a);
@@ -18,6 +19,9 @@ replace(" if auth.uid() is null or not coalesce(private.account_access_allowed()
  if tg_op='DELETE' then return old;end if;
  if tg_op='INSERT' then return new;end if;
  if not exists(select 1 from private.worker_document_changes r where r.target_id=old.id and r.status in ('draft','pending')) then return new;end if;
+ -- Status/original-only product updates (including own bank synchronization) stay with existing RLS.
+ if (to_jsonb(new)-array['status','original_verified','updated_at','updated_by'])=
+    (to_jsonb(old)-array['status','original_verified','updated_at','updated_by']) then return new;end if;
  perform private.require_reauthentication_session();
  if auth.uid() is null or not coalesce(private.account_access_allowed(),false) then`);
 replace(" if tg_op='DELETE' then raise exception 'Saved document deletion requires a separate preservation review' using errcode='42501';end if;",'');
@@ -40,6 +44,7 @@ replace(' can_manage:=private.worker_document_change_can_manage(r.company_id);',
  can_manage:=private.worker_document_change_can_manage(r.company_id);`);
 // Immutable audit per successful explicit operation, including a fresh valid SID.
 replace('create function public.worker_document_change(p_action text,p_data jsonb) returns jsonb',`create function public.worker_document_change(p_action text,p_data jsonb) returns jsonb`);
+replace(" if r.requested_by<>actor and not can_manage and not can_review then raise exception 'Request unavailable' using errcode='42501';end if;", " if not private.worker_document_change_can_access(r.company_id,r.worker_id) or (r.requested_by<>actor and not can_manage and not can_review) then raise exception 'Request unavailable' using errcode='42501';end if;");
 const wrapper='language sql security invoker set search_path=\'\' as $$select private.worker_document_change(p_action,p_data)$$;';
 assert.ok(sql.includes(wrapper), 'Public wrapper anchor');
 replace(wrapper,`language plpgsql security definer set search_path='' as $$

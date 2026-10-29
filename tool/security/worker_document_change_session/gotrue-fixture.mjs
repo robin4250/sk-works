@@ -87,24 +87,47 @@ export async function verifyDocumentChangeSession({db,users,sessions,password,re
   stage='self-approval-new-upload-denied';await denied(await call('approve',requestId,resumed.access_token));
   await denied(await call('prepare',{...data,request_id:id(21),proposed:{...proposal,attachment_paths:['new/unprepared.jpg']}},resumed.access_token));eq(await snapshot(),officialBefore);
   stage='permission-revocation';await db.query('update public.member_feature_permissions set can_manage_people=false where company_id=$1 and user_id=$2',[C,users.outsider.id]);await denied(await call('approve',requestId,reviewer));eq(await snapshot(),officialBefore);await db.query('update public.member_feature_permissions set can_manage_people=true where company_id=$1 and user_id=$2',[C,users.outsider.id]);
+  stage='demoted-requester-current-scope';
+  const managed=await call('prepare',{...data,request_id:id(23)},manager);eq(managed.status,200);
+  await db.query("update public.company_members set role='employee' where company_id=$1 and user_id=$2",[C,users.revoked.id]);
+  const demotedList=await call('list',{},manager);eq(demotedList.status,200);eq((await demotedList.json()).some(row=>row.id===id(23)),false);
+  for(const action of ['detail','submit','cancel'])await denied(await call(action,{request_id:id(23)},manager));
+  await db.query("update public.company_members set role='manager' where company_id=$1 and user_id=$2",[C,users.revoked.id]);
+  eq((await call('cancel',{request_id:id(23)},manager)).status,200);
+  stage='existing-status-only-server-shape';
+  for(const status of ['expired','submitted']){
+   const response=await request('/rest/v1/worker_document_statuses?id=eq.'+S,{method:'PATCH',token:resumed.access_token,body:{status,original_verified:false,updated_by:users.owner.id}});eq(response.status,204);
+  }
+  eq(await snapshot(),officialBefore);
   stage='ticket-forgery';
   const fake=await request('/rest/v1/worker_document_statuses?id=eq.'+S,{method:'PATCH',token:resumed.access_token,body:{notes:'direct bypass',updated_by:users.owner.id}});await denied(fake);eq(await snapshot(),officialBefore);
   eq((await db.query("select has_table_privilege('authenticated','private.worker_document_apply_tickets','INSERT') v")).rows[0].v,false);
   stage='concurrent-approval';
   const historyBefore=(await db.query('select count(*)::int n from public.worker_document_status_history where source_status_id=$1',[S])).rows[0].n;
-  const results=await Promise.all([call('approve',requestId,reviewer),call('approve',requestId,manager)]);
+  await db.query('begin');
+  await db.query('select id from public.worker_document_statuses where id=$1 for update',[S]);
+  const pendingResults=Promise.all([call('approve',requestId,reviewer),call('approve',requestId,manager)]);
+  // Assert real database lock overlap; Promise.all alone is not a race proof.
+  let blocked=false;
+  for(let attempt=0;attempt<100;attempt++){
+   const count=(await db.query("select count(*)::int n from pg_stat_activity where pid<>pg_backend_pid() and wait_event_type='Lock' and query like '%worker_document_change%'")).rows[0].n;
+   if(count>=2){blocked=true;break;}
+   await new Promise(resolve=>setTimeout(resolve,50));
+  }
+  await db.query('commit');assert.ok(blocked,'Both actual RPCs must be observed waiting on locks');
+  const results=await pendingResults;
   for(const result of results){eq(result.status,200);eq((await result.json()).status,'approved');}
   eq((await snapshot()).notes,proposal.notes);eq((await db.query('select count(*)::int n from public.worker_document_status_history where source_status_id=$1',[S])).rows[0].n,historyBefore+1);
   eq((await db.query('select count(*)::int n from private.worker_document_apply_tickets')).rows[0].n,0);
   stage='after-use-preservation';await db.query('update private.worker_document_change_rollout set enabled=false');await assert.rejects(db.query(restore));await db.query('rollback');
-  eq((await db.query('select count(*)::int n from private.worker_document_changes')).rows[0].n,1);
+  eq((await db.query('select count(*)::int n from private.worker_document_changes')).rows[0].n,2);
   // Parent cascade remains authoritative even with an active pending request.
   await db.query('update private.worker_document_change_rollout set enabled=true');
   const applied=await snapshot();
   eq((await call('prepare',{...data,request_id:id(22),expected_updated_at:applied.updated_at,proposed:{...proposal,notes:'pending retained'}},resumed.access_token)).status,200);
   eq((await call('submit',{request_id:id(22)},resumed.access_token)).status,200);
   const detail=await call('detail',requestId,resumed.access_token);eq(detail.status,200);eq((await detail.json()).status,'approved');
-  await db.query('delete from public.workers where id=$1',[W]);eq((await db.query('select count(*)::int n from public.worker_document_statuses where id=$1',[S])).rows[0].n,0);eq((await db.query('select count(*)::int n from private.worker_document_changes')).rows[0].n,2);
+  await db.query('delete from public.workers where id=$1',[W]);eq((await db.query('select count(*)::int n from public.worker_document_statuses where id=$1',[S])).rows[0].n,0);eq((await db.query('select count(*)::int n from private.worker_document_changes')).rows[0].n,3);
   await denied(await call('approve',{request_id:id(22)},reviewer));
   eq(await triggerCatalog(),triggersBefore);eq(await authCatalog(),authBefore);
   console.log('PASS actual GoTrue/PostgREST: OFF/unused restore, source/attribute pin, live SID revocation and explicit fresh-session resume with retained creation SID, people-feature/legacy manager RLS union, scope/new-upload/self approval/forged ticket failures, concurrent single apply/history, after-use restore refusal and original cascade preservation; production unchanged');
