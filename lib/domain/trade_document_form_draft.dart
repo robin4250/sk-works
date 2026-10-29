@@ -87,6 +87,7 @@ class TradeDocumentFormDraft {
  }
  void validateForSave(){
   TradeDocumentAttachment.fromJson({'version':1,'payload':_payload});TradeDocumentFormFields.fromJson(_payload['form_fields']);
+  for(final entry in _textLimits.entries){if(_payload[entry.key]!=null)_text(_payload[entry.key],entry.value,multiline:!entry.key.endsWith('_date')&&!entry.key.startsWith('period_'));}
   for(final key in ['work_name','work_address']){if((_payload[key] as String? ?? '').trim().isEmpty)_invalid();}
   _date(_payload['issue_date']);if(_payload['issue_date']==null||_payload['issue_date']=='')_invalid();
   if(isOrder){

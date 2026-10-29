@@ -9,20 +9,22 @@ class TradeDocumentTermsPdf {
   {required pw.Font regularFont,required pw.Font boldFont}) {
   if(!payload.containsKey('contract_terms'))return;
   final terms=TradeDocumentTermsSnapshot.fromJson(payload['contract_terms']);
-  final articles=terms.articles;
-  pw.Widget column(int start,int end)=>pw.Column(crossAxisAlignment:pw.CrossAxisAlignment.stretch,children:[
-   for(var index=start;index<end;index++)...[
-    pw.Text('第${index+1}条　${articles[index].$1}',style:pw.TextStyle(font:boldFont,fontSize:7.2)),
-    for(final paragraph in articles[index].$2)pw.Text(paragraph,style:pw.TextStyle(font:regularFont,fontSize:7,lineSpacing:0.5)),
-    pw.SizedBox(height:4),
-   ],
-  ]);
-  document.addPage(pw.Page(pageFormat:PdfPageFormat.a4,margin:const pw.EdgeInsets.all(36),build:(_)=>pw.Column(
-   crossAxisAlignment:pw.CrossAxisAlignment.stretch,children:[
-    pw.Center(child:pw.Text(TradeDocumentTermsSnapshot.title,style:pw.TextStyle(font:boldFont,fontSize:14))),
-    pw.SizedBox(height:12),pw.Row(crossAxisAlignment:pw.CrossAxisAlignment.start,children:[
-     pw.Expanded(child:column(0,12)),pw.SizedBox(width:14),pw.Expanded(child:column(12,22)),
-    ]),
-   ])));
+  final articles=terms.articles,width=PdfPageFormat.a4.width-68,height=PdfPageFormat.a4.height-68;
+  final lines=<pw.Widget>[];
+  // Adopted source back page: one full-width column, 6.5pt body, 8.14pt leading.
+  void paragraph(String value,{bool heading=false}){
+   lines.add(pw.Text(value,tightBounds:true,style:pw.TextStyle(font:heading?boldFont:regularFont,fontSize:6.5,lineSpacing:1.64)));
+   lines.add(pw.SizedBox(height:1.64));
+  }
+  for(var index=0;index<articles.length;index++){
+   paragraph('（${articles[index].$1}）',heading:true);
+   for(var part=0;part<articles[index].$2.length;part++){
+    paragraph(part==0?'第${index+1}条　${articles[index].$2[part]}':articles[index].$2[part]);
+   }
+  }
+  document.addPage(pw.Page(pageFormat:PdfPageFormat.a4,margin:const pw.EdgeInsets.all(34),build:(_)=>pw.Stack(children:[
+   pw.Positioned(left:0,top:0,child:pw.SizedBox(width:width,height:18,child:pw.Text(TradeDocumentTermsSnapshot.title,tightBounds:true,style:pw.TextStyle(font:boldFont,fontSize:12)))),
+   pw.Positioned(left:0,top:21.5,child:pw.SizedBox(width:width,height:height-21.5,child:pw.Column(mainAxisSize:pw.MainAxisSize.min,crossAxisAlignment:pw.CrossAxisAlignment.stretch,children:lines))),
+  ])));
  }
 }

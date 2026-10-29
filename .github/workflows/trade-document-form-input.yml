@@ -1,0 +1,20 @@
+name: Typed contract form input candidate
+on:
+  pull_request:
+    paths:
+      - 'lib/domain/trade_document_form_draft.dart'
+      - 'test/trade_document_form_draft_test.dart'
+      - '.github/workflows/trade-document-form-input.yml'
+permissions:
+  contents: read
+jobs:
+  typed-input:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: '3.47.5', channel: stable, cache: true}
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/domain/trade_document_form_draft.dart test/trade_document_form_draft_test.dart
+      - run: flutter test test/trade_document_form_draft_test.dart
+      - run: git diff --exit-code -- pubspec.yaml pubspec.lock
