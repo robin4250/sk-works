@@ -135,7 +135,13 @@ void main() {
     try {
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       await tester.pumpWidget(MaterialApp(home:PersonalVaultScreen(client:f.client)));
-      await tester.pumpAndSettle();
+      // The SDK client was initialized in real async setUp. Drain both that
+      // scheduler and widget frames until the actual list reply is rendered.
+      for (var i = 0; i < 20 && find.text('保管済みの本人書類はありません。').evaluate().isEmpty; i++) {
+        await tester.runAsync(() async { await Future<void>.delayed(Duration.zero); });
+        await tester.pump();
+      }
+      expect(find.text('保管済みの本人書類はありません。'),findsOneWidget);
       expect(find.textContaining('安全のため書類を閉じました'),findsNothing);
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
