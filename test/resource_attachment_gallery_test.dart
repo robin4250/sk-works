@@ -94,7 +94,7 @@ void main() {
     const channel=MethodChannel('net.nfet.printing');
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel,(call) async => call.method=='printingInfo'?{'canRaster':false}:null);
     final document=pw.Document()..addPage(pw.Page(build:(_)=>pw.Text('Synthetic original PDF')));
-    final pdf=await document.save();var allowed=true;final changes=StreamController<Object?>.broadcast(sync:true);
+    final pdf=(await tester.runAsync(document.save))!;var allowed=true;final changes=StreamController<Object?>.broadcast(sync:true);
     final attachment=ResourceAttachment(label:'1',path:'synthetic.pdf',previewKey:'pdf:0',recordTitle:'合成PDF',loadBytes:()async=>pdf);
     final gallery=ResourceAttachmentGallery(source:Object(),workerId:'w',companyId:'c',isCurrent:()=>allowed,changes:changes.stream,entries:[attachment]);
     try {

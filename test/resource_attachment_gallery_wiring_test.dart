@@ -158,7 +158,10 @@ void main() {
   });
   testWidgets('managed documents wire same worker and company gallery across document scope filters',(tester) async {
     await HttpOverrides.runZoned(() async {
-    final client=SupabaseClient('https://synthetic.invalid','synthetic-public',authOptions:const AuthClientOptions(autoRefreshToken:false));addTearDown(client.dispose);
+    final client=SupabaseClient('https://synthetic.invalid','synthetic-public',authOptions:const AuthClientOptions(autoRefreshToken:false));addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.runAsync(client.dispose);
+    });
     await tester.pumpWidget(MaterialApp(home:WorkerDocumentPage(view:WorkerDocumentView.workers,repositoryOverride:_ManagedDocuments(client))));await settle(tester);
     await tester.tap(find.text('合成社員A'));await settle(tester);verify(tester,'合成書類A',false);await verifyLiveTitles(tester,'合成書類A',false);expect(tester.takeException(),isNull);
     },createHttpClient:(_) => _PictureClient());
