@@ -72,7 +72,7 @@ class _EditorState extends State<TradeDocumentAttachmentEditorPage> {
     try {
       if(_repo==null) throw StateError('ログインが必要です。');
       await _scope!.ready();_requireScope();
-      final data=await _repo.loadWorkspace(subjectKind:widget.subjectKind,subjectId:widget.subjectId,sourceRevision:widget.sourceRevision);
+      final data=await _repo!.loadWorkspace(subjectKind:widget.subjectKind,subjectId:widget.subjectId,sourceRevision:widget.sourceRevision);
       _requireScope();
       final saved=data['attachment'];
       _payload=Map<String,dynamic>.from(saved is Map&&data['source_changed']!=true?saved['payload'] as Map:data['defaults'] as Map);
@@ -157,6 +157,7 @@ class _EditorState extends State<TradeDocumentAttachmentEditorPage> {
       if(!_order){value['acceptance_text']=(value['acceptance_text'] as String).replaceAll('{order_date}',value['order_date'].toString());}
       final saved=await _repo!.save(subjectKind:widget.subjectKind,subjectId:widget.subjectId,
         sourceRevision:widget.sourceRevision,expectedVersion:_version,payload:value);
+      if(!mounted)return;
       _requireScope();_payload=saved.payload;_version=saved.version;
       if(ModalRoute.of(context)?.isCurrent==true)Navigator.of(context).pop(true);
     }catch(e){_saveUncertain=true;if(mounted&&!_revoked)setState(()=>_error='保存結果を確認できません。元の画面で登録状態を確認してください。');}

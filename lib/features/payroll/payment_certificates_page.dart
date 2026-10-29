@@ -373,10 +373,10 @@ class _PaymentCertificatePreviewPageState
           if(!record.isPreview&&!record.isAgreementSnapshot&&RegExp(r'^[0-9a-fA-F-]{36}$').hasMatch(record.id))
             TextButton(onPressed:()async{
               try{await _readyForm();
-              if(!mounted)return;final saved=await Navigator.of(context).push<bool>(MaterialPageRoute(builder:(_)=>TradeDocumentAttachmentEditorPage(
+              if(!context.mounted)return;final saved=await Navigator.of(context).push<bool>(MaterialPageRoute(builder:(_)=>TradeDocumentAttachmentEditorPage(
                 subjectKind:'payment_certificate',subjectId:record.id,sourceRevision:record.revision.toString())));
-              _formScope!.requireScope();if(saved==true&&mounted)setState(()=>_pdfBytes.invalidate());
-              }catch(error){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(error.toString())));}
+              _formScope!.requireScope();if(saved==true&&context.mounted)setState(()=>_pdfBytes.invalidate());
+              }catch(error){if(context.mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(error.toString())));}
             },child:const Text('注文書の入力・設定')),
           if (!record.isPreview && !record.isAgreementSnapshot && RegExp(r'^[0-9a-fA-F-]{36}$').hasMatch(record.id))
             Wrap(children: [

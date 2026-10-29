@@ -25,7 +25,7 @@ class _OutputState extends State<TradeDocumentOutputPage> with WidgetsBindingObs
  Uint8List? _bytes;bool _busy=false,_revoked=false;int _epoch=0;String? _error;
  TradeDocumentOutputLayout _layout=TradeDocumentOutputLayout.a4TwoPages;
  bool get _known=>_payload.containsKey('contract_terms');
- void _verify(){if(!mounted||_revoked)throw StateError('書類を開き直してください。');widget.requireScope();}
+ void _verify(){if(!mounted||_revoked)throw StateError('書類を開き直してください。');try{widget.requireScope();}catch(_){_retire();rethrow;}}
  @override void initState(){super.initState();
   _payload=Map<String,dynamic>.from(jsonDecode(jsonEncode(widget.payload)) as Map);
   _canonical=Uint8List.fromList(widget.canonicalBytes);_bytes=_canonical;

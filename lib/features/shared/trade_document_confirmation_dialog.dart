@@ -164,7 +164,7 @@ class _TradeDocumentConfirmationPageState extends State<TradeDocumentConfirmatio
         if (!mounted || !_current(generation)) return;
         final bytes = await TradeConfirmationPdf.approved(evidence, scope, _actor!);
         if (!mounted || !_current(generation)) return;
-        setState(() { _bytes = bytes; _outputPayload=TradeConfirmationPdf.approvedAttachment(evidence,scope,_actor!).payload; _approved = true; }); return;
+        setState(() { _bytes = bytes; _outputPayload=TradeConfirmationPdf.approvedAttachment(evidence,scope,_actor).payload; _approved = true; }); return;
       }
       final workspace = await widget.repository.workspace(widget.kind, widget.parentId, widget.sourceRevision);
       if (!mounted || !_current(generation)) return;
@@ -179,7 +179,7 @@ class _TradeDocumentConfirmationPageState extends State<TradeDocumentConfirmatio
           if (!mounted || !_current(generation)) return;
           final bytes = await TradeConfirmationPdf.approved(evidence, scope, _actor!);
           if (!mounted || !_current(generation)) return;
-          setState(() { _bytes = bytes; _outputPayload=TradeConfirmationPdf.approvedAttachment(evidence,scope,_actor!).payload; _approved = true; });
+          setState(() { _bytes = bytes; _outputPayload=TradeConfirmationPdf.approvedAttachment(evidence,scope,_actor).payload; _approved = true; });
         } else { setState(() => _error = _reason(workspace.unavailableReason)); }
         return;
       }
@@ -236,7 +236,7 @@ class _TradeDocumentConfirmationPageState extends State<TradeDocumentConfirmatio
       if (!mounted || !_current(generation)) return;
       final bytes = await TradeConfirmationPdf.approved(raw, scope, _actor!, archive: true);
       if (!mounted || !_current(generation)) return;
-      setState(() { _bytes = bytes;_outputPayload=TradeConfirmationPdf.approvedAttachment(raw,scope,_actor!,archive:true).payload; _approved = true; _archived = true; _error = null; });
+      setState(() { _bytes = bytes;_outputPayload=TradeConfirmationPdf.approvedAttachment(raw,scope,_actor,archive:true).payload; _approved = true; _archived = true; _error = null; });
     } catch (_) {
       if (_current(generation)) setState(() => _error = '過去の承認済み書類を取得できません。');
     } finally { _finish(); }
@@ -454,7 +454,7 @@ class _TradeApprovedDocumentPageState extends State<TradeApprovedDocumentPage> w
     try {
       _verify(); final raw = await widget.repository.render(widget.scope, archive: widget.archive); _verify();
       final bytes = await TradeConfirmationPdf.approved(raw, widget.scope, _actor!, archive: widget.archive); _verify();
-      setState(() {_bytes = bytes;_outputPayload=TradeConfirmationPdf.approvedAttachment(raw,widget.scope,_actor!,archive:widget.archive).payload;});
+      setState(() {_bytes = bytes;_outputPayload=TradeConfirmationPdf.approvedAttachment(raw,widget.scope,_actor,archive:widget.archive).payload;});
     } catch (_) {
       if (mounted && !_revoked) setState(() => _error = '承認済み書類を取得できません。現在の承認状態を確認してください。');
     } finally { if (mounted) setState(() => _busy = false); }

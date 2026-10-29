@@ -287,7 +287,7 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
     finally{if(mounted&&generation==_generation)setState(()=>_busy=false);}
   }
 
-  Future<void> _print() async {
+  Future<void> _print({bool share=false}) async {
     final bytes = _bytes;
     if (_busy || bytes == null || _revoked) {
       return;
@@ -296,11 +296,12 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
     try {
       _verify();
       _printScope.begin(bytes);
-      await Printing.layoutPdf(
+      if(share){_printScope.layout();await Printing.sharePdf(bytes:bytes,filename:widget.acceptance?'請書.pdf':'注文書.pdf');}
+      else{await Printing.layoutPdf(
         name: widget.acceptance ? '注文請書.pdf' : '注文書.pdf',
         format: _layout==TradeDocumentOutputLayout.a3Landscape?PdfPageFormat.a3.landscape:PdfPageFormat.a4,
         onLayout: (_) async => _printScope.layout(),
-      );
+      );}
       _verify();
     } catch (_) {
       if (mounted && !_revoked) {
@@ -363,8 +364,9 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
               const SizedBox(height: 12),
               TradeDocumentOutputSelector(key:ValueKey(_layout),value:_layout,enabled:!_busy,onChanged:_changeLayout),
               const SizedBox(height:12),
-              OutlinedButton.icon(onPressed: _busy ? null : _print,
+              OutlinedButton.icon(onPressed: _busy ? null : ()=>_print(),
                 icon: const Icon(Icons.print_outlined), label: const Text('印刷')),
+              TextButton.icon(onPressed:_busy?null:()=>_print(share:true),icon:const Icon(Icons.save_alt),label:const Text('保存・共有')),
               SizedBox(height: 520, child: PdfPreview(
                 build: (_) async {
                   _verify();
