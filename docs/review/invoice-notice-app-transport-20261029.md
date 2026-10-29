@@ -9,7 +9,7 @@ old-RPC or legacy approval fallback when endpoint/configuration/preview fails.
 The fixed build-time Supabase HTTPS origin and fixed function path are used;
 there is no caller-supplied endpoint or returned asset URL fetch. Actor plus
 validated SID, not the access token string, bind the recovery instance. Each
-request captures one bearer, owns/closes its HTTP client, caps responses at 1 MiB
+request captures one bearer, owns/closes its HTTP client, caps open responses at 9 MiB
 and uses a 20-second total deadline. Terminal auth/background invalidation
 clears preview/operation memory and closes current requests. Unknown outcomes
 retain the original operation for read-only reconciliation; restart/cross-login
@@ -23,6 +23,11 @@ multiple, reverse-direction/company or inconsistent mappings fail closed. Ticket
 creation and mapping/preview/hash occur in one transaction; failure rolls back.
 The existing private preview_confirmation generates the expected preview. Its
 canonical JSONB hash is calculated by PostgreSQL, never echoed from client data.
+The transport input cap is 4 MiB + 64 KiB and open/reply cap is 9 MiB, preserving
+the existing 4 MiB display model and its valid 1 MiB registered PNG (base64/wrapping
+and two open preview copies). Auth response remains capped at 32 KiB. The fixture
+registers an exact 1 MiB valid PNG through the existing saver, then verifies its
+original bytes/hash/version are used; no upload/renderer limits are lowered.
 A server UUID and authoritative workspace/preview/operation are returned together.
 
 The factory crosschecks all server response scopes with existing strict trade

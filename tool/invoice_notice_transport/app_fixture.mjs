@@ -1,5 +1,5 @@
 // Dedicated actual SDK/Panel/TLS extension; no hosted listener or credentials.
-import assert from 'node:assert/strict';import https from 'node:https';import fs from 'node:fs/promises';
+import assert from 'node:assert/strict';import {createHash} from 'node:crypto';import https from 'node:https';import fs from 'node:fs/promises';
 import path from 'node:path';import {Readable} from 'node:stream';import {execFile} from 'node:child_process';import {promisify} from 'node:util';
 import {createInvoiceNoticeTransport} from './handler.mjs';
 const execute=promisify(execFile);
@@ -11,6 +11,21 @@ export async function verifyInvoiceNoticeApp(db,c,context){
  try{
   await db.exec(`create table public.app_notifications(id uuid primary key,recipient_user_id uuid,action_key text,action_id uuid)`);
   await db.exec(await fs.readFile('docs/review/invoice-month-close/notification_delivery.sql.review-only','utf8'));
+  // Preserve the existing 1 MiB upload contract. Add a valid ancillary PNG
+  // chunk to an existing registered image, register it through the real saver,
+  // and keep its exact bytes/hash/version throughout the app flow.
+  const selected=(await db.query(`select c.name,s.revision,v.png_bytes from public.companies c
+   join private.company_seal_png_selection s on s.company_id=c.id
+   join private.company_seal_png_versions v on v.company_id=c.id and v.id=s.version_id where c.id=$1`,[A])).rows[0];
+  assert.ok(selected);const original=selected.png_bytes,limit=1048576;
+  const padding=Buffer.alloc(limit-original.length-12,90),type=Buffer.from('paDd');
+  const chunk=Buffer.alloc(padding.length+12);chunk.writeUInt32BE(padding.length);type.copy(chunk,4);padding.copy(chunk,8);
+  let crc=0xffffffff;for(const byte of Buffer.concat([type,padding])){crc^=byte;for(let bit=0;bit<8;bit++)crc=(crc>>>1)^((crc&1)?0xedb88320:0);}
+  chunk.writeUInt32BE((crc^0xffffffff)>>>0,padding.length+8);
+  const png=Buffer.concat([original.subarray(0,original.length-12),chunk,original.subarray(original.length-12)]);
+  check(png.length,limit);const sealHash=createHash('sha256').update(png).digest('hex');
+  await db.query('select public.save_company_uploaded_seal($1,$2,$3,$4,$5,true)',[A,selected.name,selected.revision,png.toString('base64'),sealHash]);
+  const registeredVersion=(await db.query('select version_id from private.company_seal_png_selection where company_id=$1',[A])).rows[0].version_id;
   const x=await prepare(22),initialTicket=await issue(x);
   const notice=(await db.query('select notice_id from invoice_month_close_candidate.notice_open_tickets where id=$1',[initialTicket])).rows[0].notice_id;
   const notification=id(87022);
@@ -51,6 +66,9 @@ export async function verifyInvoiceNoticeApp(db,c,context){
     SKO_INVOICE_APP_NOTIFICATION:notification,SKO_INVOICE_APP_INVOICE:x.parent,SKO_INVOICE_APP_REVISION:revision}});}catch(error){
    const stages=String(error.stdout??'').match(/INVOICE_APP_STAGE=[a-z_]+/g)??[];
    console.error('invoice_sdk_fixture_progress='+JSON.stringify({stages,authRequests,opens,reads,commands,dropped,tlsRejections,timedOut:error.killed===true}));
+   const positions=String(error.stdout??'').match(/invoice_notice_app_transport_e2e_test\.dart:[0-9]+:[0-9]+/g)??[];
+   const failures=String(error.stdout??'').match(/Bad state: No element|pumpAndSettle timed out|TestFailure|MissingPluginException|HandshakeException/g)??[];
+   console.error('invoice_sdk_fixture_failure='+JSON.stringify({positions,failures}));
    const failedStage=String(error.stdout??'').match(/invoice fixture stage: ([a-z ]{1,100})/);
    if(failedStage)console.error('invoice_sdk_fixture_stage='+failedStage[1]);
    throw error;
@@ -58,6 +76,9 @@ export async function verifyInvoiceNoticeApp(db,c,context){
   if(!output.stdout.includes('All tests passed!'))throw Error('SDK Panel proof missing');
   check(dropped,true);check(commands,1);assert.ok(opens>=1);assert.ok(reads>=1);assert.ok(tlsRejections>=1);
   const after=await state(x);check(before.audit,0);check(after.audit,1);check(after.consents,1);check(after.receipts,1);check(after.approvals[0].status,'approved');
-  console.log('PASS actual GoTrue -> trusted loopback TLS -> real Supabase SDK -> existing invoice factory/Panel open/saved preview -> explicit financial+seal consent -> dropped COMMIT response -> scoped readback; logout history terminal; PDF raster device adapter synthetic');
+  const consent=(await db.query('select seal_snapshot,seal_version_id,seal_asset_hash from trade_document_consent_private.consents where document_id=$1 and company_id=$2',[x.doc,A])).rows[0];
+  const snapshot=consent.seal_snapshot;check(consent.seal_version_id,registeredVersion);check(consent.seal_asset_hash,sealHash);
+  check(snapshot.png_sha256,sealHash);check(createHash('sha256').update(Buffer.from(snapshot.png_base64,'base64')).digest('hex'),sealHash);
+  console.log('PASS actual GoTrue -> trusted loopback TLS -> real Supabase SDK -> existing invoice factory/Panel open/saved preview -> explicit financial+seal consent -> dropped COMMIT response -> scoped readback; logout history terminal; registered 1MiB PNG bytes/hash preserved; PDF raster device adapter synthetic');
  }finally{if(server)await new Promise(done=>server.close(done));await fs.rm(directory,{recursive:true,force:true});}
 }

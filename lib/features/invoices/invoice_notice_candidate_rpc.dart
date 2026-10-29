@@ -57,9 +57,11 @@ InvoiceNoticeRecoveryController? createInvoiceNoticeCandidateController({
       await reply.stream.listen((_) {}).cancel();
       throw StateError('承認状態を確認できません');
     }
+    // Open includes two server preview copies; each existing model is bounded
+    // at 4 MiB and may contain the registered 1 MiB PNG unchanged.
     final bytes = <int>[];
     await for (final chunk in reply.stream) {
-      if (!current(version) || bytes.length + chunk.length > 1048576) { throw StateError('承認状態を確認できません'); }
+      if (!current(version) || bytes.length + chunk.length > 9 * 1024 * 1024) { throw StateError('承認状態を確認できません'); }
       bytes.addAll(chunk);
     }
     if (!current(version)) { throw StateError('ログイン情報が変わりました'); }

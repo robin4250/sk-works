@@ -1,5 +1,8 @@
 import {randomUUID} from 'node:crypto';
 // Unhosted candidate boundary. No listener, default activation, grants or keys.
+// Existing trade display models permit 4 MiB including a registered 1 MiB
+// PNG (base64 + SQL wrapping). Open carries two authoritative preview copies.
+const operationLimit=4*1024*1024+65536,openLimit=9*1024*1024;
 const uuid=/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 class Denied extends Error { constructor(status){super('notice unavailable');this.status=status;} }
 const reject=status=>{throw new Denied(status);};
@@ -68,7 +71,7 @@ export function createInvoiceNoticeTransport({enabled=false,authOrigin,apiKey,co
    // Never reread caller headers or accept credentials/issuer in the JSON body.
    const authorization=request.headers.get('authorization');
    if(typeof authorization!=='string'||authorization.length>8192||!/^Bearer [A-Za-z0-9_.-]+$/.test(authorization))reject(401);
-   const token=authorization.slice(7),raw=await run(()=>boundedJson(request,{limit:65536,milliseconds:10000,status:400,timeoutStatus:408,signal:controller.signal}));
+   const token=authorization.slice(7),raw=await run(()=>boundedJson(request,{limit:operationLimit,milliseconds:10000,status:400,timeoutStatus:408,signal:controller.signal}));
    const value=route.endsWith('/open')?opening(raw):scope(raw,route.endsWith('/confirm'));
    const authUrl=new URL('/auth/v1/user',origin);
    const authenticated=await run(()=>fetchAuth(authUrl,{method:'GET',redirect:'error',signal:AbortSignal.any([controller.signal,AbortSignal.timeout(5000)]),headers:{apikey:apiKey,authorization}}),discard);
@@ -111,7 +114,7 @@ export function createInvoiceNoticeTransport({enabled=false,authOrigin,apiKey,co
      operation:{ticket_id:ticket.ticket_id,local_document_id:saved.local_document_id,company_id:saved.company_id,revision:saved.revision,
       request_id:randomUUID(),expected_preview:expected,expected_hash:hash},workspace,
      preview:{contract_version:1,expected_command:descriptor,preview_hash:hash,display_preview:{...expected,body:saved.body,body_hash:saved.body_hash}}};
-    if(Buffer.byteLength(JSON.stringify(result))>1048576)reject(503);
+    if(Buffer.byteLength(JSON.stringify(result))>openLimit)reject(503);
    }else{
    const hash=(await run(()=>peer.query("select encode(sha256(convert_to($1::jsonb::text,'UTF8')),'hex') v",[JSON.stringify(value.expected_preview)]))).rows[0].v;
    if(hash!==value.expected_hash)reject(400);

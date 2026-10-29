@@ -102,10 +102,13 @@ void main() {
       await until(() => find.text('本文と印影を表示できません').evaluate().isNotEmpty, 'renderer failure');
       stdout.writeln('INVOICE_APP_STAGE=raster_error_blocked');
       expect(previewButton().onPressed, isNull); expect(sent(), 0);
-      await tester.pageBack(); await tester.pumpAndSettle();
+      // fullscreenDialog implies CloseButton, not the pageBack BackButton.
+      await tester.tap(find.byType(CloseButton)); await tester.pumpAndSettle();
+      stdout.writeln('INVOICE_APP_STAGE=failed_preview_closed');
       expect(approveButton().onPressed, isNull);
       await tester.tap(find.text('注文請書と登録印影を確認')); await tester.pump();
       await until(() => rasterCalls == 2, 'second preview raster requested');
+      stdout.writeln('INVOICE_APP_STAGE=second_raster_pending');
       expect(previewButton().onPressed, isNull);
       emitPage!();
       await until(() => find.byType(Image).evaluate().isNotEmpty, 'raster page emitted');

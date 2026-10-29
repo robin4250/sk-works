@@ -5,7 +5,7 @@ test('fixed OFF creates no handler, Auth call or database connection',()=>{asser
 test('enabled boundary requires fixed safe server origin and backend',()=>{for(const authOrigin of ['http://example.test','https://user:password@example.test','https://example.test/path'])assert.throws(()=>createInvoiceNoticeTransport({enabled:true,authOrigin,apiKey:'fixture',connect:()=>{}}));});
 test('credential/scope injection and oversized input never call Auth or database',async()=>{
  let calls=0;const handler=createInvoiceNoticeTransport({enabled:true,authOrigin:'http://127.0.0.1:1',apiKey:'fixture',connect:()=>{calls++;},fetchAuth:()=>{calls++;}});
- for(const body of [{actor_id:'forged'},{token:'secret'},{padding:'x'.repeat(65536)}])assert.ok([400,413].includes((await handler(request(body))).status));
+ for(const body of [{actor_id:'forged'},{token:'secret'},{padding:'x'.repeat(4*1024*1024+65536)}])assert.ok([400,413].includes((await handler(request(body))).status));
  assert.equal(calls,0);
 });
 test('cookies, malformed bearer and wrong method cannot reach Auth',async()=>{
@@ -123,4 +123,14 @@ test('zero/multiple/collapsed local mapping rolls back the issued ticket without
 test('open refuses client-supplied operation and hash before Auth',async()=>{
  let calls=0;const handler=createInvoiceNoticeTransport({enabled:true,authOrigin:'http://127.0.0.1:1',apiKey:'fixture',fetchAuth:()=>{calls++;},connect:()=>{calls++;}});
  assert.equal((await handler(openingRequest({expected_hash:'f'.repeat(64)}))).status,400);assert.equal(calls,0);
+});
+
+test('1 MiB seal snapshot payload passes the bounded transport unchanged',async()=>{
+ const preview={...operation.expected_preview,own_seal:{snapshot:{png_base64:Buffer.alloc(1048576,90).toString('base64'),png_sha256:'b'.repeat(64)}}};
+ const {peer,state}=backend();let expected;
+ const query=peer.query;peer.query=async(sql,args)=>{if(sql.includes('encode(sha256')){expected=args[0];}return query(sql,args);};
+ const handler=createInvoiceNoticeTransport({enabled:true,authOrigin:'http://127.0.0.1:1',apiKey:'fixture',fetchAuth:auth,connect:()=>peer});
+ const req=new Request('http://127.0.0.1/invoice-notice/confirm',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+token},
+  body:JSON.stringify({...operation,expected_preview:preview,financial_confirmed:true,seal_confirmed:true})});
+ assert.equal((await handler(req)).status,200);assert.deepEqual(JSON.parse(expected),preview);assert.equal(state.committed,1);
 });
