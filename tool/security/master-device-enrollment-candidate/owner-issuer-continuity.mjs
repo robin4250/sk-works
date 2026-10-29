@@ -45,19 +45,27 @@ function bytes(p){return Buffer.from(JSON.stringify([domain,p.version,p.authorit
 // function holds no key and is not an independent identity verification channel.
 export function ownerIssuerContinuityPayload(proposal){return bytes(transition(proposal));}
 
-export function verifyOwnerIssuerContinuity({enabled=false,trusted,authorityCheckpoint,proposal,databaseNowMs}){
- if(enabled!==true)return null;
- try{
+// Own-data snapshots are captured before a persistence adapter awaits a pool.
+export function captureOwnerIssuerCheckpoint(value){
+ const p=snapshot(value,['authorityId','epoch','headSha256','keyId','publicKeySha256','retiredKeysSha256']);
+ if(typeof p.authorityId!=='string'||!uuid.test(p.authorityId)||!Number.isSafeInteger(p.epoch)||p.epoch<1||p.epoch>65||
+  typeof p.keyId!=='string'||!keyId.test(p.keyId)||!['headSha256','publicKeySha256','retiredKeysSha256'].every(k=>typeof p[k]==='string'&&digest.test(p[k])))throw Error('invalid authority checkpoint');
+ return Object.freeze(p);
+}
+export function captureOwnerIssuerProposal(value){
+ const p=transition(value);signature(p.oldSignature);signature(p.newSignature);return Object.freeze(p);
+}
+function checkedPin(trusted,authorityCheckpoint){
   const pin=snapshot(trusted,['purpose','authorityId','epoch','keyId','publicKeyJwk','headSha256','retiredKeys']);
   // This separate checkpoint must be authenticated and fresh from the external
   // authority. A same-DB copy or caller-supplied assertion is not anti-rollback.
-  const checkpoint=snapshot(authorityCheckpoint,['authorityId','epoch','headSha256','keyId','publicKeySha256','retiredKeysSha256']);
+  const checkpoint=captureOwnerIssuerCheckpoint(authorityCheckpoint);
   pin.publicKeyJwk=publicKey(pin.publicKeyJwk);
   const pinKeySha256=spkiSha256(pin.publicKeyJwk);
   if(pin.purpose!==purpose||typeof pin.authorityId!=='string'||!uuid.test(pin.authorityId)||
    !Number.isSafeInteger(pin.epoch)||pin.epoch<1||pin.epoch>65||typeof pin.keyId!=='string'||!keyId.test(pin.keyId)||
    typeof pin.headSha256!=='string'||!digest.test(pin.headSha256)||!Array.isArray(pin.retiredKeys)||
-   pin.retiredKeys.length!==pin.epoch-1||!Number.isSafeInteger(databaseNowMs)||databaseNowMs<0||
+   pin.retiredKeys.length!==pin.epoch-1||
    checkpoint.authorityId!==pin.authorityId||checkpoint.epoch!==pin.epoch||checkpoint.headSha256!==pin.headSha256||
    checkpoint.keyId!==pin.keyId||checkpoint.publicKeySha256!==pinKeySha256)throw Error('trusted pin and external checkpoint required');
   const ids=new Set([pin.keyId]),keys=new Set([pin.publicKeyJwk.x]);
@@ -76,7 +84,20 @@ export function verifyOwnerIssuerContinuity({enabled=false,trusted,authorityChec
   const retiredKeysSha256=createHash('sha256').update(JSON.stringify([historyDomain,pin.authorityId,
    history.map(item=>[item.epoch,item.keyId,spkiSha256(item.publicKeyJwk)])])).digest('hex');
   if(checkpoint.retiredKeysSha256!==retiredKeysSha256)throw Error('authenticated retired history required');
-  const p=transition(proposal),oldSignature=signature(p.oldSignature),newSignature=signature(p.newSignature);
+  return Object.freeze({...pin,retiredKeys:Object.freeze(history)});
+}
+// Pure checkpoint validation only, NOT external authentication or freshness.
+export function validateOwnerIssuerCheckpoint({enabled=false,trusted,authorityCheckpoint}){
+ if(enabled!==true)return null;
+ try{return checkedPin(trusted,authorityCheckpoint);}catch{return null;}
+}
+export function verifyOwnerIssuerContinuity({enabled=false,trusted,authorityCheckpoint,proposal,databaseNowMs}){
+ if(enabled!==true)return null;
+ try{
+  if(!Number.isSafeInteger(databaseNowMs)||databaseNowMs<0)throw Error('trusted time required');
+  const pin=checkedPin(trusted,authorityCheckpoint),history=pin.retiredKeys;
+  const ids=new Set([pin.keyId,...history.map(item=>item.keyId)]),keys=new Set([pin.publicKeyJwk.x,...history.map(item=>item.publicKeyJwk.x)]);
+  const p=captureOwnerIssuerProposal(proposal),oldSignature=signature(p.oldSignature),newSignature=signature(p.newSignature);
   if(p.authorityId!==pin.authorityId||p.fromEpoch!==pin.epoch||p.previousSha256!==pin.headSha256||p.oldKeyId!==pin.keyId||
    ids.has(p.newKeyId)||keys.has(p.newPublicKeyJwk.x)||p.issuedMs>databaseNowMs||p.expiresMs<=databaseNowMs)throw Error('issuer scope changed');
   const payload=bytes(p);
