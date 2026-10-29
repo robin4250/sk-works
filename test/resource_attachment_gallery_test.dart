@@ -42,18 +42,18 @@ void main() {
     expect(tester.takeException(), isNull);
   });
   testWidgets('company A B A scope history retires a pending page and never displays late bytes', (tester) async {
-    final release = Completer<Uint8List>(), changes = StreamController<Object?>.broadcast(sync: true);
+    final release = Completer<Uint8List>(), signal = ValueNotifier(0);
     var generation = 0, company = 'A'; final initial = generation;
     final entries = [entry('a:0', '最初'), entry('b:0', '次', load: () => release.future)];
-    final gallery = ResourceAttachmentGallery(source: Object(), workerId: 'w', companyId: 'A', changes: changes.stream,
+    final gallery = ResourceAttachmentGallery(source: Object(), workerId: 'w', companyId: 'A', signal: signal,
       isCurrent: () => generation == initial && company == 'A', entries: entries);
     await tester.pumpWidget(host(gallery, entries.first)); await open(tester);
     await tester.drag(find.byType(PageView), const Offset(-600, 0)); await tester.pump(const Duration(milliseconds: 400));
-    generation++; company = 'B'; generation++; company = 'A'; changes.add(null);
+    generation++; company = 'B'; generation++; company = 'A'; signal.value++;
     await tester.pumpAndSettle();
     release.complete(_png); await tester.pumpAndSettle();
     expect(find.byType(PageView), findsNothing); expect(tester.takeException(), isNull);
-    await tester.pumpWidget(const SizedBox.shrink()); await changes.close();
+    await tester.pumpWidget(const SizedBox.shrink()); signal.dispose();
   });
   testWidgets('private parent destruction removes its own fullscreen gallery', (tester) async {
     final active = ValueNotifier(true); final attachment = entry('a:0', '本人書類');
@@ -65,4 +65,14 @@ void main() {
     expect(find.byType(PageView), findsNothing); expect(find.text('private scope gone'), findsOneWidget);
     expect(tester.takeException(), isNull); await tester.pumpWidget(const SizedBox.shrink()); active.dispose();
   });
+  testWidgets('auth history stream retires already rendered bytes immediately',(tester) async {
+    final changes=StreamController<Object?>.broadcast(sync:true);var allowed=true;
+    final attachment=entry('a:0','資格');final gallery=ResourceAttachmentGallery(source:Object(),workerId:'w',companyId:'c',
+      changes:changes.stream,isCurrent:()=>allowed,entries:[attachment]);
+    await tester.pumpWidget(host(gallery,attachment));await open(tester);
+    allowed=false;changes.add(null);await tester.pumpAndSettle();
+    expect(find.byType(PageView),findsNothing);expect(tester.takeException(),isNull);
+    await tester.pumpWidget(const SizedBox.shrink());await changes.close();
+  });
+
 }

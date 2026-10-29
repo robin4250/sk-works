@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -27,13 +28,19 @@ const _statuses = [
   {'id':'foreign','company_id':'company-A','worker_id':'worker-B','requirement_id':'d1','status':'submitted','attachment_path':'never.png'},
 ];
 class _Qualifications implements QualificationCloudRepository {
+  _Qualifications({this.rows = _qualifications});
+  final List<Map<String,dynamic>> rows;
+  final pending = <Future<Map<String,dynamic>>>[];
   @override String? get currentUserId => 'actor';
   @override Future<bool Function()> captureAttachmentReadScope() async => () => true;
   @override Stream<AuthState> get attachmentAuthChanges => const Stream.empty();
   @override Future<bool> canManageMaster() async => false;
   @override Future<bool> canManageWorkerQualifications() async => false;
-  @override Future<Map<String,dynamic>> loadOwnQualificationWorkspace() async => {'worker':_worker,'masters':_masters,'qualifications':_qualifications};
-  @override Future<Map<String,dynamic>> loadAll() async => {'workers':[_worker],'masters':_masters,'qualifications':_qualifications};
+  @override Future<Map<String,dynamic>> loadOwnQualificationWorkspace() async => {'worker':_worker,'masters':_masters,'qualifications':rows};
+  @override Future<Map<String,dynamic>> loadAll() async {
+    if (pending.isNotEmpty) { return pending.removeAt(0); }
+    return {'workers':[_worker],'masters':_masters,'qualifications':rows};
+  }
   @override Future<String> createOwnQualificationPhotoUrl({required String qualificationId,required String storagePath}) async => 'https://synthetic.invalid/$storagePath';
   @override dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
@@ -95,4 +102,27 @@ void main() {
     await tester.pumpWidget(MaterialApp(home:WorkerDocumentPage(view:WorkerDocumentView.workers,repositoryOverride:_ManagedDocuments(client))));await tester.pumpAndSettle();
     await tester.tap(find.text('合成社員A'));await tester.pumpAndSettle();verify(tester,'合成書類A',false);expect(tester.takeException(),isNull);
   });
+  testWidgets('newer qualification response wins and a stale load cannot retire the current gallery',(tester) async {
+    final repository=_Qualifications();
+    await tester.pumpWidget(MaterialApp(home:QualificationCloudPage(repository:repository,certificateRepository:_Certificates())));await tester.pumpAndSettle();
+    final oldGallery=tester.widgetList<ResourceRegistrationCard>(find.byType(ResourceRegistrationCard)).first.gallery!;
+    final old=Completer<Map<String,dynamic>>(),fresh=Completer<Map<String,dynamic>>();repository.pending.addAll([old.future,fresh.future]);
+    final reload=tester.widget<IconButton>(find.byWidgetPredicate((widget)=>widget is IconButton && widget.tooltip=='再読み込み')).onPressed!;
+    reload(); reload(); await tester.pump(); expect(oldGallery.isCurrent(),isFalse);
+    fresh.complete({'workers':[_worker],'masters':[{'id':'m1','name':'最新資格A'},_masters[1]],'qualifications':_qualifications});await tester.pumpAndSettle();
+    final current=tester.widgetList<ResourceRegistrationCard>(find.byType(ResourceRegistrationCard)).firstWhere((card)=>card.title=='最新資格A').gallery!;
+    expect(current.isCurrent(),isTrue);
+    old.complete({'workers':[_worker],'masters':_masters,'qualifications':_qualifications});await tester.pumpAndSettle();
+    expect(find.text('最新資格A'),findsOneWidget);expect(current.isCurrent(),isTrue);expect(tester.takeException(),isNull);
+  });
+  testWidgets('missing or foreign company metadata cannot fall back to an unscoped gallery',(tester) async {
+    for(final company in [null,'company-B']) {
+      final repository=_Qualifications(rows:[{..._qualifications.first,'company_id':company}]);
+      await tester.pumpWidget(MaterialApp(home:OwnQualificationRegistrationPage(key:ValueKey(company),repository:repository)));await tester.pumpAndSettle();
+      final card=tester.widget<ResourceRegistrationCard>(find.byType(ResourceRegistrationCard));
+      expect(card.requireGalleryScope,isTrue);expect(card.gallery,isNull);expect(tester.takeException(),isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    }
+  });
+
 }

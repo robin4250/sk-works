@@ -14,6 +14,7 @@ class _SessionFixture {
   final expiry = DateTime.now().millisecondsSinceEpoch ~/ 1000 + 3600;
   final requests = <http.Request>[];
   Completer<void>? logoutRelease;
+  Future<http.Response> Function(http.Request)? metadata;
   late final client = SupabaseClient('https://synthetic-gallery.invalid', 'synthetic-public',
     authOptions: const AuthClientOptions(autoRefreshToken: false), httpClient: MockClient((request) async {
       requests.add(request);
@@ -21,6 +22,7 @@ class _SessionFixture {
         if (logoutRelease != null) { await logoutRelease!.future; }
         return http.Response('{}', 204, request: request);
       }
+      if (request.url.path != '/auth/v1/token' && metadata != null) { return metadata!(request); }
       expect(request.url.path, '/auth/v1/token');
       String part(Object value) => base64Url.encode(utf8.encode(jsonEncode(value))).replaceAll('=', '');
       return http.Response(jsonEncode({'access_token': '${part({'alg':'HS256'})}.${part({'sub':actor,'session_id':sid,'exp':expiry})}.synthetic',
@@ -60,4 +62,46 @@ void main() {
       fixture.logoutRelease!.complete(); await logout; expect(lease(), isFalse);
     });
   }
+  for (final qualifications in [true, false]) {
+    test('${qualifications ? 'qualification' : 'document'} loaded metadata preserves existing company filters without additional query paths', () async {
+      final fixture = _SessionFixture(); addTearDown(fixture.client.dispose);
+      await fixture.login('20000000-0000-0000-0000-000000000002');
+      fixture.requests.clear();
+      fixture.metadata = (request) async {
+        Object? value;
+        switch (request.url.path.split('/').last) {
+          case 'ensure_current_user_worker': value = 'worker';
+          case 'company_members': value = [{'company_id':'company','role':'employee'}];
+          case 'workers': value = request.url.queryParameters['select'] == 'name' ? {'name':'合成社員'} : [{'id':'worker','company_id':'company','name':'合成社員','status':'active'}];
+          case 'qualification_master': value = [{'id':'master','name':'合成資格'}];
+          case 'worker_qualifications': value = [{'id':'qualification','company_id':'company','worker_id':'worker','qualification_master_id':'master','attachment_path':'synthetic.png'}];
+          case 'document_requirements': value = [{'id':'requirement','company_id':'company','name':'合成書類','is_active':true,'is_required':true,'archived_at':null}];
+          case 'worker_document_exemption': value = {'capability_version':1,'can_manage':false,'items':[]};
+          case 'worker_document_statuses': value = [{'id':'status','company_id':'company','worker_id':'worker','requirement_id':'requirement','status':'submitted','attachment_path':'synthetic.png','attachment_paths':['synthetic.png']}];
+          default: throw StateError('unexpected metadata fixture read');
+        }
+        return http.Response(jsonEncode(value),200,headers:{'content-type':'application/json'},request:request);
+      };
+      if (qualifications) {
+        final data = await QualificationCloudRepository.forTesting(fixture.client).loadOwnQualificationWorkspace();
+        expect((data['worker'] as Map)['company_id'],'company');
+        expect((data['qualifications'] as List).single['company_id'],'company');
+        expect(fixture.requests.map((request)=>request.url.path.split('/').last),
+          ['ensure_current_user_worker','workers','company_members','qualification_master','company_members','worker_qualifications']);
+        final read=fixture.requests.last; expect(read.url.queryParameters['select'],contains('company_id'));
+        expect(read.url.queryParameters['company_id'],'eq.company'); expect(read.url.queryParameters['worker_id'],'eq.worker');
+      } else {
+        final data = await WorkerDocumentRepository.forTesting(fixture.client).loadOwnDocuments();
+        expect(data['workers']!.single['company_id'],'company'); expect(data['statuses']!.single['company_id'],'company');
+        expect(fixture.requests.map((request)=>request.url.path.split('/').last),
+          ['ensure_current_user_worker','workers','company_members','document_requirements','worker_document_exemption','workers','worker_document_statuses']);
+        for (final read in fixture.requests.where((request)=>request.url.path.endsWith('/worker_document_statuses') ||
+            request.url.path.endsWith('/workers') && request.url.queryParameters['select'] != 'name')) {
+          expect(read.url.queryParameters['select'],contains('company_id')); expect(read.url.queryParameters['company_id'],'eq.company');
+        }
+      }
+      expect(fixture.requests.every((request)=>request.method=='GET'||request.url.path.contains('/rpc/')),isTrue);
+    });
+  }
+
 }

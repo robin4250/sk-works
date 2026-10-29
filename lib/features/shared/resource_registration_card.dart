@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
+import 'package:pdf/pdf.dart';
 import 'pdf_pinch_pages.dart';
 import '../../international/language_controller.dart';
 
@@ -442,7 +443,7 @@ class _ResourceGalleryViewerState extends State<_ResourceGalleryViewer> with Wid
         itemCount: widget.entries.length, onPageChanged: (value) {
           if (!_current) { widget.onClose(); return; }
           setState(() => _index = value);
-        }, itemBuilder: (_, index) => _ResourceGalleryPage(key: ValueKey(widget.entries[index].previewKey ?? index),
+        }, itemBuilder: (_, index) => index != _index ? const SizedBox.expand() : _ResourceGalleryPage(key: ValueKey(widget.entries[index].previewKey ?? index),
           attachment: widget.entries[index], isCurrent: () => _current,
           initialBytes: index == widget.initialIndex ? widget.initialBytes : null)),
     ));
@@ -472,10 +473,11 @@ class _ResourceGalleryPageState extends State<_ResourceGalleryPage> {
     final bytes = snapshot.data;
     if (bytes == null) { return const Center(child: CircularProgressIndicator()); }
     if (_isPdf(bytes)) {
-      return PdfPreview.builder(build: (_) async {
+      Future<Uint8List> buildPreviewPdf(PdfPageFormat _) async {
         if (!widget.isCurrent()) { throw StateError('Attachment scope changed'); }
         return bytes;
-      }, pagesBuilder: (_, pages) => PdfPinchPages(pages: pages), useActions: true,
+      }
+      return PdfPreview.builder(build: buildPreviewPdf, pagesBuilder: (_, pages) => PdfPinchPages(pages: pages), useActions: true,
         canDebug: false, canChangeOrientation: false, canChangePageFormat: false,
         allowPrinting: true, allowSharing: false, dynamicLayout: false,
         onError: (_, __) => Center(child: Text(SkoLanguageController.tr('PDFを表示できませんでした。'))));
