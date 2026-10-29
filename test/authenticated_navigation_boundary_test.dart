@@ -76,7 +76,7 @@ void main() {
     expect(disposed, 0);
   } finally {
     await tester.pumpWidget(const SizedBox.shrink());
-    await changes.close();
+    await tester.runAsync(() => changes.close());
   }
   });
   for (final actor in <String?>[null, other, owner]) {
@@ -108,7 +108,7 @@ void main() {
       expect(tester.takeException(), isNull);
     } finally {
       await tester.pumpWidget(const SizedBox.shrink());
-      await changes.close();
+      await tester.runAsync(() => changes.close());
     }
     });
   }
@@ -133,7 +133,7 @@ void main() {
     expect(navigator.currentState, same(current));
   } finally {
     await tester.pumpWidget(const SizedBox.shrink());
-    await changes.close();
+    await tester.runAsync(() => changes.close());
   }
   });
 
@@ -158,7 +158,7 @@ void main() {
     expect(find.text('private file'), findsOneWidget);
   } finally {
     await tester.pumpWidget(const SizedBox.shrink());
-    await changes.close();
+    await tester.runAsync(() => changes.close());
   }
   });
 
@@ -184,7 +184,7 @@ void main() {
     expect(tester.takeException(), isNull);
   } finally {
     await tester.pumpWidget(const SizedBox.shrink());
-    await changes.close();
+    await tester.runAsync(() => changes.close());
   }
   });
   testWidgets('malformed session fails closed and cannot use onboarding exception', (tester) async {
@@ -205,7 +205,7 @@ void main() {
     expect(find.text('private file'), findsOneWidget);
   } finally {
     await tester.pumpWidget(const SizedBox.shrink());
-    await changes.close();
+    await tester.runAsync(() => changes.close());
   }
   });
 
@@ -227,7 +227,7 @@ void main() {
     expect(navigator.currentState!.canPop(), false);
   } finally {
     await tester.pumpWidget(const SizedBox.shrink());
-    await changes.close();
+    await tester.runAsync(() => changes.close());
   }
   });
 
@@ -249,7 +249,7 @@ void main() {
     await tester.idle(); await tester.pump();
   } finally {
     await tester.pumpWidget(const SizedBox.shrink());
-    await changes.close();
+    await tester.runAsync(() => changes.close());
   }
   });
 
@@ -267,7 +267,7 @@ void main() {
     expect(find.text('private file'), findsNothing);
   } finally {
     await tester.pumpWidget(const SizedBox.shrink());
-    await changes.close();
+    await tester.runAsync(() => changes.close());
   }
   });
 
