@@ -50,9 +50,18 @@ class TradeDocumentFormSession extends ChangeNotifier with WidgetsBindingObserve
  Future<Object?> rpc(String action,Map<String,dynamic> params)async {
   await ready();requireScope();
   final request=_client.rpc(action,params:params).setHeader('Authorization','Bearer $_token').abortSignal(_retired.future);
-  Object? value;
+  return _receive(request.then<Object?>((value)=>value));
+ }
+ Future<Object?> readPaymentParent({required String id,required String companyId})async {
+  await ready();requireScope();
+  final request=_client.from('payment_certificates').select('id,company_id,partner_company_id,revision')
+   .eq('id',id).eq('company_id',companyId).maybeSingle().setHeader('Authorization','Bearer $_token').abortSignal(_retired.future);
+  return _receive(request.then<Object?>((value)=>value));
+ }
+ Future<Object?> _receive(Future<Object?> request)async {
+  requireScope();Object? value;
   try{value=await Future.any<Object?>([
-   request.then<Object?>((value)=>value),
+   request,
    _retired.future.then<Object?>((_)=>throw StateError('書類操作の状態が変わりました。開き直してください。')),
   ]).timeout(const Duration(seconds:30));}
   on TimeoutException{_invalidate();throw StateError('書類操作の応答を確認できません。開き直して保存状態を確認してください。');}

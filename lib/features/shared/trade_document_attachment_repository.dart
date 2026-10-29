@@ -12,16 +12,25 @@ class TradeDocumentAttachmentRepository {
   static TradeDocumentAttachmentRepository? maybeCreate({TradeDocumentFormSession? session}) =>
       SupabaseBackend.isInitialized && SupabaseBackend.client.auth.currentUser != null
         ? TradeDocumentAttachmentRepository(SupabaseBackend.client,session:session) : null;
-  Future<Object?> _call(String action,Map<String,dynamic> params)async{
+  bool isBoundTo(TradeDocumentFormSession session)=>identical(_session,session);
+  Future<T> _within<T>(Future<T> Function(TradeDocumentFormSession) action)async{
     final scope=_session??TradeDocumentFormSession(_client);
-    try{return await scope.rpc(action,params);}finally{if(_session==null)scope.dispose();}
+    try{return await action(scope);}finally{if(_session==null)scope.dispose();}
   }
   Future<Map<String,dynamic>> loadWorkspace({required String subjectKind,
       required String subjectId, required String sourceRevision}) async {
-    final raw = await _call('trade_document_attachment_workspace', {
+    return _within((scope)async{
+    final raw = await scope.rpc('trade_document_attachment_workspace', {
       'p_kind':subjectKind,'p_subject':subjectId,'p_source_revision':sourceRevision});
     if (raw is! Map) throw StateError('別添書類を確認できません。');
-    return Map<String,dynamic>.from(raw);
+    final result=Map<String,dynamic>.from(raw),attachment=raw['attachment'];
+    if(subjectKind=='payment_certificate'&&attachment is Map&&attachment['payload'] is Map&&attachment['payload']['counterparty_bank']!=null){
+      final company=raw['company_id'];if(company is! String)throw StateError('保存した振込先の会社を確認できません。');
+      final parent=await scope.readPaymentParent(id:subjectId,companyId:company);
+      if(parent is! Map||parent['id']!=subjectId||parent['company_id']!=company||parent['revision']?.toString()!=raw['source_revision']?.toString())throw StateError('元の会社・受注者・書類版を確認できません。');
+      result['canonical_parent_binding']={'parent_id':parent['id'],'company_id':parent['company_id'],'partner_company_id':parent['partner_company_id']};
+    }
+    return result;});
   }
   Future<TradeDocumentAttachment?> load({required String subjectKind,
       required String subjectId,required String sourceRevision}) async {
@@ -33,10 +42,11 @@ class TradeDocumentAttachmentRepository {
   Future<TradeDocumentAttachment> save({required String subjectKind,
       required String subjectId,required String sourceRevision,required int expectedVersion,
       required Map<String,dynamic> payload}) async {
-    final raw=await _call('save_trade_document_attachment',{
+    return _within((scope)async{
+    final raw=await scope.rpc('save_trade_document_attachment',{
       'p_kind':subjectKind,'p_subject':subjectId,'p_source_revision':sourceRevision,
       'p_expected_version':expectedVersion,'p_payload':payload});
     if(raw is! Map) throw StateError('別添書類を保存できません。');
-    return TradeDocumentAttachment.fromJson(Map<String,dynamic>.from(raw));
+    return TradeDocumentAttachment.fromJson(Map<String,dynamic>.from(raw));});
   }
 }
