@@ -27,3 +27,15 @@ jobs:
           SKO_WORKER_TEST_ROOT: ${{ github.workspace }}/tool/security/free-worker-candidate
           SKO_AUDIT_CORE: ${{ github.workspace }}/tool/security/free-worker-candidate/src/security-audit.mjs
           SKO_ANCHOR_CORE: ${{ github.workspace }}/tool/security/free-worker-candidate/src/anchor-authority.mjs
+  real-gotrue-native-server:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
+      - run: node tool/security/notice-archive-candidate/tests/archive-readback-server-real-auth.mjs

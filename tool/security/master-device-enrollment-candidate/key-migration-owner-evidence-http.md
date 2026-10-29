@@ -31,8 +31,35 @@ queries; a late lease is released once before BEGIN. Rollback/release remain
 available for cleanup after expiry. A late checkpoint cannot start a new evidence
 transaction after timeout. An in-flight DB commit
 may still have an unknown outcome after the HTTP deadline; it is not cancelled
-or undone by a timeout. There is no automatic replay or fallback. A separately
-reviewed authenticated evidence-result reconciliation API remains unfinished.
+or undone by a timeout. There is no automatic replay or fallback. The new OFF
+result action below reports an exact stored original without re-admitting it;
+its public deployment and device UI remain unfinished.
+
+## Exact historical result lookup
+
+`owner-evidence-result` accepts the same exact request ID and full original
+receipt, including its signature. It shares the OFF flag and monotonic/lazy work
+and DB-lease guards, but does not need or invoke the checkpoint adapter. It never
+chooses an issuer or calls the admission writer. A private transaction requires
+the independently verified live actor and original session, current master role,
+eligible owned device, consumed original challenge/pending key and exact owner
+request/nonce. Another actor/SID, mutated receipt or changed source is refused.
+
+Only exact equality with the immutable saved payload/signature, digest and
+issuer/decision/time metadata can return `evidence_recorded`. The response also
+reports the observed request state (`awaiting_independent_owner`, `cancelled` or
+`expired`). This historical read remains possible after receipt expiry or issuer
+retirement, but cannot override cancellation, extend expiry, approve or activate
+a key. It does not revalidate an old issuer as current or fabricate fresh trust.
+It reports matching stored evidence, not independent proof against privileged
+DB insertion/rollback or a genuine independent human-verification issuer.
+
+If no evidence row is observed, the result is `evidence_unconfirmed`, never a
+definitive rollback/not-saved claim or permission to resend: an in-flight or later
+writer can still complete. The action performs no INSERT/UPDATE/DELETE, retries,
+request mutation or nonce consumption. A live original SID remains required;
+reconciliation after original-session loss, device lock/revocation or account
+restrictions needs a separately reviewed recovery path. There is no fallback.
 
 This is a handler candidate, not a listener, public route, TLS/origin deployment,
 real checkpoint provider, rate-limited production API or least-privilege pool.
@@ -57,10 +84,20 @@ ignored server fixed-pin fallback and verified-context mutation protection.
 The same composition runs in Native PostgreSQL CI, including its existing
 separate-connection receipt/rotation lock and fork tests.
 
-The existing disposable real-GoTrue runner now invokes the same HTTP action
+The existing disposable real-GoTrue runner invokes the same HTTP actions
 after real JWT verification and transaction-local claim installation. Its issuer,
 checkpoint and master/device eligibility are explicit synthetic fixtures, not
 independent human proof. It checks valid owner storage, body-mode spoofing,
 forged bearer before pool, other-user/user-metadata denial, expired/deleted-session
 refusal even for an already recorded receipt, and claim cleanup. Syntax passed
 locally; real-GoTrue/Native CI outcomes must be checked on the new head separately.
+
+The result increment adds five boundary tests (22 HTTP tests total) and extends
+the actual PG/PGlite composition with a successful real DB COMMIT whose ACK is
+then lost: the write returns HTTP409 and the result action reads its exact original
+once without any lookup DML or checkpoint call. Wrong signature/decision/nonce,
+actor/SID, unconfirmed absence and cancelled/expired/retired historical results
+are checked without changing original evidence. The real-GoTrue runner adds that
+same lost-ACK flow plus real forged-user/session/metadata/expired/deleted-session
+result denial and local-claim cleanup. These signers/checkpoints and master/device
+eligibility remain explicit fixtures; this head's Native/GoTrue CI is separate.

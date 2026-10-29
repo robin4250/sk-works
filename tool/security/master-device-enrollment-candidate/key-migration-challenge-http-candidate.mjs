@@ -6,7 +6,7 @@ import {issuePasswordVerifiedMigrationKeyChallenge} from './key-migration-challe
 import {readOwnMigrationKeyChallenge} from './key-migration-challenge-delivery.mjs';
 import {storeProvenPendingDeviceKey} from './key-migration-proven-adapter.mjs';
 import {readOwnMigrationKeySubmission} from './key-migration-submission-status.mjs';
-import {recordOwnerDecisionUsingStoredIssuer} from './owner-decision-evidence.mjs';
+import {recordOwnerDecisionUsingStoredIssuer,readOwnOwnerDecisionEvidenceResult} from './owner-decision-evidence.mjs';
 import {performance} from 'node:perf_hooks';
 
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -67,12 +67,20 @@ export async function handleMigrationChallengeRequest(request,{authenticateBeare
    bytes.set(value,length);length+=value.length;
   }
   const body=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes.subarray(0,length)));
-  if(body&&typeof body==='object'&&!Array.isArray(body)&&body.action==='owner-evidence'){
+  if(body&&typeof body==='object'&&!Array.isArray(body)&&['owner-evidence','owner-evidence-result'].includes(body.action)){
    if(Object.keys(body).length!==3||Object.keys(body).some(k=>!['action','requestId','receipt'].includes(k))||
     typeof body.requestId!=='string'||!uuid.test(body.requestId)||!body.receipt||typeof body.receipt!=='object'||
     Array.isArray(body.receipt)||body.receipt.requestId!==body.requestId)return response(400,{error:'invalid request'});
-   if(!evidenceEnabled||!loadCheckpoint)return response(503,{error:'owner evidence unavailable'});
+   if(!evidenceEnabled)return response(503,{error:'owner evidence unavailable'});
    const pool=evidencePool(verified.pool);
+   if(body.action==='owner-evidence-result'){
+    // Read the exact immutable original only: no fresh admission, checkpoint
+    // callback, issuer fallback or automatic resend, even after issuer rotation.
+    const evidenceResult=await bounded(()=>readOwnOwnerDecisionEvidenceResult({enabled:true,pool,
+     actor:verified.actor,session:verified.session,requestId:body.requestId,receipt:body.receipt}));
+    return response(200,{accepted:true,evidenceResult});
+   }
+   if(!loadCheckpoint)return response(503,{error:'owner evidence unavailable'});
    // The adapter must obtain/authenticate a fresh external authority checkpoint.
    // This boundary does not fabricate that source or accept one from the body.
    const checkpoint=await bounded(()=>loadCheckpoint(Object.freeze({actor:verified.actor,session:verified.session,signal:controller.signal})));

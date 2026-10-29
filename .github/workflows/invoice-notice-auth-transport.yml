@@ -1,0 +1,35 @@
+name: Invoice notice unhosted Auth transport review
+on:
+  pull_request:
+    paths:
+      - 'tool/invoice_notice_transport/**'
+      - 'tool/trade_document_notice_seal_fixture.mjs'
+      - 'tool/trade_document_auth_api_gotrue_e2e.mjs'
+      - 'tool/trade_document_auth_fixture_context.mjs'
+      - 'docs/candidates/trade_document_notice_seal_20261028.sql.review-only'
+      - 'tool/staged/reauthentication_proofs.sql'
+      - '.github/workflows/invoice-notice-auth-transport.yml'
+permissions:
+  contents: read
+concurrency:
+  group: invoice-notice-auth-transport-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  actual-auth-http:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --no-audit --no-fund --prefix tool/security/fixture_dependencies
+      - run: node --test tool/invoice_notice_transport/handler.test.mjs
+      - run: node tool/invoice_notice_transport/verify_gotrue.mjs --check-generated
+      - name: Actual GoTrue bearer and private PG with lost HTTP commit response
+        env:
+          SKO_TRADE_DOCUMENT_REAL_AUTH_HOOK: contract-v1
+          SKO_INVOICE_NOTICE_TRANSPORT_HOOK: contract-v1
+        run: node tool/invoice_notice_transport/verify_gotrue.mjs
