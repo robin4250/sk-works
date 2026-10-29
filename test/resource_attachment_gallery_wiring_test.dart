@@ -15,9 +15,6 @@ import 'package:sk_works/features/people/worker_document_repository.dart';
 
 final _png=base64Decode('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGPQiJr2H4QZYAwARcwIXZ/EKIMAAAAASUVORK5CYII=');
 late StreamController<AuthState> _changes;
-class _Pictures extends HttpOverrides {
-  @override HttpClient createHttpClient(SecurityContext? context) => _PictureClient();
-}
 class _PictureClient implements HttpClient {
   @override Future<HttpClientRequest> getUrl(Uri url) async {
     expect(url.host,'synthetic.invalid'); return _PictureRequest();
@@ -119,36 +116,44 @@ Future<void> verifyLiveTitles(WidgetTester tester,String title,bool qualificatio
   final count=qualifications?4:3;
   expect(find.descendant(of:find.byType(AppBar).last,matching:find.text(title)),findsOneWidget);
   expect(find.text('1/$count'),findsOneWidget);
-  for(var i=1;i<count;i++) { await tester.drag(find.byType(PageView),const Offset(-600,0));await tester.pumpAndSettle(); }
+  for(var i=1;i<count;i++) { await tester.drag(find.byType(PageView),Offset(-tester.getSize(find.byType(PageView)).width*.75,0));await tester.pumpAndSettle(); }
   expect(find.text('$count/$count'),findsOneWidget);
   expect(find.descendant(of:find.byType(AppBar).last,matching:find.text(qualifications?'合成資格B':'合成書類B')),findsOneWidget);
   await tester.tap(find.byWidgetPredicate((widget)=>widget is IconButton && widget.tooltip=='閉じる'));await tester.pumpAndSettle();
   expect(find.byType(PageView),findsNothing);
 }
 void main() {
-  HttpOverrides? previous;
-  setUp(() { TestWidgetsFlutterBinding.ensureInitialized().handleAppLifecycleStateChanged(AppLifecycleState.resumed);previous=HttpOverrides.current;HttpOverrides.global=_Pictures();_changes=StreamController<AuthState>.broadcast(); });
-  tearDown(() async { HttpOverrides.global=previous;await _changes.close(); });
+  setUp(() { TestWidgetsFlutterBinding.ensureInitialized().handleAppLifecycleStateChanged(AppLifecycleState.resumed);_changes=StreamController<AuthState>.broadcast(); });
+  tearDown(() async { await _changes.close(); });
   testWidgets('own qualifications wire full saved same-worker names and ordinal identities beyond search results',(tester) async {
+    await HttpOverrides.runZoned(() async {
     await tester.pumpWidget(MaterialApp(home:OwnQualificationRegistrationPage(repository:_Qualifications()))); await tester.pumpAndSettle();
     verify(tester,'合成資格A',true);
     await tester.enterText(find.byType(TextField).first,'合成資格A'); await tester.pumpAndSettle();
     verify(tester,'合成資格A',true); await verifyLiveTitles(tester,'合成資格A',true);expect(tester.takeException(),isNull);
+    },createHttpClient:(_) => _PictureClient());
   });
   testWidgets('managed qualifications wire same-worker gallery across records without foreign employee paths',(tester) async {
+    await HttpOverrides.runZoned(() async {
     await tester.pumpWidget(MaterialApp(home:QualificationCloudPage(repository:_Qualifications(),certificateRepository:_Certificates()))); await tester.pumpAndSettle();
     verify(tester,'合成資格A',true); await verifyLiveTitles(tester,'合成資格A',true);expect(tester.takeException(),isNull);
+    },createHttpClient:(_) => _PictureClient());
   });
   testWidgets('own documents wire one and paired slots across saved document names',(tester) async {
+    await HttpOverrides.runZoned(() async {
     await tester.pumpWidget(MaterialApp(home:OwnDocumentRegistrationPage(gateway:_OwnDocuments()))); await tester.pumpAndSettle();
     verify(tester,'合成書類A',false); await verifyLiveTitles(tester,'合成書類A',false);expect(tester.takeException(),isNull);
+    },createHttpClient:(_) => _PictureClient());
   });
   testWidgets('managed documents wire same worker and company gallery across document scope filters',(tester) async {
+    await HttpOverrides.runZoned(() async {
     final client=SupabaseClient('https://synthetic.invalid','synthetic-public',authOptions:const AuthClientOptions(autoRefreshToken:false));addTearDown(client.dispose);
     await tester.pumpWidget(MaterialApp(home:WorkerDocumentPage(view:WorkerDocumentView.workers,repositoryOverride:_ManagedDocuments(client))));await tester.pumpAndSettle();
     await tester.tap(find.text('合成社員A'));await tester.pumpAndSettle();verify(tester,'合成書類A',false);await verifyLiveTitles(tester,'合成書類A',false);expect(tester.takeException(),isNull);
+    },createHttpClient:(_) => _PictureClient());
   });
   testWidgets('newer qualification response wins and a stale load cannot retire the current gallery',(tester) async {
+    await HttpOverrides.runZoned(() async {
     final repository=_Qualifications();
     await tester.pumpWidget(MaterialApp(home:QualificationCloudPage(repository:repository,certificateRepository:_Certificates())));await tester.pumpAndSettle();
     final oldGallery=tester.widgetList<ResourceRegistrationCard>(find.byType(ResourceRegistrationCard)).first.gallery!;
@@ -160,8 +165,10 @@ void main() {
     expect(current.isCurrent(),isTrue);
     old.complete({'workers':[_worker],'masters':_masters,'qualifications':_qualifications});await tester.pumpAndSettle();
     expect(find.text('最新資格A'),findsOneWidget);expect(current.isCurrent(),isTrue);expect(tester.takeException(),isNull);
+    },createHttpClient:(_) => _PictureClient());
   });
   testWidgets('missing or foreign company metadata cannot fall back to an unscoped gallery',(tester) async {
+    await HttpOverrides.runZoned(() async {
     for(final company in [null,'company-B']) {
       final repository=_Qualifications(rows:[{..._qualifications.first,'company_id':company}]);
       await tester.pumpWidget(MaterialApp(home:OwnQualificationRegistrationPage(key:ValueKey(company),repository:repository)));await tester.pumpAndSettle();
@@ -169,6 +176,7 @@ void main() {
       expect(card.requireGalleryScope,isTrue);expect(card.gallery,isNull);expect(tester.takeException(),isNull);
       await tester.pumpWidget(const SizedBox.shrink());
     }
+    },createHttpClient:(_) => _PictureClient());
   });
 
 }

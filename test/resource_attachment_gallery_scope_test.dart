@@ -87,9 +87,17 @@ void main() {
         expect((data['worker'] as Map)['company_id'],'company');
         expect((data['qualifications'] as List).single['company_id'],'company');
         expect(fixture.requests.map((request)=>request.url.path.split('/').last),
-          ['ensure_current_user_worker','workers','company_members','qualification_master','company_members','worker_qualifications']);
+          ['ensure_current_user_worker','company_members','workers','qualification_master','worker_qualifications']);
         final read=fixture.requests.last; expect(read.url.queryParameters['select'],contains('company_id'));
         expect(read.url.queryParameters['company_id'],'eq.company'); expect(read.url.queryParameters['worker_id'],'eq.worker');
+        expect(fixture.requests[2].url.queryParameters['company_id'],'eq.company');
+        expect(fixture.requests[2].url.queryParameters['id'],'eq.worker');
+        final metadata=fixture.metadata!;fixture.requests.clear();
+        fixture.metadata=(request) async => request.url.path.endsWith('/workers')
+          ? http.Response(jsonEncode([{'id':'worker','company_id':'foreign-company','name':'合成社員'}]),200,headers:{'content-type':'application/json'},request:request)
+          : metadata(request);
+        await expectLater(QualificationCloudRepository.forTesting(fixture.client).loadOwnQualificationWorkspace(),throwsStateError);
+        expect(fixture.requests.any((request)=>request.url.path.endsWith('/worker_qualifications')),isFalse);
       } else {
         final data = await WorkerDocumentRepository.forTesting(fixture.client).loadOwnDocuments();
         expect(data['workers']!.single['company_id'],'company'); expect(data['statuses']!.single['company_id'],'company');

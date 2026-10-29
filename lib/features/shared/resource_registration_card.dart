@@ -328,6 +328,7 @@ class _ResourceAttachmentThumbnailState extends State<ResourceAttachmentThumbnai
 
 Future<void> showResourceAttachments(BuildContext context, {
   required String title, required List<ResourceAttachment> attachments,
+  ResourceAttachmentGallery? gallery, bool requireGalleryScope = false,
 }) => showDialog<void>(context: context, useRootNavigator: false, builder: (context) => Dialog(
   child: Padding(padding: const EdgeInsets.all(16), child: Column(
     mainAxisSize: MainAxisSize.min, children: [
@@ -335,7 +336,7 @@ Future<void> showResourceAttachments(BuildContext context, {
       const SizedBox(height: 12),
       Flexible(child: SingleChildScrollView(child: Wrap(spacing: 12, runSpacing: 12,
         children: [for (final attachment in attachments)
-          ResourceAttachmentThumbnail(attachment: attachment)]))),
+          ResourceAttachmentThumbnail(attachment: attachment, gallery: gallery, recordTitle: title, requireGalleryScope: requireGalleryScope)]))),
       const SizedBox(height: 12),
       TextButton(onPressed: () => Navigator.pop(context), child: Text(SkoLanguageController.tr('閉じる'))),
     ],

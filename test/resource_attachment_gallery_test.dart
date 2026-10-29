@@ -44,9 +44,9 @@ void main() {
     await tester.pumpWidget(host(gallery, entries[1],scale:2)); await open(tester);
     expect(find.text('2/3'), findsOneWidget); expect(find.text('第一資格'), findsOneWidget); expect(find.text('裏面'), findsWidgets);
     expect(tester.widget<Dialog>(find.byType(Dialog)).insetPadding, EdgeInsets.zero);
-    await tester.drag(find.byType(PageView), const Offset(-600, 0)); await tester.pumpAndSettle();
+    await tester.drag(find.byType(PageView), Offset(-tester.getSize(find.byType(PageView)).width * .75, 0)); await tester.pumpAndSettle();
     expect(find.text('3/3'), findsOneWidget); expect(find.text(List.filled(8, '次の長い書類名').join()), findsOneWidget);
-    await tester.drag(find.byType(PageView), const Offset(600, 0)); await tester.pumpAndSettle();
+    await tester.drag(find.byType(PageView), Offset(tester.getSize(find.byType(PageView)).width * .75, 0)); await tester.pumpAndSettle();
     expect(find.text('2/3'), findsOneWidget);
     final close = find.byWidgetPredicate((widget) => widget is IconButton && widget.tooltip == '閉じる');
     final rect=tester.getRect(close);expect(rect.right,lessThanOrEqualTo(320));expect(rect.bottom,lessThanOrEqualTo(568));
@@ -62,7 +62,7 @@ void main() {
     final gallery = ResourceAttachmentGallery(source: Object(), workerId: 'w', companyId: 'A', signal: signal,
       isCurrent: () => generation == initial && company == 'A', entries: entries);
     await tester.pumpWidget(host(gallery, entries.first)); await open(tester);
-    await tester.drag(find.byType(PageView), const Offset(-600, 0)); await tester.pump(const Duration(milliseconds: 400));
+    await tester.drag(find.byType(PageView), Offset(-tester.getSize(find.byType(PageView)).width * .75, 0)); await tester.pump(const Duration(milliseconds: 400));
     generation++; company = 'B'; generation++; company = 'A'; signal.value++;
     await tester.pumpAndSettle();
     release.complete(_png); await tester.pumpAndSettle();

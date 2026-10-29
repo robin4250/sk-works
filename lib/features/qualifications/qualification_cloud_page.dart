@@ -752,16 +752,6 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
     Map<String, dynamic>? worker,
     String status,
   ) {
-    final actor = _certificateRepository?.currentUserId;
-    Future<String> detailSignedUrl(String path) async {
-      final repository = _certificateRepository;
-      if (repository == null || actor == null || actor != repository.currentUserId) {
-        throw StateError('Session changed');
-      }
-      final url = await repository.createSignedUrl(path);
-      if (actor != repository.currentUserId) throw StateError('Session changed');
-      return url;
-    }
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -810,12 +800,12 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
                   },
                   icon: const Icon(Icons.edit_outlined), label: Text(SkoLanguageController.tr('資格証を確認'))),
               if (QualificationCloudRepository.ownPhotoAttachments(row).isNotEmpty)
-                TextButton(onPressed: () => showResourceAttachments(context,
-                  title: master?['name']?.toString() ?? '資格', attachments: [
-                    for (final photo in QualificationCloudRepository.ownPhotoAttachments(row))
-                      signedResourceAttachment(label: photo.label, path: photo.path,
-                        signedUrl: detailSignedUrl),
-                  ]), child: const Text('すべての添付を確認')),
+                TextButton(onPressed: () {
+                  final gallery = _galleryForWorker(row['worker_id'].toString());
+                  showResourceAttachments(context, title: master?['name']?.toString() ?? '資格',
+                    gallery: gallery, requireGalleryScope: true,
+                    attachments: gallery?.entries.where((entry) => entry.previewKey!.startsWith('qualification:${row['id']}:')).toList() ?? const []);
+                }, child: const Text('すべての添付を確認')),
               if (_canManageWorkerQualifications)
                 OutlinedButton.icon(
                   onPressed: () async {

@@ -393,10 +393,12 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                                 attachments: attachments, gallery: _galleryForWorker(workerId), requireGalleryScope: true,
                                 onAction: _canManageStatuses ? () => _editStatus(requirement, status)
                                   : paths.isEmpty ? null : () => showResourceAttachments(
-                                    context, title: requirement['name']?.toString() ?? '書類', attachments: attachments),
+                                    context, title: requirement['name']?.toString() ?? '書類', attachments: attachments,
+                                    gallery: _galleryForWorker(workerId), requireGalleryScope: true),
                                 onOpenDetail: _canManageStatuses ? () => _editStatus(requirement, status)
                                   : paths.isEmpty ? null : () => showResourceAttachments(
-                                    context, title: requirement['name']?.toString() ?? '書類', attachments: attachments),
+                                    context, title: requirement['name']?.toString() ?? '書類', attachments: attachments,
+                                    gallery: _galleryForWorker(workerId), requireGalleryScope: true),
                               ),
                               if (_canManageStatuses && _repository?.exemptionEditingAvailable == true)
                                 Align(alignment: Alignment.centerRight, child: TextButton.icon(
