@@ -1,0 +1,25 @@
+name: iPhone device-only source guard
+on:
+  pull_request:
+    paths:
+      - 'tool/run_ios_device.sh'
+      - 'tool/ios_device_source_guard.sh'
+      - 'tool/test_ios_device_source_guard.py'
+      - 'docs/iphone_release_install.md'
+      - '.github/workflows/ios-device-source-guard.yml'
+permissions:
+  contents: read
+jobs:
+  shell-git-fixtures:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: bash -n tool/ios_device_source_guard.sh tool/run_ios_device.sh
+      - name: Real Git with simulated Mac commands; no build or device install
+        run: python tool/test_ios_device_source_guard.py
