@@ -132,7 +132,7 @@ class EmployeePersonnelDetailPage extends StatelessWidget {
           }
           return SecondaryProtectedPage(title: '退職手続き',
             child: EmployeeRetirementPage(companyId: session.company,
-              workerId: record.id, workerName: record.name));
+              workerId: record.id, workerName: record.name, privacySession: session));
         }),
       ));
       await session.refresh();

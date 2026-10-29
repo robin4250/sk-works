@@ -13,7 +13,7 @@ class EmployeeRetirementRepository {
       SupabaseBackend.isInitialized && SupabaseBackend.client.auth.currentUser != null
           ? EmployeeRetirementRepository(SupabaseBackend.client) : null;
 
-  Future<void> retire({required String companyId, required String workerId}) async {
+  Future<void> retire({required String companyId, required String workerId, required void Function() verifyContext}) async {
     final uuid = RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$');
     if (!uuid.hasMatch(companyId) || !uuid.hasMatch(workerId)) {
       throw StateError('対象を確認してください。');
@@ -22,6 +22,7 @@ class EmployeeRetirementRepository {
     final epoch = await owner.externalFlowAdmission();
     final token = _client.auth.currentSession?.accessToken;
     void check() {
+      verifyContext();
       if (epoch == null || token == null || !owner.isExternalFlowCurrent(epoch) ||
           _client.auth.currentSession?.accessToken != token) {
         throw const PersonnelScopeChanged();

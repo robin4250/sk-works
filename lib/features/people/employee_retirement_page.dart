@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 
 import 'employee_retirement_repository.dart';
+import 'people_cloud_repository.dart';
 
 class EmployeeRetirementPage extends StatefulWidget {
   const EmployeeRetirementPage({super.key, required this.companyId,
-    required this.workerId, required this.workerName, this.repository});
+    required this.workerId, required this.workerName, required this.privacySession, this.repository});
   final String companyId, workerId, workerName;
+  final PersonnelPrivacySession privacySession;
   @visibleForTesting final EmployeeRetirementRepository? repository;
   @override State<EmployeeRetirementPage> createState() => _EmployeeRetirementPageState();
 }
@@ -22,9 +24,18 @@ class _EmployeeRetirementPageState extends State<EmployeeRetirementPage> {
       return;
     }
     setState(() { _busy = true; _error = null; });
+    final lease = widget.privacySession.epoch;
+    void verifyContext() {
+      widget.privacySession.verify(lease);
+      final snapshot = widget.privacySession.snapshot;
+      if (snapshot?.company != widget.companyId || snapshot?.canManage != true ||
+          !snapshot!.records.any((row) => row['id'] == widget.workerId && row['active'] == true)) {
+        throw const PersonnelScopeChanged();
+      }
+    }
     try {
       await repository.retire(companyId: widget.companyId,
-        workerId: widget.workerId);
+        workerId: widget.workerId, verifyContext: verifyContext);
       if (mounted) Navigator.of(context).pop(true);
     } catch (_) {
       if (mounted) setState(() => _error =

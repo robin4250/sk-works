@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:sk_works/features/people/employee_retirement_repository.dart';
 import 'package:sk_works/features/people/employee_retirement_page.dart';
 import 'package:sk_works/features/people/people_page.dart';
+import 'package:sk_works/features/people/people_cloud_repository.dart';
 import 'app_auth_mutation_gateway_test.dart' as fixture;
 
 const company = '60000000-0000-0000-0000-000000000010';
@@ -13,7 +14,7 @@ const worker = '60000000-0000-0000-0000-000000000020';
 class FakeRetirement extends EmployeeRetirementRepository {
   FakeRetirement(super.client);
   int writes = 0;
-  @override Future<void> retire({required String companyId, required String workerId}) async { writes++; }
+  @override Future<void> retire({required String companyId, required String workerId, required void Function() verifyContext}) async { verifyContext(); writes++; }
 }
 void main() {
   late fixture.Wire w;
@@ -37,7 +38,7 @@ void main() {
 
   test('only status changes using exact company/id/active CAS and captured bearer', () async {
     final token = w.client.auth.currentSession!.accessToken;
-    await EmployeeRetirementRepository(w.client).retire(companyId: company, workerId: worker);
+    await EmployeeRetirementRepository(w.client).retire(companyId: company, workerId: worker, verifyContext: () {});
     expect(writes, hasLength(1));
     expect(jsonDecode(writes.single.body), {'status': 'inactive'});
     expect(writes.single.url.queryParameters['company_id'], 'eq.$company');
@@ -49,7 +50,7 @@ void main() {
   });
   test('viewer cannot issue status write', () async {
     role = 'viewer';
-    await expectLater(EmployeeRetirementRepository(w.client).retire(companyId: company, workerId: worker), throwsStateError);
+    await expectLater(EmployeeRetirementRepository(w.client).retire(companyId: company, workerId: worker, verifyContext: () {}), throwsStateError);
     expect(writes, isEmpty);
   });
   test('session boundary during permission read rejects before status write', () async {
@@ -58,14 +59,28 @@ void main() {
       if (request.url.path.endsWith('/rpc/employee_personnel_view')) { ready.complete(); await release.future; }
       return old(request);
     };
-    final outcome = expectLater(EmployeeRetirementRepository(w.client).retire(companyId: company, workerId: worker), throwsA(anything));
+    final outcome = expectLater(EmployeeRetirementRepository(w.client).retire(companyId: company, workerId: worker, verifyContext: () {}), throwsA(anything));
     await ready.future; await w.seed(sessionId: fixture.nextSid); release.complete();
     await outcome; expect(writes, isEmpty);
+  });
+  test('page lease invalidation during permission read prevents dispatch', () async {
+    final old = w.respond; final ready = Completer<void>(), release = Completer<void>();
+    var valid = true;
+    w.respond = (request) async {
+      if (request.url.path.endsWith('/rpc/employee_personnel_view')) { ready.complete(); await release.future; }
+      return old(request);
+    };
+    final outcome = expectLater(EmployeeRetirementRepository(w.client).retire(
+      companyId: company, workerId: worker, verifyContext: () {
+        if (!valid) throw const PersonnelScopeChanged();
+      }), throwsA(isA<PersonnelScopeChanged>()));
+    await ready.future; valid = false; release.complete(); await outcome;
+    expect(writes, isEmpty);
   });
   test('CAS zero rows fails without retry or delete', () async {
     final old = w.respond;
     w.respond = (request) async => request.method == 'PATCH' ? fixture.Wire.json([]) : old(request);
-    await expectLater(EmployeeRetirementRepository(w.client).retire(companyId: company, workerId: worker), throwsStateError);
+    await expectLater(EmployeeRetirementRepository(w.client).retire(companyId: company, workerId: worker, verifyContext: () {}), throwsStateError);
     expect(w.calls.where((r) => r.method == 'PATCH'), hasLength(1));
   });
   test('label changes without changing stored partnerWorker value', () {
@@ -74,13 +89,18 @@ void main() {
   });
   testWidgets('retirement requires explicit confirmation', (tester) async {
     final repo = FakeRetirement(w.client);
+    final privacy = PersonnelPrivacySession(actor: fixture.actor, company: company,
+      currentActor: () => fixture.actor, load: () async => throw UnimplementedError());
+    privacy.snapshot = const PersonnelPrivacySnapshot(actor: fixture.actor, company: company,
+      role: 'admin', canManage: true, records: [{'id': worker, 'active': true}]);
     await tester.pumpWidget(MaterialApp(home: EmployeeRetirementPage(companyId: company,
-      workerId: worker, workerName: 'Fixture', repository: repo)));
+      workerId: worker, workerName: 'Fixture', privacySession: privacy, repository: repo)));
     expect(tester.widget<FilledButton>(find.byType(FilledButton)).onPressed, isNull);
     await tester.tap(find.byType(CheckboxListTile)); await tester.pump();
     expect(tester.widget<FilledButton>(find.byType(FilledButton)).onPressed, isNotNull);
     expect(repo.writes, 0);
     expect(find.textContaining('削除しません'), findsOneWidget);
     await tester.pumpWidget(const SizedBox.shrink());
+    privacy.dispose();
   });
 }
