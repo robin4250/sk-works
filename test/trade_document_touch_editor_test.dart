@@ -64,6 +64,19 @@ void main(){
   await t.tap(find.text('会社情報の画面を開く'));await t.pumpAndSettle();
   expect(h.companyEdits,1);expect(h.saves,isEmpty);
  });
+ testWidgets('long registered company remains scrollable with visible close in landscape',(t)async{
+  final value=body();
+  value['issuer']['name']=List.filled(500,'長').join();
+  value['issuer']['address']=List.filled(500,'住').join();
+  value['issuer']['representative_name']=List.filled(500,'代').join();
+  await mount(t,size:const Size(932,430),payload:value);
+  await t.tap(target('issuer'));await t.pumpAndSettle();
+  expect(find.byType(TextField),findsNothing);expect(t.takeException(),isNull);
+  final close=find.byKey(const Key('trade-touch-company-close'));
+  expect(t.getBottomRight(close).dy,lessThanOrEqualTo(430));
+  await t.tap(close);await t.pumpAndSettle();
+  expect(find.byKey(const Key('trade-touch-viewport')),findsOneWidget);
+ });
  testWidgets('two-finger zoom then paper tap opens the correct field, not a gesture-end sheet',(t)async{
   await mount(t);
   final original=viewer(t).transformationController!.value.getMaxScaleOnAxis();

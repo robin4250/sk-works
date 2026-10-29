@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:printing/printing.dart';
@@ -608,18 +607,38 @@ class _CompanySheet extends StatelessWidget {
   final Map<String, dynamic> data;
   final VoidCallback requireScope;
   final VoidCallback? onEdit;
-  @override Widget build(BuildContext context) => Padding(padding: const EdgeInsets.all(20), child:
-    Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(title, style: Theme.of(context).textTheme.titleMedium),
-      const SizedBox(height: 12),
-      for (final key in ['name', 'address', 'representative_name', 'phone', 'fax', 'corporate_number'])
-        if (data[key]?.toString().isNotEmpty == true) Text(data[key].toString()),
-      const SizedBox(height: 12), const Text('登録会社の情報です。この書類の入力欄では変更しません。'),
-      if (onEdit != null) TextButton(onPressed: () {
-        try { requireScope(); } catch (_) { return; }
-        Navigator.of(context).pop(); onEdit!();
-      }, child: const Text('会社情報の画面を開く')),
-      Align(alignment: Alignment.centerRight, child: TextButton(
-        onPressed: () => Navigator.of(context).pop(), child: const Text('閉じる'))),
-    ]));
+  @override Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+    final height = math.min(520.0, math.max(64.0,
+      media.size.height - media.viewInsets.bottom - media.padding.top - 16));
+    const labels = {'name': '会社名', 'address': '住所', 'representative_name': '代表者名',
+      'phone': '電話', 'fax': 'FAX', 'corporate_number': '法人番号'};
+    return Padding(padding: EdgeInsets.only(bottom: media.viewInsets.bottom), child: SizedBox(
+      height: height, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        if (height >= 180) Padding(padding: const EdgeInsets.all(16),
+          child: Text(title, style: Theme.of(context).textTheme.titleMedium)),
+        Expanded(child: SingleChildScrollView(padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            for (final entry in labels.entries)
+              if (data[entry.key]?.toString().isNotEmpty == true) Padding(
+                padding: const EdgeInsets.only(bottom: 12), child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(entry.value, style: const TextStyle(fontWeight: FontWeight.bold)),
+                    Text(data[entry.key].toString()),
+                  ])),
+            const Text('登録会社の情報です。この書類の入力欄では変更しません。'),
+          ]))),
+        SafeArea(top: false, child: Padding(padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+          child: Row(children: [
+            if (onEdit != null) Expanded(child: TextButton(onPressed: () {
+              try { requireScope(); } catch (_) { return; }
+              Navigator.of(context).pop(); onEdit!();
+            }, child: const Text('会社情報の画面を開く', maxLines: 2, textAlign: TextAlign.center)))
+            else const Spacer(),
+            const SizedBox(width: 8),
+            TextButton(key: const Key('trade-touch-company-close'),
+              onPressed: () => Navigator.of(context).pop(), child: const Text('閉じる')),
+          ]))),
+      ])));
+  }
 }
