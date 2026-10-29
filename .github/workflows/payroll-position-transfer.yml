@@ -6,6 +6,7 @@ on:
       - 'lib/features/payroll/payroll_pdf_service.dart'
       - 'test/payroll_position_transfer*.dart'
       - 'test/fixtures/payroll_transfer/**'
+      - 'tool/tests/payroll_position_transfer_connected_test.dart'
       - 'docs/review/payroll-position-transfer/sql/**'
       - 'lib/features/payroll/individual_payroll_settings_page.dart'
       - 'lib/features/payroll/individual_payroll_settings_repository.dart'
@@ -92,8 +93,8 @@ jobs:
           ui_payload=$(cat test/fixtures/payroll_transfer/ui-save-equivalent.json)
           psql -X -qAt --set=ON_ERROR_STOP=1 --set=ui_payload="$ui_payload" -h 127.0.0.1 -U postgres -d postgres -f docs/review/payroll-position-transfer/sql/connected-fixture.sql > "$SKO_TRANSFER_CONNECTED_JSON"
           python3 -c 'import json,os; json.load(open(os.environ["SKO_TRANSFER_CONNECTED_JSON"]))'
-      - run: flutter analyze test/payroll_position_transfer_connected_test.dart
-      - run: flutter test --reporter expanded test/payroll_position_transfer_connected_test.dart
+      - run: flutter analyze tool/tests/payroll_position_transfer_connected_test.dart
+      - run: flutter test --reporter expanded tool/tests/payroll_position_transfer_connected_test.dart
       - if: always()
         uses: actions/upload-artifact@v4
         with:
