@@ -221,4 +221,18 @@ void main() {
     await tester.idle(); await tester.pump();
   });
 
+  testWidgets('signedOut invalidates even when SDK event carries old session', (tester) async {
+    final changes = StreamController<AuthState>();
+    addTearDown(changes.close);
+    var disposed = 0;
+    await tester.pumpWidget(AuthenticatedNavigationBoundary(
+      initialSession: session(owner), authChanges: changes.stream,
+      child: MaterialApp(home: _PrivatePage(() => disposed++)),
+    ));
+    changes.add(change(owner, event: AuthChangeEvent.signedOut));
+    await tester.idle(); await tester.pump();
+    expect(disposed, 1);
+    expect(find.text('private file'), findsNothing);
+  });
+
 }

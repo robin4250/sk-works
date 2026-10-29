@@ -46,7 +46,10 @@ class _AuthenticatedNavigationBoundaryState
     _subscription = changes.listen((event) {
       if (!mounted) return;
       AppleSessionNavigationBinding? binding;
-      try { binding = AppleSessionNavigationBinding.fromSession(event.session); }
+      try {
+        binding = event.event == AuthChangeEvent.signedOut
+            ? null : AppleSessionNavigationBinding.fromSession(event.session);
+      }
       catch (_) { _fail(); return; }
       if (binding == _binding && !_failed) return;
       final previous = _binding;
