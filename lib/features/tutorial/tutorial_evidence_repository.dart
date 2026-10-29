@@ -2,6 +2,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
 import '../people/worker_document_exemption.dart';
+import '../auth/app_auth_mutation_gateway.dart';
 
 enum TutorialEvidenceState { unknown, missing, saved, notApplicable }
 
@@ -11,12 +12,15 @@ class TutorialEvidenceCheckpoint {
     this.state, {
     this.label = '',
     this.evidenceKey,
+    this.statusLabel,
   });
 
   final String key;
   final TutorialEvidenceState state;
   final String label;
   final String? evidenceKey;
+  /// Presentation only; completion continues to use [state] and saved evidence.
+  final String? statusLabel;
 }
 
 class TutorialEvidenceTask {
@@ -73,6 +77,13 @@ class TutorialEvidenceRepository {
 
   final TutorialEvidenceSource _source;
   final DateTime _today;
+
+  /// Explicit client boundary for SDK contract verification; no global state.
+  factory TutorialEvidenceRepository.forClient(SupabaseClient client, {DateTime? today}) {
+    final actor = client.auth.currentUser?.id;
+    if (actor == null) { throw StateError('Document evidence requires a session'); }
+    return TutorialEvidenceRepository(_SupabaseTutorialEvidenceSource(client, actor), today: today);
+  }
 
   static TutorialEvidenceRepository? maybeCreate() {
     if (!SupabaseBackend.isInitialized) { return null; }
@@ -364,20 +375,43 @@ class TutorialEvidenceRepository {
       if (exemption?['active'] == true) {
         result.add(TutorialEvidenceCheckpoint('document:$id', TutorialEvidenceState.notApplicable,
           label: '${requirement['name'] ?? '必須書類'}（提出免除）',
+          statusLabel: '免除',
           evidenceKey: 'exemption:$id:${exemption!['version']}'));
+        continue;
+      }
+      if (requirement['name'] == '銀行口座情報') {
+        final metadata = docs['bank_account_metadata'];
+        final known = docs['bank_account_known'] == true;
+        final matching = metadata is Map &&
+            metadata['worker_id'] == docs['worker_id'] &&
+            docs['company_id'] is String &&
+            (docs['company_id'] as String).isNotEmpty &&
+            metadata['company_id'] == docs['company_id'] &&
+            DateTime.tryParse(metadata['updated_at']?.toString() ?? '') != null;
+        result.add(TutorialEvidenceCheckpoint('document:$id',
+          !known ? TutorialEvidenceState.unknown
+              : metadata == null ? TutorialEvidenceState.missing
+              : matching ? TutorialEvidenceState.saved : TutorialEvidenceState.unknown,
+          label: '銀行口座情報',
+          evidenceKey: known && matching ? 'bank:${docs['worker_id']}:${metadata['updated_at']}' : null,
+        ));
         continue;
       }
       final matches = statuses.where((row) =>
         row['requirement_id']?.toString() == id &&
         row['worker_id']?.toString() == docs['worker_id'].toString()).toList();
       var state = TutorialEvidenceState.unknown;
+      String? statusLabel;
       if (matches.isEmpty) {
         state = TutorialEvidenceState.missing;
       } else if (matches.length == 1) {
         final row = matches.single;
         final status = row['status']?.toString();
-        if (['not_submitted', 'missing', 'expired'].contains(status)) {
+        if (['not_submitted', 'missing'].contains(status)) {
           state = TutorialEvidenceState.missing;
+        } else if (status == 'expired') {
+          state = TutorialEvidenceState.missing;
+          statusLabel = '期限切れ';
         } else if (status == 'submitted' || status == 'verified') {
           final name = requirement['name']?.toString();
           if (name == null || name.isEmpty || name == '銀行口座情報' ||
@@ -390,14 +424,20 @@ class TutorialEvidenceRepository {
           } else {
           final rawExpiry = row['expires_at']?.toString() ?? '';
           final expiry = DateTime.tryParse(rawExpiry);
-          if (rawExpiry.isNotEmpty && expiry == null) {
+          final canonicalExpiry = expiry != null && expiry.year >= 1 &&
+              RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(rawExpiry) &&
+              '${expiry.year.toString().padLeft(4, '0')}-${expiry.month.toString().padLeft(2, '0')}-${expiry.day.toString().padLeft(2, '0')}' == rawExpiry;
+          if (rawExpiry.isNotEmpty && !canonicalExpiry) {
             state = TutorialEvidenceState.unknown;
+            statusLabel = '登録済み・期限を確認';
           } else if (requirement['expiry_required'] == true && expiry == null) {
             state = TutorialEvidenceState.missing;
+            statusLabel = '登録済み・期限未入力';
           } else if (expiry != null &&
               DateTime(expiry.year, expiry.month, expiry.day).isBefore(
                 DateTime(today.year, today.month, today.day))) {
             state = TutorialEvidenceState.missing;
+            statusLabel = '登録済み・期限切れ';
           } else {
             state = TutorialEvidenceState.saved;
           }
@@ -405,6 +445,7 @@ class TutorialEvidenceRepository {
         }
       }
       result.add(TutorialEvidenceCheckpoint('document:$id', state,
+        statusLabel: statusLabel,
         label: requirement['name']?.toString() ?? '必須書類',
         evidenceKey: matches.length == 1 && matches.single['id'] != null
             ? "${matches.single['id']}:status" : null,
@@ -515,22 +556,40 @@ class _SupabaseTutorialEvidenceSource implements TutorialEvidenceSource, Tutoria
 
   @override
   Future<Map<String, dynamic>?> documents(String companyId) async {
+    final session = client.auth.currentSession;
+    final gateway = AppAuthMutationGateway.forClient(client);
+    final epoch = await gateway.externalFlowAdmission();
+    void check() {
+      if (session == null || session.user.id != userId || epoch == null ||
+          !gateway.isExternalFlowCurrent(epoch) || session.isExpired ||
+          client.auth.currentSession?.accessToken != session.accessToken) {
+        throw StateError('Document evidence session changed');
+      }
+    }
+    check();
+    final headers = {'Authorization': 'Bearer ${session!.accessToken}'};
     final worker = await client.from('workers').select('id')
         .eq('user_id', userId).eq('company_id', companyId)
-        .eq('status', 'active').maybeSingle();
+        .eq('status', 'active').maybeSingle().setHeader('Authorization', headers['Authorization']!);
+    check();
     if (worker == null) { return null; }
     final workerId = worker['id'];
     final requirements = await client.from('document_requirements')
         .select('id,name,is_active,is_required,expiry_required')
-        .eq('company_id', companyId).eq('is_active', true).eq('is_required', true);
+        .eq('company_id', companyId).eq('is_active', true).eq('is_required', true)
+        .setHeader('Authorization', headers['Authorization']!);
+    check();
     final statuses = await client.from('worker_document_statuses')
         .select('id,requirement_id,worker_id,status,expires_at,attachment_path')
-        .eq('company_id', companyId).eq('worker_id', workerId);
+        .eq('company_id', companyId).eq('worker_id', workerId)
+        .setHeader('Authorization', headers['Authorization']!);
+    check();
     List<Map<String, dynamic>> exemptions = [];
     try {
       final raw = await client.rpc('worker_document_exemption', params: {
         'p_action': 'list', 'p_data': {'company_id': companyId},
-      });
+      }).setHeader('Authorization', headers['Authorization']!);
+      check();
       if (raw is! Map || raw['capability_version'] != 1 || raw['items'] is! List) {
         throw StateError('Exemption evidence unavailable');
       }
@@ -538,7 +597,25 @@ class _SupabaseTutorialEvidenceSource implements TutorialEvidenceSource, Tutoria
     } on PostgrestException catch (error) {
       if (error.code != 'PGRST202' || !error.message.contains('worker_document_exemption')) rethrow;
     }
-    return {'worker_id': workerId, 'requirements': requirements, 'statuses': statuses,
-      'exemptions': exemptions};
+    Map<String, dynamic>? bank;
+    var bankKnown = false;
+    if (requirements.any((row) => row['name'] == '銀行口座情報')) {
+      try {
+        bank = await client.from('worker_private_bank_accounts')
+            .select('worker_id,company_id,updated_at')
+            .eq('worker_id', workerId).eq('company_id', companyId)
+            .maybeSingle().setHeader('Authorization', headers['Authorization']!);
+        check();
+        bankKnown = true;
+      } catch (_) {
+        // A denied/unavailable private account read is never absence or success.
+        check();
+      }
+    }
+    check();
+    return {'worker_id': workerId, 'company_id': companyId,
+      'requirements': requirements, 'statuses': statuses,
+      'exemptions': exemptions, 'bank_account_known': bankKnown,
+      'bank_account_metadata': bank};
   }
 }

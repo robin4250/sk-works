@@ -201,7 +201,7 @@ class _TutorialPageState extends State<TutorialPage> with WidgetsBindingObserver
             }, size: 18),
             const SizedBox(width: 8),
             Expanded(child: Text(SkoLanguageController.tr(checkpoint.label))),
-            Text(SkoLanguageController.tr(switch (checkpoint.state) {
+            Text(SkoLanguageController.tr(checkpoint.statusLabel ?? switch (checkpoint.state) {
               TutorialEvidenceState.saved => checkpoint.evidenceKey?.trim().isNotEmpty == true ? '登録済み' : '未確定',
               TutorialEvidenceState.missing => '未登録',
               TutorialEvidenceState.unknown => '未確定',

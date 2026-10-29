@@ -9,6 +9,14 @@ Map<String,dynamic> preserveSavedTradeDocumentFields({required Map<String,dynami
  if(attachment is! Map)return result;
  final raw=attachment['payload'];if(raw is! Map)throw StateError('保存済み書類を確認できません。');
  final saved=Map<String,dynamic>.from(raw);
+ // A source revision can change the canonical counterparty without changing
+ // its display name. Legacy saved payloads have no original party binding;
+ // current metadata alone cannot prove that historical identity. Keep the
+ // original view intact, but refuse to carry any saved fields into a revision.
+ if(workspace['source_changed']==true &&
+    !(subjectKind=='payment_certificate' && saved['counterparty_bank']!=null)) {
+  throw StateError('保存時と現在の相手会社の対応を確認できません。旧書類は保持しています。新しい正式書類として確認してください。');
+ }
  if(subjectKind=='payment_certificate'&&saved['counterparty_bank']!=null){
   final company=workspace['company_id'];if(company is! String)throw StateError('保存した振込先の会社を確認できません。');
   final bank=PartnerCompanyBankAccount.fromJson(saved['counterparty_bank'],companyId:company);

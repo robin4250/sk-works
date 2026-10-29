@@ -52,6 +52,17 @@ class TradeDocumentFormSession extends ChangeNotifier with WidgetsBindingObserve
   final request=_client.rpc(action,params:params).setHeader('Authorization','Bearer $_token').abortSignal(_retired.future);
   return _receive(request.then<Object?>((value)=>value));
  }
+ Future<Object?> readOwnMemberships()async {
+  await ready();requireScope();
+  final actor=_client.auth.currentUser!.id;
+  return _receive(_client.from('company_members').select('company_id,role')
+   .eq('user_id',actor).setHeader('Authorization','Bearer $_token').abortSignal(_retired.future).then<Object?>((v)=>v));
+ }
+ Future<Object?> readOwnSealCompany(String companyId)async {
+  await ready();requireScope();
+  return _receive(_client.from('companies').select('id,name,company_seal_enabled,company_seal_style')
+   .eq('id',companyId).single().setHeader('Authorization','Bearer $_token').abortSignal(_retired.future).then<Object?>((v)=>v));
+ }
  Future<Object?> readPaymentParent({required String id,required String companyId})async {
   await ready();requireScope();
   final request=_client.from('payment_certificates').select('id,company_id,partner_company_id,revision')

@@ -1,0 +1,27 @@
+name: Employee soft retirement
+on:
+  pull_request:
+    paths:
+      - 'lib/features/people/employee_retirement*'
+      - 'lib/features/people/people_cloud_repository.dart'
+      - 'lib/features/people/people_cloud_page.dart'
+      - 'lib/features/people/employee_personnel_detail_page.dart'
+      - 'lib/features/people/people_page.dart'
+      - 'test/employee_retirement_test.dart'
+      - '.github/workflows/employee-retirement.yml'
+permissions:
+  contents: read
+jobs:
+  retirement:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: dart analyze lib/features/people/employee_retirement_page.dart lib/features/people/employee_retirement_repository.dart lib/features/people/people_cloud_repository.dart lib/features/people/people_cloud_page.dart lib/features/people/employee_personnel_detail_page.dart lib/features/people/people_page.dart test/employee_retirement_test.dart
+      - run: flutter test test/employee_retirement_test.dart test/people_page_test.dart test/personnel_privacy_session_test.dart test/employee_personnel_detail_restore_contract_test.dart

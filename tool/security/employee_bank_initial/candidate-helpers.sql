@@ -1,0 +1,115 @@
+-- Internal source fragment for the guarded review-only candidate generator.
+create function private.employee_bank_initial_enabled() returns boolean
+language sql stable security definer set search_path='' as $$select false$$;
+revoke all on function private.employee_bank_initial_enabled() from public,anon,authenticated,service_role;
+
+create table private.employee_bank_initial_context(
+ transaction_id xid8 primary key,actor_id uuid not null,session_id uuid not null,
+ company_id uuid not null,worker_id uuid not null,
+ input_sha256 text not null check(input_sha256 ~ '^[0-9a-f]{64}$'),
+ proof_hash text not null check(proof_hash ~ '^[0-9a-f]{64}$'));
+alter table private.employee_bank_initial_context enable row level security;
+revoke all on private.employee_bank_initial_context from public,anon,authenticated,service_role;
+
+create function private.employee_bank_initial_digest(p_company uuid,p_worker uuid,p_data jsonb)
+returns text language plpgsql immutable set search_path='' as $$
+declare values_ text[];value_ text;canonical text:='sko-employee-bank-initial-v1'||chr(10);
+begin
+ if p_company is null or p_worker is null or jsonb_typeof(p_data) is distinct from 'object' then
+  raise sqlstate '22023' using message='employee_bank_invalid';end if;
+ if not p_data ?& array['bank_name','branch_name','account_type','account_number','account_holder']
+  or p_data-array['bank_name','branch_name','account_type','account_number','account_holder']<>'{}'::jsonb
+  or exists(select 1 from jsonb_each(p_data) e where jsonb_typeof(e.value)<>'string') then
+  raise sqlstate '22023' using message='employee_bank_invalid';end if;
+ foreach value_ in array array[p_data->>'bank_name',p_data->>'branch_name',p_data->>'account_holder'] loop
+  if value_ is null or value_<>btrim(value_) or length(value_) not between 1 and 100 then
+   raise sqlstate '22023' using message='employee_bank_invalid';end if;
+ end loop;
+ if p_data->>'account_type' not in('普通','当座','貯蓄') or p_data->>'account_number' !~ '^[0-9]{7}$' then
+  raise sqlstate '22023' using message='employee_bank_invalid';end if;
+ values_:=array[p_company::text,p_worker::text,p_data->>'bank_name',p_data->>'branch_name',p_data->>'account_type',p_data->>'account_number',p_data->>'account_holder'];
+ for i in 1..array_length(values_,1) loop
+  canonical:=canonical||octet_length(values_[i])::text||':'||values_[i]||case when i<array_length(values_,1) then chr(10) else '' end;
+ end loop;
+ return encode(extensions.digest(convert_to(canonical,'UTF8'),'sha256'),'hex');
+end $$;
+revoke all on function private.employee_bank_initial_digest(uuid,uuid,jsonb) from public,anon,authenticated,service_role;
+
+-- Same authoritative membership/payroll flag as private.has_company_feature;
+-- actor is explicit only for the existing service-only proof issuer. All rows
+-- are locked through issue/save so privilege or target changes cannot race.
+create function private.employee_bank_initial_scope(p_actor uuid,p_company uuid,p_worker uuid)
+returns void language plpgsql security definer set search_path='' as $$
+declare role_ text;allowed boolean;
+begin
+ if p_actor is null or p_company is null or p_worker is null then
+  raise sqlstate '42501' using message='employee_bank_unavailable';end if;
+ select cm.role::text into role_ from public.company_members cm
+ where cm.company_id=p_company and cm.user_id=p_actor for share;
+ if not found then raise sqlstate '42501' using message='employee_bank_unavailable';end if;
+ if role_ not in('owner','admin') then
+  select mp.can_manage_payroll into allowed from public.member_feature_permissions mp
+  where mp.company_id=p_company and mp.user_id=p_actor for share;
+  if not found or allowed is distinct from true then raise sqlstate '42501' using message='employee_bank_unavailable';end if;
+ end if;
+ perform 1 from public.workers w where w.id=p_worker and w.company_id=p_company and w.status::text='active' for share;
+ if not found then raise sqlstate '42501' using message='employee_bank_unavailable';end if;
+end $$;
+revoke all on function private.employee_bank_initial_scope(uuid,uuid,uuid) from public,anon,authenticated,service_role;
+
+create function private.employee_bank_initial_issue_target(p_actor uuid,p_target jsonb)
+returns void language plpgsql security definer set search_path='' as $$
+begin
+ if not private.employee_bank_initial_enabled() or jsonb_typeof(p_target) is distinct from 'object' then
+  raise sqlstate '42501' using message='reauthentication_unavailable';end if;
+ if p_target is distinct from jsonb_build_object('company_id',p_target->'company_id','worker_id',p_target->'worker_id','input_sha256',p_target->'input_sha256')
+  or coalesce(p_target->>'company_id','') !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+  or coalesce(p_target->>'worker_id','') !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+  or coalesce(p_target->>'input_sha256','') !~ '^[0-9a-f]{64}$' then
+  raise sqlstate '42501' using message='reauthentication_unavailable';end if;
+ perform private.employee_bank_initial_scope(p_actor,(p_target->>'company_id')::uuid,(p_target->>'worker_id')::uuid);
+ if exists(select 1 from public.worker_private_bank_accounts where worker_id=(p_target->>'worker_id')::uuid) then
+  raise sqlstate '42501' using message='employee_bank_already_registered';end if;
+end $$;
+revoke all on function private.employee_bank_initial_issue_target(uuid,jsonb) from public,anon,authenticated,service_role;
+
+create function public.employee_bank_initial_capability(p_company_id uuid,p_worker_id uuid)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare saved record;registered boolean;
+begin
+ perform private.require_reauthentication_session();
+ perform private.employee_bank_initial_scope(auth.uid(),p_company_id,p_worker_id);
+ if not private.has_company_feature(p_company_id,'can_manage_payroll') then raise sqlstate '42501' using message='employee_bank_unavailable';end if;
+ select company_id,updated_at into saved from public.worker_private_bank_accounts where worker_id=p_worker_id;
+ registered:=found;
+ if registered and saved.company_id<>p_company_id then raise sqlstate '42501' using message='employee_bank_unavailable';end if;
+ return jsonb_build_object('protocol','sko-employee-bank-initial-v1','enabled',private.employee_bank_initial_enabled(),
+  'company_id',p_company_id,'worker_id',p_worker_id,'registered',registered,'updated_at',case when registered then saved.updated_at else null end);
+end $$;
+revoke all on function public.employee_bank_initial_capability(uuid,uuid) from public,anon,service_role;
+grant execute on function public.employee_bank_initial_capability(uuid,uuid) to authenticated;
+
+create function public.register_employee_bank_initial(p_company_id uuid,p_worker_id uuid,p_bank_data jsonb,p_proof text)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare actor uuid:=auth.uid();sid uuid;hash_ text;target_ jsonb;saved record;
+begin
+ sid:=private.require_reauthentication_session();
+ perform private.employee_bank_initial_scope(actor,p_company_id,p_worker_id);
+ if not private.employee_bank_initial_enabled() or not private.has_company_feature(p_company_id,'can_manage_payroll') then
+  raise sqlstate '42501' using message='employee_bank_unavailable';end if;
+ hash_:=private.employee_bank_initial_digest(p_company_id,p_worker_id,p_bank_data);
+ perform pg_advisory_xact_lock(hashtextextended('sko-employee-bank-initial:'||p_company_id::text||':'||p_worker_id::text,0));
+ if exists(select 1 from public.worker_private_bank_accounts where worker_id=p_worker_id) then
+  raise sqlstate '23505' using message='employee_bank_already_registered';end if;
+ target_:=jsonb_build_object('company_id',p_company_id,'worker_id',p_worker_id,'input_sha256',hash_);
+ perform private.consume_reauthentication_proof('employee.bank.initial',target_,p_proof);
+ insert into private.employee_bank_initial_context(transaction_id,actor_id,session_id,company_id,worker_id,input_sha256,proof_hash)
+ values(pg_current_xact_id(),actor,sid,p_company_id,p_worker_id,hash_,encode(extensions.digest(p_proof,'sha256'),'hex'));
+ insert into public.worker_private_bank_accounts(worker_id,company_id,bank_name,branch_name,account_type,account_number,account_holder)
+ values(p_worker_id,p_company_id,p_bank_data->>'bank_name',p_bank_data->>'branch_name',p_bank_data->>'account_type',p_bank_data->>'account_number',p_bank_data->>'account_holder')
+ returning worker_id,company_id,updated_at into saved;
+ delete from private.employee_bank_initial_context where transaction_id=pg_current_xact_id();
+ return jsonb_build_object('protocol','sko-employee-bank-initial-v1','company_id',saved.company_id,'worker_id',saved.worker_id,'registered',true,'updated_at',saved.updated_at);
+end $$;
+revoke all on function public.register_employee_bank_initial(uuid,uuid,jsonb,text) from public,anon,service_role;
+grant execute on function public.register_employee_bank_initial(uuid,uuid,jsonb,text) to authenticated;

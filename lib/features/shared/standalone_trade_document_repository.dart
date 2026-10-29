@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'trade_document_form_session.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../data/supabase_backend.dart';
 import '../../domain/company_seal_snapshot.dart';
@@ -6,8 +7,9 @@ import '../../domain/partner_company_bank_account.dart';
 
 /// Read-only registration context. No financial rows, contract saves or uploads.
 class StandaloneTradeDocumentRepository {
-  StandaloneTradeDocumentRepository(this._client) : _actor = _client.auth.currentUser?.id,
+  StandaloneTradeDocumentRepository(this._client,{TradeDocumentFormSession? session}) : _session=session, _actor = _client.auth.currentUser?.id,
       _token = _client.auth.currentSession?.accessToken {
+    if(session!=null&&!session.belongsTo(_client))throw ArgumentError('Foreign contract session');
     _auth = _client.auth.onAuthStateChange.listen((_) {
       if (!_same) invalidate();
     }, onError: (_) => invalidate(), onDone: invalidate);
@@ -15,6 +17,8 @@ class StandaloneTradeDocumentRepository {
   static StandaloneTradeDocumentRepository? maybeCreate() => SupabaseBackend.isInitialized &&
     SupabaseBackend.client.auth.currentSession != null ? StandaloneTradeDocumentRepository(SupabaseBackend.client) : null;
   final SupabaseClient _client;
+  final TradeDocumentFormSession? _session;
+  bool isBoundTo(TradeDocumentFormSession session)=>identical(_session,session);
   final String? _actor, _token;
   StreamSubscription<dynamic>? _auth;
   bool _revoked = false;
@@ -23,17 +27,20 @@ class StandaloneTradeDocumentRepository {
     _client.auth.currentUser?.id == _actor && _client.auth.currentSession?.accessToken == _token &&
     _client.auth.currentSession?.isExpired == false;
   void invalidate() { _revoked = true; }
-  void verify() { if (!_same) { invalidate(); throw StateError('ログイン状態が変わりました。会社詳細から開き直してください。'); } }
+  void verify() { _session?.requireScope(); if (!_same) { invalidate(); throw StateError('ログイン状態が変わりました。会社詳細から開き直してください。'); } }
   Future<Object?> _rpc(String action, Map<String, dynamic> params) async {
     verify();
-    final raw = await _client.rpc(action, params: params).setHeader('Authorization', 'Bearer $_token');
+    final raw = _session!=null?await _session.rpc(action,params):await _client.rpc(action, params: params).setHeader('Authorization', 'Bearer $_token');
     verify(); return raw;
   }
   Future<Map<String, dynamic>> load({required String tradeCompanyId, required bool acceptance}) async {
+    await _session?.ready();
     verify();
-    final memberships = await _client.from('company_members').select('company_id,role')
+    final membershipsRaw = _session!=null?await _session.readOwnMemberships():await _client.from('company_members').select('company_id,role')
       .eq('user_id', _actor!).setHeader('Authorization', 'Bearer $_token');
     verify();
+    if(membershipsRaw is! List)throw StateError('会社登録を確認できません。');
+    final memberships=membershipsRaw;
     if (memberships.length != 1 || !const {'owner', 'admin'}.contains(memberships.single['role'])) {
       throw StateError('会社を一意に確認できる管理者として開いてください。');
     }
@@ -50,9 +57,11 @@ class StandaloneTradeDocumentRepository {
       throw StateError('自社の会社情報を確認できません。会社データを登録してください。');
     }
     final profile = Map<String, dynamic>.from(profileRaw['profile'] as Map);
-    final company = await _client.from('companies').select('id,name,company_seal_enabled,company_seal_style')
+    final companyRaw = _session!=null?await _session.readOwnSealCompany(companyId):await _client.from('companies').select('id,name,company_seal_enabled,company_seal_style')
       .eq('id', companyId).single().setHeader('Authorization', 'Bearer $_token');
     verify();
+    if(companyRaw is! Map)throw StateError('会社登録を確認できません。');
+    final company=companyRaw;
     if (company['id'] != companyId || company['name'] != profile['name']) throw StateError('会社情報が更新されました。開き直してください。');
     Map<String, dynamic> seal = {'version': 1, 'style': company['company_seal_style'] ?? 'legacy',
       'name': company['name'], 'company_id': companyId};
@@ -110,9 +119,9 @@ class StandaloneTradeDocumentRepository {
       if (partnerId != null) 'partner_company_id': partnerId,
       if (bank != null) 'counterparty_bank': bank,
       'issuer': {'name': profile['name'], 'address': profile['address'] ?? '',
-        'corporate_number': profile['corporate_number'] ?? '', 'representative_name': profile['representative_name'] ?? ''},
+        'corporate_number': profile['corporate_number'] ?? '', 'representative_name': profile['representative_name'] ?? '', 'phone':profile['phone']??''},
       'counterparty': {'name': partner['name'], 'address': partner['address'] ?? '',
-        'corporate_number': partner['corporate_number'] ?? '', 'representative_name': partner['representative_name'] ?? ''},
+        'corporate_number': partner['corporate_number'] ?? '', 'representative_name': partner['representative_name'] ?? '', 'phone':partner['phone']??''},
       'template': Map<String, dynamic>.from(template['payload'] as Map),
       'company_seal_snapshot': seal, 'company_seal_enabled': company['company_seal_enabled'] == true};
   }

@@ -2,6 +2,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import '../../domain/company_seal_snapshot.dart';
 import '../../domain/partner_company_bank_account.dart';
+import '../../domain/trade_document_form_draft.dart';
 import 'company_seal_pdf.dart';
 import 'trade_document_form_geometry.dart';
 
@@ -13,6 +14,11 @@ class TradeDocumentFormPdf {
  static String _fullDate(Object? value){final d=_date(value);return '${d.year}年${d.month}月${d.day}日';}
  static Future<void> append(pw.Document document,Map<String,dynamic> p,
   {required pw.Font regularFont,required pw.Font boldFont})async {
+  final canvas=await buildCanvas(p,regularFont:regularFont,boldFont:boldFont);
+  document.addPage(pw.Page(pageFormat:PdfPageFormat.a4,margin:pw.EdgeInsets.zero,build:(_)=>canvas));
+ }
+ static Future<pw.Widget> buildCanvas(Map<String,dynamic> p,
+  {required pw.Font regularFont,required pw.Font boldFont})async {
   if(!const ['order','acceptance'].contains(p['kind']))throw StateError('契約書類の種類を確認できません。');
   final order=p['kind']=='order',g=tradeDocumentFormGeometry[p['kind']=='order'?'order':'acceptance']!;
   final ys=(g['ys'] as List).cast<num>().map((n)=>n.toDouble()).toList(),cols=(g['grid_columns'] as List).cast<num>().map((n)=>n.toDouble()).toList();
@@ -21,6 +27,7 @@ class TradeDocumentFormPdf {
   double x(double px)=>left+(px-(order?164:239))*scale;
   double hy(double py)=>top+((order?532:499)-py)*(order?scale:0.35);
   final parts=<pw.Widget>[];
+  final fields=p.containsKey('form_fields')?TradeDocumentFormFields.fromJson(p['form_fields']).toJson():null;
   void line(double x1,double y1,double x2,double y2,{double stroke=0.5}) {
    parts.add(pw.Positioned(left:x1,top:height-y1,child:pw.SizedBox(width:x2==x1?stroke:x2-x1,height:y1==y2?stroke:y1-y2,
     child:pw.Container(color:PdfColors.black))));
@@ -84,6 +91,7 @@ class TradeDocumentFormPdf {
   for(final xx in [a,m,n]){line(xx,ys[0],xx,ys[2]);}
   label('工 事 名 称',left,a,ys[0],ys[1]);text(val(p['work_name']),a+3,ys[1]+3,m-a-6,ys[0]-ys[1]-6,size:9);
   label('工 事 内 容',m,n,ys[0],ys[1]);
+  if(fields!=null)text(fields['work_content'] as String,n+3,ys[1]+3,right-n-6,ys[0]-ys[1]-6,size:8);
   label('工 事 場 所',left,a,ys[1],ys[2]);text(val(p['work_address']),a+3,ys[2]+3,m-a-6,ys[1]-ys[2]-6,size:8);
   label('工　　期',m,n,ys[1],ys[2]);final mid=(ys[1]+ys[2])/2;line(n,mid,right,mid);
   for(final r in [('着手','period_start',mid,ys[1]),('完成','period_end',ys[2],mid)]){
@@ -101,17 +109,48 @@ class TradeDocumentFormPdf {
    label(['前金払','部分払','完成払'][i],spine,a,high,low);
    label('有　・　無',a,choice,high,low,size:8.5);label('支払時期',choice,when,high,low);
    label(i<2?'支 払 額':'支　払',paylabel,n,high,low);
+   if(fields!=null){
+    final payment=(fields['payments'] as Map)[['advance','partial','completion'][i]] as Map;
+    if(payment['choice']!='unspecified'){
+     final center=a+(choice-a)*(payment['choice']=='yes'?.28:.75);
+     parts.add(pw.Positioned(left:center-7,top:height-(high+low)/2-7,child:pw.Container(width:14,height:14,decoration:pw.BoxDecoration(shape:pw.BoxShape.circle,border:pw.Border.all(width:.6)))));
+    }
+    date(payment['date'],when+3,low+2,high-2);
+    if(payment['amount_yen']!=null)text('${money(payment['amount_yen'])} 円',n+3,low+2,right-n-6,high-low-4,size:8);
+   }
   }
   for(final xx in [a,choice,when,m,n]){line(xx,ys[6],xx,ys[8]);}
   label('出来高締切日',left,a,ys[6],ys[7],size:7.8);label('請求書締切日',choice,when,ys[6],ys[7],size:7.8);label('支　払　日',m,n,ys[6],ys[7]);
   for(final r in [(a,choice),(when,m)]){text('毎月',r.$1+7,ys[7]+3,26,ys[6]-ys[7]-6,size:8);text('日',r.$2-12,ys[7]+3,10,ys[6]-ys[7]-6,size:8);}
-  text('（ 当月 ・ 翌月 ・ 翌々月 ）',n+3,ys[7]+3,right-n-18,ys[6]-ys[7]-6,size:7.2);text('日',right-12,ys[7]+3,10,ys[6]-ys[7]-6,size:8);
+  final offset=fields?['payment_month_offset'];
+  final months=[for(var i=0;i<3;i++)offset==i?'【${['当月','翌月','翌々月'][i]}】':['当月','翌月','翌々月'][i]].join(' ・ ');
+  text('（ $months ）',n+3,ys[7]+3,right-n-18,ys[6]-ys[7]-6,size:7.2);text('日',right-12,ys[7]+3,10,ys[6]-ys[7]-6,size:8);
   label('支 払 条 件',left,a,ys[7],ys[8]);label('現金比率',a,choice,ys[7],ys[8]);label('手形比率',when,m,ys[7],ys[8]);
   text('（手形決済日：支払日より　　　ヶ月）',n+5,ys[8]+3,right-n-8,ys[7]-ys[8]-6,size:7);
   line(a,ys[8],a,ys[9]);label('支　給　品',left,a,ys[8],ys[9]);
+  if(fields!=null){
+   for(final row in [('progress_cutoff_day',a+35,choice-14),('invoice_cutoff_day',when+35,m-14),('payment_day',right-29,right-14)]){
+    text(val(fields[row.$1]),row.$2,ys[7]+3,row.$3-row.$2,ys[6]-ys[7]-6,size:8,center:true);
+   }
+   if(fields['cash_ratio_percent']!=null)text('${fields['cash_ratio_percent']} %',choice+3,ys[8]+3,when-choice-6,ys[7]-ys[8]-6,size:8,center:true);
+   if(fields['bill_ratio_percent']!=null)text('${fields['bill_ratio_percent']} %',m+3,ys[8]+3,n-m-6,ys[7]-ys[8]-6,size:8,center:true);
+   if(fields['bill_months']!=null)text('${fields['bill_months']}',right-51,ys[8]+3,15,ys[7]-ys[8]-6,size:8,center:true);
+   text(fields['supplies'] as String,a+3,ys[9]+3,right-a-6,ys[8]-ys[9]-6,size:8);
+  }
   label(order?'施　工　単　価　内　訳　書':'工　事　費　内　訳　書',left,right,ys[9],ys[10],size:10);
   for(final xx in cols.skip(1).take(5)){line(xx,ys[10],xx,ys[20]);}
   for(var i=0;i<6;i++){label(['項　　　目','数　量','単位','単　価','金　額','備　　　考'][i],cols[i],cols[i+1],ys[10],ys[11],size:8.5);}
+  if(fields!=null){
+   final rows=fields['rows'] as List;
+   for(var row=0;row<9;row++){
+    final values=rows[row] as Map;
+    for(var col=0;col<6;col++){
+     final key=['item','quantity','unit','unit_price_yen','amount_yen','note'][col];
+     final value=values[key];
+     text(value==null?'':(key.endsWith('_yen')?money(value):val(value)),cols[col]+2,ys[12+row]+2,cols[col+1]-cols[col]-4,ys[11+row]-ys[12+row]-4,size:7.5,center:col>0&&col<5);
+    }
+   }
+  }
   text('［特記事項］（右記工事請負契約条項に記載されていない事項を記入）',left+3,ys[20]-13,width-6,12,size:7.4,bold:true);
   final bank=order&&p['counterparty_bank']!=null?PartnerCompanyBankAccount.fromJson(p['counterparty_bank']):null;
   final details=[
@@ -129,6 +168,6 @@ class TradeDocumentFormPdf {
    '相手住所：${val(counter['address'])}　相手代表者名：${val(counter['representative_name'])}',
   ].join('\n');
   text(details,left+4,ys.last+4,width-8,ys[20]-ys.last-19,size:8);
-  document.addPage(pw.Page(pageFormat:PdfPageFormat.a4,margin:pw.EdgeInsets.zero,build:(_)=>pw.Stack(children:parts)));
+  return pw.Stack(children:parts);
  }
 }

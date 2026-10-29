@@ -2,7 +2,11 @@ name: Typed contract form input candidate
 on:
   pull_request:
     paths:
-      - 'lib/domain/trade_document_form_draft.dart'
+      - 'lib/domain/trade_document_*'
+      - 'lib/features/shared/standalone_trade_document*.dart'
+      - 'lib/features/shared/trade_document_form*.dart'
+      - 'lib/features/shared/trade_document_output*.dart'
+      - 'test/trade_document_form_output_wire_test.dart'
       - 'test/trade_document_form_draft_test.dart'
       - 'lib/features/shared/trade_document_form_session.dart'
       - 'lib/features/shared/trade_document_attachment_repository.dart'
@@ -18,6 +22,33 @@ jobs:
       - uses: subosito/flutter-action@v2
         with: {flutter-version: '3.47.5', channel: stable, cache: true}
       - run: flutter pub get --enforce-lockfile
-      - run: flutter analyze lib/domain/trade_document_form_draft.dart lib/features/shared/trade_document_form_session.dart lib/features/shared/trade_document_attachment_repository.dart test/trade_document_form_draft_test.dart test/trade_document_host_session_wire_test.dart
+      - run: flutter analyze lib/domain/trade_document_form_draft.dart lib/features/shared/trade_document_form_session.dart lib/features/shared/trade_document_attachment_repository.dart test/trade_document_form_draft_test.dart test/trade_document_host_session_wire_test.dart lib/domain/trade_document_editor_payload.dart lib/features/shared/standalone_trade_document_page.dart lib/features/shared/standalone_trade_document_repository.dart lib/features/shared/trade_document_form_renderer.dart lib/features/shared/trade_document_form_pdf.dart lib/features/shared/trade_document_terms_pdf.dart lib/features/shared/trade_document_output_selector.dart test/trade_document_form_output_wire_test.dart
       - run: flutter test test/trade_document_form_draft_test.dart test/trade_document_host_session_wire_test.dart
+      - run: flutter test test/trade_document_form_output_wire_test.dart
+        env: {TRADE_TYPED_PDF_OUTPUT_DIR: /tmp/typed-form-output}
+      - run: python -m pip install PyMuPDF==1.26.4
+      - name: Verify real Japanese form derivatives and complete legal text
+        run: |
+          python - <<'PYCODE'
+          import fitz,json
+          from pathlib import Path
+          expected={'a4TwoPages':(2,595.28,841.89),'a3Landscape':(1,1190.55,841.89),'a4Duplex':(2,595.28,841.89)}
+          original=json.loads(Path('docs/fixtures/trade-document-terms/user-confirmed-20261029-v1.json').read_text())
+          compact=lambda s:''.join(s.split())
+          legal=compact(''.join(title+''.join(paragraphs) for title,paragraphs in original))
+          for name,(pages,w,h) in expected.items():
+            d=fitz.open('/tmp/typed-form-output/'+name+'.pdf');assert len(d)==pages
+            assert all(abs(p.rect.width-w)<.1 and abs(p.rect.height-h)<.1 for p in d)
+            text=compact(''.join(p.get_text() for p in d))
+            for value in ['入力した工事内容','支給品入力','第一明細入力','第九明細入力','最終明細保持','15,000']:
+              assert compact(value) in text,(name,value)
+            for title,paragraphs in original:
+              assert compact(title) in text,(name,title)
+              for paragraph in paragraphs: assert compact(paragraph) in text,(name,title)
+            if name=='a4Duplex':assert '/DuplexFlipLongEdge' in d.xref_object(d.pdf_catalog())
+          print('Actual Japanese three-format complete content and dimensions passed')
+          PYCODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: typed-form-output, path: /tmp/typed-form-output}
       - run: git diff --exit-code -- pubspec.yaml pubspec.lock

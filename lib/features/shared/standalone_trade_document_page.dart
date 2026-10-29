@@ -3,13 +3,17 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:pdf/pdf.dart';
-import 'package:pdf/widgets.dart' as pw;
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:printing/printing.dart';
 
 import '../../data/supabase_backend.dart';
-import '../invoices/invoice_order_acceptance_pdf.dart';
-import '../payroll/payment_order_pdf.dart';
-import 'company_seal_pdf.dart';
+import '../../domain/trade_document_form_draft.dart';
+import '../../domain/trade_document_terms_snapshot.dart';
+import 'trade_document_form_session.dart';
+import 'trade_document_form_renderer.dart';
+import 'trade_document_output_layout.dart';
+import 'trade_document_output_selector.dart';
+import 'trade_document_touch_editor_page.dart';
 import 'standalone_trade_document.dart';
 import 'standalone_trade_document_repository.dart';
 import 'standalone_trade_document_print_scope.dart';
@@ -20,9 +24,13 @@ class StandaloneTradeDocumentPage extends StatefulWidget {
     super.key,
     required this.tradeCompanyId,
     required this.acceptance,
+    this.clientOverride,this.sessionOverride,this.repositoryOverride,
   });
   final String tradeCompanyId;
   final bool acceptance;
+  final SupabaseClient? clientOverride;
+  final TradeDocumentFormSession? sessionOverride;
+  final StandaloneTradeDocumentRepository? repositoryOverride;
 
   @override
   State<StandaloneTradeDocumentPage> createState() => _StandaloneState();
@@ -30,12 +38,16 @@ class StandaloneTradeDocumentPage extends StatefulWidget {
 
 class _StandaloneState extends State<StandaloneTradeDocumentPage>
     with WidgetsBindingObserver {
-  final _repository = StandaloneTradeDocumentRepository.maybeCreate();
+  StandaloneTradeDocumentRepository? _repository;
+  TradeDocumentFormSession? _session;
+  TradeDocumentFormDraft? _draft;
   final _controllers = <String, TextEditingController>{};
   StreamSubscription<dynamic>? _auth;
   late final StandaloneTradeDocumentPrintScope _printScope;
   Map<String, dynamic>? _context;
-  Uint8List? _bytes;
+  Uint8List? _bytes,_canonicalBytes;
+  Map<String,dynamic>? _renderedPayload;
+  TradeDocumentOutputLayout _layout=TradeDocumentOutputLayout.a4TwoPages;
   String? _error;
   bool _loading = true, _busy = false, _revoked = false;
   int _generation = 0;
@@ -44,6 +56,14 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
   @override
   void initState() {
     super.initState();
+    final client=widget.clientOverride??(SupabaseBackend.isInitialized?SupabaseBackend.client:null);
+    if(client!=null){
+      _session=widget.sessionOverride??TradeDocumentFormSession(client,target:'${widget.tradeCompanyId}:${widget.acceptance}',currentTarget:()=>'${widget.tradeCompanyId}:${widget.acceptance}');
+      if(!_session!.belongsTo(client))throw ArgumentError('Foreign contract session');
+      _repository=widget.repositoryOverride??StandaloneTradeDocumentRepository(client,session:_session);
+      if(!_repository!.isBoundTo(_session!))throw ArgumentError('Unbound contract repository');
+      _session!.addListener(_invalidate);
+    }
     _printScope = StandaloneTradeDocumentPrintScope(
       verifyScope: _verify,
       currentBytes: () => _bytes,
@@ -95,8 +115,9 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
     _revoked = true;
     _printScope.invalidate();
     _generation++;
-    _bytes = null;
+    _bytes = null;_canonicalBytes=null;_renderedPayload=null;
     _context = null;
+    _draft=null;
     for (final controller in _controllers.values) {
       controller.clear();
     }
@@ -126,6 +147,7 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
 
   Future<void> _load() async {
     try {
+      await _session?.ready();
       _verify();
       final value = await _repository!.load(
         tradeCompanyId: widget.tradeCompanyId,
@@ -168,6 +190,14 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
       for (final entry in initial.entries) {
         _controllers[entry.key] = TextEditingController(text: entry.value);
       }
+      final now=DateTime.now();
+      final payload=TradeDocumentTermsSnapshot.initialize({
+        'version':1,'kind':widget.acceptance?'acceptance':'order',
+        'month':'${now.year.toString().padLeft(4,'0')}-${now.month.toString().padLeft(2,'0')}',
+        for(final key in ['issuer','counterparty','company_seal_snapshot','company_seal_enabled','counterparty_bank'])if(value.containsKey(key))key:value[key],
+        for(final entry in initial.entries)if(!entry.key.contains('.'))entry.key:entry.value,
+      });
+      _draft=TradeDocumentFormDraft.fromPayload(payload,allowAmountEditing:true);
       setState(() {
         _context = value;
         _loading = false;
@@ -184,14 +214,27 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
     }
   }
 
-  void _edited() {
-    _generation++;
-    if (_bytes != null || _error != null) {
-      setState(() {
-        _bytes = null;
-        _error = null;
-      });
-    }
+  Map<String,dynamic> _validatedPayload(Map<String,dynamic> payload,Map<String,dynamic> registered){
+    final attachment=standaloneTradeDocument(context:registered,fields:{
+      for(final entry in payload.entries)if(entry.value is String||entry.value is int)entry.key:entry.value.toString(),
+    });
+    return {...attachment.payload,'form_fields':TradeDocumentFormFields.fromJson(payload['form_fields']).toJson()};
+  }
+  Future<void> _edit()async {
+    if(_busy||_revoked||_draft==null)return;
+    try{
+      _verify();
+      await Navigator.of(context).push<bool>(MaterialPageRoute(builder:(_)=>TradeDocumentTouchEditorPage(
+        initial:_draft!,requireScope:_verify,scopeChanges:_session,canEdit:true,
+        buildPreview:(payload)async{_verify();final bytes=await TradeDocumentFormRenderer.canonical(_validatedPayload(payload,_context!));_verify();return bytes;},
+        onSave:(payload)async{
+          _verify();final validated=_validatedPayload(payload,_context!);
+          final next=TradeDocumentFormDraft.fromPayload(validated,allowAmountEditing:true);next.validateForSave();
+          _verify();setState((){_draft=next;_bytes=null;_canonicalBytes=null;_renderedPayload=null;_generation++;});
+        },
+      )));
+      _verify();
+    }catch(error){if(mounted&&!_revoked)setState(()=>_error=error.toString());}
   }
 
   Future<void> _generate() async {
@@ -207,39 +250,17 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
     });
     try {
       _verify();
-      final attachment = standaloneTradeDocument(
-        context: context,
-        fields: {
-          for (final entry in _controllers.entries) entry.key: entry.value.text,
-        },
-      );
-      final font = await CompanySealPdf.loadFont();
+      final draft=_draft;if(draft==null)throw StateError('入力内容を確認してください。');
+      draft.validateForSave();
+      final payload=_validatedPayload(draft.payload,context);
+      final canonical=await TradeDocumentFormRenderer.canonical(payload);
       _verify();
-      final document = pw.Document(
-        theme: pw.ThemeData.withFont(base: font, bold: font),
-      );
-      if (widget.acceptance) {
-        await InvoiceOrderAcceptancePdf.append(
-          document,
-          attachment,
-          regularFont: font,
-          boldFont: font,
-        );
-      } else {
-        await PaymentOrderPdf.append(
-          document,
-          attachment,
-          regularFont: font,
-          boldFont: font,
-        );
-      }
-      _verify();
-      final bytes = await document.save();
+      final bytes=await TradeDocumentFormRenderer.output(payload,layout:_layout,canonicalBytes:canonical);
       _verify();
       if (!mounted || generation != _generation) {
         return;
       }
-      setState(() => _bytes = bytes);
+      setState(() {_bytes = bytes;_canonicalBytes=canonical;_renderedPayload=payload;});
     } catch (error) {
       if (mounted && !_revoked) {
         setState(() {
@@ -255,6 +276,17 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
     }
   }
 
+  Future<void> _changeLayout(TradeDocumentOutputLayout next)async {
+    if(_busy||_revoked)return;
+    final canonical=_canonicalBytes,payload=_renderedPayload;
+    if(canonical==null||payload==null){setState(()=>_layout=next);return;}
+    final generation=++_generation;setState(()=>_busy=true);
+    try{_verify();final bytes=await TradeDocumentFormRenderer.output(payload,layout:next,canonicalBytes:canonical);_verify();
+      if(mounted&&generation==_generation)setState((){_layout=next;_bytes=bytes;});
+    }catch(error){if(mounted&&!_revoked)setState(()=>_error=error.toString());}
+    finally{if(mounted&&generation==_generation)setState(()=>_busy=false);}
+  }
+
   Future<void> _print() async {
     final bytes = _bytes;
     if (_busy || bytes == null || _revoked) {
@@ -266,7 +298,7 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
       _printScope.begin(bytes);
       await Printing.layoutPdf(
         name: widget.acceptance ? '注文請書.pdf' : '注文書.pdf',
-        format: PdfPageFormat.a4,
+        format: _layout==TradeDocumentOutputLayout.a3Landscape?PdfPageFormat.a3.landscape:PdfPageFormat.a4,
         onLayout: (_) async => _printScope.layout(),
       );
       _verify();
@@ -282,35 +314,6 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
     }
   }
 
-  Widget _input(String key, String label, {int lines = 1, int max = 240,
-    bool number = false, String? hint}) => Padding(
-    padding: const EdgeInsets.only(bottom: 12),
-    child: TextField(
-      controller: _controllers[key],
-      enabled: !_busy && !_revoked,
-      maxLines: lines,
-      maxLength: max,
-      keyboardType: number ? TextInputType.number : null,
-      onChanged: (_) => _edited(),
-      decoration: InputDecoration(labelText: label, hintText: hint,
-        border: const OutlineInputBorder()),
-    ),
-  );
-
-  Widget _party(String key, String title) {
-    final data = Map<String, dynamic>.from(_context![key] as Map);
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(title, style: Theme.of(context).textTheme.titleMedium),
-      const SizedBox(height: 8),
-      Text(data['name']?.toString() ?? ''),
-      const SizedBox(height: 12),
-      _input('$key.address', '住所（必須）', lines: 2),
-      _input('$key.corporate_number', '法人番号（任意・13桁）', max: 13,
-        number: true),
-      _input('$key.representative_name', '代表者名（必須）', max: 80),
-    ]);
-  }
-
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -319,6 +322,8 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
     _repository?.invalidate();
     _auth?.cancel();
     _repository?.dispose();
+    _session?.removeListener(_invalidate);
+    if(widget.sessionOverride==null)_session?.dispose();
     for (final controller in _controllers.values) {
       controller.dispose();
     }
@@ -336,7 +341,7 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
           if (_error != null) Padding(padding: const EdgeInsets.only(bottom: 12),
             child: Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error))),
           if (!_revoked && _context != null) ...[
-            const Text('工事名・工事場所・日付と、不足している住所・代表者名を入力してください。'),
+            const Text('帳票をタップして工事内容・日付・明細を入力してください。会社の不足情報は会社登録から修正してください。'),
             ExpansionTile(leading: const Icon(Icons.help_outline),
               title: const Text('作成について'),
               children: const [Padding(padding: EdgeInsets.all(12), child: Text(
@@ -346,25 +351,9 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
                 '注文書の請負代金・消費税額は実額を手入力してください。日付はYYYY-MM-DDで入力します。\n'
                 '入力を変えた場合は帳票を作り直してください。画面を離れたり認証が変わった場合は会社詳細から開き直してください。'))]),
             const SizedBox(height: 12),
-            _input('work_name', '工事名（必須）'),
-            _input('work_address', '工事場所（必須）', lines: 2),
-            _input('issue_date', widget.acceptance ? '承諾日（必須）' : '発行日（必須）',
-              max: 10, hint: 'YYYY-MM-DD'),
-            _input('order_date', '注文書日（必須）', max: 10, hint: 'YYYY-MM-DD'),
-            if (!widget.acceptance) ...[
-              _input('period_start', '工期の開始日（必須）', max: 10, hint: 'YYYY-MM-DD'),
-              _input('period_end', '工期の終了日（必須）', max: 10, hint: 'YYYY-MM-DD'),
-              _input('total_amount_yen', '請負代金（税込・必須）', max: 12, number: true),
-              _input('tax_amount_yen', 'うち消費税額（必須）', max: 12, number: true),
-            ],
-            _party('issuer', widget.acceptance ? '乙・受注者（自社）' : '甲・発注者（自社）'),
-            _party('counterparty', widget.acceptance ? '甲・発注者（登録会社）' : '乙・受注者（登録会社）'),
-            ExpansionTile(title: const Text('文面を編集'), children: [
-              if (widget.acceptance) _input('acceptance_text', '承諾文', lines: 4, max: 400)
-              else _input('intro_text', '冒頭文', lines: 4, max: 400),
-              _input('payment_conditions', '支払条件', lines: 3, max: 400),
-              _input('notes', 'その他特記事項', lines: 4, max: 600),
-            ]),
+            FilledButton.icon(onPressed:_busy?null:_edit,icon:const Icon(Icons.touch_app_outlined),
+              label:Text(widget.acceptance?'請書の入力・設定':'注文書の入力・設定')),
+            const Padding(padding:EdgeInsets.symmetric(vertical:8),child:Text('会社情報は登録データを使用します。入力の確定はこの画面の下書きだけに反映されます。')),
             const SizedBox(height: 12),
             FilledButton.icon(onPressed: _busy ? null : _generate,
               icon: const Icon(Icons.picture_as_pdf_outlined),
@@ -372,6 +361,8 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
             if (_busy) const LinearProgressIndicator(),
             if (bytes != null) ...[
               const SizedBox(height: 12),
+              TradeDocumentOutputSelector(key:ValueKey(_layout),value:_layout,enabled:!_busy,onChanged:_changeLayout),
+              const SizedBox(height:12),
               OutlinedButton.icon(onPressed: _busy ? null : _print,
                 icon: const Icon(Icons.print_outlined), label: const Text('印刷')),
               SizedBox(height: 520, child: PdfPreview(
@@ -382,7 +373,7 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
                   }
                   return bytes;
                 },
-                initialPageFormat: PdfPageFormat.a4,
+                initialPageFormat: _layout==TradeDocumentOutputLayout.a3Landscape?PdfPageFormat.a3.landscape:PdfPageFormat.a4,
                 canChangePageFormat: false,
                 canChangeOrientation: false,
                 allowPrinting: false,
