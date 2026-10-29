@@ -35,8 +35,10 @@ Map<String, dynamic> r18InitialValues({
       throw const FormatException('契約日を確認してください。');
     }
     final previous = DateTime.utc(year, number - 1, 15);
-    if (blank(dateKey)) result[dateKey] = '${previous.year.toString().padLeft(4, '0')}-'
-        '${previous.month.toString().padLeft(2, '0')}-15';
+    if (blank(dateKey)) {
+      result[dateKey] = '${previous.year.toString().padLeft(4, '0')}-'
+          '${previous.month.toString().padLeft(2, '0')}-15';
+    }
     if (subjectKind == 'invoice' && blank('issue_date')) {
       final end = DateTime.utc(year, number, 0);
       result['issue_date'] = '${end.year.toString().padLeft(4, '0')}-'

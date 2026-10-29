@@ -93,7 +93,7 @@ void main() {
     generated?.payload['kind'] == 'acceptance',
     'draft automatically resolves acceptance',
   );
-  check(generated?.payload['issue_date'] == '2026-10-31', 'invoice issue date');
+  check(generated?.payload['issue_date'] == '2026-09-30', 'acceptance uses target previous month end');
   check(
     generated?.payload['order_date'] == '2026-09-15',
     'previous month contract date',
@@ -121,7 +121,7 @@ void main() {
     parentSealEnabled: false,
     onMissingLockedAcceptance: () => missing++,
   );
-  check(lockedGenerated?.payload['issue_date'] == '2026-10-31',
+  check(lockedGenerated?.payload['issue_date'] == '2026-09-30',
       'locked source automatically generates with its explicit issue date');
   check(lockedGenerated?.payload['company_seal_enabled'] == false &&
       lockedGenerated?.payload['company_seal_snapshot'] == null,
