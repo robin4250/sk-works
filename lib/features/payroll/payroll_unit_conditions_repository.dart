@@ -125,18 +125,26 @@ class PayrollUnitConditions {
         entry['registration_version'] is! int ||
         (entry['registration_version'] as int) < 1 ||
         !RegExp(r'^[0-9]{4}-(0[1-9]|1[0-2])-01$').hasMatch(month) ||
-        month.startsWith('0000-')) return false;
+        month.startsWith('0000-')) {
+      return false;
+    }
     final dates = entry['work_dates'];
-    if (dates is! List || dates.isEmpty || dates.length > 31) return false;
+    if (dates is! List || dates.isEmpty || dates.length > 31) {
+      return false;
+    }
     final seen = <String>{};
     for (final date in dates) {
       if (date is! String || !seen.add(date) ||
           !RegExp(r'^[0-9]{4}-[0-9]{2}-[0-9]{2}$').hasMatch(date) ||
-          !date.startsWith(month.substring(0, 8))) return false;
+          !date.startsWith(month.substring(0, 8))) {
+        return false;
+      }
       final parsed = DateTime.tryParse(date);
       if (parsed == null || parsed.year != int.parse(date.substring(0, 4)) ||
           parsed.month != int.parse(date.substring(5, 7)) ||
-          parsed.day != int.parse(date.substring(8, 10))) return false;
+          parsed.day != int.parse(date.substring(8, 10))) {
+        return false;
+      }
     }
     return true;
   }
