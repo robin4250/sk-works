@@ -20,7 +20,10 @@ class _LifecycleBinding extends AutomatedTestWidgetsFlutterBinding {
 }
 class _Printing extends PrintingPlatform {
   LayoutCallback? layout;
-  final completed=Completer<bool>();
+  // Allocate when the actual button enters layoutPdf, inside the widget's
+  // FakeAsync zone; setUp runs outside it, so an eager completer can stall await.
+  Completer<bool>? _completed;
+  Completer<bool> get completed=>_completed??=Completer<bool>();
   int prints=0;
   @override Future<PrintingInfo> info()async=>const PrintingInfo(canPrint:true,canShare:true,canRaster:false);
   @override Future<bool> layoutPdf(Printer? printer,LayoutCallback onLayout,String name,PdfPageFormat format,
@@ -89,7 +92,7 @@ void main(){
       selector.onChanged(TradeDocumentOutputLayout.a4TwoPages);
       if(afterAwait){expect(checks,greaterThan(before));allowed=false;}
       await tester.pumpAndSettle();
-      expect(checks,greaterThan(before));expect(find.byType(PdfPreview),findsNothing);
+      expect(checks,greaterThan(before));expect(find.byType(PdfPreview),findsNothing);expect(find.byType(LinearProgressIndicator),findsNothing);
       expect(printing.prints,0);expect(tester.takeException(),isNull);
     });
   }
@@ -99,7 +102,7 @@ void main(){
     binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
     expect(await printing.layout!(PdfPageFormat.a4),snapshot);expect(bytes,snapshot);
     printing.completed.complete(false);await tester.pump();binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);await tester.pumpAndSettle();
-    expect(find.byType(PdfPreview),findsNothing);await expectLater(printing.layout!(PdfPageFormat.a4),throwsStateError);expect(tester.takeException(),isNull);
+    expect(find.byType(PdfPreview),findsNothing);expect(find.byType(LinearProgressIndicator),findsNothing);await expectLater(printing.layout!(PdfPageFormat.a4),throwsStateError);expect(tester.takeException(),isNull);
   });
   testWidgets('owned print never exempts scope invalidation and retained native onLayout refuses',(tester)async{
     final changes=ValueNotifier(0);var allowed=true;final bytes=await _pdf(tester);
@@ -108,7 +111,7 @@ void main(){
     expect(await printing.layout!(PdfPageFormat.a4),bytes);
     allowed=false;changes.value++;await expectLater(printing.layout!(PdfPageFormat.a4),throwsStateError);
     printing.completed.complete(false);binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);await tester.pumpAndSettle();
-    expect(find.byType(PdfPreview),findsNothing);expect(printing.prints,1);expect(tester.takeException(),isNull);
+    expect(find.byType(PdfPreview),findsNothing);expect(find.byType(LinearProgressIndicator),findsNothing);expect(printing.prints,1);expect(tester.takeException(),isNull);
     await tester.pumpWidget(const SizedBox.shrink());changes.dispose();
   });
   testWidgets('background during owned print rejects late layout and cannot revive on resume',(tester)async{
@@ -116,6 +119,6 @@ void main(){
     await tester.tap(find.widgetWithText(OutlinedButton,'印刷'));await tester.pump();
     binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await expectLater(printing.layout!(PdfPageFormat.a4),throwsStateError);
-    printing.completed.complete(false);await tester.pumpAndSettle();expect(find.byType(PdfPreview),findsNothing);expect(tester.takeException(),isNull);
+    printing.completed.complete(false);await tester.pumpAndSettle();expect(find.byType(PdfPreview),findsNothing);expect(find.byType(LinearProgressIndicator),findsNothing);expect(tester.takeException(),isNull);
   });
 }

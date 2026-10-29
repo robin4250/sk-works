@@ -35,7 +35,7 @@ class _OutputState extends State<TradeDocumentOutputPage> with WidgetsBindingObs
   if(WidgetsBinding.instance.lifecycleState!=AppLifecycleState.resumed)_retire();
  }
  void _scopeChanged(){try{_verify();}catch(_){_retire();}}
- void _retire(){if(_revoked)return;_revoked=true;_bytes=null;_epoch++;_print.invalidate();if(mounted)setState(()=>_error='書類の閲覧状態が変わりました。開き直してください。');}
+ void _retire(){if(_revoked)return;_revoked=true;_busy=false;_bytes=null;_epoch++;_print.invalidate();if(mounted)setState(()=>_error='書類の閲覧状態が変わりました。開き直してください。');}
  @override void didUpdateWidget(covariant TradeDocumentOutputPage old){super.didUpdateWidget(old);if(!identical(old.scopeChanges,widget.scopeChanges))old.scopeChanges?.removeListener(_scopeChanged);if(!identical(old.canonicalBytes,widget.canonicalBytes)||!identical(old.payload,widget.payload)||!identical(old.scopeChanges,widget.scopeChanges))_retire();}
  @override void didChangeAppLifecycleState(AppLifecycleState state){
   try{_print.visibilityChanged(switch(state){AppLifecycleState.resumed=>StandalonePrintVisibility.resumed,AppLifecycleState.inactive=>StandalonePrintVisibility.inactive,AppLifecycleState.hidden=>StandalonePrintVisibility.hidden,AppLifecycleState.paused=>StandalonePrintVisibility.paused,AppLifecycleState.detached=>StandalonePrintVisibility.detached});}catch(_){_retire();}
