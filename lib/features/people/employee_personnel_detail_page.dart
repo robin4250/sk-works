@@ -138,8 +138,10 @@ class EmployeePersonnelDetailPage extends StatelessWidget {
       await session.refresh();
       if (retired == true && context.mounted) Navigator.of(context).pop();
     } catch (_) {
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('対象と管理権限を再確認してください。')));
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('対象と管理権限を再確認してください。')));
+      }
     }
   }
 
