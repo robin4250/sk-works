@@ -1,0 +1,26 @@
+name: Confirmed document viewer session and native output boundary
+on:
+  pull_request:
+    paths:
+      - 'lib/features/shared/trade_document_confirmation_repository.dart'
+      - 'lib/features/shared/trade_document_confirmation_dialog.dart'
+      - 'lib/features/shared/trade_document_output_page.dart'
+      - 'test/trade_document_confirmed_output_session_test.dart'
+      - 'test/trade_document_confirmed_output_host_test.dart'
+      - 'test/trade_document_confirmation_test.dart'
+      - 'docs/review/confirmed-document-output-session.md'
+      - '.github/workflows/trade-document-confirmed-output-session.yml'
+permissions:
+  contents: read
+jobs:
+  confirmed-output:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: '3.47.5', channel: stable, cache: true}
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/shared/trade_document_confirmation_repository.dart lib/features/shared/trade_document_confirmation_dialog.dart lib/features/shared/trade_document_output_page.dart test/trade_document_confirmed_output_session_test.dart test/trade_document_confirmed_output_host_test.dart test/trade_document_confirmation_test.dart
+      - run: flutter test --reporter expanded test/trade_document_confirmed_output_session_test.dart test/trade_document_confirmed_output_host_test.dart test/trade_document_confirmation_test.dart
+      - run: git diff --exit-code -- pubspec.yaml pubspec.lock

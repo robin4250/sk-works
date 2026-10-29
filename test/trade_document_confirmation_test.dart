@@ -86,6 +86,7 @@ class MemoryStore implements TradeConfirmationPendingStore {
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   test('real synthetic SQL API responses parse into separate local pages and the same approved registered-seal payload', () {
     final sql = jsonDecode(File('test/fixtures/trade_document_confirmation_api_synthetic.json').readAsStringSync()) as Map;
     expect(sql['synthetic_fixture'], true);
@@ -255,7 +256,7 @@ void main() {
   for (final mode in ['supported', 'missing', 'permission', 'transport', 'wrong_type']) {
     test('SDK capability distinguishes absent API from transport and permission failure: $mode', () async {
       String part(Object value) => base64Url.encode(utf8.encode(jsonEncode(value))).replaceAll('=', '');
-      final token = '${part({'alg': 'HS256'})}.${part({'sub': actor, 'exp': DateTime.now().millisecondsSinceEpoch ~/ 1000 + 3600})}.fixture';
+      final token = '${part({'alg': 'HS256'})}.${part({'sub': actor, 'session_id':'90000000-0000-4000-8000-000000000001','role':'authenticated', 'exp': DateTime.now().millisecondsSinceEpoch ~/ 1000 + 3600})}.${base64Url.encode(List<int>.filled(32,7)).replaceAll('=','')}';
       var calls = 0;
       final client = SupabaseClient('https://fixture.invalid', 'fixture-public',
         authOptions: const AuthClientOptions(autoRefreshToken: false), httpClient: MockClient((request) async {

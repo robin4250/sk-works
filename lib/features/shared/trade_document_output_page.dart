@@ -11,11 +11,12 @@ import 'standalone_trade_document_print_scope.dart';
 
 /// Authorized form-only derivative. Parent financial pages are a separate output.
 class TradeDocumentOutputPage extends StatefulWidget {
- const TradeDocumentOutputPage({super.key,required this.payload,required this.canonicalBytes,required this.requireScope,this.scopeChanges});
+ const TradeDocumentOutputPage({super.key,required this.payload,required this.canonicalBytes,required this.requireScope,this.scopeChanges,this.onNativeOutputChanged});
  final Map<String,dynamic> payload;
  final Uint8List canonicalBytes;
  final VoidCallback requireScope;
  final Listenable? scopeChanges;
+ final ValueChanged<bool>? onNativeOutputChanged;
  @override State<TradeDocumentOutputPage> createState()=>_OutputState();
 }
 class _OutputState extends State<TradeDocumentOutputPage> with WidgetsBindingObserver {
@@ -48,12 +49,12 @@ class _OutputState extends State<TradeDocumentOutputPage> with WidgetsBindingObs
  }
  Future<void> _output({bool share=false})async{
   final bytes=_bytes;if(_busy||bytes==null||_revoked)return;setState(()=>_busy=true);
-  try{_verify();_print.begin(bytes);final name=_payload['kind']=='order'?'注文書.pdf':'請書.pdf';
+  try{_verify();_print.begin(bytes);widget.onNativeOutputChanged?.call(true);final name=_payload['kind']=='order'?'注文書.pdf':'請書.pdf';
    if(share){_print.layout();await Printing.sharePdf(bytes:bytes,filename:name);}
    else{await Printing.layoutPdf(name:name,format:_layout==TradeDocumentOutputLayout.a3Landscape?PdfPageFormat.a3.landscape:PdfPageFormat.a4,onLayout:(_)async=>_print.layout());}
    _verify();
   }catch(error){if(mounted&&!_revoked)setState(()=>_error='保存・印刷の結果を確認してください。');}
-  finally{_print.end();if(mounted)setState(()=>_busy=false);}
+  finally{_print.end();widget.onNativeOutputChanged?.call(false);if(mounted)setState(()=>_busy=false);}
  }
  @override void dispose(){widget.scopeChanges?.removeListener(_scopeChanged);WidgetsBinding.instance.removeObserver(this);_revoked=true;_bytes=null;_epoch++;_print.invalidate();super.dispose();}
  @override Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:Text(_payload['kind']=='order'?'注文書を保存・印刷':'請書を保存・印刷')),
