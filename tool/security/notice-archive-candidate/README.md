@@ -24,6 +24,10 @@ under the server's existing statement bound tests pending-query termination.
 It does not equate `release(true)` with synchronous server cancellation: native
 backend exit is observed separately and may depend on the statement timeout.
 Unexpected idle-pool errors fail the job without printing private error detail.
+The queued-lease cancellation test waits for the actual server response-close
+barrier before releasing the held pool client. Local client AbortSignal rejection
+alone does not prove the peer has observed disconnect; releasing immediately
+can legitimately race a server BEGIN. No arbitrary timing delay is substituted.
 
 This closes only the actual execution gap when the **new head's CI result is
 verified**. Local syntax validation alone is not a GoTrue/Native pass. Registry

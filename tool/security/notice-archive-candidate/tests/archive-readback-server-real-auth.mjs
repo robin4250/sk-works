@@ -91,7 +91,7 @@ try{
   const reservation=reservePort();await new Promise(r=>reservation.listen(0,'127.0.0.1',r));const port=reservation.address().port;await new Promise(r=>reservation.close(r));
   const endpoint=`https://127.0.0.1:${port}/readback`,s=createArchiveReadbackServerCandidate({...base,endpoint,...options});
   await new Promise((resolve,reject)=>{s.once('error',reject);s.listen(port,'127.0.0.1',resolve);});servers.push(s);
-  return {endpoint,client:(bearer=owner.access_token)=>createArchiveReadbackHTTPSVerifierCandidate({enabled:true,endpoint,bearer,ca:tls.cert,authorityId:authority,key,timeoutMs:15000})};
+  return {server:s,endpoint,client:(bearer=owner.access_token)=>createArchiveReadbackHTTPSVerifierCandidate({enabled:true,endpoint,bearer,ca:tls.cert,authorityId:authority,key,timeoutMs:15000})};
  }
  const normal=await server();
  const clean=async()=>{await until(async()=>pool.waitingCount===0&&pool.idleCount===pool.totalCount);const c=await pool.connect();try{assert.deepEqual((await c.query("select auth.uid() as actor,nullif(current_setting('request.jwt.claims',true),'') as jwt")).rows[0],{actor:null,jwt:null});}finally{c.release();}};
@@ -143,9 +143,16 @@ try{
  assert.deepEqual(await store.restore(own),Buffer.from('opaque native own'));assert.equal((await normal.client().verify(own)).status,'readback_verified_unattested');assert.equal(signed,signBefore+2);
  phase='cancelled-pool-waiter-discards-late-native-lease-before-begin';
  const holder=await pool.connect(),holderPid=holder.processID,beforeQueries=queries.length,waitController=new AbortController();
+ const peerClosed=deferred(),captureClose=(_request,response)=>response.once('close',()=>peerClosed.resolve(response.writableFinished));
+ normal.server.once('request',captureClose);
  const rejected=assert.rejects(normal.client().verify(own,{signal:waitController.signal}));
- try{await until(async()=>pool.waitingCount===1);waitController.abort();await rejected;}
- finally{waitController.abort();holder.release();}
+ try{
+  await until(async()=>pool.waitingCount===1);waitController.abort();await rejected;
+  // A local client rejection does not synchronously notify the remote server.
+  // Its own response-close/abort listener runs before this fixture listener;
+  // only now is the waiting server acquisition known to have been cancelled.
+  assert.equal(await stage(peerClosed.promise),false);
+ }finally{normal.server.off('request',captureClose);waitController.abort();holder.release();}
  await until(async()=>releases.some(x=>x.pid===holderPid&&x.destroy));await backendGone(holderPid);
  assert.equal(queries.length,beforeQueries);await clean();
  phase='actual-native-query-is-bounded-and-connection-terminates';
