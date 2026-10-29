@@ -153,17 +153,17 @@ void main() {
   testWidgets('own documents wire one and paired slots across saved document names',(tester) async {
     await HttpOverrides.runZoned(() async {
     await tester.pumpWidget(MaterialApp(home:OwnDocumentRegistrationPage(gateway:_OwnDocuments()))); await settle(tester);
-    verify(tester,'合成書類A',false); await verifyLiveTitles(tester,'合成書類A',false);expect(tester.takeException(),isNull);
+    verify(tester,'合成書類A',false); await verifyLiveTitles(tester,'合成書類A',false);debugPrint('fixture managed live titles complete');expect(tester.takeException(),isNull);
     },createHttpClient:(_) => _PictureClient());
   });
   testWidgets('managed documents wire same worker and company gallery across document scope filters',(tester) async {
     await HttpOverrides.runZoned(() async {
     final client=SupabaseClient('https://synthetic.invalid','synthetic-public',authOptions:const AuthClientOptions(autoRefreshToken:false));addTearDown(() async {
       await tester.pumpWidget(const SizedBox.shrink());
-      await tester.runAsync(client.dispose);
+      debugPrint("fixture SDK cleanup begin");await tester.runAsync(()=>client.dispose().timeout(const Duration(seconds:5)));debugPrint("fixture SDK cleanup complete");
     });
     await tester.pumpWidget(MaterialApp(home:WorkerDocumentPage(view:WorkerDocumentView.workers,repositoryOverride:_ManagedDocuments(client))));await settle(tester);
-    await tester.tap(find.text('合成社員A'));await settle(tester);verify(tester,'合成書類A',false);await verifyLiveTitles(tester,'合成書類A',false);expect(tester.takeException(),isNull);
+    debugPrint('fixture managed initial loaded');await tester.tap(find.text('合成社員A'));await settle(tester);debugPrint('fixture managed employee selected');verify(tester,'合成書類A',false);await verifyLiveTitles(tester,'合成書類A',false);debugPrint('fixture managed live titles complete');expect(tester.takeException(),isNull);
     },createHttpClient:(_) => _PictureClient());
   });
   testWidgets('newer qualification response wins and a stale load cannot retire the current gallery',(tester) async {

@@ -94,7 +94,7 @@ void main() {
     const channel=MethodChannel('net.nfet.printing');
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel,(call) async => call.method=='printingInfo'?{'canRaster':false}:null);
     final document=pw.Document()..addPage(pw.Page(build:(_)=>pw.Text('Synthetic original PDF')));
-    final pdf=(await tester.runAsync(document.save))!;var allowed=true;final changes=StreamController<Object?>.broadcast(sync:true);
+    debugPrint("fixture PDF saving"); final pdf=(await tester.runAsync(()=>document.save().timeout(const Duration(seconds:5))))!; debugPrint("fixture PDF saved");var allowed=true;final changes=StreamController<Object?>.broadcast(sync:true);
     final attachment=ResourceAttachment(label:'1',path:'synthetic.pdf',previewKey:'pdf:0',recordTitle:'合成PDF',loadBytes:()async=>pdf);
     final gallery=ResourceAttachmentGallery(source:Object(),workerId:'w',companyId:'c',isCurrent:()=>allowed,changes:changes.stream,entries:[attachment]);
     try {
@@ -103,12 +103,12 @@ void main() {
       await tester.tap(find.byType(ResourceAttachmentThumbnail));
       for(var frame=0;frame<20&&find.byType(PdfPreview).evaluate().isEmpty;frame++){await tester.pump(const Duration(milliseconds:16));}
       final callback=tester.widget<PdfPreview>(find.byType(PdfPreview)).build;
-      expect(await callback(PdfPageFormat.a4),pdf);
-      allowed=false;changes.add(null);await tester.pumpAndSettle();
+      debugPrint("fixture PDF mounted"); expect(await callback(PdfPageFormat.a4),pdf); debugPrint("fixture PDF callback passed");
+      allowed=false;changes.add(null);debugPrint("fixture PDF invalidated");await tester.pumpAndSettle();debugPrint("fixture PDF retired");
       await expectLater(callback(PdfPageFormat.a4),throwsStateError);
       expect(find.byType(PdfPreview),findsNothing);expect(tester.takeException(),isNull);
     } finally {
-      await tester.pumpWidget(const SizedBox.shrink());await changes.close();
+      debugPrint("fixture PDF cleanup begin");await tester.pumpWidget(const SizedBox.shrink());await changes.close();debugPrint("fixture PDF cleanup complete");
       tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel,null);
     }
   });
