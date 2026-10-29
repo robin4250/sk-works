@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../data/supabase_backend.dart';
 import 'trade_document_confirmation_model.dart';
+import 'trade_document_form_session.dart';
+import 'package:flutter/foundation.dart' show Listenable;
 
 abstract interface class TradeConfirmationRepository {
   String? get actorId;
@@ -21,11 +23,15 @@ abstract interface class TradeConfirmationRepository {
 class SupabaseTradeConfirmationRepository implements TradeConfirmationRepository {
   SupabaseTradeConfirmationRepository(this._client)
       : _actor = _client.auth.currentUser?.id, _token = _client.auth.currentSession?.accessToken {
+    _entryScope=TradeDocumentFormSession(_client);
     _subscription = _client.auth.onAuthStateChange.listen((event) {
       if (event.session?.user.id != _actor || event.session?.accessToken != _token) _revoked = true;
     }, onError: (Object _) => _revoked = true);
   }
   final SupabaseClient _client;
+  late final TradeDocumentFormSession _entryScope;
+  Listenable get outputAdmissionChanges=>_entryScope;
+  void requireOutputAdmission()=>_entryScope.requireScope();
   final String? _actor, _token;
   bool _revoked = false, _verified = false;
   StreamSubscription<AuthState>? _subscription;
@@ -41,10 +47,10 @@ class SupabaseTradeConfirmationRepository implements TradeConfirmationRepository
     }
   }
   Future<Object?> _call(String name, Map<String, dynamic> params, {bool probe = false}) async {
-    verify();
+    await _entryScope.ready();verify();
     if (!probe && !_verified) throw StateError('書類の確認機能を再確認してください。');
-    final result = await _client.rpc(name, params: params).setHeader('Authorization', 'Bearer $_token');
-    verify();
+    final result = await _entryScope.rpc(name,params);
+    _entryScope.requireScope();verify();
     return result;
   }
   @override Future<bool> available() async {
@@ -119,5 +125,29 @@ class SupabaseTradeConfirmationRepository implements TradeConfirmationRepository
     }
     return tradeConfirmationCopy(raw) as Map<String, dynamic>;
   }
-  Future<void> dispose() async { _revoked = true; await _subscription?.cancel(); }
+  static String _outputKey(Map<String,dynamic> scope){
+    const keys=['p_company_id','p_local_document_id','p_document_revision','p_kind','expected_document_id'];
+    if(scope.length!=keys.length||!keys.every(scope.containsKey)||
+      !tradeConfirmationUuid(scope['p_company_id'])||!tradeConfirmationUuid(scope['p_local_document_id'])||!tradeConfirmationUuid(scope['expected_document_id'])||
+      scope['p_local_document_id']==scope['expected_document_id']||scope['p_document_revision'] is! int||(scope['p_document_revision'] as int)<1||!const ['invoice','payment_certificate'].contains(scope['p_kind'])){throw const FormatException('承認書類の閲覧対象を確認できません。');}
+    return keys.map((key)=>scope[key]).join('/');
+  }
+  Future<TradeDocumentFormSession> createConfirmedOutputScope(Map<String,dynamic> scope,{
+    required Map<String,dynamic> evidence,required Map<String,dynamic>? Function() currentScope,bool archive=false})async {
+    final key=_outputKey(scope);
+    // company_id here belongs to the viewer's validated render envelope. A
+    // received document's foreign body.issuer_company_id must never select it.
+    if(evidence['contract_version'] is! int||evidence['contract_version']!=1||evidence['document_revision'] is! int||evidence['company_id']!=scope['p_company_id']||evidence['actor_id']!=_actor||
+      evidence['kind']!=scope['p_kind']||evidence['local_document_id']!=scope['p_local_document_id']||
+      evidence['document_id']!=scope['expected_document_id']||evidence['document_revision']!=scope['p_document_revision']||
+      evidence['archive']!=archive||!const ['issued','received'].contains(evidence['side'])){throw const FormatException('承認書類の閲覧会社を確認できません。');}
+    await _entryScope.ready();verify();
+    final session=TradeDocumentFormSession(_client,target:key,currentTarget:(){
+      if(_revoked||!_entryScope.isCurrent)return null;
+      final current=currentScope();return current==null?null:_outputKey(current);
+    });
+    try{await session.ready();_entryScope.requireScope();verify();session.requireScope();return session;}
+    catch(_){session.dispose();rethrow;}
+  }
+  Future<void> dispose() async { _revoked = true;_entryScope.dispose(); await _subscription?.cancel(); }
 }

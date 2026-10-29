@@ -1,4 +1,7 @@
 import 'payment_order_layout.dart';
+import '../shared/trade_document_terms_pdf.dart';
+import '../shared/trade_document_form_pdf.dart';
+import '../../domain/trade_document_terms_snapshot.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import '../../domain/company_seal_snapshot.dart';
@@ -13,6 +16,11 @@ class PaymentOrderPdf {
    {required pw.Font regularFont,required pw.Font boldFont})async{
   final p=attachment.payload;
   if(p['kind']!='order')throw StateError('注文書の保存内容を確認できません。');
+  if(p.containsKey('contract_terms')){
+   TradeDocumentTermsSnapshot.fromJson(p['contract_terms']);
+   await TradeDocumentFormPdf.append(document,p,regularFont:regularFont,boldFont:boldFont);
+   TradeDocumentTermsPdf.append(document,p,regularFont:regularFont,boldFont:boldFont);return;
+  }
   final issuer=Map<String,dynamic>.from(p['issuer'] as Map);
   final counter=Map<String,dynamic>.from(p['counterparty'] as Map);
   final bank=p['counterparty_bank']!=null?PartnerCompanyBankAccount.fromJson(p['counterparty_bank']):null;
@@ -53,6 +61,7 @@ class PaymentOrderPdf {
       pw.Expanded(child:party('（乙・受注者）',counter)),
     ])else ...[party('（甲・発注者）',issuer,own:true),pw.SizedBox(height:12),party('（乙・受注者）',counter)],
   ])));
+  TradeDocumentTermsPdf.append(document,p,regularFont:regularFont,boldFont:boldFont);
  }
  static String _money(Object? value){
   if(value is! int||value<0)throw StateError('請負代金・消費税額を確認できません。');

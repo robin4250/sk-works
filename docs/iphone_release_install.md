@@ -1,4 +1,45 @@
-# iPhoneへ最新mainのReleaseを上書きする
+# iPhoneへ検証済みReleaseを上書きする
+
+## 現在のXcode 27.1環境：所有者本人のRelease
+
+ユーザーのXcode 27.1 / Flutter 3.47.5では、`tool/r31_local_release.py`を使う。
+下の`device_day.sh`はXcode 27.0専用の別入口であり、27.1用の手順ではない。
+バージョン検査を削除したり、環境変数で回避したりしない。
+
+最初に必要な修正をmainへ統合し、そのexact SHAの必要なCIを確認してから、
+レビュー済みの完全な40桁SHAと、同じSHAにあるhelperのSHA256を確定する。
+`latest main`という名前だけで候補を承認せず、過去のcheckpointやbuild番号を
+新しいソースの成果物として扱わない。最終SHA確定前にビルドを開始しない。
+
+1. Macの元作業ツリー・未保存差分・生成済みiOS・既存署名Release・ローカル接続設定を保持する。
+   helperを指定したSHAから取得し、レビュー時に記録したSHA256と照合する。
+2. helperの`--reviewed-sha`へ確定したSHAを渡し、所有者本人用Releaseを一度作成する。
+   元リポジトリは`/Users/ryuichi/Desktop/sk-works`、保存先は既定で
+   `/Users/ryuichi/SKO-source-backups/r31-...`。元のdirtyな作業を破棄せず、
+   指定SHAの独立worktreeを作り、元native設定と依存を隔離する。
+3. `Owner Release build verified; NOT installed`と終了コード0を確認する。
+   これは署名Release作成の結果であり、インストール成功ではない。
+4. 同じhelperと、今回作成されたexact checkpointを再照合し、
+   `--install-checkpoint`でinstall-onlyを行う。別ビルドや旧checkpointへ自動で切り替えない。
+5. `Owner Release overwrite install/launch complete`と終了コード0、実際の起動を確認する。
+   ケーブルを抜き、アプリ完全終了後にホーム画面から単体起動し、ログイン・データ・権限を確認する。
+
+helperはXcode 27.1 / Flutter 3.47.5、Releaseビルド設定・payload、Bundle ID、
+署名Team/application identifier/Keychain access groupsの既存アプリとの一致を検査する。
+対象は`00008110-00120536010A801E`、Bundle IDは`com.skworks.skWorks`。
+元の署名済み`Runner.app`やローカル接続設定がない場合は停止するため、削除や
+再生成で検査を迂回せず、停止理由を確認する。Debug導入・アプリ削除・`flutter run`は行わない。
+
+この入口は本人端末への署名Release上書き用で、IPA作成・Transporter upload・
+TestFlight配布ではない。TestFlightを使う場合は、別途レビュー済みsource・配布署名・
+IPA来歴・App Store Connectのbuild番号を照合する。pubspecの番号を次の配布番号と推測しない。
+
+本手順はソース・元native・ローカル成果物の保全を確認するもので、iPhone内データや
+本番DBのバックアップ、上書き後のデータ保持そのものの実証ではない。
+Linuxの作業環境からMac/iPhoneを直接操作できないため、実Macで必要な操作は
+最終SHAとhelper hashを確定した後に提示する。CI成功だけで実機完了とはしない。
+
+## Xcode 27.0専用の既存device-day入口
 
 対象Macは `/Users/ryuichi/Desktop/sk-works`、対象iPhoneは
 `00008110-00120536010A801E`。Flutter 3.47.5 / Xcode 27.0 を使う。
@@ -34,8 +75,8 @@ Releaseをビルドする。Bundle IDが `com.skworks.skWorks` と一致する�
 
 ## 直接入口とツールチェーンの停止条件
 
-ユーザー環境のXcode 27.1は未実測です。現行の厳密な27.0固定は変更して
-いません。27.1では生成・ビルド・導入の前に停止します。Flutterは3.47.5を
+このdevice-day入口ではXcode 27.1は未検証です。厳密な27.0固定は変更して
+いません。この入口は27.1では生成・ビルド・導入の前に停止します。Flutterは3.47.5を
 要求します。バージョン差を環境変数で「検証済み」として回避できません。
 
 `run_ios_device.sh`の直接入口も、生成前にMac・バージョン・cleanなmain・

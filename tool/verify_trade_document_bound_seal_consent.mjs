@@ -19,6 +19,16 @@ function png(color){const h=Buffer.alloc(13);h.writeUInt32BE(32,0);h.writeUInt32
 
 const A=id(1),B=id(2),C=id(3),UA=id(11),UB=id(12),UV=id(13),UC=id(14),PC=id(21),INV=id(22),PARTNER=id(23),CUSTOMER=id(24);
 let request=1000,n=0;
+let confirmedTerms;
+if(process.env.SKO_CONFIRMED_TERMS_HOOK){
+ if(process.env.SKO_CONFIRMED_TERMS_HOOK!=='content-v1')throw Error('Unknown confirmed terms fixture hook');
+ const exact=await fs.readFile('docs/fixtures/trade-document-terms/user-confirmed-20261029-v1.json');
+ const source_sha256=createHash('sha256').update(exact).digest('hex');
+ assert.equal(source_sha256,'3acf9090f2c027840bba43351f4d9e173759baa8b7c0340c05db9e28731f0d1f');
+ assert.equal(JSON.parse(exact).length,22);
+ confirmedTerms={schema:1,version:1,title:'[ 工事請負契約条項 ]',source_sha256,renderer_contract:'sko-original-form-20261029-v1',design_sha256:'942bad918b696b4c2c527dbf2fca9d050e4fb38a3674cff115eb0755793b8a18'};
+}
+
 const actor=async uid=>{if(authContext)return authContext.actor(uid);await db.exec('reset role');await db.query("select set_config('test.uid',$1,false)",[uid]);};
 const q=async(sql,args=[])=>(await db.query(sql,args)).rows[0]?.v;
 const check=(a,b)=>{assert.deepEqual(a,b);n++;};
@@ -120,6 +130,7 @@ await db.exec(await fs.readFile(new URL('../supabase/migrations/20261014124714_m
  await db.query("insert into private.fixture_formal_counterparty values('payment_certificate',$1,$2)",[PC,B]);
  const workspace=await q("select public.trade_document_attachment_workspace('payment_certificate',$1,'1') v",[PC]);
  const payload={...workspace.defaults,issue_date:'2026-10-15',work_name:'当月工事',work_address:'東京都',tax_amount_yen:10000,intro_text:'工事発注',payment_conditions:'翌月末',notes:'',issuer:{...workspace.defaults.issuer,representative_name:'甲代表'},counterparty:{...workspace.defaults.counterparty,corporate_number:'2222222222222'}};
+ if(confirmedTerms)payload.contract_terms=confirmedTerms;
  await q("select public.save_trade_document_attachment('payment_certificate',$1,'1',0,$2::jsonb) v",[PC,JSON.stringify(payload)]);
  await db.exec(`create or replace function trade_document_consent_private.parent_binding(kind text,parent_id uuid,own_company uuid,peer_company uuid) returns jsonb language plpgsql security definer set search_path='' as $$
  declare parent jsonb;att private.trade_document_attachments%rowtype;
@@ -136,12 +147,15 @@ await db.exec(await fs.readFile(new URL('../supabase/migrations/20261014124714_m
 
  const linkedBody={...payload,issuer_company_id:A,counterparty_company_id:B,transaction_id:id(41)};delete linkedBody.company_seal_snapshot;delete linkedBody.company_seal_enabled;
  const linked=id(41),financialBefore=await q('select to_jsonb(p) v from payment_certificates p where id=$1',[PC]);
+ if(confirmedTerms){const omitted={...linkedBody};delete omitted.contract_terms;
+ await deny(()=>q("select trade_document_consent_private.prepare_document($1,$2,$3,0,$4::jsonb,'payment_certificate',$5,'1',1) v",[linked,A,B,JSON.stringify(omitted),PC]),/saved attachment content differs/);}
  await q("select trade_document_consent_private.prepare_document($1,$2,$3,0,$4::jsonb,'payment_certificate',$5,'1',1) v",[linked,A,B,JSON.stringify(linkedBody),PC]);
+ if(confirmedTerms)check(await q("select body_hash=encode(sha256(convert_to(body::text,'UTF8')),'hex') and body->'contract_terms'=$2::jsonb v from trade_document_consent_private.revisions where document_id=$1 and revision=1",[linked,JSON.stringify(confirmedTerms)]),true);
  p=await preview(linked,1,A);await decide(linked,1,A,p);
  // Default linked read stays unavailable until a document-specific ACL adapter exists.
  await deny(()=>render(linked,1,A),/view permission/);
  await db.exec("create or replace function trade_document_consent_private.linked_view_allowed(kind text,parent_id uuid,doc uuid,rev int,cid uuid) returns boolean language sql stable security definer set search_path='' as $$select exists(select 1 from public.company_members where company_id=cid and user_id=auth.uid() and role in ('owner','admin'))$$");
- const linkedApproved=await render(linked,1,A);await actor(UB);
+ const linkedApproved=await render(linked,1,A);if(confirmedTerms)check(linkedApproved.body.contract_terms,confirmedTerms);await actor(UB);
  await db.query('select trade_document_consent_private.bind_local($1,$2,$3)',[linked,B,localId(linked,B)]);check(await render(linked,1,B),linkedApproved);
  check(await q('select to_jsonb(p) v from payment_certificates p where id=$1',[PC]),financialBefore);
  await db.query('update payment_certificates set revision=2 where id=$1',[PC]);
@@ -154,7 +168,7 @@ await db.exec(await fs.readFile(new URL('../supabase/migrations/20261014124714_m
  await (await import('./trade_document_invoice_confirmation_fixture.mjs')).verifyInvoiceConfirmation(db,{id,A,B,UA,UB,UV,INV,CUSTOMER,actor,q,check,deny,localId,render,openNativePeer});
  if(process.env.SKO_MONTHLY_PAYMENT_REVIEW_HOOK){
   if(process.env.SKO_MONTHLY_PAYMENT_REVIEW_HOOK!=='contract-v1')throw Error('unknown monthly review fixture hook');
-  await (await import('./trade_document_monthly_review_fixture.mjs')).verifyMonthlyReview(db,{id,A,B,C,UA,UB,UV,UC,PARTNER,CUSTOMER,actor,q,check,deny,localId,render,upload,openNativePeer});
+  await (await import('./trade_document_monthly_review_fixture.mjs')).verifyMonthlyReview(db,{id,A,B,C,UA,UB,UV,UC,PARTNER,CUSTOMER,actor,q,check,deny,localId,render,upload,openNativePeer,confirmedTerms});
  }
  console.log('PASS '+n+' bound consent checks; separate company local IDs and directional kinds, issuer-only explicit seal consent, identical received copy without extra approval, official v1/v2 source, change/replay/rotation/denial, actual attachment binding, no parent financial writes; private invoice adapter separately checked; public API/UI/monthly-payment production rollout NOT PERFORMED');
 }finally{await db.close();}

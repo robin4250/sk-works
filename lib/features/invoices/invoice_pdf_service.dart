@@ -1,3 +1,6 @@
+import '../shared/trade_document_form_session.dart';
+import '../shared/trade_document_form_renderer.dart';
+import '../shared/trade_document_output_page.dart';
 import '../shared/trade_document_confirmation_dialog.dart';
 import '../shared/trade_document_actor_boundary.dart';
 import '../shared/document_display_totals.dart';
@@ -1024,6 +1027,22 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
   int _previewRevision = 0;
   bool _approving = false;
   bool _openingAcceptance = false;
+  TradeDocumentFormSession? _formScope;
+  String get _formTarget=>'${_singleInvoice?.invoiceId}/${_singleInvoice?.documentUpdatedAt}';
+  Future<void> _readyForm()async{if(_formScope==null)throw StateError('請求書を開き直してください。');await _formScope!.ready();_formScope!.requireScope();}
+  Future<void> _formOutput()async{
+    if(_openingAcceptance||_singleInvoice==null)return;setState(()=>_openingAcceptance=true);
+    try{await _readyForm();final invoice=_singleInvoice!,pending=_previewData,data=await pending;_formScope!.requireScope();
+      if(!identical(pending,_previewData))throw StateError('請求書を開き直してください。');
+      final repo=TradeDocumentAttachmentRepository(SupabaseBackend.client,session:_formScope);
+      final workspace=await repo.loadWorkspace(subjectKind:'invoice',subjectId:invoice.invoiceId,sourceRevision:DateTime.parse(invoice.documentUpdatedAt!).toUtc().toIso8601String());
+      _formScope!.requireScope();final attachment=InvoiceAcceptanceResolver.resolve(workspace,issueDate:invoice.issueDate,parentSealSnapshot:invoice.companySealSnapshot,parentSealEnabled:data.settings?.companySealEnabled!=false);
+      if(attachment==null)throw StateError('請書は作成されていません。');
+      final bytes=await TradeDocumentFormRenderer.canonical(attachment.payload);_formScope!.requireScope();
+      if(!mounted)return;await Navigator.of(context).push<void>(MaterialPageRoute(builder:(_)=>TradeDocumentOutputPage(payload:attachment.payload,canonicalBytes:bytes,requireScope:_formScope!.requireScope,scopeChanges:_formScope)));
+    }catch(error){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(error.toString())));}
+    finally{if(mounted)setState(()=>_openingAcceptance=false);}
+  }
   final _actorLease = TradeDocumentActorLease();
   // OFF until the server readiness receipt, grants and production tests pass.
   late final _noticeController = invoiceNoticeApprovalReleased && SupabaseBackend.isInitialized
@@ -1034,11 +1053,12 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
       : null;
 
   @override
-  void dispose() { _noticeController?.dispose(); _actorLease.dispose(); super.dispose(); }
+  void dispose() { _formScope?.dispose();_noticeController?.dispose(); _actorLease.dispose(); super.dispose(); }
 
   @override
   void initState() {
     super.initState();
+    try{if(SupabaseBackend.isInitialized)_formScope=TradeDocumentFormSession(SupabaseBackend.client,target:_formTarget,currentTarget:()=>_formTarget);}catch(_){}
     _previewData = _buildPreviewData().timeout(
       const Duration(seconds: 90),
       onTimeout: () => throw StateError(SkoLanguageController.tr('請求書の読み込みに時間がかかっています。通信を確認して再試行してください。')),
@@ -1247,12 +1267,12 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
     }
     setState(() => _openingAcceptance = true);
     try {
-      _actorLease.verify();
+      await _readyForm();_actorLease.verify();
       final invoice = _singleInvoice!;
       final pending = _previewData;
       final data = await pending;
       if (!mounted) return;
-      _actorLease.verify();
+      _formScope!.requireScope();_actorLease.verify();
       if (!identical(pending, _previewData)) return;
       final actor = SupabaseBackend.isInitialized
           ? SupabaseBackend.client.auth.currentUser?.id : null;
@@ -1268,6 +1288,7 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
       ));
       if (!mounted) return;
       _actorLease.verify();
+      _formScope!.requireScope();
       if (saved == true) {
         setState(() {
           _previewRevision++;
@@ -1356,8 +1377,10 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                     TextButton.icon(
                       onPressed: _openingAcceptance ? null : _openAcceptanceEditor,
                       icon: const Icon(Icons.description_outlined),
-                      label: const Text('この注文請書を確認・編集'),
+                      label: const Text('請書の入力・設定'),
                     ),
+                  if(_singleInvoice?.invoiceId.isNotEmpty==true&&_singleInvoice?.documentUpdatedAt!=null)
+                    TextButton(onPressed:_openingAcceptance?null:_formOutput,child:const Text('請書を保存・印刷')),
                   if (previewData.missingAcceptanceCount > 0)
                     InvoiceAcceptanceNotice(
                       missingCount: previewData.missingAcceptanceCount,
