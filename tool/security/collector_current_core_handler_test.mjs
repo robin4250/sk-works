@@ -88,11 +88,14 @@ test('OAuth-only account without a password cannot be silently converted or issu
 });
 
 const attendanceTarget={company_id:'30000000-0000-0000-0000-000000000001',action:'upsert',items_sha256:'a'.repeat(64)};
-test('attendance proof verifies actual secondary password with exact bearer, without primary Auth mutation',async()=>{
- const f=fixture();const r=await f.invoke({operation:'attendance.manage',password:'synthetic-secondary',target:attendanceTarget});
+test('attendance proof verifies actual secondary password with exact bearer, without primary Auth mutation',async(t)=>{
+ let now=Date.now();t.mock.method(Date,'now',()=>now);
+ const token=jwt();const f=fixture();const r=await f.invoke({operation:'attendance.manage',password:'synthetic-secondary',target:attendanceTarget},token);
+ now+=2000;
  assert.equal(r.status,200);assert.deepEqual(f.issued.p_target,attendanceTarget);assert.equal(f.issued.p_operation,'attendance.manage');
  const check=f.calls.find(x=>x.path.endsWith('/issue_secondary_reauthentication_proof'));
- assert.equal(check.options.headers.Authorization,'Bearer '+jwt());assert.equal(JSON.parse(check.options.body).p_password,'synthetic-secondary');
+ assert.equal(check.options.headers.Authorization,'Bearer '+token);assert.equal(JSON.parse(check.options.body).p_password,'synthetic-secondary');
+ assert.notEqual(check.options.headers.Authorization,'Bearer '+jwt(),'expected bearer is the captured request token across the expiry-second boundary');
  assert.equal(JSON.parse(check.options.body).p_actor,undefined);assert.equal(JSON.parse(check.options.body).p_session,undefined);
  assert.equal(f.calls.some(x=>x.path.includes('/token')||x.path.includes('/logout')),false);
  assert.equal(f.calls.some(x=>x.path.endsWith('/issue_reauthentication_proof')),false);

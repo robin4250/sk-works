@@ -1,0 +1,37 @@
+name: Employee bank preapply capsule
+on:
+  pull_request:
+    paths:
+      - 'tool/security/employee_bank_preapply_capsule/**'
+      - 'docs/candidates/employee_bank_preapply_capsule_20261029/**'
+      - '.github/workflows/employee-bank-preapply-capsule.yml'
+permissions:
+  contents: read
+jobs:
+  capsule:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: synthetic_capsule_only
+          POSTGRES_DB: sko_bank_capsule_fixture
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node tool/security/employee_bank_preapply_capsule/build.mjs
+      - run: git diff --exit-code -- docs/candidates/employee_bank_preapply_capsule_20261029
+      - run: npm install --prefix /tmp/bank-capsule-pg --no-audit --no-fund --ignore-scripts pg@8.16.3
+      - run: node tool/security/employee_bank_preapply_capsule/native.mjs /tmp/bank-capsule-pg/node_modules/pg/lib/index.js
+        env:
+          SKO_BANK_CAPSULE_FIXTURE_URL: postgres://postgres:synthetic_capsule_only@127.0.0.1:5432/sko_bank_capsule_fixture

@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
+import '../auth/app_auth_mutation_gateway.dart';
 import 'worker_document_photos.dart';
 import 'worker_document_change_repository.dart';
 
@@ -16,6 +17,18 @@ class WorkerDocumentRepository {
   final SupabaseClient _client;
   WorkerDocumentChangeRepository createChangeRepository() => WorkerDocumentChangeRepository(_client);
   String? get actorId => _client.auth.currentUser?.id;
+  Stream<AuthState> get attachmentAuthChanges => _client.auth.onAuthStateChange;
+  Future<bool Function()> captureAttachmentReadScope() async {
+    final session = _client.auth.currentSession;
+    final actor = _client.auth.currentUser?.id;
+    final gateway = AppAuthMutationGateway.forClient(_client);
+    final epoch = await gateway.externalFlowAdmission();
+    if (session == null || actor == null || session.isExpired || epoch == null ||
+        !identical(session, _client.auth.currentSession)) { throw StateError('Attachment session changed'); }
+    return () => !session.isExpired && identical(session, _client.auth.currentSession) &&
+      _client.auth.currentUser?.id == actor && gateway.isExternalFlowCurrent(epoch);
+  }
+
   static const _bucket = 'worker-documents';
 
   static WorkerDocumentRepository? maybeCreate() {
@@ -99,7 +112,7 @@ class WorkerDocumentRepository {
   bool get photoEditingAvailable => _photoSchemaAvailable;
   static const photoPreparationMessage = '複数写真の保存準備中です。保存済みの写真は確認できます。';
   static const _legacyStatusColumns =
-      'id, worker_id, requirement_id, status, expires_at, original_verified, attachment_path, notes, created_at, updated_at';
+      'id, company_id, worker_id, requirement_id, status, expires_at, original_verified, attachment_path, notes, created_at, updated_at';
   static String _statusColumns(bool photos) => photos
       ? _legacyStatusColumns.replaceFirst(
           'attachment_path,',
@@ -315,7 +328,7 @@ class WorkerDocumentRepository {
 
     var workersQuery = _client
         .from('workers')
-        .select('id, name, affiliation, status')
+        .select('id, company_id, name, affiliation, status')
         .eq('company_id', companyId)
         .eq('status', 'active');
     if (!canManage && ownWorkerId != null && ownWorkerId.isNotEmpty) {
@@ -353,7 +366,7 @@ class WorkerDocumentRepository {
     final exemptions = await _loadExemptions(companyId);
     final workers = await _client
         .from('workers')
-        .select('id, name, affiliation, status')
+        .select('id, company_id, name, affiliation, status')
         .eq('company_id', companyId)
         .eq('id', worker.workerId);
     final statuses = await _readPhotoStatuses(
