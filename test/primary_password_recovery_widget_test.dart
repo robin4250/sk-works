@@ -37,6 +37,16 @@ Future<void> _show(WidgetTester tester, _Wire w, VoidCallback onAuthenticated) a
   await tester.pumpWidget(MaterialApp(home: SecureAuthPage(repository: w.repository, onAuthenticated: onAuthenticated)));
   debugPrint('primary fixture: mounted');
 }
+// The pinned SDK subscription cancellation may complete in the real setup
+// zone; drain that work as well as Flutter's fake UI scheduler.
+Future<void> _settleAuth(WidgetTester tester) async {
+  for (var i = 0; i < 20; i++) {
+    await tester.runAsync(() async { await Future<void>.delayed(Duration.zero); });
+    await tester.pump(const Duration(milliseconds: 10));
+    if (find.byType(CircularProgressIndicator).evaluate().isEmpty) break;
+  }
+  await tester.pumpAndSettle();
+}
 void main() {
   late List<_Wire> wires;
   setUpAll(() { wires = List.generate(3, (_) => _Wire()); });
@@ -71,7 +81,7 @@ void main() {
     await _show(tester, w, () => authenticated++);
     await tester.enterText(find.byType(TextField).at(0), '09012345678');
     await tester.enterText(find.byType(TextField).at(1), 'synthetic-password');
-    await tester.tap(find.text('ログイン').last); await tester.pumpAndSettle();
+    await tester.tap(find.text('ログイン').last); await _settleAuth(tester);
     expect(authenticated, 1); expect(w.client.auth.currentUser!.id, _id);
     expect(w.calls.length, 1);
     expect(w.calls.single.url.path, '/auth/v1/token');
@@ -87,11 +97,11 @@ void main() {
     await tester.enterText(find.byType(TextField).at(0), '09012345678');
     await tester.enterText(find.byType(TextField).at(1), 'synthetic-password');
     await tester.enterText(find.byType(TextField).at(2), 'synthetic-password');
-    await tester.tap(find.text('登録してSMS認証へ')); await tester.pumpAndSettle();
+    await tester.tap(find.text('登録してSMS認証へ')); await _settleAuth(tester);
     expect(w.calls.single.url.path, '/auth/v1/signup');
     expect(find.text('承認コード'), findsWidgets); expect(authenticated, 0);
     await tester.enterText(find.byType(TextField), '123456');
-    await tester.tap(find.text('承認する')); await tester.pumpAndSettle();
+    await tester.tap(find.text('承認する')); await _settleAuth(tester);
     expect(authenticated, 1);
     expect(w.calls.last.url.path, '/auth/v1/verify');
     expect(w.calls.where((r) => r.url.path == '/auth/v1/otp' || r.url.path == '/auth/v1/user'), isEmpty);
