@@ -52,7 +52,7 @@ try{
  await db.query('insert into public.member_feature_permissions(company_id,user_id,can_manage_people,can_manage_payroll) values($1,$2,true,true)',[C,B]);
  await db.query("insert into public.workers(id,company_id,user_id) values($1,$4,$5),($2,$4,$5),($3,$4,$5)",[W0,W1,W2,C,A]);
  await db.query("insert into public.document_requirements(id,company_id,name) values($1,$2,'銀行口座情報')",[R,C]);
- const path=worker=>`${C}/${worker}/${R}/original.jpg`;
+ const path=worker=>`${C}/${worker}/${R}/own-upload/original.jpg`;
  for(const [worker,status] of [[W0,S0],[W1,S1],[W2,S2]]){
   await db.query("insert into public.worker_document_statuses(id,company_id,worker_id,requirement_id,status,original_verified,attachment_path,attachment_paths,notes,expires_at,updated_by) values($1,$2,$3,$4,'verified',true,$5,array[$5],'SYNTHETIC ORIGINAL NOTE','2030-01-01',$6)",[status,C,worker,R,path(worker),A]);
   await db.query("insert into storage.objects(bucket_id,name) values('worker-documents',$1)",[path(worker)]);
