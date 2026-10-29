@@ -62,8 +62,34 @@ class PersonalVaultRepository {
       return parseMine(rows);
     });
   }
-  Future<Uint8List> downloadMine(PersonalVaultEntry entry) async {
-    return _read((scope) async {
+  Future<Uint8List> downloadMine(PersonalVaultEntry entry) =>
+      _read((scope) => _downloadMine(scope, entry));
+
+  /// Holds Auth history through the preview/native handoff, including lazy
+  /// callbacks. Invalidation ends the logical operation even if a platform
+  /// future never settles. Bytes already given to the OS cannot be recalled.
+  Future<T> withOwnPdf<T>(PersonalVaultEntry entry,
+      Future<T> Function(PersonalVaultPdfLease) operation,
+      {Future<void>? invalidated}) => _read((scope) async {
+    if (invalidated != null) {
+      unawaited(invalidated.then((_) => scope.invalidate(),
+          onError: (Object _) => scope.invalidate()));
+    }
+    await scope.check();
+    final bytes = await _downloadMine(scope, entry);
+    final lease = PersonalVaultPdfLease._(scope, bytes);
+    try {
+      await scope.check();
+      return await Future.any<T>([
+        operation(lease),
+        scope.invalidated.then<T>((_) => throw StateError('本人書類の表示を終了しました。')),
+      ]);
+    } finally {
+      lease.invalidate();
+    }
+  });
+
+  Future<Uint8List> _downloadMine(_VaultReadSession scope, PersonalVaultEntry entry) async {
     final parts = entry.id.split(':');
     if (parts.length != 2 || !_uuid.hasMatch(parts[0]) || !_hash.hasMatch(parts[1])) {
       throw const FormatException('本人書類のIDを確認できません。');
@@ -98,8 +124,29 @@ class PersonalVaultRepository {
       throw StateError('保存されたPDFの整合性を確認できません。');
     }
     return bytes;
-    });
   }
+}
+
+/// Owns only the in-memory snapshot; it never changes the stored PDF/original.
+/// Each renderer/layout callback must obtain a fresh checked copy. Retaining a
+/// callback after operation completion does not retain access to these bytes.
+class PersonalVaultPdfLease {
+  PersonalVaultPdfLease._(this._scope, Uint8List bytes) : _bytes = Uint8List.fromList(bytes);
+  final _VaultReadSession _scope;
+  Uint8List? _bytes;
+  bool _closed = false;
+  Future<void> get invalidated => _scope.invalidated;
+  Future<Uint8List> readBytes() async {
+    await _scope.check();
+    final bytes = _bytes;
+    if (_closed || bytes == null) { throw StateError('本人書類の表示を終了しました。'); }
+    final copy = Uint8List.fromList(bytes);
+    await _scope.check();
+    if (_closed) { throw StateError('本人書類の表示を終了しました。'); }
+    return copy;
+  }
+  void invalidate() { _close(); _scope.invalidate(); }
+  void _close() { _closed = true; _bytes = null; }
 }
 
 /// Per-read history only. It does not serialize global SDK mutations or detect
