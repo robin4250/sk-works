@@ -6,13 +6,19 @@ import {issuePasswordVerifiedMigrationKeyChallenge} from './key-migration-challe
 import {readOwnMigrationKeyChallenge} from './key-migration-challenge-delivery.mjs';
 import {storeProvenPendingDeviceKey} from './key-migration-proven-adapter.mjs';
 import {readOwnMigrationKeySubmission} from './key-migration-submission-status.mjs';
+import {recordOwnerDecisionUsingStoredIssuer} from './owner-decision-evidence.mjs';
 
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 function response(status,value) {
  return new Response(JSON.stringify(value),{status,headers:{'content-type':'application/json',
   'cache-control':'no-store','pragma':'no-cache','referrer-policy':'no-referrer','x-content-type-options':'nosniff'}});
 }
-export async function handleMigrationChallengeRequest(request,{authenticateBearer,timeoutMs=10000}={}) {
+export async function handleMigrationChallengeRequest(request,{authenticateBearer,timeoutMs=10000,ownerEvidence}={}) {
+ // Server-only configuration is captured before the first await. A body flag,
+ // fixed pin or later replacement callback cannot choose this issuer path.
+ const evidenceEnabled=ownerEvidence?.enabled===true;
+ const checkpointMethod=evidenceEnabled?ownerEvidence?.loadAuthorityCheckpoint:null;
+ const loadCheckpoint=typeof checkpointMethod==='function'?checkpointMethod.bind(ownerEvidence):null;
  if(!Number.isSafeInteger(timeoutMs)||timeoutMs<1||timeoutMs>10000)return response(400,{error:'invalid request'});
  const controller=new AbortController();
  const timer=setTimeout(()=>controller.abort(),timeoutMs);
@@ -28,6 +34,7 @@ export async function handleMigrationChallengeRequest(request,{authenticateBeare
   if(typeof authorization!=='string'||!/^Bearer [^\s]{16,4096}$/.test(authorization)||typeof authenticateBearer!=='function') return response(401,{error:'authentication required'});
   const context=await bounded(authenticateBearer(authorization.slice(7),{signal:controller.signal}));
   if(!context||!uuid.test(context.actor)||!uuid.test(context.session)||!context.pool||typeof context.pool.connect!=='function') return response(401,{error:'authentication required'});
+  const verified=Object.freeze({actor:context.actor,session:context.session,pool:context.pool});
   const declared=request.headers.get('content-length');
   if(declared!==null&&(!/^\d+$/.test(declared)||Number(declared)>8192)) return response(400,{error:'invalid request'});
   if(!request.body) return response(400,{error:'invalid request'});
@@ -39,6 +46,18 @@ export async function handleMigrationChallengeRequest(request,{authenticateBeare
    bytes.set(value,length);length+=value.length;
   }
   const body=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes.subarray(0,length)));
+  if(body&&typeof body==='object'&&!Array.isArray(body)&&body.action==='owner-evidence'){
+   if(Object.keys(body).length!==3||Object.keys(body).some(k=>!['action','requestId','receipt'].includes(k))||
+    typeof body.requestId!=='string'||!uuid.test(body.requestId)||!body.receipt||typeof body.receipt!=='object'||
+    Array.isArray(body.receipt)||body.receipt.requestId!==body.requestId)return response(400,{error:'invalid request'});
+   if(!evidenceEnabled||!loadCheckpoint)return response(503,{error:'owner evidence unavailable'});
+   // The adapter must obtain/authenticate a fresh external authority checkpoint.
+   // This boundary does not fabricate that source or accept one from the body.
+   const checkpoint=await bounded(loadCheckpoint(Object.freeze({actor:verified.actor,session:verified.session,signal:controller.signal})));
+   const evidence=await bounded(recordOwnerDecisionUsingStoredIssuer({enabled:true,pool:verified.pool,
+    actor:verified.actor,session:verified.session,requestId:body.requestId,receipt:body.receipt,authorityCheckpoint:checkpoint}));
+   return response(200,{accepted:true,evidence}); // evidence only; NEVER activation
+  }
   if(!body||Array.isArray(body)||typeof body!=='object'||!['issue','read','submit','status'].includes(body.action)||
     Object.keys(body).some(k=>!['action','deviceId','publicKeyPem',...(body.action==='issue'?['secondPassword']:[]),
       ...(['submit','status'].includes(body.action)?['challengeId']:[]),...(body.action==='submit'?['signature']:[])].includes(k))||
@@ -46,7 +65,7 @@ export async function handleMigrationChallengeRequest(request,{authenticateBeare
     (['submit','status'].includes(body.action)&&!uuid.test(body.challengeId))||
     (body.action==='issue'&&(typeof body.secondPassword!=='string'||body.secondPassword.length>1024)))return response(400,{error:'invalid request'});
   // actor/session/pool are exclusively from the trusted verification adapter.
-  const args={pool:context.pool,actor:context.actor,session:context.session,deviceId:body.deviceId,publicKeyPem:body.publicKeyPem};
+  const args={pool:verified.pool,actor:verified.actor,session:verified.session,deviceId:body.deviceId,publicKeyPem:body.publicKeyPem};
   if(body.action==='status')return response(200,{accepted:true,submission:await bounded(readOwnMigrationKeySubmission({...args,challengeId:body.challengeId}))});
   if(body.action==='submit') {
    // Canonical base64 transports only the small DER signature, never a key or a
