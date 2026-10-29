@@ -44,8 +44,18 @@ receipt read, no duplicate audit, other UID/SID and revoked-session rejection,
 and pooled claim cleanup. Business permission/admission and the privileged pool
 remain explicit fixtures; test-only fixed-project HTTPS-to-owned-loopback Auth
 mapping does not relax product HTTPS checks. Real-stack CI is required before
-these cases are reported passed. Local nine TLS boundary tests plus existing
+these cases are reported passed. Local twelve TLS boundary tests plus existing
 verifier/recovery tests exercise rejection/deadline paths, not production hosting.
+
+Review regression: the initial timer-only boundary accepted three actual-TLS
+cases after synchronous admission/pool callbacks blocked overdue timers. The
+old handler returned HTTP 200 in all three; the new tests require rejection and
+no SQL (with a late lease released). Deadlines now use a monotonic entry budget
+in active checks and pre/post pool acquisition, plus per-stage post-await expiry
+checks with timers installed before callback execution. Body data/end and Auth
+verification are checked against their own budgets. Existing budget values are
+unchanged. This prevents starting new work/BEGIN after a detected expired
+request; it does not wrap/cancel queries in a transaction already started.
 
 ## Canonical attendance remains blocked
 

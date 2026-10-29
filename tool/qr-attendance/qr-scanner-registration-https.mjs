@@ -2,6 +2,7 @@
 // route, grant a pool role, select a project from request input, or enable QR.
 import {IncomingMessage,ServerResponse} from 'node:http';
 import {TLSSocket} from 'node:tls';
+import {performance} from 'node:perf_hooks';
 import {verifyScannerRegistrationBearer} from './qr-scanner-verified-session.mjs';
 import {createScannerRegistrationChallengeAdapter} from './qr-scanner-challenge-adapter.mjs';
 import {createScannerRegistrationProofIssuer} from './qr-scanner-proof-issuer.mjs';
@@ -13,19 +14,28 @@ const keyHex=/^302a300506032b6570032100[0-9a-f]{64}$/;
 const publicError=Object.freeze({schema:1,error:'登録結果を確認できません。元の要求を照合してください。'});
 class Rejected extends Error{constructor(status){super('scanner request unavailable');this.status=status;}}
 const reject=status=>new Rejected(status);
-const bounded=async(promise,ms,status)=>{let timer;try{return await Promise.race([promise,new Promise((_,no)=>{timer=setTimeout(()=>no(reject(status)),ms);})]);}finally{clearTimeout(timer);}};
+const bounded=async(work,ms,status)=>{
+ const deadline=performance.now()+ms;let timer;
+ try{
+  const value=await Promise.race([new Promise((_,no)=>{timer=setTimeout(()=>no(reject(status)),ms);}),Promise.resolve().then(work)]);
+  // A synchronous trusted callback can starve timers. Never accept its late
+  // result merely because the overdue timeout callback has not run yet.
+  if(performance.now()>=deadline)throw reject(status);return value;
+ }finally{clearTimeout(timer);}
+};
 function singleHeader(request,name){
  const values=[];for(let i=0;i<request.rawHeaders.length;i+=2){if(request.rawHeaders[i].toLowerCase()===name)values.push(request.rawHeaders[i+1]);}
  if(values.length>1)throw reject(400);return values[0];
 }
 function readBody(request,expectedLength,ms){
  return new Promise((resolve,no)=>{
-  let size=0;const chunks=[];
+  let size=0;const chunks=[],deadline=performance.now()+ms;
   const cleanup=()=>{clearTimeout(timer);request.off('data',data);request.off('end',end);request.off('error',error);request.off('aborted',aborted);};
   const fail=status=>{cleanup();request.pause();no(reject(status));};
-  const data=chunk=>{size+=chunk.length;if(size>8192){fail(413);return;}chunks.push(Buffer.from(chunk));};
-  const end=()=>{cleanup();if(expectedLength!==undefined&&expectedLength!==size){no(reject(400));return;}try{
-   resolve(JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(Buffer.concat(chunks))));
+  const data=chunk=>{if(performance.now()>=deadline){fail(408);return;}size+=chunk.length;if(size>8192){fail(413);return;}chunks.push(Buffer.from(chunk));};
+  const end=()=>{cleanup();if(performance.now()>=deadline){no(reject(408));return;}if(expectedLength!==undefined&&expectedLength!==size){no(reject(400));return;}try{
+   const value=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(Buffer.concat(chunks)));
+   if(performance.now()>=deadline){no(reject(408));return;}resolve(value);
   }catch{no(reject(400));}};
   const error=()=>fail(400),aborted=()=>fail(400);
   const timer=setTimeout(()=>fail(408),ms);
@@ -62,16 +72,18 @@ export function createScannerRegistrationHttpsHandler({enabled=false,publicOrigi
  const attempts=new WeakSet();
  return async function handle(request,response){
   if(!(request instanceof IncomingMessage)||!(response instanceof ServerResponse)||response.req!==request)return false;
+  const requestDeadline=performance.now()+requestTimeoutMs;
   let replied=false,closed=false,requestFailed=false;
   // Authentication may still be awaiting I/O when a client aborts a partial
   // body. Native stream errors must remain handled even outside readBody().
   const requestError=()=>{requestFailed=true;},responseError=()=>{closed=true;};
   request.on('error',requestError);request.once('close',()=>request.off('error',requestError));
   response.on('error',responseError);response.once('close',()=>response.off('error',responseError));
-  const active=()=>{if(closed||requestFailed||request.aborted||request.socket.destroyed||response.destroyed||response.writableEnded)throw reject(503);};
+  const active=()=>{if(performance.now()>=requestDeadline||closed||requestFailed||request.aborted||request.socket.destroyed||response.destroyed||response.writableEnded)throw reject(503);};
   const reply=(status,value)=>{
    if(replied||closed||response.destroyed||response.headersSent||response.writableEnded)return Promise.resolve(false);
-   replied=true;const bytes=Buffer.from(JSON.stringify(value));
+   replied=true;let bytes=Buffer.from(JSON.stringify(value));
+   if(status===200&&performance.now()>=requestDeadline){status=503;bytes=Buffer.from(JSON.stringify(publicError));}
    if(bytes.length>16384){response.destroy();return Promise.resolve(false);}
    return new Promise(resolve=>{
     const finish=ok=>{clearTimeout(timer);response.off('finish',sent);response.off('close',lost);response.off('error',lost);resolve(ok);};
@@ -101,7 +113,7 @@ export function createScannerRegistrationHttpsHandler({enabled=false,publicOrigi
    const length=singleHeader(request,'content-length');
    if(length!==undefined&&(!/^\d+$/.test(length)||Number(length)>8192))throw reject(413);
    let initializeVerifiedSession;
-   try{initializeVerifiedSession=await verifyScannerRegistrationBearer({enabled:true,projectOrigin,expectedIssuer,publicKey,bearer:match[1],fetchImpl,timeoutMs:authTimeoutMs});}
+   try{initializeVerifiedSession=await bounded(()=>verifyScannerRegistrationBearer({enabled:true,projectOrigin,expectedIssuer,publicKey,bearer:match[1],fetchImpl,timeoutMs:authTimeoutMs}),authTimeoutMs,401);}
    catch{throw reject(401);}
    active();
    const body=parseBody(await readBody(request,length===undefined?undefined:Number(length),bodyTimeoutMs));active();
@@ -109,7 +121,7 @@ export function createScannerRegistrationHttpsHandler({enabled=false,publicOrigi
    // only fixed verified principal/scalar scope, never the bearer or password.
    const claims=JSON.parse(Buffer.from(match[1].split('.')[1],'base64url').toString('utf8'));
    const admission=Object.freeze({actor:claims.sub,session:claims.session_id,operation:body.operation,requestId:body.requestId});
-   if(await bounded(Promise.resolve().then(()=>admitVerifiedRequest(admission)),admissionTimeoutMs,503)!==true)throw reject(429);
+   if(await bounded(()=>admitVerifiedRequest(admission),admissionTimeoutMs,503)!==true)throw reject(429);
    active();let result;
    const requestPool={connect:async()=>{
     active();const client=await pool.connect();
@@ -128,7 +140,7 @@ export function createScannerRegistrationHttpsHandler({enabled=false,publicOrigi
    }
    active();return reply(200,{schema:1,requestId:body.requestId,operation:body.operation,...result});
   };
-  try{await bounded(run(),requestTimeoutMs,503);}
+  try{await bounded(run,requestTimeoutMs,503);}
   catch(error){await reply(error instanceof Rejected?error.status:503,publicError);}
   finally{response.off('close',onClose);if(!request.complete&&replied){response.once('finish',()=>request.destroy());if(response.writableFinished)request.destroy();}}
  };

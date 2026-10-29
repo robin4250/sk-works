@@ -1,5 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
+import {performance} from 'node:perf_hooks';
 import {createScannerRegistrationHttpsHandler} from './qr-scanner-registration-https.mjs';
 import {createScannerTlsFixture} from './qr-scanner-registration-tls-fixture.mjs';
 const id=n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
@@ -85,4 +86,24 @@ test('late private-pool lease after request timeout is released without BEGIN or
  assert.equal((await f.call(payload,{token})).status,503);
  release({query:async()=>{queries++;return {rows:[]};},release(){releases++;}});
  await new Promise(resolve=>setTimeout(resolve,10));assert.equal(queries,0);assert.equal(releases,1);
+});
+test('expired synchronous admission stage rejects before SQL even while overall budget remains',async t=>{
+ const o=options({requestTimeoutMs:500,admissionTimeoutMs:10,admitVerifiedRequest:()=>{
+  const until=performance.now()+100;while(performance.now()<until){}return true;
+ }}),f=await createScannerTlsFixture(o.make);t.after(f.close);
+ const result=await f.call(payload,{token});assert.equal(result.status,503);assert.equal(o.calls.pool,0);
+});
+test('expired overall request rejects a synchronous admission result inside its longer stage budget',async t=>{
+ const o=options({requestTimeoutMs:50,admissionTimeoutMs:500,admitVerifiedRequest:()=>{
+  const until=performance.now()+100;while(performance.now()<until){}return true;
+ }}),f=await createScannerTlsFixture(o.make);t.after(f.close);
+ const result=await f.call(payload,{token});assert.equal(result.status,503);assert.equal(o.calls.pool,0);
+});
+test('expired synchronous pool acquisition releases lease before any SQL despite pending timers',async t=>{
+ let queries=0,releases=0;
+ const o=options({requestTimeoutMs:50,pool:{connect:()=>{
+  const until=performance.now()+100;while(performance.now()<until){}
+  return {query:async sql=>{queries++;return {rows:[sql.includes('auth.uid()')?{actor:id(5),session:id(6)}:{receipt:null}]};},release(){releases++;}};
+ }}}),f=await createScannerTlsFixture(o.make);t.after(f.close);
+ const result=await f.call(payload,{token});assert.equal(result.status,503);assert.equal(queries,0);assert.equal(releases,1);
 });
