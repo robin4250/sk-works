@@ -39,3 +39,10 @@ Official Storage access-control and Dart uploadBinary documentation were checked
 https://supabase.com/docs/guides/storage/security/access-control and
 https://supabase.com/docs/reference/dart/file-buckets-upload . Existing
 FileOptions(upsert:false) remains unchanged; no UPDATE/DELETE policy is added.
+
+The repository binds its first personnel privacy epoch for its entire lifetime;
+a later load cannot adopt a new epoch and revive an old pending save. It also
+captures the existing read-only AppAuthMutationGateway admission. Logout intent
+or failure blocks work while the SDK token can still be present. No shared Auth
+code is edited. Dedicated regressions hold the logout persistence intent and an
+old read across a background/foreground epoch change, requiring zero writes.

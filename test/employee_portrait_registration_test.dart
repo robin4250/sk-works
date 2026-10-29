@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -9,6 +10,8 @@ import 'package:sk_works/features/people/people_cloud_repository.dart';
 import 'package:sk_works/features/people/worker_document_repository.dart';
 import 'package:sk_works/features/people/worker_document_photos.dart';
 import 'worker_document_managed_save_http_test.dart' as managed;
+import 'package:sk_works/features/auth/app_auth_mutation_gateway.dart';
+import 'package:sk_works/features/auth/app_auth_logout_persistence.dart';
 
 class _NativeFixtureHttp extends HttpOverrides {}
 
@@ -16,11 +19,22 @@ class _Documents extends WorkerDocumentRepository {
  _Documents(this.fixture):super.forTesting(fixture.client);
  final managed.Fixture fixture;
  bool missing=false,inactive=false,foreign=false;
- @override Future<Map<String,List<Map<String,dynamic>>>> loadAll({bool includeHiddenRequirements=false}) async=>{
+ Completer<void>? readHold,readEntered;
+ @override Future<Map<String,List<Map<String,dynamic>>>> loadAll({bool includeHiddenRequirements=false}) async {
+  final hold=readHold;if(hold!=null){if(readEntered?.isCompleted==false){readEntered!.complete();}await hold.future;}
+  return {
   'workers':[if(!inactive){'id':managed.worker,'status':'active'}],
   'requirements':[if(!missing){'id':managed.requirement,'company_id':foreign?'foreign':managed.company,'name':'顔写真','scope':'internal','is_active':true,'sort_order':0}],
   'statuses':[if((fixture.saved??fixture.existing) case final row?) {...row,'worker_id':managed.worker,'requirement_id':managed.requirement}],
  };
+ }
+}
+class _HeldLogout implements AppLogoutPersistenceFence {
+ final intent=Completer<void>();
+ @override bool get blocked=>false;
+ @override Future<void> persistIntent()=>intent.future;
+ @override Future<void> confirmLocalRemoval() async {}
+ @override Future<void> releaseFence(bool Function() localLogoutStillConfirmed) async {}
 }
 Future<void> drainPortraitIo(WidgetTester tester) async {
  final clock=Stopwatch()..start();
@@ -88,6 +102,26 @@ void main(){
     workerId:managed.worker,requirementId:managed.requirement,status:'submitted',originalVerified:false,notes:'',photos:[photo()],expectedRow:null,
     requireScope:(){if(f.requests.any((r)=>r.uri.path.startsWith('/storage/v1/object/'))){refused=true;throw const PersonnelScopeChanged();}}),throwsA(anything));
   expect(refused,true);expect(f.client.auth.currentUser?.id,managed.actor);expect(f.saved,isNull);
+ });
+ test('logout intent blocks portrait save before SDK session removal',() async {
+  final draft=await repo.load();final held=_HeldLogout();
+  final gateway=AppAuthMutationGateway.bindPersistence(f.client,held);
+  final logout=gateway.signOut();
+  expect(gateway.logoutQuarantine.state,AppLogoutQuarantineState.pending);
+  expect(f.client.auth.currentUser?.id,managed.actor);
+  await expectLater(repo.save(draft,photo()),throwsA(anything));expect(f.mutations,isEmpty);
+  held.intent.complete();await logout;
+ });
+ test('new authorization cannot revive old upload after privacy epoch changes',() async {
+  final draft=await repo.load();docs.readHold=Completer<void>();docs.readEntered=Completer<void>();
+  final old=repo.save(draft,photo());final oldRejected=expectLater(old,throwsA(anything));
+  await docs.readEntered!.future;
+  session.didChangeAppLifecycleState(AppLifecycleState.paused);
+  session.didChangeAppLifecycleState(AppLifecycleState.resumed);
+  await session.read();
+  final newer=repo.load();final newRejected=expectLater(newer,throwsA(anything));
+  docs.readHold!.complete();await newRejected;await oldRejected;
+  expect(f.mutations,isEmpty);
  });
  test('invalid PDF, empty and oversized input cannot call Storage',() async {
   final draft=await repo.load();

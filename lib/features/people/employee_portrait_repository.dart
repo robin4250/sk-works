@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../data/supabase_backend.dart';
+import '../auth/app_auth_mutation_gateway.dart';
 import 'people_cloud_repository.dart';
 import 'worker_document_repository.dart';
 import 'worker_document_photos.dart';
@@ -25,6 +26,8 @@ class EmployeePortraitRepository {
     final captured=_client.auth.currentSession;
     if(captured==null || captured.isExpired || captured.user.id!=privacySession.actor){throw const PersonnelScopeChanged();}
     _token=captured.accessToken;
+    _gateway=AppAuthMutationGateway.forClient(_client);
+    _admission=_gateway.externalFlowAdmission();
     var first=true;
     _auth=_client.auth.onAuthStateChange.listen((event){
       final replay=first && identical(event.session,captured) &&
@@ -45,19 +48,25 @@ class EmployeePortraitRepository {
   final SupabaseClient _client;
   final WorkerDocumentRepository _documents;
   late final String _token;
+  late final AppAuthMutationGateway _gateway;
+  late final Future<int?> _admission;
+  int? _gatewayEpoch;
   StreamSubscription<AuthState>? _auth;
   bool _invalid=false;
   int? _lease;
   void _live(){
     final lease=_lease;
-    if(_invalid || lease==null || _client.auth.currentSession?.accessToken!=_token ||
+    if(_invalid || lease==null || _gatewayEpoch==null || !_gateway.isExternalFlowCurrent(_gatewayEpoch!) || _client.auth.currentSession?.accessToken!=_token ||
       _client.auth.currentSession?.isExpired!=false || _client.auth.currentUser?.id!=privacySession.actor){throw const PersonnelScopeChanged();}
     privacySession.verify(lease);
   }
   Future<void> _authorize() async {
     if(_invalid){throw const PersonnelScopeChanged();}
+    final admission=await _admission;_gatewayEpoch??=admission;
+    if(admission==null || !_gateway.isExternalFlowCurrent(admission)){throw const PersonnelScopeChanged();}
+    if(_lease!=null){_live();}
     final rows=await privacySession.read(workerIds:{workerId});
-    _lease=privacySession.epoch;_live();
+    _lease??=privacySession.epoch;_live();
     if(privacySession.snapshot?.canManage!=true || rows.single['personnelBasicOnly']==true){throw StateError('社員の顔写真を変更する権限がありません。');}
     final member=await _documents.membership();_live();
     if(member.companyId!=privacySession.company || !await _documents.canManageStatuses()){throw const PersonnelScopeChanged();}
