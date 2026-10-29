@@ -9,8 +9,11 @@ final _landscape = base64Decode('iVBORw0KGgoAAAANSUhEUgAAAZAAAABkCAYAAACoy2Z3AAA
 final _portrait = base64Decode('iVBORw0KGgoAAAANSUhEUgAAAGQAAAGQCAYAAABYlsXvAAADo0lEQVR4nO3RMREAIBDAsJeDJoRhF2TQIUP23nXWPpeO+R2AIWmGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxBgSY0iMITGGxDwnJ5zbOsnR+gAAAABJRU5ErkJggg==');
 
 void main() {
+  for (final slots in <String, List<String>>{
+    'qualification': ['表面', '裏面'], 'one document': ['1'], 'two documents': ['1', '2'],
+  }.entries) {
   for (final scale in [1.0, 2.0]) {
-    testWidgets('qualification thumbnail decode preserves aspect and fixed card geometry at text scale $scale', (tester) async {
+    testWidgets('${slots.key} thumbnail decode preserves aspect and fixed card geometry at text scale $scale', (tester) async {
       Size? cardSize;
       List<Size>? slotSizes;
       for (final horizontal in [true, false]) {
@@ -19,14 +22,14 @@ void main() {
         await tester.pumpWidget(MaterialApp(home: MediaQuery(
           data: MediaQueryData(size: const Size(320, 640), textScaler: TextScaler.linear(scale)),
           child: Scaffold(body: SizedBox(width: 320, child: ResourceRegistrationCard(
-            key: ValueKey(horizontal), title: '合成資格', icon: Icons.badge_outlined,
+            key: ValueKey(horizontal), title: slots.key == 'qualification' ? '合成資格' : '合成書類', icon: Icons.badge_outlined,
             registered: true, onAction: () {}, attachments: [
-              ResourceAttachment(label: '表面', path: 'synthetic-front-$horizontal', loadBytes: () async => bytes),
-              ResourceAttachment(label: '裏面', path: 'synthetic-back-$horizontal', loadBytes: () async => bytes),
+              for (final label in slots.value) ResourceAttachment(label: label,
+                path: 'synthetic-${slots.key}-$label-$horizontal', loadBytes: () async => bytes),
             ]))))));
         await tester.pumpAndSettle();
         final images = tester.widgetList<Image>(find.byType(Image)).toList();
-        expect(images, hasLength(2));
+        expect(images, hasLength(slots.value.length));
         for (final image in images) {
           await tester.runAsync(() => precacheImage(image.image, tester.element(find.byType(ResourceRegistrationCard))));
         }
@@ -52,5 +55,6 @@ void main() {
         await tester.pumpWidget(const SizedBox.shrink());
       }
     });
+  }
   }
 }
