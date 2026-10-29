@@ -31,6 +31,8 @@ void main() {
       )));
       await tester.pumpAndSettle();
       if (editor) { await tester.tap(find.text('資格写真を確認')); await tester.pumpAndSettle(); }
+      await tester.runAsync(() => precacheImage(MemoryImage(_image), tester.element(find.byType(Image).first)));
+      await tester.pumpAndSettle();
       await tester.ensureVisible(find.byType(Image).first); await tester.pumpAndSettle();
       await tester.tap(find.byType(Image).first); await tester.pumpAndSettle();
       expect(find.byType(InteractiveViewer), findsOneWidget);
@@ -53,6 +55,8 @@ void main() {
               initialPhotos: [WorkerDocumentPhoto.pending(_image, 'synthetic.png')]); editorReturns++;
           }, child: const Text('資格写真を確認'))))));
       await tester.tap(find.text('資格写真を確認')); await tester.pumpAndSettle();
+      await tester.runAsync(() => precacheImage(MemoryImage(_image), tester.element(find.byType(Image).first)));
+      await tester.pumpAndSettle();
       await tester.ensureVisible(find.byType(Image).first); await tester.pumpAndSettle();
       await tester.tap(find.byType(Image).first); await tester.pumpAndSettle();
       tester.view.physicalSize = size; tester.view.viewInsets = const FakeViewPadding(bottom: 160);

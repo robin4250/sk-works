@@ -195,6 +195,7 @@ class _PhotoEditorState extends State<_PhotoEditor> {
     // Keep title/content scrollable and leave the existing actions reachable.
     scrollable: true,
     insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+    actionsPadding: const EdgeInsets.symmetric(horizontal: 8),
     title: Text('登録写真 ${_photos.length}枚'),
     content: SizedBox(
       width: 420,
