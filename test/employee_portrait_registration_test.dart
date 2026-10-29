@@ -22,6 +22,15 @@ class _Documents extends WorkerDocumentRepository {
   'statuses':[if((fixture.saved??fixture.existing) case final row?) {...row,'worker_id':managed.worker,'requirement_id':managed.requirement}],
  };
 }
+Future<void> drainPortraitIo(WidgetTester tester) async {
+ final clock=Stopwatch()..start();
+ while(find.byType(LinearProgressIndicator).evaluate().isNotEmpty){
+  if(clock.elapsed>const Duration(seconds:5)){throw StateError('portrait fixture IO did not settle');}
+  await tester.runAsync(() async {await Future<void>.delayed(const Duration(milliseconds:5));});
+  await tester.pump(Duration.zero);
+ }
+ await tester.pumpAndSettle();
+}
 void main(){
  TestWidgetsFlutterBinding.ensureInitialized();
  late managed.Fixture f;late PersonnelPrivacySession session;late _Documents docs;late EmployeePortraitRepository repo;
@@ -89,9 +98,9 @@ void main(){
  });
  testWidgets('photo page requires explicit selection/save; cancellation never uploads',(tester) async {
   await tester.pumpWidget(MaterialApp(home:EmployeePortraitRegistrationPage(privacySession:session,workerId:managed.worker,companyName:'テスト会社',repositoryOverride:repo,photoPicker:(_)async=>[photo()])));
-  await tester.runAsync(() async {await Future<void>.delayed(const Duration(milliseconds:30));});await tester.pumpAndSettle();
+  await drainPortraitIo(tester);
   final save=find.byKey(const Key('employee-portrait-save'));expect(tester.widget<FilledButton>(save).onPressed,isNull);
-  await tester.tap(find.byKey(const Key('employee-portrait-pick')));await tester.pumpAndSettle();
+  await tester.tap(find.byKey(const Key('employee-portrait-pick')));await tester.pump();await drainPortraitIo(tester);
   expect(tester.widget<FilledButton>(save).onPressed,isNotNull);expect(f.mutations,isEmpty);
   await tester.tap(find.text('キャンセル'));await tester.pumpAndSettle();expect(f.mutations,isEmpty);
   await tester.pumpWidget(const SizedBox());
@@ -99,7 +108,7 @@ void main(){
  testWidgets('missing face requirement offers existing explicit settings entry without creating rows',(tester) async {
   docs.missing=true;
   await tester.pumpWidget(MaterialApp(home:EmployeePortraitRegistrationPage(privacySession:session,workerId:managed.worker,companyName:'テスト会社',repositoryOverride:repo)));
-  await tester.runAsync(() async {await Future<void>.delayed(const Duration(milliseconds:30));});await tester.pumpAndSettle();
+  await drainPortraitIo(tester);
   expect(find.byKey(const Key('employee-portrait-settings')),findsOneWidget);expect(f.mutations,isEmpty);
   await tester.pumpWidget(const SizedBox());
  });
