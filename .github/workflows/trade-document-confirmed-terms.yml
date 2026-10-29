@@ -133,11 +133,17 @@ jobs:
                       assert any(abs(r.x0-x)<1 and abs(r.y0-(front.rect.height-g['ys'][10]))<1 and abs(r.y1-(front.rect.height-g['ys'][20]))<1 for r in rectangles),(kind,'gridcol',x)
                   assert g['data_rows']==9
                   assert '協力会社名（仮）' not in front_text and 'すみだ建設株式会社' not in front_text
-                  text=clean(modern[1].get_text())
-                  assert '[工事請負契約条項]' in text
-                  bodylines=[line for block in modern[1].get_text('dict')['blocks'] for line in block.get('lines',[]) if line.get('spans') and all(abs(span['size']-6.5)<.05 for span in line['spans'])]
-                  assert len(bodylines)==92,(kind,len(bodylines))
-                  for a,b in zip(bodylines,bodylines[1:]): assert abs((b['bbox'][1]-a['bbox'][1])-8.14)<.1,(kind,a['bbox'],b['bbox'])
+                  spans=[span for block in modern[1].get_text('dict')['blocks'] for line in block.get('lines',[]) for span in line.get('spans',[])]
+                  # Separate text operators on one physical baseline may become
+                  # multiple logical MuPDF lines. Verify the actual paper order.
+                  groups={}
+                  for span in spans: groups.setdefault(round(span['origin'][1],2),[]).append(span)
+                  text=clean(''.join(span['text'] for y in sorted(groups) for span in sorted(groups[y],key=lambda s:s['bbox'][0])))
+                  expected='[ 工事請負契約条項 ]'+''.join('（'+title+'）'+''.join(('第'+str(number)+'条　' if i==0 else '　　　　')+paragraph for i,paragraph in enumerate(paragraphs)) for number,(title,paragraphs) in enumerate(articles,1))
+                  assert text==clean(expected),(kind,'legal paper stream differs')
+                  baselines=sorted({round(span['origin'][1],2) for span in spans if abs(span['size']-6.5)<.05})
+                  assert len(baselines)==92,(kind,len(baselines))
+                  for a,b in zip(baselines,baselines[1:]): assert abs((b-a)-8.14)<.1,(kind,a,b)
                   # Ideographic indentation must be actual white space, not a
                   # visible substitute glyph despite correct ToUnicode text.
                   prefix=clean(articles[3][1][1][:25])
