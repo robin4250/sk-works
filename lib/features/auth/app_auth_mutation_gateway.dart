@@ -1,26 +1,76 @@
 import 'dart:async';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'apple_session_navigation_binding.dart';
+import 'app_auth_logout_persistence.dart';
 
 /// Serializes app-owned repository writes to an existing SDK client.
 /// SDK deep links, OAuth callbacks, automatic refresh and storage remain outside
 /// this boundary. It cannot prevent a transient SDK signedIn before logout.
+enum AppLogoutQuarantineState { clear, pending, failed }
+
+/// Read-only, in-memory UI signal. Contains no session or credential values.
+abstract interface class AppLogoutQuarantineSignal {
+  AppLogoutQuarantineState get state;
+  Stream<AppLogoutQuarantineState> get changes;
+}
+
+class _LogoutSignal implements AppLogoutQuarantineSignal {
+  AppLogoutQuarantineState _state = AppLogoutQuarantineState.clear;
+  final _changes = StreamController<AppLogoutQuarantineState>.broadcast(sync: true);
+  @override
+  AppLogoutQuarantineState get state => _state;
+  @override
+  Stream<AppLogoutQuarantineState> get changes => _changes.stream;
+  bool _notifying = false;
+  bool _queued = false;
+  void _set(AppLogoutQuarantineState value) {
+    if (_state == value) return;
+    _state = value;
+    if (_notifying) {
+      if (!_queued) {
+        _queued = true;
+        scheduleMicrotask(() { _queued = false; _emit(); });
+      }
+      return;
+    }
+    _emit();
+  }
+  void _emit() {
+    _notifying = true;
+    try { _changes.add(_state); } finally { _notifying = false; }
+  }
+}
+
 class AppAuthMutationGateway {
   AppAuthMutationGateway._(this._client);
   static final _owners = Expando<AppAuthMutationGateway>();
   static AppAuthMutationGateway forClient(SupabaseClient client) =>
       _owners[client] ??= AppAuthMutationGateway._(client);
+  static AppAuthMutationGateway bindPersistence(SupabaseClient client, AppLogoutPersistenceFence persistence) {
+    final owner = forClient(client);
+    if (owner._active != null || owner._logout != null ||
+        (owner._persistence != null && !identical(owner._persistence, persistence))) {
+      throw StateError('Auth persistence owner cannot be replaced.');
+    }
+    owner._persistence = persistence;
+    if (persistence.blocked) owner._quarantine._set(AppLogoutQuarantineState.failed);
+    return owner;
+  }
   final SupabaseClient _client;
+  AppLogoutPersistenceFence? _persistence;
   Completer<void>? _active;
   Future<void>? _logout;
   int _generation = 0;
+  final _quarantine = _LogoutSignal();
+  AppLogoutQuarantineSignal get logoutQuarantine => _quarantine;
 
   AppleSessionNavigationBinding? _binding(Session? session) =>
       AppleSessionNavigationBinding.fromSession(session);
 
   Future<T> _run<T>(Future<_Result<T>> Function(AppleSessionNavigationBinding? before) action,
       {bool requiresSession = false}) async {
-    if (_active != null || _logout != null) {
+    if (_active != null || _logout != null ||
+        _quarantine.state != AppLogoutQuarantineState.clear) {
       throw StateError('Authentication operation already in progress.');
     }
     final initialSession = _client.auth.currentSession;
@@ -121,21 +171,58 @@ class AppAuthMutationGateway {
   Future<void> signOut() {
     final existing = _logout;
     if (existing != null) return existing;
-    // Invalidate pending callers immediately, before awaiting any SDK request.
+    // Invalidate pending callers and quarantine UI before awaiting any SDK work.
     _generation++;
     final completion = Completer<void>();
     _logout = completion.future;
+    _quarantine._set(AppLogoutQuarantineState.pending);
     final pending = _active?.future;
     unawaited(() async {
+      StreamSubscription<AuthState>? confirmation;
+      var released = false;
       try {
+        await _persistence?.persistIntent();
         if (pending != null) await pending;
-        await _client.auth.signOut(); // Preserve the pinned SDK default logout scope (local).
+        final events = <AuthState>[];
+        var failed = false;
+        confirmation = _client.auth.onAuthStateChange.listen((event) {
+          if (events.length >= 32) { failed = true; } else { events.add(event); }
+        }, onError: (Object _) { failed = true; }, onDone: () { failed = true; });
+        // Ignore only events preceding this SDK logout invocation. UI stays
+        // quarantined throughout; a cached signedOut is never confirmation.
+        await Future<void>.value();
+        events.clear();
+        failed = false;
+        await _client.auth.signOut(); // Preserve pinned SDK default local scope.
+        await Future<void>.value();
+        bool confirmed() => !failed && _client.auth.currentSession == null &&
+            events.any((event) => event.event == AuthChangeEvent.signedOut && event.session == null) &&
+            !events.any((event) => event.session != null);
+        if (!confirmed()) throw StateError('SDK logout could not be confirmed.');
+        await _persistence?.confirmLocalRemoval();
+        await _persistence?.releaseFence(confirmed);
+        released = _persistence != null;
+        await confirmation.cancel();
+        confirmation = null;
+        if (!confirmed()) throw StateError('SDK logout could not be confirmed.');
+        // No await between confirmation and releasing the in-memory UI fence.
+        _logout = null;
+        _quarantine._set(AppLogoutQuarantineState.clear);
         completion.complete();
-      } catch (error, stack) { completion.completeError(error, stack); }
-      finally { _logout = null; }
+      } catch (error, stack) {
+        if (released) {
+          try { await _persistence?.persistIntent(); } catch (_) { /* UI remains blocked. */ }
+        }
+        _logout = null;
+        _quarantine._set(AppLogoutQuarantineState.failed);
+        completion.completeError(error, stack);
+      } finally {
+        try { await confirmation?.cancel(); } catch (_) { /* Already quarantined. */ }
+      }
     }());
     return completion.future;
   }
+
 }
 
 class _Result<T> {

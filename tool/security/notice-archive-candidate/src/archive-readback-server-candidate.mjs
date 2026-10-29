@@ -8,9 +8,6 @@ import {snapshotArchiveByteDescriptorCandidate} from './archive-byte-store-candi
 const fail=()=>Error('archive readback server unavailable');
 const uuid=x=>typeof x==='string'&&/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/.test(x);
 const exact=(x,keys)=>x&&typeof x==='object'&&!Array.isArray(x)&&Object.keys(x).sort().join(',')===keys;
-function descriptor(row){return snapshotArchiveByteDescriptorCandidate({status:'stored_unattested',schema:1,
- company_id:row.company_id,event_id:row.event_id,revision:Number(row.revision),snapshot_sha256:row.snapshot_sha256,
- payload_sha256:row.payload_sha256,byte_length:row.byte_length,object_id:row.object_id});}
 const equal=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
 function material(value){if(typeof value!=='string'&&!(value instanceof Uint8Array))throw fail();const b=Buffer.from(value);if(!b.length||b.length>65536)throw fail();return b;}
 
@@ -75,18 +72,16 @@ export function createArchiveReadbackServerCandidate({enabled=false,endpoint,tls
     await bounded(()=>leased.query('begin'));
     await bounded(()=>leased.query("select set_config('statement_timeout',$1,true),set_config('lock_timeout',$1,true),set_config('request.jwt.claims',$2,true)",
      [`${timeoutMs}ms`,JSON.stringify({sub:actor,session_id:session,role:'authenticated',is_anonymous:false})]));
-    const selected=await bounded(()=>leased.query('select * from archive_readback_private.authority_records where object_id=$1 for share',[expected.object_id]));live();
-    if(selected.rows.length!==1)throw fail();const row=selected.rows[0],saved=descriptor(row);
-    if(row.authority_id!==authorityId||row.owner_id!==actor||!equal(saved,expected)||typeof row.deployment_id!=='string')throw fail();
-    const savedCompany=row.company_id,savedDeployment=row.deployment_id;
+    // Only the archive helper is granted to the dedicated runtime role. It
+    // locks the exact immutable target and existing live authorization together.
     const guard=async()=>{
-     live();const sid=await bounded(()=>leased.query('select private.require_reauthentication_session() as sid'));
-     if(sid.rows.length!==1||sid.rows[0].sid!==session)throw fail();
-     const result=await bounded(()=>leased.query('select security_management_issuer_private.binding($1,$2,$3,$4,true) as binding',[actor,session,savedCompany,savedDeployment]));
-     live();if(result.rows.length!==1||!result.rows[0].binding)throw fail();
-     return JSON.stringify(result.rows[0].binding);
+     live();const result=await bounded(()=>leased.query('select archive_readback_private.authorize_observation($1,$2::jsonb) as observation',[authorityId,JSON.stringify(expected)]));
+     live();if(result.rows.length!==1)throw fail();const observation=result.rows[0].observation;
+     if(!exact(observation,'descriptor,guard_token')||!equal(snapshotArchiveByteDescriptorCandidate(observation.descriptor),expected)||
+      typeof observation.guard_token!=='string'||!/^[a-f0-9]{64}$/.test(observation.guard_token))throw fail();
+     return observation.guard_token;
     };
-    const before=await guard();
+    const before=await guard(),saved=expected;
     const attestor=createArchiveReadbackAttestorCandidate({enabled:true,authorityId,key:pin,now,timeoutMs,
      store:{restore:async d=>{live();const b=await restore(d);live();return b;}},
      signObservation:async b=>{live();const signature=await sign(b);live();return signature;}});

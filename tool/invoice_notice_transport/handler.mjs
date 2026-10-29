@@ -1,4 +1,8 @@
+import {randomUUID} from 'node:crypto';
 // Unhosted candidate boundary. No listener, default activation, grants or keys.
+// Existing trade display models permit 4 MiB including a registered 1 MiB
+// PNG (base64 + SQL wrapping). Open carries two authoritative preview copies.
+const operationLimit=4*1024*1024+65536,openLimit=9*1024*1024;
 const uuid=/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 class Denied extends Error { constructor(status){super('notice unavailable');this.status=status;} }
 const reject=status=>{throw new Denied(status);};
@@ -26,6 +30,14 @@ function scope(value,confirm){
  if(confirm&&(value.financial_confirmed!==true||value.seal_confirmed!==true))reject(400);
  return value;
 }
+function opening(value){
+ const keys=['notification_id','invoice_id','source_revision'];
+ if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).length!==3||Object.keys(value).some(k=>!keys.includes(k))||
+  !uuid.test(value.notification_id??'')||!uuid.test(value.invoice_id??'')||typeof value.source_revision!=='string'||value.source_revision.length>80||
+  !/(?:Z|[+-][0-9]{2}:[0-9]{2})$/.test(value.source_revision))reject(400);
+ return value;
+}
+
 export function createInvoiceNoticeTransport({enabled=false,authOrigin,apiKey,connect,fetchAuth=fetch,budgetMs=20000}={}){
  if(!enabled)return null;
  const origin=new URL(authOrigin);if(origin.username||origin.password||origin.pathname!=='/'||origin.search||origin.hash||!(origin.protocol==='https:'||(origin.protocol==='http:'&&['127.0.0.1','localhost','[::1]'].includes(origin.hostname))))throw Error('fixed Auth origin required');
@@ -53,13 +65,14 @@ export function createInvoiceNoticeTransport({enabled=false,authOrigin,apiKey,co
   };
   const response=(status,value)=>new Response(JSON.stringify(value),{status,headers:{'content-type':'application/json','cache-control':'no-store','x-content-type-options':'nosniff'}});
   try{
-   const route=new URL(request.url).pathname;
-   if(request.method!=='POST'||!['/invoice-notice/confirm','/invoice-notice/result'].includes(route))reject(404);
+   const route=new URL(request.url).pathname.replace(/^\/functions\/v1(?=\/invoice-notice\/)/,'');
+   if(request.method!=='POST'||!['/invoice-notice/open','/invoice-notice/confirm','/invoice-notice/result'].includes(route))reject(404);
    if(request.headers.has('cookie'))reject(401);
    // Never reread caller headers or accept credentials/issuer in the JSON body.
    const authorization=request.headers.get('authorization');
    if(typeof authorization!=='string'||authorization.length>8192||!/^Bearer [A-Za-z0-9_.-]+$/.test(authorization))reject(401);
-   const token=authorization.slice(7),value=scope(await run(()=>boundedJson(request,{limit:65536,milliseconds:10000,status:400,timeoutStatus:408,signal:controller.signal})),route.endsWith('/confirm'));
+   const token=authorization.slice(7),raw=await run(()=>boundedJson(request,{limit:operationLimit,milliseconds:10000,status:400,timeoutStatus:408,signal:controller.signal}));
+   const value=route.endsWith('/open')?opening(raw):scope(raw,route.endsWith('/confirm'));
    const authUrl=new URL('/auth/v1/user',origin);
    const authenticated=await run(()=>fetchAuth(authUrl,{method:'GET',redirect:'error',signal:AbortSignal.any([controller.signal,AbortSignal.timeout(5000)]),headers:{apikey:apiKey,authorization}}),discard);
    if(authenticated.status!==200||authenticated.redirected!==false||authenticated.url!==authUrl.href){discard(authenticated);reject(401);}
@@ -73,11 +86,42 @@ export function createInvoiceNoticeTransport({enabled=false,authOrigin,apiKey,co
    // Never replace this sensitive server gate with a decoded-JWT boolean.
    const live=await run(()=>peer.query('select private.require_reauthentication_session() sid'));
    if(live.rows[0]?.sid!==claims.session_id)reject(401);
+   let result;
+   if(route.endsWith('/open')){
+    const rollout=await run(()=>peer.query('select enabled from trade_document_consent_private.notice_confirmation_settings where singleton for share'));
+    if(rollout.rows[0]?.enabled!==true)reject(503);
+    const ticket=(await run(()=>peer.query('select invoice_month_close_candidate.ticket_from_notification($1) v',[value.notification_id]))).rows[0].v;
+    if(ticket.invoice_id!==value.invoice_id||ticket.notification_id!==value.notification_id||ticket.status!=='ready')reject(403);
+    const rows=await run(()=>peer.query(`select i.id invoice_id,i.company_id,l.local_document_id,d.id document_id,d.current_revision revision,
+     r.body,r.body_hash,r.binding,to_jsonb(i.updated_at)#>>'{}' source_revision
+     from public.invoices i join trade_document_consent_private.documents d on d.issuer_company_id=i.company_id and d.document_kind='acceptance'
+     join trade_document_consent_private.local_links l on l.document_id=d.id and l.company_id=i.company_id
+     join trade_document_consent_private.revisions r on r.document_id=d.id and r.revision=d.current_revision
+     where i.id=$1 and i.updated_at=$2::timestamptz and r.binding->>'parent_kind'='invoice' and r.binding->>'parent_id'=i.id::text
+     order by d.id for share of i,d,l,r`,[ticket.invoice_id,value.source_revision]));
+    if(rows.rowCount!==1)reject(403);
+    const saved=rows.rows[0];
+    if(saved.local_document_id===saved.document_id)reject(403);
+    const expected=(await run(()=>peer.query('select trade_document_consent_private.preview_confirmation($1,$2,$3) v',[saved.local_document_id,saved.company_id,saved.revision]))).rows[0].v;
+    if(expected.document_id!==saved.document_id||expected.local_document_id!==saved.local_document_id||expected.company_id!==saved.company_id||
+       expected.revision!==saved.revision||expected.body_hash!==saved.body_hash||expected.binding?.parent_id!==saved.invoice_id||expected.binding?.parent_kind!=='invoice')reject(403);
+    const hash=(await run(()=>peer.query("select encode(sha256(convert_to($1::jsonb::text,'UTF8')),'hex') v",[JSON.stringify(expected)]))).rows[0].v;
+    const descriptor={contract_version:1,kind:'invoice',company_id:saved.company_id,actor_id:user.id,parent_id:saved.invoice_id,
+     source_revision:saved.source_revision,attachment_version:saved.binding.attachment_version,local_document_id:saved.local_document_id,
+     document_id:saved.document_id,document_revision:saved.revision,body_hash:saved.body_hash,preview_hash:hash};
+    const workspace={...descriptor,side:'issued',integration_required:true,can_integrated_confirm:true,can_render:false,unavailable_reason:null};
+    result={...ticket,source_revision:saved.source_revision,actor_id:user.id,session_id:claims.session_id,
+     operation:{ticket_id:ticket.ticket_id,local_document_id:saved.local_document_id,company_id:saved.company_id,revision:saved.revision,
+      request_id:randomUUID(),expected_preview:expected,expected_hash:hash},workspace,
+     preview:{contract_version:1,expected_command:descriptor,preview_hash:hash,display_preview:{...expected,body:saved.body,body_hash:saved.body_hash}}};
+    if(Buffer.byteLength(JSON.stringify(result))>openLimit)reject(503);
+   }else{
    const hash=(await run(()=>peer.query("select encode(sha256(convert_to($1::jsonb::text,'UTF8')),'hex') v",[JSON.stringify(value.expected_preview)]))).rows[0].v;
    if(hash!==value.expected_hash)reject(400);
    const args=[value.ticket_id,value.local_document_id,value.company_id,value.revision,JSON.stringify(value.expected_preview),value.request_id];
    const sql=route.endsWith('/confirm')?'select trade_document_consent_private.confirm_invoice_from_notice($1,$2,$3,$4,$5::jsonb,$6,true,true) v':'select trade_document_consent_private.read_invoice_notice_result_scoped($1,$2,$3,$4,$5::jsonb,$6) v';
-   const result=(await run(()=>peer.query(sql,args))).rows[0].v;
+   result=(await run(()=>peer.query(sql,args))).rows[0].v;
+   }
    await run(()=>peer.query('commit'));begun=false;
    await run(()=>finish(peer));
    const reply=response(200,result);ensure();return reply;

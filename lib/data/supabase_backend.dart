@@ -1,4 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../features/auth/app_auth_logout_persistence.dart';
+import '../features/auth/app_auth_mutation_gateway.dart';
 
 class SupabaseBackendConfig {
   const SupabaseBackendConfig._();
@@ -23,10 +25,13 @@ class SupabaseBackend {
       return;
     }
 
+    final persistence = AppAuthLogoutPersistence.forProject(SupabaseBackendConfig.url);
     await Supabase.initialize(
       url: SupabaseBackendConfig.url,
       publishableKey: SupabaseBackendConfig.publishableKey,
+      authOptions: FlutterAuthClientOptions(localStorage: persistence),
     );
+    AppAuthMutationGateway.bindPersistence(client, persistence);
     _initialized = true;
   }
 }

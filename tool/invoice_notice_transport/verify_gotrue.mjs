@@ -16,7 +16,7 @@ try{
  verify=replace(verify,"'./trade_document_monthly_review_fixture.mjs'",JSON.stringify(url('tool/trade_document_monthly_review_fixture.mjs')));
  await fs.writeFile(path.join(temp,'verify.mjs'),verify,{mode:0o600});
  let invoice=await exact('tool/trade_document_invoice_confirmation_fixture.mjs');
- invoice=replace(invoice,"'2026-10-01','2026-10-31',clock_timestamp(),'draft',110000,10000,'{}')\",[parent,A,CUSTOMER]);", "$4::date,$5::date,clock_timestamp(),'draft',110000,10000,'{}')\",[parent,A,CUSTOMER,num===21?'2020-10-01':'2026-10-01',num===21?'2020-10-31':'2026-10-31']);");
+ invoice=replace(invoice,"'2026-10-01','2026-10-31',clock_timestamp(),'draft',110000,10000,'{}')\",[parent,A,CUSTOMER]);", "$4::date,$5::date,clock_timestamp(),'draft',110000,10000,'{}')\",[parent,A,CUSTOMER,[21,22].includes(num)?'2020-10-01':'2026-10-01',[21,22].includes(num)?'2020-10-31':'2026-10-31']);");
  invoice=replace(invoice," console.log('PASS invoice adapter:",` await (await import(${JSON.stringify(pathToFileURL(path.join(temp,'notice.mjs')).href)})).verifyNoticeSeal(db,{...c,prepare,preview,state});\n console.log('PASS invoice adapter:`);
  await fs.writeFile(path.join(temp,'invoice.mjs'),invoice,{mode:0o600});
  let notice=await fs.readFile(path.join(root,'tool/trade_document_notice_seal_fixture.mjs'),'utf8');
