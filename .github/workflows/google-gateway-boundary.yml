@@ -21,5 +21,5 @@ jobs:
           cache: true
       - run: flutter pub get --enforce-lockfile
       - run: git diff --exit-code -- pubspec.lock
-      - run: dart analyze lib/features/auth/existing_google_login.dart test/existing_google_gateway_boundary_test.dart
-      - run: flutter test test/existing_google_gateway_boundary_test.dart --reporter expanded
+      - run: dart analyze lib/features/auth/app_auth_mutation_gateway.dart lib/features/auth/existing_google_login.dart test/existing_google_gateway_boundary_test.dart
+      - run: flutter test test/existing_google_gateway_boundary_test.dart test/existing_google_login_test.dart --reporter expanded
