@@ -1,4 +1,8 @@
+import 'dart:async';
 import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'invoice_notice_ticket_controller.dart';
 
@@ -34,11 +38,11 @@ typedef InvoiceNoticeOperationTransport = Future<Object?> Function(InvoiceNotice
 /// Memory-only, opt-in composition with the existing ticket controller.
 /// Transports must bind to the private candidate confirmation/result contracts.
 /// No public endpoint, grants, rollout or cross-login recovery is supplied here.
-class InvoiceNoticeRecoveryController {
+class InvoiceNoticeRecoveryController extends ChangeNotifier {
   InvoiceNoticeRecoveryController({required this.actor, required this.session,
     required NoticeTicketOpener openTicket,
     required this.operationForTicket, required this.confirm, required this.readResult,
-    this.timeout = const Duration(seconds: 20)}) {
+    this.timeout = const Duration(seconds: 20), SupabaseClient? authClient}) {
     tickets = InvoiceNoticeTicketController(actor: actor, session: session,
       openTicket: (id) async {
         // Even a newly opened ticket must not create a second approval attempt
@@ -46,6 +50,7 @@ class InvoiceNoticeRecoveryController {
         if (_operation != null || _invalidated) { return null; }
         return openTicket(id);
       }, submitApproval: _submit);
+    if (authClient != null) { _observeAuth(authClient); }
   }
   final String? Function() actor, session;
   final InvoiceNoticeOperation Function(String ticket) operationForTicket;
@@ -58,6 +63,39 @@ class InvoiceNoticeRecoveryController {
   String? _actor, _session;
   bool _invalidated = false, _reading = false;
   int _generation = 0;
+  StreamSubscription<AuthState>? _authSubscription;
+
+  // UI identity only. It is never an authorization decision: private SQL still
+  // checks the live session and company permissions independently.
+  String? _authIdentity(Session? value) {
+    if (value == null) { return null; }
+    try {
+      final pieces = value.accessToken.split('.');
+      if (pieces.length != 3) { return null; }
+      final claims = jsonDecode(utf8.decode(base64Url.decode(base64Url.normalize(pieces[1]))));
+      final sid = claims is Map ? claims['session_id'] : null;
+      if (claims is! Map || claims['sub'] != value.user.id || sid is! String ||
+          !RegExp(r'^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$').hasMatch(sid)) { return null; }
+      return '${value.user.id}/$sid';
+    } catch (_) { return null; }
+  }
+
+  void _observeAuth(SupabaseClient client) {
+    final bound = _authIdentity(client.auth.currentSession);
+    if (bound == null || bound != '${actor()}/${session()}') { invalidate(); return; }
+    _authSubscription = client.auth.onAuthStateChange.listen((event) {
+      // signedIn is a new login boundary even for actor/SID ABA. Refreshes
+      // retain the operation only while the exact original identity remains.
+      if (event.event == AuthChangeEvent.signedOut || event.event == AuthChangeEvent.signedIn ||
+          _authIdentity(event.session) != bound || '${actor()}/${session()}' != bound) { invalidate(); }
+    }, onError: (Object error, StackTrace trace) { invalidate(); }, onDone: invalidate);
+  }
+
+  @override
+  void dispose() {
+    invalidate();
+    super.dispose();
+  }
 
   bool _current(int generation) {
     final valid = !_invalidated && generation == _generation &&
@@ -70,11 +108,16 @@ class InvoiceNoticeRecoveryController {
   /// Terminal for this instance, even if the same SID is later supplied again.
   /// No secret, ticket or pending scope is persisted across that boundary.
   void invalidate() {
+    if (_invalidated) { return; }
     _invalidated = true;
     _generation++;
     _operation = null; _actor = null; _session = null;
     _state = InvoiceNoticeRecoveryState.invalidated;
     tickets.invalidate();
+    final subscription = _authSubscription;
+    _authSubscription = null;
+    if (subscription != null) { unawaited(subscription.cancel()); }
+    notifyListeners();
   }
 
   Future<Object?> _submit(String ticket) async {
