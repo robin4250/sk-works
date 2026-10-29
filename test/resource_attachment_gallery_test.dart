@@ -2,6 +2,10 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/shared/resource_registration_card.dart';
 
@@ -13,7 +17,9 @@ Widget host(ResourceAttachmentGallery gallery, ResourceAttachment selected) => M
   body: ResourceAttachmentThumbnail(attachment: selected, gallery: gallery, requireGalleryScope: true)));
 Future<void> open(WidgetTester tester) async {
   await tester.pumpAndSettle();
-  await tester.runAsync(() => precacheImage(MemoryImage(_png), tester.element(find.byType(ResourceAttachmentThumbnail))));
+  for (var frame=0;frame<30 && tester.widgetList<RawImage>(find.byType(RawImage)).any((image)=>image.image==null);frame++) {
+    await tester.runAsync(()=>Future<void>.delayed(const Duration(milliseconds:10)));await tester.pump(const Duration(milliseconds:16));
+  }
   await tester.tap(find.byType(ResourceAttachmentThumbnail)); await tester.pumpAndSettle();
 }
 void main() {
@@ -73,6 +79,29 @@ void main() {
     allowed=false;changes.add(null);await tester.pumpAndSettle();
     expect(find.byType(PageView),findsNothing);expect(tester.takeException(),isNull);
     await tester.pumpWidget(const SizedBox.shrink());await changes.close();
+  });
+
+  testWidgets('retained PDF builder rejects original bytes after the gallery scope is retired',(tester) async {
+    const channel=MethodChannel('net.nfet.printing');
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel,(call) async => call.method=='printingInfo'?{'canRaster':false}:null);
+    final document=pw.Document()..addPage(pw.Page(build:(_)=>pw.Text('Synthetic original PDF')));
+    final pdf=await document.save();var allowed=true;final changes=StreamController<Object?>.broadcast(sync:true);
+    final attachment=ResourceAttachment(label:'1',path:'synthetic.pdf',previewKey:'pdf:0',recordTitle:'合成PDF',loadBytes:()async=>pdf);
+    final gallery=ResourceAttachmentGallery(source:Object(),workerId:'w',companyId:'c',isCurrent:()=>allowed,changes:changes.stream,entries:[attachment]);
+    try {
+      await tester.pumpWidget(MaterialApp(home:Scaffold(body:ResourceAttachmentThumbnail(attachment:attachment,gallery:gallery,
+        rasterizeFirstPage:(_)async=>_png))));await tester.pumpAndSettle();
+      await tester.tap(find.byType(ResourceAttachmentThumbnail));
+      for(var frame=0;frame<20&&find.byType(PdfPreview).evaluate().isEmpty;frame++){await tester.pump(const Duration(milliseconds:16));}
+      final callback=tester.widget<PdfPreview>(find.byType(PdfPreview)).build;
+      expect(await callback(PdfPageFormat.a4),pdf);
+      allowed=false;changes.add(null);await tester.pumpAndSettle();
+      await expectLater(callback(PdfPageFormat.a4),throwsStateError);
+      expect(find.byType(PdfPreview),findsNothing);expect(tester.takeException(),isNull);
+    } finally {
+      await tester.pumpWidget(const SizedBox.shrink());await changes.close();
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel,null);
+    }
   });
 
 }

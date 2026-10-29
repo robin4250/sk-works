@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -11,6 +13,29 @@ import 'package:sk_works/features/people/own_document_registration_page.dart';
 import 'package:sk_works/features/people/worker_document_page.dart';
 import 'package:sk_works/features/people/worker_document_repository.dart';
 
+final _png=base64Decode('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGPQiJr2H4QZYAwARcwIXZ/EKIMAAAAASUVORK5CYII=');
+late StreamController<AuthState> _changes;
+class _Pictures extends HttpOverrides {
+  @override HttpClient createHttpClient(SecurityContext? context) => _PictureClient();
+}
+class _PictureClient implements HttpClient {
+  @override Future<HttpClientRequest> getUrl(Uri url) async {
+    expect(url.host,'synthetic.invalid'); return _PictureRequest();
+  }
+  @override void close({bool force=false}) {}
+  @override dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+class _PictureRequest implements HttpClientRequest {
+  @override bool followRedirects=false;
+  @override Future<HttpClientResponse> close() async => _PictureResponse();
+  @override dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+class _PictureResponse extends Stream<List<int>> implements HttpClientResponse {
+  @override int get statusCode=>200;
+  @override StreamSubscription<List<int>> listen(void Function(List<int>)? onData,{Function? onError,void Function()? onDone,bool? cancelOnError}) =>
+    Stream<List<int>>.value(_png).listen(onData,onError:onError,onDone:onDone,cancelOnError:cancelOnError);
+  @override dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
 const _worker = {'id':'worker-A','company_id':'company-A','name':'合成社員A','status':'active'};
 const _masters = [{'id':'m1','name':'合成資格A'},{'id':'m2','name':'合成資格B'}];
 const _qualifications = [
@@ -33,7 +58,7 @@ class _Qualifications implements QualificationCloudRepository {
   final pending = <Future<Map<String,dynamic>>>[];
   @override String? get currentUserId => 'actor';
   @override Future<bool Function()> captureAttachmentReadScope() async => () => true;
-  @override Stream<AuthState> get attachmentAuthChanges => const Stream.empty();
+  @override Stream<AuthState> get attachmentAuthChanges => _changes.stream;
   @override Future<bool> canManageMaster() async => false;
   @override Future<bool> canManageWorkerQualifications() async => false;
   @override Future<Map<String,dynamic>> loadOwnQualificationWorkspace() async => {'worker':_worker,'masters':_masters,'qualifications':rows};
@@ -53,7 +78,7 @@ class _Certificates implements QualificationCertificateRepository {
 class _OwnDocuments implements OwnDocumentGalleryGateway {
   @override bool get photoEditingAvailable => true;
   @override Future<bool Function()> captureAttachmentReadScope() async => () => true;
-  @override Stream<Object?> get attachmentAuthChanges => const Stream.empty();
+  @override Stream<Object?> get attachmentAuthChanges => _changes.stream;
   @override Future<Map<String,List<Map<String,dynamic>>>> loadAll() async => {
     'workers':[_worker],'requirements':_requirements,'statuses':_statuses,'exemptions':[]};
   @override Future<String> signedUrl(String path) async => 'https://synthetic.invalid/$path';
@@ -63,7 +88,7 @@ class _ManagedDocuments extends WorkerDocumentRepository {
   _ManagedDocuments(super.client) : super.forTesting();
   @override String? get actorId => 'actor';
   @override Future<bool Function()> captureAttachmentReadScope() async => () => true;
-  @override Stream<AuthState> get attachmentAuthChanges => const Stream.empty();
+  @override Stream<AuthState> get attachmentAuthChanges => _changes.stream;
   @override Future<bool> canManageRequirements() async => false;
   @override Future<bool> canManageStatuses() async => false;
   @override Future<Map<String,List<Map<String,dynamic>>>> loadAll({bool includeHiddenRequirements=false}) async => {
@@ -82,25 +107,45 @@ void verify(WidgetTester tester, String title, bool qualifications) {
   expect(gallery.entries.last.recordTitle,qualifications ? '合成資格B' : '合成書類B');
   expect(gallery.indexOf(card.attachments.first),0);
 }
+Future<void> verifyLiveTitles(WidgetTester tester,String title,bool qualifications) async {
+  final card=find.byWidgetPredicate((widget)=>widget is ResourceRegistrationCard && widget.title==title).first;
+  final thumb=find.descendant(of:card,matching:find.byType(ResourceAttachmentThumbnail)).first;
+  for(var frame=0;frame<30 && tester.widgetList<RawImage>(find.descendant(of:thumb,matching:find.byType(RawImage))).any((image)=>image.image==null);frame++) {
+    await tester.runAsync(()=>Future<void>.delayed(const Duration(milliseconds:10)));await tester.pump(const Duration(milliseconds:16));
+  }
+  expect(tester.widget<RawImage>(find.descendant(of:thumb,matching:find.byType(RawImage))).image,isNotNull);
+  await tester.pumpAndSettle(); await tester.ensureVisible(thumb);await tester.tap(thumb);await tester.pumpAndSettle();
+  final count=qualifications?4:3;
+  expect(find.descendant(of:find.byType(AppBar).last,matching:find.text(title)),findsOneWidget);
+  expect(find.text('1/$count'),findsOneWidget);
+  for(var i=1;i<count;i++) { await tester.drag(find.byType(PageView),const Offset(-600,0));await tester.pumpAndSettle(); }
+  expect(find.text('$count/$count'),findsOneWidget);
+  expect(find.descendant(of:find.byType(AppBar).last,matching:find.text(qualifications?'合成資格B':'合成書類B')),findsOneWidget);
+  await tester.tap(find.byWidgetPredicate((widget)=>widget is IconButton && widget.tooltip=='閉じる'));await tester.pumpAndSettle();
+  expect(find.byType(PageView),findsNothing);
+}
 void main() {
+  HttpOverrides? previous;
+  setUp(() { previous=HttpOverrides.current;HttpOverrides.global=_Pictures();_changes=StreamController<AuthState>.broadcast(); });
+  tearDown(() async { HttpOverrides.global=previous;await _changes.close(); });
   testWidgets('own qualifications wire full saved same-worker names and ordinal identities beyond search results',(tester) async {
     await tester.pumpWidget(MaterialApp(home:OwnQualificationRegistrationPage(repository:_Qualifications()))); await tester.pumpAndSettle();
     verify(tester,'合成資格A',true);
     await tester.enterText(find.byType(TextField).first,'合成資格A'); await tester.pumpAndSettle();
-    verify(tester,'合成資格A',true); expect(tester.takeException(),isNull);
+    verify(tester,'合成資格A',true); await verifyLiveTitles(tester,'合成資格A',true);expect(tester.takeException(),isNull);
   });
   testWidgets('managed qualifications wire same-worker gallery across records without foreign employee paths',(tester) async {
     await tester.pumpWidget(MaterialApp(home:QualificationCloudPage(repository:_Qualifications(),certificateRepository:_Certificates()))); await tester.pumpAndSettle();
-    verify(tester,'合成資格A',true); expect(tester.takeException(),isNull);
+    verify(tester,'合成資格A',true); await verifyLiveTitles(tester,'合成資格A',true);expect(tester.takeException(),isNull);
   });
   testWidgets('own documents wire one and paired slots across saved document names',(tester) async {
     await tester.pumpWidget(MaterialApp(home:OwnDocumentRegistrationPage(gateway:_OwnDocuments()))); await tester.pumpAndSettle();
-    verify(tester,'合成書類A',false); expect(tester.takeException(),isNull);
+    verify(tester,'合成書類A',false); await verifyLiveTitles(tester,'合成書類A',false);expect(tester.takeException(),isNull);
   });
   testWidgets('managed documents wire same worker and company gallery across document scope filters',(tester) async {
     final client=SupabaseClient('https://synthetic.invalid','synthetic-public',authOptions:const AuthClientOptions(autoRefreshToken:false));addTearDown(client.dispose);
     await tester.pumpWidget(MaterialApp(home:WorkerDocumentPage(view:WorkerDocumentView.workers,repositoryOverride:_ManagedDocuments(client))));await tester.pumpAndSettle();
-    await tester.tap(find.text('合成社員A'));await tester.pumpAndSettle();verify(tester,'合成書類A',false);expect(tester.takeException(),isNull);
+    await tester.tap(find.text('合成社員A'));await tester.pumpAndSettle();verify(tester,'合成書類A',false);await verifyLiveTitles(tester,'合成書類A',false);expect(tester.takeException(),isNull);
   });
   testWidgets('newer qualification response wins and a stale load cannot retire the current gallery',(tester) async {
     final repository=_Qualifications();

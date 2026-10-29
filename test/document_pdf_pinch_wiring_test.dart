@@ -45,7 +45,11 @@ void main() {
     expect(source, contains('PdfPinchPages(pages: pages)'));
     expect(source, contains('allowPrinting: true, allowSharing: false'));
     expect(source, contains('await widget.attachment.validateAccess?.call()'));
-    expect(source, contains('Future<Uint8List> buildPreviewPdf(PdfPageFormat _) async => bytes;'));
+    expect(source, contains('Future<Uint8List> buildPreviewPdf(PdfPageFormat _) async {'));
+    expect(source, contains("if (!widget.isCurrent()) { throw StateError('Attachment scope changed'); }"));
+    expect(source, contains('return bytes;'));
+    // The runtime gallery test retains this callback across invalidation and
+    // verifies it rejects, rather than returning saved PDF bytes after logout.
   });
 
 }
