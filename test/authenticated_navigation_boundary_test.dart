@@ -47,7 +47,7 @@ Session session(String uid, {String sessionId = sid, String? accessToken, int ge
   final payload = base64Url.encode(utf8.encode(jsonEncode({'sub':uid,'session_id':sessionId,'iat':generation}))).replaceAll('=', '');
   return Session.fromJson({'access_token':accessToken ?? 'e30.$payload.c2ln',
     'refresh_token':'fixture','token_type':'bearer','user':{'id':uid,'aud':'authenticated',
-    'app_metadata':{},'user_metadata':{},'created_at':'2026-01-01T00:00:00Z'}})!;
+    'app_metadata':<String,dynamic>{},'user_metadata':<String,dynamic>{},'created_at':'2026-01-01T00:00:00Z'}})!;
 }
 AuthState change(String? uid, {String sessionId = sid, AuthChangeEvent event = AuthChangeEvent.signedIn, int generation = 1}) =>
     AuthState(event, uid == null ? null : session(uid, sessionId:sessionId, generation:generation));
@@ -56,7 +56,7 @@ void main() {
   testWidgets('first sign-in preserves pending OTP/onboarding completion',
       (tester) async {
     final changes = StreamController<AuthState>();
-    addTearDown(changes.close);
+    addTearDown(() { unawaited(changes.close()); });
     final completion = Completer<void>();
     var disposed = 0;
     await tester.pumpWidget(AuthenticatedNavigationBoundary(
@@ -79,7 +79,7 @@ void main() {
     testWidgets('identity $actor destroys pushed private pages and Navigator',
         (tester) async {
       final changes = StreamController<AuthState>();
-      addTearDown(changes.close);
+      addTearDown(() { unawaited(changes.close()); });
       final navigator = GlobalKey<NavigatorState>();
       var disposed = 0;
       await tester.pumpWidget(AuthenticatedNavigationBoundary(
@@ -107,7 +107,7 @@ void main() {
 
   testWidgets('same actor refresh retains legitimate navigation', (tester) async {
     final changes = StreamController<AuthState>();
-    addTearDown(changes.close);
+    addTearDown(() { unawaited(changes.close()); });
     final navigator = GlobalKey<NavigatorState>();
     await tester.pumpWidget(AuthenticatedNavigationBoundary(
       initialSession: session(owner), authChanges: changes.stream,
@@ -128,7 +128,7 @@ void main() {
   testWidgets('auth stream failure destroys routes and does not show stale UI',
       (tester) async {
     final changes = StreamController<AuthState>();
-    addTearDown(changes.close);
+    addTearDown(() { unawaited(changes.close()); });
     await tester.pumpWidget(AuthenticatedNavigationBoundary(
       initialSession: session(owner), authChanges: changes.stream,
       child: const MaterialApp(home: Text('private file')),
@@ -149,7 +149,7 @@ void main() {
   testWidgets('rapid identity return cannot resurrect the old private route',
       (tester) async {
     final changes = StreamController<AuthState>();
-    addTearDown(changes.close);
+    addTearDown(() { unawaited(changes.close()); });
     final navigator = GlobalKey<NavigatorState>();
     await tester.pumpWidget(AuthenticatedNavigationBoundary(
       initialSession: session(owner), authChanges: changes.stream,
@@ -169,7 +169,7 @@ void main() {
   });
   testWidgets('malformed session fails closed and cannot use onboarding exception', (tester) async {
     final changes = StreamController<AuthState>();
-    addTearDown(changes.close);
+    addTearDown(() { unawaited(changes.close()); });
     await tester.pumpWidget(AuthenticatedNavigationBoundary(
       authChanges: changes.stream,
       child: const MaterialApp(home: Text('private file')),
@@ -187,7 +187,7 @@ void main() {
 
   testWidgets('same actor session return cannot resurrect private routes', (tester) async {
     final changes = StreamController<AuthState>();
-    addTearDown(changes.close);
+    addTearDown(() { unawaited(changes.close()); });
     final navigator = GlobalKey<NavigatorState>();
     await tester.pumpWidget(AuthenticatedNavigationBoundary(
       initialSession: session(owner), authChanges: changes.stream,
@@ -205,7 +205,7 @@ void main() {
 
   testWidgets('initialSession restoration does not use first-signin exception', (tester) async {
     final changes = StreamController<AuthState>();
-    addTearDown(changes.close);
+    addTearDown(() { unawaited(changes.close()); });
     var disposed = 0;
     final completion = Completer<void>();
     await tester.pumpWidget(AuthenticatedNavigationBoundary(
@@ -223,7 +223,7 @@ void main() {
 
   testWidgets('signedOut invalidates even when SDK event carries old session', (tester) async {
     final changes = StreamController<AuthState>();
-    addTearDown(changes.close);
+    addTearDown(() { unawaited(changes.close()); });
     var disposed = 0;
     await tester.pumpWidget(AuthenticatedNavigationBoundary(
       initialSession: session(owner), authChanges: changes.stream,
