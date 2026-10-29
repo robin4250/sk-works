@@ -1,11 +1,25 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
+import '../auth/app_auth_mutation_gateway.dart';
 
 class QualificationCloudRepository {
   QualificationCloudRepository._(this._client);
+  QualificationCloudRepository.forTesting(this._client);
 
   final SupabaseClient _client;
+
+  Stream<AuthState> get attachmentAuthChanges => _client.auth.onAuthStateChange;
+  Future<bool Function()> captureAttachmentReadScope() async {
+    final session = _client.auth.currentSession;
+    final actor = _client.auth.currentUser?.id;
+    final gateway = AppAuthMutationGateway.forClient(_client);
+    final epoch = await gateway.externalFlowAdmission();
+    if (session == null || actor == null || session.isExpired || epoch == null ||
+        !identical(session, _client.auth.currentSession)) { throw StateError('Attachment session changed'); }
+    return () => !session.isExpired && identical(session, _client.auth.currentSession) &&
+      _client.auth.currentUser?.id == actor && gateway.isExternalFlowCurrent(epoch);
+  }
 
   static QualificationCloudRepository? maybeCreate() {
     if (!SupabaseBackend.isInitialized) return null;
@@ -91,7 +105,7 @@ class QualificationCloudRepository {
 
     var workersQuery = _client
         .from('workers')
-        .select('id, name, affiliation, status')
+        .select('id, company_id, name, affiliation, status')
         .eq('company_id', companyId);
     if (!canManage && ownWorkerId != null && ownWorkerId.isNotEmpty) {
       workersQuery = workersQuery.eq('id', ownWorkerId);
@@ -99,7 +113,7 @@ class QualificationCloudRepository {
     final workers = await workersQuery.order('name');
 
     const baseFields =
-      'id, worker_id, qualification_master_id, certificate_number, issued_at, expires_at, issuer, attachment_path, notes, created_at, updated_at';
+      'id, company_id, worker_id, qualification_master_id, certificate_number, issued_at, expires_at, issuer, attachment_path, notes, created_at, updated_at';
     final optionalFields = <String>{'attachment_back_path', 'attachment_extra_paths'};
     late List<Map<String, dynamic>> qualifications;
     for (;;) {
@@ -227,7 +241,7 @@ class QualificationCloudRepository {
     String? qualificationId,
   }) async {
     const baseFields =
-        'id, worker_id, qualification_master_id, certificate_number, issued_at, expires_at, issuer, attachment_path, notes, created_at, updated_at';
+        'id, company_id, worker_id, qualification_master_id, certificate_number, issued_at, expires_at, issuer, attachment_path, notes, created_at, updated_at';
     final optionalFields = <String>[
       'attachment_back_path',
       'attachment_extra_paths',
@@ -283,23 +297,28 @@ class QualificationCloudRepository {
   }
 
   Future<Map<String, dynamic>> loadOwnQualificationWorkspace() async {
-    final worker = await currentWorker();
-    final masters = await loadActiveMasters();
+    final workerId = (await _client.rpc('ensure_current_user_worker'))?.toString() ?? '';
+    if (workerId.isEmpty) { throw StateError('本人の作業員情報を確認できません。'); }
     final companyId = await _companyId();
-    final qualifications = await _loadOwnPhotoRows(
-      companyId: companyId,
-      workerId: worker.workerId,
-    );
-
+    final worker = await _client.from('workers').select('id, company_id, name')
+        .eq('id', workerId).eq('company_id', companyId).maybeSingle();
+    if (worker == null || worker['id'] != workerId || worker['company_id'] != companyId) {
+      throw StateError('本人の所属会社を確認できません。');
+    }
+    // One captured company scopes the worker, master and registration reads.
+    final masters = await _loadActiveMastersForCompany(companyId);
+    final qualifications = await _loadOwnPhotoRows(companyId: companyId, workerId: workerId);
     return {
-      'worker': {'id': worker.workerId, 'name': worker.workerName},
+      'worker': {'id': workerId, 'company_id': companyId, 'name': worker['name']},
       'masters': masters,
       'qualifications': List<Map<String, dynamic>>.from(qualifications),
     };
   }
 
-  Future<List<Map<String, dynamic>>> loadActiveMasters() async {
-    final companyId = await _companyId();
+  Future<List<Map<String, dynamic>>> loadActiveMasters() async =>
+      _loadActiveMastersForCompany(await _companyId());
+
+  Future<List<Map<String, dynamic>>> _loadActiveMastersForCompany(String companyId) async {
     final rows = await _client
         .from('qualification_master')
         .select('id, name, category, issuer, expiry_required, notes, is_active')
@@ -332,7 +351,7 @@ class QualificationCloudRepository {
           'notes': _nullable(notes),
         })
         .select(
-          'id, worker_id, qualification_master_id, certificate_number, issued_at, expires_at, issuer, attachment_path, notes, created_at, updated_at',
+          'id, company_id, worker_id, qualification_master_id, certificate_number, issued_at, expires_at, issuer, attachment_path, notes, created_at, updated_at',
         )
         .single();
     return Map<String, dynamic>.from(inserted);
@@ -364,7 +383,7 @@ class QualificationCloudRepository {
           'attachment_path': _nullable(attachmentPath),
         })
         .select(
-          'id, worker_id, qualification_master_id, certificate_number, issued_at, expires_at, issuer, attachment_path, notes, created_at, updated_at',
+          'id, company_id, worker_id, qualification_master_id, certificate_number, issued_at, expires_at, issuer, attachment_path, notes, created_at, updated_at',
         )
         .single();
     return Map<String, dynamic>.from(inserted);

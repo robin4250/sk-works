@@ -47,7 +47,17 @@ void main() {
     ).readAsStringSync();
 
     expect(page, contains("'従業員検索'"));
-    expect(page, contains('_selectedWorkerId = id'));
+    expect(page, matches(RegExp(r'onTap:\s*\(\) =>\s*_selectGalleryWorker\(id\)')));
+    final selectionStart = page.indexOf('void _selectGalleryWorker(String? worker)');
+    final selectionEnd = page.indexOf('ResourceAttachmentGallery? _galleryForWorker', selectionStart);
+    expect(selectionStart, greaterThanOrEqualTo(0));
+    expect(selectionEnd, greaterThan(selectionStart));
+    final selection = page.substring(selectionStart, selectionEnd);
+    expect(selection, contains('if (_selectedWorkerId == worker)'));
+    expect(selection, contains('_selectedWorkerId = worker'));
+    expect(selection, contains('_galleryGeneration++'));
+    expect(selection, contains('_galleryChanges.value++'));
+    expect(selection, contains('setState(() {})'));
     expect(page, contains('_editStatus(requirement, status)'));
     expect(repo, contains("value.role == 'manager'"));
     expect(migration, contains("'owner','admin','manager'"));

@@ -4,15 +4,19 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/shared/resource_registration_card.dart';
 import 'package:sk_works/features/people/worker_document_photo_editor.dart';
 
-Widget host(Widget child, {double scale = 1}) => MaterialApp(home: MediaQuery(
+Widget host(Widget child, {double scale = 1}) {
+  TestWidgetsFlutterBinding.ensureInitialized().handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+  return MaterialApp(home: MediaQuery(
   data: MediaQueryData(size: const Size(320, 640), textScaler: TextScaler.linear(scale)),
   child: Scaffold(body: SizedBox(width: 320, child: child))));
+}
 
 ResourceRegistrationCard card(List<ResourceAttachment> attachments, {String title = '健康診断書', bool registered = true}) =>
   ResourceRegistrationCard(title: title, icon: Icons.description_outlined,
     registered: registered, attachments: attachments, onAction: () {});
 
 void main() {
+  setUp(() => TestWidgetsFlutterBinding.ensureInitialized().handleAppLifecycleStateChanged(AppLifecycleState.resumed));
   testWidgets('registered action defaults to edit label and supports view-only label', (tester) async {
     for (final label in [null, '詳細を確認']) {
       var presses = 0;
