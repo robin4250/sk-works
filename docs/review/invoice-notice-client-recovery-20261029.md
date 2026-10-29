@@ -10,10 +10,10 @@ expected preview and server-issued canonical expected-preview hash before dispat
 even a successful command response remains provisional until immutable historical
 readback returns recorded financial approval and seal consent, and a stored scope
 envelope exactly matches ticket/local/company/revision/request/hash/actor/SID.
-Legacy unbound envelopes and foreign/stale scopes are rejected. The future server
-adapter must derive the envelope from persisted receipt fields; it must never
-attach request scope to a response. The current private SQL reader does not yet
-return this envelope, so it cannot directly satisfy this client contract. Missing, malformed,
+Legacy unbound envelopes and foreign/stale scopes are rejected. The new private, ungranted `read_invoice_notice_result_scoped` adapter first calls
+the unchanged reader for all enabled/company/feature/live-session/hash checks,
+then derives the envelope exclusively from immutable persisted receipt columns.
+It never attaches caller-supplied scope to an unbound response. Missing, malformed,
 failed and timed-out readback never permits reopening or resending. Readback may be
 retried only for the same captured operation, actor and SID. The server reader must
 still independently enforce its existing exact scope and live-session checks.
@@ -26,16 +26,22 @@ is deliberately unavailable. No automatic global Auth event/history subscription
 is installed by this class; application wiring must call invalidate at the boundary. A newly created instance does not possess an old
 operation; no operation persistence or restoration is added here.
 
-Ten Flutter tests cover provisional success, ambiguous/missing/error readback,
+Ten isolated Flutter tests cover provisional success, ambiguous/missing/error readback,
 immutable scope, SID change, delayed logout replies, concurrent read suppression,
 malformed receipts and actual Supabase SDK HTTP error/readback composition using
 synthetic loopback URLs and fixture-only RPC names. This SDK test proves client
 request identity and no resend; it does not claim a real PostgreSQL/PostgREST/Auth
-integration. The separately merged native wire proof remains evidence of the
-private SQL transaction/receipt behavior, not an end-to-end client proof.
+integration. The native lost-COMMIT fixture additionally reads the scoped receipt over a fresh
+PostgreSQL connection and exports that actual synthetic committed receipt to a
+CI temporary file. In the same dedicated job, one additional Flutter test feeds
+this SQL-generated envelope through the real SDK response decoder into the Dart
+lifecycle, accepting only exact scope and rejecting every foreign field. This
+is an actual saved SQL receipt-to-client contract bridge; it remains distinct
+from authenticated public HTTP/Auth end-to-end proof. The bridge fixture is
+skipped outside its dedicated job; that job requires the generated file.
 
 Still required before activation: authenticated public transport with the private
 SQL result contract, real live Auth/logout event wiring, UI readback composition,
 server-enforced scope through that transport, safe persistence/restart design if
-needed, production gates and device verification. No SQL, grants, hosted database,
-originals, signatures, deployment or delivery are changed.
+needed, production gates and device verification. Only review-only private candidate SQL is extended. No public endpoint/grants,
+hosted database, originals, signatures, deployment or delivery are changed.
