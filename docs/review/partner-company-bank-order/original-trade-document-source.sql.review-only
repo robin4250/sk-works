@@ -1,0 +1,135 @@
+-- Captured function definition only, no business rows. Fixture/recovery evidence.
+-- prosrc MD5 ebcc70935938482054943560390038b2; original body is not changed.
+create or replace function private.trade_document_source(p_kind text,p_subject uuid,p_source_revision text)
+returns jsonb language plpgsql security definer set search_path='' as $original$
+declare cid uuid; counter_id uuid; start_day date; end_day date; rev text; st text;
+ final_at timestamptz; is_blocked boolean; extra_locked boolean:=false; total bigint; tax bigint; source_snapshot jsonb; counter jsonb;
+ company public.companies; role_name text; can_read boolean; can_manage boolean; result jsonb; directory_count bigint; directory_role text; directory_address text; directory_corporate text; directory_representative text;
+begin
+ if auth.uid() is null or not private.account_access_allowed() then
+  raise exception 'ログインが必要です。' using errcode='42501'; end if;
+ if p_kind='payment_certificate' then
+  select company_id,partner_company_id,period_start,period_end,revision::text,status,finalized_at,gross_amount,snapshot,calculation_blocked
+  into cid,counter_id,start_day,end_day,rev,st,final_at,total,source_snapshot,is_blocked
+  from public.payment_certificates where id=p_subject for share;
+ elsif p_kind='invoice' then
+  select company_id,customer_id,billing_period_start,billing_period_end,updated_at::text,status,finalized_at,grand_total,invoices.tax,snapshot,calculation_blocked,(approval_finalized_at is not null or invoice_seal_frozen)
+  into cid,counter_id,start_day,end_day,rev,st,final_at,total,tax,source_snapshot,is_blocked,extra_locked
+  from public.invoices where id=p_subject for share;
+ else raise exception '書類の種類を確認してください。' using errcode='22023'; end if;
+ select role::text into role_name from public.company_members where company_id=cid and user_id=auth.uid();
+ if p_kind='invoice' then
+  can_read:=coalesce(private.has_company_feature(cid,'can_view_invoices'),false);
+  can_manage:=coalesce(private.has_company_feature(cid,'can_manage_invoices'),false);
+ else
+  can_read:=coalesce(role_name in ('owner','admin','manager'),false);
+  can_manage:=coalesce(role_name in ('owner','admin'),false);
+ end if;
+ if cid is null or role_name is null or not can_read then
+  raise exception '書類の閲覧権限がありません。' using errcode='42501'; end if;
+ if (p_kind='invoice' and rev::timestamptz is distinct from p_source_revision::timestamptz)
+ or (p_kind='payment_certificate' and rev is distinct from p_source_revision) then
+  raise exception '元の帳票が更新されています。開き直してください。' using errcode='40001'; end if;
+ if start_day is null or end_day is null or date_trunc('month',start_day)<>date_trunc('month',end_day) then
+  raise exception '同じ対象月の帳票が必要です。' using errcode='22023'; end if;
+ select * into company from public.companies where id=cid for share;
+ if p_kind='payment_certificate' then
+  select jsonb_build_object('name',name,'address',coalesce(address,''),'corporate_number','',
+    'representative_name',coalesce(president_name,'')) into counter
+  from public.partner_companies where id=counter_id and company_id=cid;
+  if jsonb_typeof(source_snapshot->'tax')='number' then tax:=(source_snapshot->>'tax')::bigint; end if;
+ else
+  select jsonb_build_object('name',coalesce(nullif(billing_name,''),name),'address',coalesce(billing_address,''),
+    'corporate_number','','representative_name','') into counter
+  from public.customers where id=counter_id and company_id=cid;
+ end if;
+ if counter is null then raise exception '相手先の会社を確認できません。' using errcode='22023'; end if;
+ result:=jsonb_build_object('company_id',cid,'source_revision',rev,
+  'source_fingerprint',md5(jsonb_build_object('company',cid,'counterparty',counter_id,'start',start_day,'end',end_day,'total',total,'tax',tax,'snapshot',case when p_kind='invoice' then source_snapshot-'company_seal_snapshot' else source_snapshot end)::text),'month',to_char(start_day,'YYYY-MM'),
+  'can_manage',can_manage,'template_can_view',case when p_kind='invoice' then can_manage else can_read end,'source_blocked',coalesce(is_blocked,false),'source_locked',st<>'draft' or final_at is not null or coalesce(extra_locked,false),
+  'defaults',jsonb_build_object('version',1,'kind',case when p_kind='invoice' then 'acceptance' else 'order' end,
+   'month',to_char(start_day,'YYYY-MM'),'period_start',date_trunc('month',start_day)::date,
+   'period_end',(date_trunc('month',start_day)+interval '1 month - 1 day')::date,
+   'total_amount_yen',total,'tax_amount_yen',tax,
+   'issuer',jsonb_build_object('name',company.name,'address',coalesce(company.address,''),
+     'corporate_number',coalesce(company.corporate_number,''),'representative_name',''),
+   'counterparty',counter,'company_seal_snapshot',private.document_company_seal_snapshot(null,cid,true)->'company_seal_snapshot',
+   'company_seal_enabled',company.company_seal_enabled));
+
+ -- Use an explicit saved calculation line only; never infer tax from a rate.
+ IF p_kind='payment_certificate' AND tax IS NULL
+    AND jsonb_typeof(source_snapshot->'calculation_rows')='array' THEN
+   SELECT CASE WHEN count(*)=1 THEN max(
+     CASE WHEN jsonb_typeof(item->'amount_yen')='number'
+        AND (item->>'amount_yen') ~ '^[0-9]{1,10}$'
+     THEN CASE WHEN (item->>'amount_yen')::numeric <= 2147483647
+          THEN (item->>'amount_yen')::bigint END END) END INTO tax
+   FROM jsonb_array_elements(source_snapshot->'calculation_rows') item
+   WHERE regexp_replace(coalesce(item->>'work_content',''),'[（）()[:space:]]','','g')
+         ~ '^消費税([0-9]+([.,][0-9]+)?[%％])?$';
+   IF tax IS NOT NULL THEN
+     result := jsonb_set(result,'{defaults,tax_amount_yen}',to_jsonb(tax));
+   END IF;
+ END IF;
+ -- Same-company registered directory only. Never derive a relationship from a name.
+ -- Managers retain the original payment-reader output: directory contact is admin-only.
+ -- A saved appendix stays independent of later directory edits or ambiguity.
+ if p_kind='payment_certificate' and can_manage and not exists(
+   select 1 from private.trade_document_attachments a
+   where a.subject_kind=p_kind and a.subject_id=p_subject and a.company_id=cid
+ ) then
+   select count(*),min(t.trade_role),min(t.address),min(t.corporate_number),min(t.representative_name)
+     into directory_count,directory_role,directory_address,directory_corporate,directory_representative
+   from public.trade_companies t
+   where t.company_id=cid and t.partner_company_id=counter_id;
+   -- Missing, ambiguous or wrong-role mapping refuses enrichment, not the document.
+   if directory_count=1 and coalesce(directory_role in ('subcontractor','both'),false) then
+     result:=jsonb_set(result,'{defaults,counterparty}',
+       (result->'defaults'->'counterparty')||jsonb_build_object(
+         -- Match existing save_trade_document_attachment normalization limits per field.
+         'address',case when length(btrim(directory_address)) between 1 and 240
+           then btrim(directory_address) else coalesce(counter->>'address','') end,
+         'corporate_number',case when btrim(directory_corporate) ~ '^[0-9]{13}$'
+           then btrim(directory_corporate) else coalesce(counter->>'corporate_number','') end,
+         'representative_name',case when length(btrim(directory_representative)) between 1 and 80
+           then btrim(directory_representative) else coalesce(counter->>'representative_name','') end));
+   end if;
+ end if;
+
+ -- Own issuer only; directory counterparty enrichment above stays unchanged.
+ if p_kind='payment_certificate' and can_manage and not exists(
+  select 1 from private.trade_document_attachments a
+  where a.subject_kind=p_kind and a.subject_id=p_subject and a.company_id=cid
+ ) then
+  result:=jsonb_set(result,'{defaults,issuer,representative_name}',coalesce((
+   select to_jsonb(e.representative_name)
+   from private.partner_company_profile_extensions e
+   where e.company_id=cid and length(e.representative_name) between 1 and 80
+  ),result#>'{defaults,issuer,representative_name}'));
+ end if;
+
+ -- Invoice-only missing party details: never replace a saved child or write the parent invoice.
+ if p_kind='invoice' and can_manage
+ and not exists(select 1 from private.trade_document_attachments a
+   where a.subject_kind=p_kind and a.subject_id=p_subject and a.company_id=cid) then
+  result:=jsonb_set(result,'{defaults,issuer,representative_name}',coalesce((
+   select to_jsonb(btrim(e.representative_name))
+   from private.partner_company_profile_extensions e
+   where e.company_id=cid and length(btrim(e.representative_name)) between 1 and 80
+  ),result#>'{defaults,issuer,representative_name}'));
+  select count(*),min(t.trade_role),min(t.address),min(t.corporate_number),min(t.representative_name)
+    into directory_count,directory_role,directory_address,directory_corporate,directory_representative
+  from public.trade_companies t where t.company_id=cid and t.customer_id=counter_id;
+  if directory_count=1 and coalesce(directory_role in ('customer','both'),false) then
+   result:=jsonb_set(result,'{defaults,counterparty}',
+    (result->'defaults'->'counterparty')||jsonb_build_object(
+     'address',case when length(btrim(directory_address)) between 1 and 240
+       then btrim(directory_address) else coalesce(counter->>'address','') end,
+     'corporate_number',case when btrim(directory_corporate) ~ '^[0-9]{13}$'
+       then btrim(directory_corporate) else coalesce(counter->>'corporate_number','') end,
+     'representative_name',case when length(btrim(directory_representative)) between 1 and 80
+       then btrim(directory_representative) else coalesce(counter->>'representative_name','') end));
+  end if;
+ end if;
+ return result;
+end $original$;

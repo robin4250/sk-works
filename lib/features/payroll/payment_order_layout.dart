@@ -30,5 +30,7 @@ bool paymentOrderUsesCompactLayout(Map<String, dynamic> payload) {
       }
     }
   }
+  final bank=payload['counterparty_bank'];
+  if(bank is Map){for(final field in ['bank_name','branch_name','account_type','account_number','account_holder']){length+=bank[field]?.toString().length??0;}}
   return length > 1800;
 }
