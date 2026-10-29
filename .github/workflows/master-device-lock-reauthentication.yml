@@ -8,6 +8,7 @@ on:
       - 'tool/staged/master_device_lock_reauthentication.sql'
       - 'tool/security/*master_device_lock*'
       - 'test/master_device_lock_reauthentication_test.dart'
+      - 'test/master_device_session_test.dart'
       - '.github/workflows/master-device-lock-reauthentication.yml'
 permissions:
   contents: read
@@ -47,5 +48,6 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
+      - run: flutter test test/master_device_session_test.dart
       - run: flutter analyze lib/features/settings/master_device_repository.dart lib/features/settings/master_device_management_page.dart lib/features/settings/master_device_lock_proof_dialog.dart test/master_device_lock_reauthentication_test.dart
       - run: flutter test test/master_device_lock_reauthentication_test.dart test/master_device_ui_contract_test.dart test/master_strict_device_gate_contract_test.dart
