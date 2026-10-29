@@ -222,13 +222,13 @@ class _SignatureCapturePageState extends State<SignatureCapturePage> {
           ),
           Expanded(child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: LayoutBuilder(builder: (context, constraints) {
-              final available = Size(constraints.maxWidth, constraints.maxHeight);
-              final fitted = _captureSize == null ? available
-                : applyBoxFit(BoxFit.contain, _captureSize!, available).destination;
-              _canvasSize = fitted;
-              return Stack(fit: StackFit.expand, children: [
-                Center(child: SizedBox(width: fitted.width, height: fitted.height,
+            child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Expanded(child: LayoutBuilder(builder: (context, constraints) {
+                final available = Size(constraints.maxWidth, constraints.maxHeight);
+                final fitted = _captureSize == null ? available
+                  : applyBoxFit(BoxFit.contain, _captureSize!, available).destination;
+                _canvasSize = fitted;
+                return Center(child: SizedBox(width: fitted.width, height: fitted.height,
                   child: GestureDetector(
                     key: const ValueKey('signature-drawing-surface'),
                     behavior: HitTestBehavior.opaque,
@@ -246,21 +246,31 @@ class _SignatureCapturePageState extends State<SignatureCapturePage> {
                         canvasSize: _captureSize ?? _canvasSize)),
                     ),
                   ),
-                )),
-                // Keep the action on top of the actual fitted signing frame,
-                // including after rotation/keyboard resizing preserves its ratio.
-                Positioned(
-                  right: (available.width - fitted.width) / 2 + 12,
-                  bottom: (available.height - fitted.height) / 2 + 12,
-                  child: FilledButton.icon(
-                    key: const ValueKey('signature-confirm-corner'),
-                    onPressed: _submit,
-                    icon: const Icon(Icons.check_circle_outline),
-                    label: Text(widget.submitLabel)),
-                ),
-                if (!_landscape) const Positioned.fill(child: IgnorePointer(child: SignatureOrientationGuide())),
-              ]);
-            }),
+                ));
+              })),
+              const SizedBox(width: 12),
+              // Reserve a visible action area beside the canvas. Fitting saved
+              // ink or showing the keyboard must never move it off the frame.
+              SizedBox(width: 104, key: const ValueKey('signature-confirm-rail'),
+                child: Center(child: FilledButton(
+                  key: const ValueKey('signature-confirm-corner'),
+                  onPressed: _submit,
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(104, 64),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                    backgroundColor: Theme.of(context).colorScheme.primary,
+                    foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                    elevation: 2,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+                  child: FittedBox(fit: BoxFit.scaleDown, child: SizedBox(width: 88,
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      const Icon(Icons.check_circle_outline, size: 24),
+                      const SizedBox(height: 4),
+                      Text(widget.submitLabel, textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                    ]))),
+                ))),
+            ]),
           )),
         ],
       ))),
