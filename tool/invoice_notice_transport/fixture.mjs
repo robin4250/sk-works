@@ -54,13 +54,23 @@ export async function verifyInvoiceNoticeTransport(db,c){
   assert.notEqual(anotherClaims.session_id,ownerClaims.session_id);
   check((await post('result',operation,another)).status,403);
   check((await post('result',operation)).status,200);
-  if(process.env.SKO_INVOICE_NOTICE_APP_HOOK==='contract-v1')await (await import('./app_fixture.mjs')).verifyInvoiceNoticeApp(db,c,context);
+  let isolatedAfter=after;
+  if(process.env.SKO_INVOICE_NOTICE_APP_HOOK==='contract-v1'){
+   await (await import('./app_fixture.mjs')).verifyInvoiceNoticeApp(db,c,context);
+   isolatedAfter=await state(x);
+   // state(x) includes a GLOBAL primitive receipt count. The separate app
+   // document creates exactly one receipt; every original-document field
+   // must remain identical before checking logout makes no further changes.
+   check(isolatedAfter.primitive_receipts,after.primitive_receipts+1);
+   check({...isolatedAfter,primitive_receipts:after.primitive_receipts},after);
+   console.log('PASS separate app receipt delta exactly one; original document state unchanged');
+  }
   const logout=await request('/auth/v1/logout?scope=local',{token:tokens.owner});assert.ok([200,204].includes(logout.status));
   check((await db.query('select count(*)::int n from auth.sessions where id=$1',[ownerClaims.session_id])).rows[0].n,0);
   assert.ok([401,403].includes((await post('result',operation)).status));
   // JWT expiry is still in the future; live-session proof, not expiry guessing.
   assert.ok(ownerClaims.exp*1000>Date.now());
-  check(commands,1);check(await state(x),after);
+  check(commands,1);check(await state(x),isolatedAfter);
   console.log('PASS actual local GoTrue bearer -> unhosted invoice HTTP -> existing private SQL; lost committed HTTP response -> fresh immutable scoped read; exactly one financial/seal result; foreign actor/new SID/revoked SID denied; no resend/public grants/hosted deployment');
  }finally{if(server)await new Promise(resolve=>server.close(resolve));}
 }
