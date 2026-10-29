@@ -56,7 +56,7 @@ void main() {
   testWidgets('first sign-in preserves pending OTP/onboarding completion',
       (tester) async {
     final changes = StreamController<AuthState>();
-    addTearDown(() { unawaited(changes.close()); });
+    try {
     final completion = Completer<void>();
     var disposed = 0;
     await tester.pumpWidget(AuthenticatedNavigationBoundary(
@@ -74,12 +74,16 @@ void main() {
     await tester.pump();
     expect(find.text('registration completed'), findsOneWidget);
     expect(disposed, 0);
+  } finally {
+    await tester.pumpWidget(const SizedBox.shrink());
+    await changes.close();
+  }
   });
   for (final actor in <String?>[null, other, owner]) {
     testWidgets('identity $actor destroys pushed private pages and Navigator',
         (tester) async {
       final changes = StreamController<AuthState>();
-      addTearDown(() { unawaited(changes.close()); });
+      try {
       final navigator = GlobalKey<NavigatorState>();
       var disposed = 0;
       await tester.pumpWidget(AuthenticatedNavigationBoundary(
@@ -102,12 +106,16 @@ void main() {
       expect(navigator.currentState, isNot(same(oldNavigator)));
       expect(navigator.currentState!.canPop(), false);
       expect(tester.takeException(), isNull);
+    } finally {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await changes.close();
+    }
     });
   }
 
   testWidgets('same actor refresh retains legitimate navigation', (tester) async {
     final changes = StreamController<AuthState>();
-    addTearDown(() { unawaited(changes.close()); });
+    try {
     final navigator = GlobalKey<NavigatorState>();
     await tester.pumpWidget(AuthenticatedNavigationBoundary(
       initialSession: session(owner), authChanges: changes.stream,
@@ -123,12 +131,16 @@ void main() {
     await tester.pump();
     expect(find.text('private file'), findsOneWidget);
     expect(navigator.currentState, same(current));
+  } finally {
+    await tester.pumpWidget(const SizedBox.shrink());
+    await changes.close();
+  }
   });
 
   testWidgets('auth stream failure destroys routes and does not show stale UI',
       (tester) async {
     final changes = StreamController<AuthState>();
-    addTearDown(() { unawaited(changes.close()); });
+    try {
     await tester.pumpWidget(AuthenticatedNavigationBoundary(
       initialSession: session(owner), authChanges: changes.stream,
       child: const MaterialApp(home: Text('private file')),
@@ -144,12 +156,16 @@ void main() {
     expect(find.text('private file'), findsNothing);
     await tester.pump();
     expect(find.text('private file'), findsOneWidget);
+  } finally {
+    await tester.pumpWidget(const SizedBox.shrink());
+    await changes.close();
+  }
   });
 
   testWidgets('rapid identity return cannot resurrect the old private route',
       (tester) async {
     final changes = StreamController<AuthState>();
-    addTearDown(() { unawaited(changes.close()); });
+    try {
     final navigator = GlobalKey<NavigatorState>();
     await tester.pumpWidget(AuthenticatedNavigationBoundary(
       initialSession: session(owner), authChanges: changes.stream,
@@ -166,10 +182,14 @@ void main() {
     expect(find.text('private file'), findsNothing);
     expect(navigator.currentState!.canPop(), false);
     expect(tester.takeException(), isNull);
+  } finally {
+    await tester.pumpWidget(const SizedBox.shrink());
+    await changes.close();
+  }
   });
   testWidgets('malformed session fails closed and cannot use onboarding exception', (tester) async {
     final changes = StreamController<AuthState>();
-    addTearDown(() { unawaited(changes.close()); });
+    try {
     await tester.pumpWidget(AuthenticatedNavigationBoundary(
       authChanges: changes.stream,
       child: const MaterialApp(home: Text('private file')),
@@ -183,11 +203,15 @@ void main() {
     expect(find.text('private file'), findsNothing);
     await tester.pump();
     expect(find.text('private file'), findsOneWidget);
+  } finally {
+    await tester.pumpWidget(const SizedBox.shrink());
+    await changes.close();
+  }
   });
 
   testWidgets('same actor session return cannot resurrect private routes', (tester) async {
     final changes = StreamController<AuthState>();
-    addTearDown(() { unawaited(changes.close()); });
+    try {
     final navigator = GlobalKey<NavigatorState>();
     await tester.pumpWidget(AuthenticatedNavigationBoundary(
       initialSession: session(owner), authChanges: changes.stream,
@@ -201,11 +225,15 @@ void main() {
     await tester.idle(); await tester.pump(); await tester.pumpAndSettle();
     expect(find.text('private file'), findsNothing);
     expect(navigator.currentState!.canPop(), false);
+  } finally {
+    await tester.pumpWidget(const SizedBox.shrink());
+    await changes.close();
+  }
   });
 
   testWidgets('initialSession restoration does not use first-signin exception', (tester) async {
     final changes = StreamController<AuthState>();
-    addTearDown(() { unawaited(changes.close()); });
+    try {
     var disposed = 0;
     final completion = Completer<void>();
     await tester.pumpWidget(AuthenticatedNavigationBoundary(
@@ -219,11 +247,15 @@ void main() {
     await tester.pump();
     completion.complete();
     await tester.idle(); await tester.pump();
+  } finally {
+    await tester.pumpWidget(const SizedBox.shrink());
+    await changes.close();
+  }
   });
 
   testWidgets('signedOut invalidates even when SDK event carries old session', (tester) async {
     final changes = StreamController<AuthState>();
-    addTearDown(() { unawaited(changes.close()); });
+    try {
     var disposed = 0;
     await tester.pumpWidget(AuthenticatedNavigationBoundary(
       initialSession: session(owner), authChanges: changes.stream,
@@ -233,6 +265,10 @@ void main() {
     await tester.idle(); await tester.pump();
     expect(disposed, 1);
     expect(find.text('private file'), findsNothing);
+  } finally {
+    await tester.pumpWidget(const SizedBox.shrink());
+    await changes.close();
+  }
   });
 
 }
