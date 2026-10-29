@@ -40,6 +40,7 @@ class _ProofState extends State<MasterDeviceLockProofDialog> with WidgetsBinding
   Future<void> _verify() async {
     if (_busy || _returned || _lifecycle != AppLifecycleState.resumed) return;
     if (!widget.sessionIsCurrent || widget.currentActor() != widget.expectedActor || _password.text.isEmpty) {
+      _password.clear();
       setState(() => _error = 'ログイン状態と本パスワードを確認してください。');
       return;
     }

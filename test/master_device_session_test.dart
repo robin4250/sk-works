@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sk_works/features/settings/master_device_management_page.dart';
+import 'package:sk_works/features/auth/operation_reauthentication_repository.dart';
 import 'package:sk_works/features/settings/master_device_repository.dart';
 
 const actor = '80000000-0000-0000-0000-000000000001';
@@ -18,7 +19,8 @@ Map<String, dynamic> session(String sid) {
 class Fixture {
   late SupabaseClient client;
   final calls = <http.Request>[];
-  Completer<void>? rowsWait, capabilityWait, mutationWait;
+  Completer<void>? rowsWait, capabilityWait, mutationWait, proofWait;
+  bool proofRequired = false;
   Future<void> login(String sid) => client.auth.setInitialSession(jsonEncode(session(sid)));
   static Future<Fixture> create() async {
     final f = Fixture();
@@ -33,7 +35,12 @@ class Fixture {
             result = [for (final id in ['a','b']) {'id':id,'device_name':'device-$id','device_type':'mac','registered_at':'2026-10-29T00:00:00Z','is_locked':false}];
           case 'master_device_lock_capability':
             if (f.capabilityWait != null) await f.capabilityWait!.future;
-            result = {'protocol':'sko-master-device-lock-v1','enabled':false};
+            result = {'protocol':'sko-master-device-lock-v1','enabled':f.proofRequired};
+          case 'reauthenticate-operation':
+            if (f.proofWait != null) await f.proofWait!.future;
+            final body=jsonDecode(r.body) as Map;
+            result={'protocol':'sko-reauthentication-v1','operation':body['operation'],'target':body['target'],
+              'proof':'a' * 64,'expiresAt':DateTime.now().add(const Duration(seconds:90)).toUtc().toIso8601String()};
           case 'revoke_master_device':
           case 'set_master_device_locked':
             if (f.mutationWait != null) await f.mutationWait!.future;
@@ -47,7 +54,7 @@ class Fixture {
   int get writes => calls.where((r)=>r.url.path.endsWith('revoke_master_device') || r.url.path.endsWith('set_master_device_locked')).length;
 }
 Future<void> open(WidgetTester t, Fixture f) async {
-  await t.pumpWidget(MaterialApp(home:MasterDeviceManagementPage(repository:MasterDeviceRepository.forTesting(f.client))));
+  await t.pumpWidget(MaterialApp(home:MasterDeviceManagementPage(repository:MasterDeviceRepository.forTesting(f.client),reauthentication:OperationReauthenticationRepository(f.client))));
   await t.pumpAndSettle();
 }
 Future<void> close(WidgetTester t, Fixture f) async {
@@ -71,7 +78,7 @@ void main() {
   });
   testWidgets('actual SDK delayed rows from old SID never display after switch', (t) async {
     final f = (await t.runAsync(Fixture.create))!; f.rowsWait=Completer<void>();
-    await t.pumpWidget(MaterialApp(home:MasterDeviceManagementPage(repository:MasterDeviceRepository.forTesting(f.client))));
+    await t.pumpWidget(MaterialApp(home:MasterDeviceManagementPage(repository:MasterDeviceRepository.forTesting(f.client),reauthentication:OperationReauthenticationRepository(f.client))));
     await t.pump(); await t.pump(const Duration(milliseconds:10));
     await t.runAsync(() => f.login('sid-b')); f.rowsWait!.complete(); await t.pumpAndSettle();
     expect(find.text('device-a'),findsNothing); await close(t,f);
@@ -91,7 +98,7 @@ void main() {
   });
   testWidgets('disposed page ignores late list completion', (t) async {
     final f = (await t.runAsync(Fixture.create))!; f.rowsWait=Completer<void>();
-    await t.pumpWidget(MaterialApp(home:MasterDeviceManagementPage(repository:MasterDeviceRepository.forTesting(f.client))));
+    await t.pumpWidget(MaterialApp(home:MasterDeviceManagementPage(repository:MasterDeviceRepository.forTesting(f.client),reauthentication:OperationReauthenticationRepository(f.client))));
     await t.pump(); await t.pump(const Duration(milliseconds:10));
     await t.pumpWidget(const SizedBox()); f.rowsWait!.complete(); await t.pumpAndSettle();
     expect(t.takeException(),isNull); await t.runAsync(f.client.dispose);
@@ -133,6 +140,21 @@ void main() {
     final other=MasterDeviceSession(currentSession:()=>original,changes:otherChanges.stream); addTearDown(other.close);
     otherChanges.add(AuthState(AuthChangeEvent.signedIn,copy));
     await expectLater(other.check(),throwsStateError);
+  });
+
+  testWidgets('actual SDK proof uses captured bearer and exact target; SID history discards late nonce', (t) async {
+    final f=(await t.runAsync(Fixture.create))!; f.proofRequired=true; f.proofWait=Completer<void>(); await open(t,f);
+    await t.tap(find.widgetWithText(OutlinedButton,'ロック').first); await t.pumpAndSettle();
+    await t.tap(find.widgetWithText(FilledButton,'ロック')); await t.pumpAndSettle();
+    final original='Bearer ${f.client.auth.currentSession!.accessToken}';
+    await t.enterText(find.byKey(const Key('master-device-lock-password')),'synthetic-primary');
+    await t.tap(find.text('本人確認して変更')); await t.pump();
+    final proofRequest=f.calls.singleWhere((r)=>r.url.path.endsWith('reauthenticate-operation'));
+    expect(proofRequest.headers['Authorization'],original);
+    expect(jsonDecode(proofRequest.body),{'password':'synthetic-primary','operation':'master.device.lock','target':{'device_id':'a','locked':true}});
+    await t.runAsync(() async {await f.login('sid-b'); await f.login('sid-a');});
+    f.proofWait!.complete(); await t.pumpAndSettle(); expect(f.writes,0);
+    expect(find.text('端末をロックしました'),findsNothing); await close(t,f);
   });
 
 }

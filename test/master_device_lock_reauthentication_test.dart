@@ -33,7 +33,7 @@ class _Proofs extends OperationReauthenticationRepository {
 }
 Session? bindingSession(String? actor) {
   if (actor == null) return null;
-  final payload = base64Url.encode(utf8.encode(jsonEncode({'sub': actor, 'role': 'authenticated', 'session_id': 'fixture-sid'}))).replaceAll('=', '');
+  final payload = base64Url.encode(utf8.encode(jsonEncode({'sub': actor, 'role': 'authenticated', 'session_id': 'fixture-sid', 'exp': DateTime.now().millisecondsSinceEpoch ~/ 1000 + 3600}))).replaceAll('=', '');
   return Session.fromJson({'access_token': 'synthetic.$payload.signature', 'refresh_token': 'synthetic', 'token_type': 'bearer', 'expires_in': 3600,
     'user': {'id': actor, 'aud': 'authenticated', 'created_at': '2026-10-29T00:00:00Z', 'app_metadata': <String, dynamic>{}, 'user_metadata': <String, dynamic>{}}});
 }
