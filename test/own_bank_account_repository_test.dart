@@ -5,6 +5,8 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sk_works/features/people/own_bank_account_repository.dart';
+import 'package:sk_works/features/auth/app_auth_mutation_gateway.dart';
+import 'package:sk_works/features/auth/app_auth_logout_persistence.dart';
 
 const actor='10000000-0000-0000-0000-000000000001';
 const company='30000000-0000-0000-0000-000000000001';
@@ -56,6 +58,15 @@ class Fixture {
     return f;
   }
   Future<void> close() async {await repository.close();await client.dispose();}
+}
+class PendingFailedLogoutFence implements AppLogoutPersistenceFence {
+  final release=Completer<void>();
+  @override bool blocked=false;
+  @override Future<void> persistIntent() async {
+    blocked=true;await release.future;throw StateError('Synthetic marker persistence denied');
+  }
+  @override Future<void> confirmLocalRemoval() async => throw StateError('Unexpected SDK logout');
+  @override Future<void> releaseFence(bool Function() confirmed) async => throw StateError('Unexpected fence release');
 }
 void main() {
   test('7-digit text preserves leading zeroes and normalizes fullwidth digits without weakening table checks',() {
@@ -114,4 +125,24 @@ void main() {
     final f=await Fixture.create();addTearDown(f.close);f.wrongResponse=true;
     await expectLater(f.repository.register(input()),throwsStateError);expect(f.writes,1);
   });
+  test('pending and failed app logout deny bank GET and INSERT while the actual SDK token remains unchanged',() async {
+    final f=await Fixture.create();addTearDown(f.close);
+    await f.repository.load();f.requests.clear();
+    final token=f.client.auth.currentSession!.accessToken;
+    final fence=PendingFailedLogoutFence();
+    final owner=AppAuthMutationGateway.bindPersistence(f.client,fence);
+    final logout=owner.signOut();final failedLogout=expectLater(logout,throwsStateError);
+    try {
+      expect(owner.logoutQuarantine.state,AppLogoutQuarantineState.pending);
+      expect(f.client.auth.currentSession!.accessToken,token);
+      await expectLater(f.repository.load(),throwsStateError);
+      await expectLater(f.repository.register(input()),throwsStateError);
+      expect(f.requests,isEmpty);
+    } finally {fence.release.complete();await failedLogout;}
+    expect(owner.logoutQuarantine.state,AppLogoutQuarantineState.failed);
+    expect(f.client.auth.currentSession!.accessToken,token);
+    await expectLater(f.repository.load(),throwsStateError);
+    await expectLater(f.repository.register(input()),throwsStateError);expect(f.requests,isEmpty);
+  });
+
 }
