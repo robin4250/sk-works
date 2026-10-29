@@ -1,6 +1,7 @@
 // OFF/unhosted candidate: a signature over freshly restored opaque bytes is
 // only a readback observation, never a retention/independence or purge permit.
 import {createPublicKey,randomBytes,verify} from 'node:crypto';
+import {performance} from 'node:perf_hooks';
 import {snapshotArchiveByteDescriptorCandidate,verifyArchiveByteReadbackCandidate} from './archive-byte-store-candidate.mjs';
 
 const fail=()=>Error('archive readback unavailable');
@@ -39,10 +40,12 @@ function check(receipt,expected,pin,now){
 }
 function timeoutLimit(timeoutMs){if(!Number.isSafeInteger(timeoutMs)||timeoutMs<1||timeoutMs>30000)throw fail();}
 async function bounded(operation,timeoutMs){
- let timer,active=true;
+ let timer,active=true;const expires=performance.now()+timeoutMs;
  const deadline=new Promise((_,reject)=>{timer=setTimeout(()=>{active=false;reject(fail());},timeoutMs);});
- const checkActive=()=>{if(!active)throw fail();};
- try{return await Promise.race([Promise.resolve().then(()=>operation(checkActive)),deadline]);}
+ const checkActive=()=>{if(!active||performance.now()>=expires){active=false;throw fail();}};
+ // Timers cannot interrupt a synchronous callback. Check the absolute deadline
+ // before invoking work and after it settles, including timer-starved microtasks.
+ try{return await Promise.race([Promise.resolve().then(()=>{checkActive();return operation(checkActive);}).then(value=>{checkActive();return value;}),deadline]);}
  finally{active=false;clearTimeout(timer);}
 }
 
@@ -65,6 +68,7 @@ export function createArchiveReadbackAttestorCandidate({enabled=false,authorityI
     const p=payload({v:1,kind:'archive_bytes_observed',authority_id:authorityId,challenge:i.challenge,descriptor:i.descriptor,observed_at:observed,expires_at:observed+30000});
     // The signer receives a distinct buffer so mutation cannot alter the
     // attestor's canonical payload. Its response is independently verified.
+    checkActive();
     const signature=await signObservation(Buffer.from(archiveReadbackReceiptBytesCandidate(p)));
     checkActive();
     if(!(signature instanceof Uint8Array)||signature.length!==64)throw fail();
@@ -84,9 +88,11 @@ export function createArchiveReadbackVerifierCandidate({enabled=false,authorityI
   try{
    const d=snapshotArchiveByteDescriptorCandidate(expected),challenge=randomBytes(32).toString('hex');
    const i=Object.freeze({authority_id:authorityId,challenge,descriptor:d});
-   const response=await bounded(()=>fetchObservation(i),timeoutMs);
-   const receipt=check(response,i,pin,now());
-   return Object.freeze({status:'readback_verified_unattested',receipt});
+   return await bounded(async checkActive=>{
+    const response=await fetchObservation(i);checkActive();
+    const receipt=check(response,i,pin,now());checkActive();
+    return Object.freeze({status:'readback_verified_unattested',receipt});
+   },timeoutMs);
   }catch{throw fail();}
  }});
 }

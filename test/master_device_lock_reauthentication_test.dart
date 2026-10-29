@@ -31,6 +31,12 @@ class _Proofs extends OperationReauthenticationRepository {
     return pending == null ? 'synthetic-single-use-proof' : await pending!.future;
   }
 }
+Session? bindingSession(String? actor) {
+  if (actor == null) return null;
+  final payload = base64Url.encode(utf8.encode(jsonEncode({'sub': actor, 'role': 'authenticated', 'session_id': 'fixture-sid', 'exp': DateTime.now().millisecondsSinceEpoch ~/ 1000 + 3600}))).replaceAll('=', '');
+  return Session.fromJson({'access_token': 'synthetic.$payload.signature', 'refresh_token': 'synthetic', 'token_type': 'bearer', 'expires_in': 3600,
+    'user': {'id': actor, 'aud': 'authenticated', 'created_at': '2026-10-29T00:00:00Z', 'app_metadata': <String, dynamic>{}, 'user_metadata': <String, dynamic>{}}});
+}
 class _Devices implements MasterDeviceRepository {
   String? currentActor = actor;
   bool required = true;
@@ -40,20 +46,23 @@ class _Devices implements MasterDeviceRepository {
   int changes = 0;
   String? proof;
   @override
+  MasterDeviceSession beginSession({void Function()? onInvalidated}) => MasterDeviceSession(
+    currentSession: () => bindingSession(currentUserId), changes: Stream<AuthState>.multi((_) {}), onInvalidated: onInvalidated);
+  @override
   String? get currentUserId => currentActor;
   @override
-  Future<bool> isMasterAdmin({String? accessToken}) async => true;
+  Future<bool> isMasterAdmin({String? accessToken, MasterDeviceSession? session}) async => true;
   @override
-  Future<List<MasterDeviceRecord>> loadDevices() async => [MasterDeviceRecord(
+  Future<List<MasterDeviceRecord>> loadDevices({MasterDeviceSession? session}) async => [MasterDeviceRecord(
     id: deviceId, deviceName: 'synthetic device', deviceType: 'iphone',
     registeredAt: DateTime(2026, 10, 16), isLocked: locked),
     MasterDeviceRecord(id: '40000000-0000-0000-0000-000000000002', deviceName: 'backup device', deviceType: 'mac', registeredAt: DateTime(2026, 10, 16), isLocked: false)];
   @override
-  Future<bool> lockReauthenticationRequired() async {
+  Future<bool> lockReauthenticationRequired({MasterDeviceSession? session}) async {
     capabilityCalls++;if (failCapability) throw StateError('synthetic permission error');return required;
   }
   @override
-  Future<void> setLocked({required String deviceId, required bool locked, String? proof}) async {
+  Future<void> setLocked({required String deviceId, required bool locked, String? proof, MasterDeviceSession? session}) async {
     // Callback may originate outside WidgetTester's guarded tap zone when a
     // stale onPressed is deliberately invoked. Synchronous checks avoid nesting
     // a new async test guard inside the in-progress pumpAndSettle.
@@ -78,17 +87,18 @@ Future<void> verify(WidgetTester tester) async {
   await tester.pump();await tester.pumpAndSettle();
 }
 void main() {
-  for (final interruption in ['background', 'actor']) {
+  for (final interruption in ['background', 'actor', 'session']) {
     testWidgets('post-proof frame rejects $interruption interruption and permits a fresh retry', (tester) async {
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       String? currentActor = actor;
+      bool sessionCurrent = true;
       final pending = Completer<String>();
       int returnedProofs = 0;
       int requests = 0;
       await tester.pumpWidget(MaterialApp(home: Builder(builder: (context) =>
         TextButton(onPressed: () async {
           final proof = await showDialog<String>(context: context, builder: (_) =>
-            MasterDeviceLockProofDialog(expectedActor: actor, currentActor: () => currentActor,
+            MasterDeviceLockProofDialog(expectedActor: actor, currentActor: () => currentActor, sessionCurrent: () => sessionCurrent,
               deviceName: 'synthetic device', locked: true, requestProof: (_) async {
                 requests++;
                 return requests == 1 ? await pending.future : 'fresh-synthetic-proof';
@@ -106,13 +116,15 @@ void main() {
         for (final state in [AppLifecycleState.inactive, AppLifecycleState.hidden, AppLifecycleState.paused]) {
           tester.binding.handleAppLifecycleStateChanged(state);
         }
+      } else if (interruption == 'session') {
+        sessionCurrent = false;
       } else {
         currentActor = '10000000-0000-0000-0000-000000000002';
       }
       await tester.pumpAndSettle();
       expect(returnedProofs, 0);
       expect(find.byKey(const Key('master-device-lock-password')), findsOneWidget);
-      currentActor = actor;
+      currentActor = actor; sessionCurrent = true;
       if (interruption == 'background') {
         for (final state in [AppLifecycleState.hidden, AppLifecycleState.inactive, AppLifecycleState.resumed]) {
           tester.binding.handleAppLifecycleStateChanged(state);
@@ -149,7 +161,11 @@ void main() {
     devices.currentActor = '10000000-0000-0000-0000-000000000002';
     proofs.pending!.complete('synthetic-single-use-proof');await tester.pumpAndSettle();expect(devices.changes, 0);
     await tester.tap(find.text('キャンセル'));await tester.pumpAndSettle();
-    devices.currentActor = actor;proofs.pending = Completer<String>();await lock(tester);
+    // A session boundary is terminal for the management page. Reopen a fresh
+    // page before testing the separate background interruption.
+    devices.currentActor = actor;proofs.pending = Completer<String>();
+    await tester.pumpWidget(const SizedBox());await tester.pump();
+    await _open(tester, devices, proofs);await lock(tester);
     await tester.enterText(find.byKey(const Key('master-device-lock-password')), 'synthetic-primary');
     await tester.tap(find.text('本人確認して変更'));await tester.pump();
     for (final state in [AppLifecycleState.inactive, AppLifecycleState.hidden, AppLifecycleState.paused,

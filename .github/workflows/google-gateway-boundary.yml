@@ -1,0 +1,25 @@
+name: Google gateway external flow boundary
+on:
+  pull_request:
+    paths:
+      - 'lib/features/auth/existing_google_login.dart'
+      - 'lib/features/auth/app_auth_mutation_gateway.dart'
+      - 'test/existing_google_gateway_boundary_test.dart'
+      - '.github/workflows/google-gateway-boundary.yml'
+permissions:
+  contents: read
+jobs:
+  google-external-boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: git diff --exit-code -- pubspec.lock
+      - run: dart analyze lib/features/auth/app_auth_mutation_gateway.dart lib/features/auth/existing_google_login.dart test/existing_google_gateway_boundary_test.dart
+      - run: flutter test test/existing_google_gateway_boundary_test.dart test/existing_google_login_test.dart --reporter expanded

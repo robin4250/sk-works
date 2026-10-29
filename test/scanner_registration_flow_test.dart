@@ -31,6 +31,21 @@ class _Wire extends http.BaseClient {
   final result=await dispatch(body);return http.StreamedResponse(Stream.value(utf8.encode(jsonEncode(result))),200,headers:{'content-type':'application/json; charset=utf-8'});
  }
 }
+// Delegate all observed session behavior to the pinned, real SDK instance.
+// Only subscription/lookup requests are counted; no synthetic Auth stream.
+class _ObservedAuth extends Fake implements GoTrueClient {
+ _ObservedAuth(this.actual);
+ final GoTrueClient actual;
+ int subscriptions=0,lookups=0;
+ @override Session? get currentSession=>actual.currentSession;
+ @override Stream<AuthState> get onAuthStateChange {subscriptions++;return actual.onAuthStateChange;}
+ @override Future<UserResponse> getUser([String? jwt]) {lookups++;return actual.getUser(jwt);}
+}
+class _ObservedClient extends Fake implements SupabaseClient {
+ _ObservedClient(SupabaseClient actual):observed=_ObservedAuth(actual.auth);
+ final _ObservedAuth observed;
+ @override GoTrueClient get auth=>observed;
+}
 class _Fixture {
  static const keyChannel=MethodChannel('com.skworks.sko/qr_scanner_key'),journalChannel=MethodChannel('com.skworks.sko/qr_scanner_pending');
  late SupabaseClient client;late ScannerRegistrationController controller;late _Wire wire;
@@ -69,7 +84,7 @@ class _Fixture {
    final result=copy(stored!);if(corruptJournalAck==next){corruptJournalAck=null;result['nonce']=actor;}return result;
   });
  }
- ScannerRegistrationController makeController({bool enabled=true})=>ScannerRegistrationController(client:client,company:company,enabled:enabled,keys:ScannerRegistrationKeyCustody(client,enabled:enabled,channel:keyChannel),journal:ScannerRegistrationJournal(enabled:enabled,channel:journalChannel),transport:ScannerRegistrationTransport.forTesting(origin:Uri.parse('https://qr-runtime-fixture.invalid'),client:wire,enabled:enabled));
+ ScannerRegistrationController makeController({bool enabled=true,SupabaseClient? ownerClient})=>ScannerRegistrationController(client:ownerClient??client,company:company,enabled:enabled,keys:ScannerRegistrationKeyCustody(client,enabled:enabled,channel:keyChannel),journal:ScannerRegistrationJournal(enabled:enabled,channel:journalChannel),transport:ScannerRegistrationTransport.forTesting(origin:Uri.parse('https://qr-runtime-fixture.invalid'),client:wire,enabled:enabled));
  Future<Map<String,dynamic>> dispatch(Map<String,dynamic> b) async {
   final op=b['operation'] as String;operations.add(op);order.add('http:$op');
   final base=<String,dynamic>{'schema':1,'requestId':b['requestId'],'operation':op};
@@ -100,6 +115,21 @@ class _Fixture {
 void main(){
  TestWidgetsFlutterBinding.ensureInitialized();
  late _Fixture f;setUp(() async {f=_Fixture();await f.open();});tearDown(() async {await f.close();});
+ test('load retired by immediate disposal never reacquires SDK session resources',() async {
+  f.controller.dispose();final observed=_ObservedClient(f.client);
+  f.controller=f.makeController(ownerClient:observed);
+  final loading=f.controller.load();f.controller.dispose();await loading;
+  expect(observed.observed.subscriptions,0,reason:'retired load must not subscribe to Auth');
+  expect(observed.observed.lookups,0);expect(f.stored,isNull);expect(f.operations,isEmpty);
+ });
+ test('concurrent initial loads acquire only the latest SDK session owner',() async {
+  f.controller.dispose();final observed=_ObservedClient(f.client);
+  f.controller=f.makeController(ownerClient:observed);
+  final first=f.controller.load(),second=f.controller.load();await Future.wait([first,second]);
+  expect(observed.observed.subscriptions,1,reason:'superseded load must not subscribe to Auth');
+  expect(f.controller.view,ScannerRegistrationView.newLogicalDevice);
+  expect(f.stored,isNull);expect(f.operations,isEmpty);
+ });
  test('actual controller/native-bridge/HTTP contract orders durable ACK before each write',() async {
   await f.passwordStage();await f.controller.submitPassword('synthetic-secondary-password');expect(f.controller.view,ScannerRegistrationView.confirmed);
   for(final pair in [['challenge_sent','challenge'],['proof_sent','proof'],['completion_sent','complete']]){expect(f.order.indexOf('journal:${pair[0]}:ack'),lessThan(f.order.indexOf('http:${pair[1]}')));}
