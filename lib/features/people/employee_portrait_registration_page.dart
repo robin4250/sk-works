@@ -28,7 +28,7 @@ class _EmployeePortraitRegistrationPageState extends State<EmployeePortraitRegis
     final session=widget.privacySession;
     if(session.revoked || !session.active || (session.snapshot!=null && !session.snapshot!.canManage)){
       _generation++;_revoked=true;
-      if(mounted){setState((){_draft=null;}_photo=null;_busy=false;_error='社員情報の権限を再確認してください。画面を閉じて開き直してください。';});
+      if(mounted){setState((){_draft=null;_photo=null;_busy=false;_error='社員情報の権限を再確認してください。画面を閉じて開き直してください。';});}
     }
   }
   bool _live(int generation)=>mounted && !_revoked && generation==_generation;
@@ -39,13 +39,13 @@ class _EmployeePortraitRegistrationPageState extends State<EmployeePortraitRegis
       final repository=_repository??=widget.repositoryOverride??EmployeePortraitRepository(privacySession:widget.privacySession,workerId:widget.workerId);
       final draft=await repository.load();if(!_live(generation)){return;}
       setState((){_draft=draft;_busy=false;_error=null;_missingRequirement=false;});
-    }catch(error){if(_live(generation)){setState((){_busy=false;}_error=_message(error);_missingRequirement=error is EmployeePortraitRequirementMissing;});}
+    }catch(error){if(_live(generation)){setState((){_busy=false;_error=_message(error);_missingRequirement=error is EmployeePortraitRequirementMissing;});}}
   }
   Future<void> _settings() async {
     if(_busy || _revoked || !_missingRequirement){return;}
     final generation=_generation;setState(()=>_busy=true);
     try{
-      await _repository!.verifySettingsAccess();if(!_live(generation)){return;}
+      await _repository!.verifySettingsAccess();if(!mounted || !_live(generation)){return;}
       await Navigator.of(context).push<void>(MaterialPageRoute(builder:(_)=>const WorkerDocumentPage(view:WorkerDocumentView.settings)));
       if(!_live(generation)){return;}
       await _load();
@@ -74,7 +74,7 @@ class _EmployeePortraitRegistrationPageState extends State<EmployeePortraitRegis
     if(_busy || _revoked || _draft==null || _photo==null){return;}
     final generation=_generation;setState(()=>_busy=true);
     try{
-      await _repository!.save(_draft!,_photo!);if(!_live(generation)){return;}
+      await _repository!.save(_draft!,_photo!);if(!mounted || !_live(generation)){return;}
       _photo=null;Navigator.of(context).pop(true);
     }catch(error){if(_live(generation)){setState(()=>_error=_message(error));}}
     finally{if(_live(generation)){setState(()=>_busy=false);}}
