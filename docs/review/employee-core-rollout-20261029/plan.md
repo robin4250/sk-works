@@ -11,7 +11,7 @@
 |本人銀行登録|PR1575 `493def6866e7d0bd0a9cb1db9a25b50b668eb3f1`|既本人APIの正規会社/社員照合を利用。本人フォームを他社員に流用しない|
 |他社員銀行初回登録|PR1581 `a3a70342451d1ec7df51e23e5f9986f0e9fe4c7a`、tree `f422af33c842a40b679485d655370d11ea429156`、native job123461781006、実GoTrue/PostgREST job123461781303 73 checks、client job123461781340 19 tests、21/21成功|既proof issuer/consumer＋primary-password broker。selected会社/社員/input digest/liveSIDを束縛、insert-only、既口座上書きなし。source/fixture成功は本番導入ではない|
 |本人書類編集入口|PR1586 `877c7db6551fee35725296c39ca9ec939c392abc`、13/13成功|既変更申請画面へ接続。backend未導入時は利用不可、旧直接更新fallbackなし|
-|書類変更backend successor|PR1590 `aec9bda3b6d82e6435e37bafb136667b748b8d4a`、tree `ad3b3615aeb47cb3dd50567a4cbfba4df9197ee9`、実GoTrue/PostgREST/PG17 job123581007619 62 checks成功|OFF/復旧、現在scope、旧SID失効→新SID明示再開、実Lock2本を観測した同時承認single apply/history等。当該headの一般validateは本稿初稿時pending、その他8 checks成功。最終結果を統合担当が別途確認する|
+|書類変更backend successor|PR1590 `aec9bda3b6d82e6435e37bafb136667b748b8d4a`、tree `ad3b3615aeb47cb3dd50567a4cbfba4df9197ee9`、実GoTrue/PostgREST/PG17 job123581007619 62 checks成功|OFF/復旧、現在scope、旧SID失効→新SID明示再開、実Lock2本を観測した同時承認single apply/history等。当該head一般validate job123581168550も成功、全9/9成功|
 
 CI根拠は各固定headのGitHub check-runを確認したもの。以前成功したnative/実GoTrueを本稿のため再実行しない。最新sourceへの組合せ適用・全本番schema・本番認証・実機の証明へ読み替えない。
 
@@ -68,7 +68,7 @@ DOBの`unused`は保存された未実行復旧候補の名称であり、DB利�
 
 ## 残段階と引継ぎ
 
-未完了は、1590最終一般CI、統合core source全CI、上記cross-module新試験、全現在catalog/原定義checkpointとバックアップの隔離復元、個別の導入判断・SQL/GRANT/Edge deployment、OFF照合後の個別有効化判断、公開/TestFlight配送、iPhone実機での会社/本人scope・セッション切替・申請/承認の確認である。DOB実GoTrueの正規canonical save/approvalも未証明。これらをソース修正やCI成功と同じ完了段階にしない。
+1590最終一般CIは成功済み。未完了は、統合core source全CI、上記cross-module新試験、全現在catalog/原定義checkpointとバックアップの隔離復元、個別の導入判断・SQL/GRANT/Edge deployment、OFF照合後の個別有効化判断、公開/TestFlight配送、iPhone実機での会社/本人scope・セッション切替・申請/承認の確認である。DOB実GoTrueの正規canonical save/approvalも未証明。これらをソース修正やCI成功と同じ完了段階にしない。
 
 新写真差替えは別scopeで未実装。元画像の直接置換、legacy直接saveへのfallback、原本/承認履歴の削除、Auth/RLS/本人会社保護の緩和で代用しない。既個別書類免除はOFFのまま維持する。
 
