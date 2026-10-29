@@ -47,7 +47,8 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     } finally { recovery.dispose(); tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, null); }
   });
-  testWidgets('completed raster waits for reading every page without timing out the reader', (tester) async {
+  for (final completes in [true, false]) {
+  testWidgets(completes ? 'completed raster waits for reading every page without timing out the reader' : 'unfinished raster still expires at the technical deadline', (tester) async {
     const id = '10000000-0000-0000-0000-000000000001', revision = '2026-10-29T00:00:00Z';
     const channel = MethodChannel('net.nfet.printing');
     const codec = StandardMethodCodec();
@@ -65,7 +66,7 @@ void main() {
             messenger.handlePlatformMessage(channel.name, codec.encodeMethodCall(MethodCall('onPageRasterized',
               {'job': job, 'width': 100, 'height': 1000, 'image': rgba})), (_) {});
           }
-          messenger.handlePlatformMessage(channel.name, codec.encodeMethodCall(MethodCall('onPageRasterEnd', {'job': job})), (_) {});
+          if (completes) { messenger.handlePlatformMessage(channel.name, codec.encodeMethodCall(MethodCall('onPageRasterEnd', {'job': job})), (_) {}); }
         };
       }
       return null;
@@ -97,6 +98,11 @@ void main() {
       expect(find.byType(Image).evaluate().length, lessThan(3), reason: 'offscreen pages stay lazy');
       expect(acknowledgement().onPressed, isNull, reason: 'unvisited pages cannot authorize consent');
       await tester.pump(const Duration(seconds: 25));
+      if (!completes) {
+        expect(find.text('本文と印影を表示できません'), findsOneWidget);
+        expect(acknowledgement().onPressed, isNull); expect(sent, 0);
+        await tester.pumpWidget(const SizedBox.shrink()); return;
+      }
       expect(find.text('本文と印影を表示できません'), findsNothing, reason: 'human reading time is not raster loading time');
       expect(acknowledgement().onPressed, isNull);
       await tester.drag(find.byType(ListView), const Offset(0, -1000)); await ioFrames();
@@ -115,5 +121,6 @@ void main() {
       await tester.binding.setSurfaceSize(null);
     }
   });
+  }
 
 }

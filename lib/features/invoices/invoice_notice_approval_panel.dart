@@ -255,6 +255,10 @@ class _InvoiceNoticeOwnPreviewState extends State<_InvoiceNoticeOwnPreview> with
         setState(() => _pages.add(bytes));
       }
       if (!_current(version) || _pages.isEmpty) { _fail(); return; }
+      // Raster I/O and PNG conversion finished within the technical deadline.
+      // Later lazy pages wait for the reader to scroll; their decoded-frame
+      // consent gate stays required without timing the reader's inspection.
+      _clock.stop(); _timer?.cancel();
       setState(() { _finished = true; _settleDisplay(); });
     } catch (_) { _fail(); }
   }
