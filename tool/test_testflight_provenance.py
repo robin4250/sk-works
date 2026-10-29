@@ -258,7 +258,7 @@ class ProvenanceTests(unittest.TestCase):
             with self.assertRaises(ValueError): p.inspect_ipa(self.ipa)
 
     def test_ci_exact_sha_and_latest_failure(self):
-        runs = [{'id': i, 'name': name, 'head_sha': SHA, 'head_branch': 'main', 'event': 'push',
+        runs = [{'id': i + 1, 'workflow_id': i + 1, 'run_attempt': 1, 'name': name, 'head_sha': SHA, 'head_branch': 'main', 'event': 'push',
                  'run_number': 1, 'status': 'completed', 'conclusion': 'success'}
                 for i, name in enumerate(p.REQUIRED_CI)]
         with patch.object(p, 'run', return_value=json.dumps({'total_count': len(runs), 'workflow_runs': runs}).encode()):
@@ -269,7 +269,7 @@ class ProvenanceTests(unittest.TestCase):
             with self.assertRaises(ValueError): p.check_ci(SHA)
 
     def test_extra_exact_main_workflow_must_succeed(self):
-        runs = [{'id': i, 'workflow_id': i, 'name': name, 'head_sha': SHA,
+        runs = [{'id': i + 1, 'workflow_id': i + 1, 'name': name, 'head_sha': SHA,
                  'head_branch': 'main', 'event': 'push', 'run_number': 1,
                  'run_attempt': 1, 'status': 'completed', 'conclusion': 'success'}
                 for i, name in enumerate(p.REQUIRED_CI)]
@@ -284,6 +284,23 @@ class ProvenanceTests(unittest.TestCase):
         good = {**extra, 'conclusion': 'success', 'run_attempt': 2}
         self.assertIn('Additional safety', check(runs + [extra, good]))
         check(runs + [{**extra, 'head_branch': 'other'}, {**extra, 'head_sha': 'b' * 40}])
+
+    def test_ci_identity_collision_and_incomplete_response(self):
+        runs = [{'id': i + 1, 'workflow_id': i + 1, 'name': name, 'head_sha': SHA,
+                 'head_branch': 'main', 'event': 'push', 'run_number': 1,
+                 'run_attempt': 1, 'status': 'completed', 'conclusion': 'success'}
+                for i, name in enumerate(p.REQUIRED_CI)]
+        duplicate = {**runs[0], 'id': 99, 'workflow_id': 99}
+        def check(rows, total=None):
+            with patch.object(p, 'run', return_value=json.dumps(
+                    {'total_count': len(rows) if total is None else total,
+                     'workflow_runs': rows}).encode()): return p.check_ci(SHA)
+        self.assertEqual(len(check(runs + [duplicate])), len(runs) + 1)
+        with self.assertRaises(ValueError): check(runs + [{**duplicate, 'conclusion': 'failure'}])
+        for field in ['id', 'workflow_id', 'run_attempt', 'run_number']:
+            with self.assertRaises(ValueError): check(runs + [{**duplicate, field: None}])
+        for total in [len(runs) + 1, 101, -1, True]:
+            with self.assertRaises(ValueError): check(runs, total)
 
     def test_narrow_fetch_uses_fresh_remote_main(self):
         remote, repo = self.root / 'remote', self.root / 'narrow'
@@ -338,7 +355,7 @@ class ProvenanceTests(unittest.TestCase):
         self.assertEqual((repo / 'untracked.txt').read_text(), 'keep')
 
     def test_manual_main_ci_is_allowed_only_on_exact_commit(self):
-        runs = [{'id': i, 'name': name, 'head_sha': SHA, 'head_branch': 'main', 'event': 'workflow_dispatch',
+        runs = [{'id': i + 1, 'workflow_id': i + 1, 'run_attempt': 1, 'name': name, 'head_sha': SHA, 'head_branch': 'main', 'event': 'workflow_dispatch',
                  'run_number': 1, 'status': 'completed', 'conclusion': 'success'}
                 for i, name in enumerate(p.REQUIRED_CI)]
         with patch.object(p, 'run', return_value=json.dumps({'total_count': len(runs), 'workflow_runs': runs}).encode()):

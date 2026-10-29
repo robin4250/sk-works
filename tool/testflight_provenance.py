@@ -149,22 +149,33 @@ def check_ci(sha):
     # gh supplies its existing authentication; neither tokens nor logs are read.
     url = 'repos/robin4250/sk-works/actions/runs?head_sha=' + sha + '&per_page=100'
     data = json.loads(run(['gh', 'api', url]))
-    require(data.get('total_count', 101) <= 100, 'CI results exceed the bounded response; review required')
-    exact = [r for r in data.get('workflow_runs', [])
+    total, returned = data.get('total_count'), data.get('workflow_runs')
+    require(type(total) is int and 0 <= total <= 100
+            and isinstance(returned, list) and len(returned) == total,
+            'Incomplete or unbounded CI results; review required')
+    require(all(isinstance(r, dict) and type(r.get('id')) is int and r['id'] > 0
+                and type(r.get('workflow_id')) is int and r['workflow_id'] > 0
+                and isinstance(r.get('name'), str) and r['name']
+                and type(r.get('run_number')) is int and r['run_number'] > 0
+                and type(r.get('run_attempt')) is int and r['run_attempt'] > 0
+                for r in returned), 'Invalid CI run identity')
+    exact = [r for r in returned
              if r.get('head_sha') == sha and r.get('head_branch') == 'main'
              and r.get('event') in ('push', 'workflow_dispatch')]
     require(REQUIRED_CI <= {r.get('name') for r in exact}, 'Missing exact-main CI')
     # Workflow IDs distinguish separate workflows even if their display names match.
     groups = {}
     for item in exact:
-        groups.setdefault(item.get('workflow_id', item.get('name')), []).append(item)
+        groups.setdefault(item['workflow_id'], []).append(item)
     result = {}
-    for runs in groups.values():
+    names = [runs[0]['name'] for runs in groups.values()]
+    for workflow_id, runs in groups.items():
         latest = max(runs, key=lambda r: (r.get('run_number', 0), r.get('run_attempt', 0)))
         name = latest.get('name', 'Unknown workflow')
         require(latest.get('status') == 'completed' and latest.get('conclusion') == 'success',
                 'Exact-main CI is not successful: ' + name)
-        result[name] = latest['id']
+        key = name if names.count(name) == 1 else f'{name} [workflow {workflow_id}]'
+        result[key] = latest['id']
     return result
 
 
