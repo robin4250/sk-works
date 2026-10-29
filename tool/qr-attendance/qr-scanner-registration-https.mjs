@@ -5,7 +5,7 @@ import {TLSSocket} from 'node:tls';
 import {performance} from 'node:perf_hooks';
 import {verifyScannerRegistrationBearer} from './qr-scanner-verified-session.mjs';
 import {createScannerRegistrationChallengeAdapter} from './qr-scanner-challenge-adapter.mjs';
-import {createScannerRegistrationProofIssuer} from './qr-scanner-proof-issuer.mjs';
+import {createScannerRegistrationProofIssuer,createScannerProofIssuanceReader} from './qr-scanner-proof-issuer.mjs';
 import {createRecoverableScannerRegistrationAdapter} from './qr-scanner-registration-recovery.mjs';
 
 export const scannerRegistrationPath='/qr/scanner/registration';
@@ -44,7 +44,7 @@ function readBody(request,expectedLength,ms){
 }
 function parseBody(value){
  if(value===null||typeof value!=='object'||Array.isArray(value)||value.schema!==1||!uuid.test(value.requestId??''))throw reject(400);
- const operations={challenge:['companyId','deviceId','publicKeyHex'],challenge_result:['companyId','deviceId','publicKeyHex'],proof:['challengeId','password'],complete:['challengeId','signature','proof'],result:['challengeId','companyId','deviceId','publicKeyHex']};
+ const operations={challenge:['companyId','deviceId','publicKeyHex'],challenge_result:['companyId','deviceId','publicKeyHex'],proof:['challengeId','password'],proof_result:['challengeId'],complete:['challengeId','signature','proof'],result:['challengeId','companyId','deviceId','publicKeyHex']};
  if(typeof value.operation!=='string'||!Object.hasOwn(operations,value.operation))throw reject(400);
  const fields=operations[value.operation];
  if(Object.keys(value).length!==fields.length+3||Object.keys(value).some(k=>!['schema','requestId','operation',...fields].includes(k)))throw reject(400);
@@ -132,6 +132,7 @@ export function createScannerRegistrationHttpsHandler({enabled=false,publicOrigi
     const target={companyId:body.companyId,deviceId:body.deviceId,keyHex:body.publicKeyHex};
     result={challenge:body.operation==='challenge'?await adapter.issue(target):await adapter.read(target)};
    }
+   else if(body.operation==='proof_result')result={issuance:await createScannerProofIssuanceReader({pool:requestPool,initializeVerifiedSession}).read({challengeId:body.challengeId})};
    else if(body.operation==='proof')result=await createScannerRegistrationProofIssuer({pool:requestPool,initializeVerifiedSession}).issue({challengeId:body.challengeId,password:body.password});
    else {
     const adapter=createRecoverableScannerRegistrationAdapter({enabled:true,pool:requestPool,initializeVerifiedSession});
