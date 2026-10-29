@@ -7,6 +7,7 @@ import 'package:sk_works/international/language_controller.dart';
 import 'package:sk_works/international/language_pack_registry.dart';
 
 class _Cloud implements QualificationCloudRepository {
+  @override Future<bool Function()> captureAttachmentReadScope() async => () => false;
   int writes = 0;
   @override
   Future<Map<String, dynamic>> loadAll() async => {

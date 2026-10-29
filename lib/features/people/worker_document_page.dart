@@ -44,6 +44,9 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
   List<Map<String, dynamic>> _archivedRequirements = [];
   List<Map<String, dynamic>> _statuses = [];
   List<Map<String, dynamic>> _exemptions = [];
+  bool Function()? _galleryLease;
+  int _galleryGeneration = 0;
+  final _galleryChanges = ValueNotifier(0);
   bool _loading = true;
   bool _canManageRequirements = false;
   bool _canManageStatuses = false;
@@ -61,10 +64,15 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
     _load();
   }
 
+  @override
+  void dispose() { _galleryGeneration++; _galleryChanges.value++; _galleryChanges.dispose(); super.dispose(); }
+
   Future<void> _load() async {
+    final galleryGeneration = ++_galleryGeneration;
+    _galleryChanges.value++;
     final repository = _repository;
     if (repository == null) {
-      if (!mounted) return;
+      if (!mounted || galleryGeneration != _galleryGeneration) return;
       setState(() {
         _loading = false;
         _error = 'Supabase接続が利用できません。';
@@ -73,6 +81,9 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
     }
     final actor = repository.actorId;
     try {
+      bool Function()? galleryLease;
+      try { galleryLease = await repository.captureAttachmentReadScope(); } catch (_) { galleryLease = null; }
+
       final values = await Future.wait([
         repository.loadAll(includeHiddenRequirements: widget.view == WorkerDocumentView.settings),
         repository.canManageRequirements(),
@@ -83,9 +94,10 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
       }
       _loadedActorId = actor;
       final data = values[0] as Map<String, List<Map<String, dynamic>>>;
-      if (!mounted) return;
+      if (!mounted || galleryGeneration != _galleryGeneration) return;
       final workers = data['workers'] ?? const <Map<String, dynamic>>[];
       setState(() {
+        _galleryLease = galleryGeneration == _galleryGeneration ? galleryLease : null;
         _workers = workers;
         _requirements = data['requirements'] ?? const <Map<String, dynamic>>[];
         _retainedRequirements = data['retained_requirements'] ?? _requirements;
@@ -105,12 +117,47 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
         _error = null;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || galleryGeneration != _galleryGeneration) return;
       setState(() {
         _loading = false;
         _error = error.toString();
       });
     }
+  }
+
+  void _selectGalleryWorker(String? worker) {
+    if (_selectedWorkerId == worker) { return; }
+    _selectedWorkerId = worker; _galleryGeneration++; _galleryChanges.value++; setState(() {});
+  }
+
+  ResourceAttachmentGallery? _galleryForWorker(String workerId) {
+    final repository = _repository, rows = _statuses, requirements = _requirements;
+    final lease = _galleryLease, galleryGeneration = _galleryGeneration;
+    final workers = _workers.where((row) => row['id'] == workerId).toList();
+    final company = workers.length == 1 ? workers.single['company_id']?.toString() : null;
+    final actor = repository?.actorId;
+    if (repository == null || lease == null || !lease() || actor == null || company == null || company.isEmpty) { return null; }
+    bool current() => mounted && !_loading && galleryGeneration == _galleryGeneration && lease() && identical(rows, _statuses) && identical(requirements, _requirements) &&
+      _selectedWorkerId == workerId && _loadedActorId == actor && repository.actorId == actor &&
+      _workers.any((row) => row['id'] == workerId && row['company_id'] == company);
+    if (requirements.any((row) => row['company_id'] != company) || rows.any((row) => row['worker_id'] == workerId && row['company_id'] != company)) { return null; }
+    final entries = <ResourceAttachment>[];
+    for (final requirement in requirements.where((row) => row['company_id'] == company && row['is_active'] == true)) {
+      final id = requirement['id']?.toString(); if (id == null || id.isEmpty) { continue; }
+      final matches = rows.where((row) => row['company_id'] == company && row['worker_id'] == workerId && row['requirement_id'] == id).toList();
+      if (matches.length != 1) { continue; }
+      final paths = workerDocumentPaths(matches.single);
+      for (var i = 0; i < paths.length; i++) {
+        Future<String> signed(String path) async {
+          if (!current()) { throw StateError('Attachment scope changed'); }
+          final url = await repository.createSignedAttachmentUrl(path);
+          if (!current()) { throw StateError('Attachment scope changed'); } return url;
+        }
+        entries.add(signedResourceAttachment(label: '${i + 1}', path: paths[i], signedUrl: signed,
+          previewKey: 'document:$id:$i', recordTitle: requirement['name']?.toString() ?? '書類'));
+      }
+    }
+    return ResourceAttachmentGallery(source: rows, workerId: workerId, companyId: company, isCurrent: current, signal: _galleryChanges, changes: repository.attachmentAuthChanges, entries: entries);
   }
 
   @override
@@ -198,10 +245,11 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                         labelText: '従業員検索',
                         prefixIcon: Icon(Icons.person_search_outlined),
                       ),
-                      onChanged: (value) => setState(() {
+                      onChanged: (value) {
                         _workerQuery = value;
-                        _selectedWorkerId = null;
-                      }),
+                        _selectGalleryWorker(null);
+                        setState(() {});
+                      },
                     ),
                   ),
                   SizedBox(
@@ -247,7 +295,7 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                                     ? const Icon(Icons.check_circle)
                                     : const Icon(Icons.chevron_right),
                                 onTap: () =>
-                                    setState(() => _selectedWorkerId = id),
+                                    _selectGalleryWorker(id),
                               ),
                             );
                           },
@@ -322,7 +370,8 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                               }
                               final attachments = [
                                 for (var i = 0; i < paths.length; i++)
-                                  signedResourceAttachment(label: '${i + 1}', path: paths[i], signedUrl: signedUrl),
+                                  signedResourceAttachment(label: '${i + 1}', path: paths[i], signedUrl: signedUrl,
+                                    previewKey: 'document:${requirement['id']}:$i', recordTitle: requirement['name']?.toString() ?? '書類'),
                               ];
                               final effective = _effectiveDocumentStatus(requirement, status, today);
                               final dates = DataDateLabels.labels(createdAt: status?['created_at'],
@@ -347,13 +396,15 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                                   for (final date in DataDateLabels.labels(createdAt: requirement['created_at'],
                                     updatedAt: requirement['updated_at'])) '${SkoLanguageController.tr('書類項目')} $date',
                                   if (paths.length > 2) '添付 ${paths.length}件（詳細で確認）'].join(' / '),
-                                attachments: attachments,
+                                attachments: attachments, gallery: _galleryForWorker(workerId), requireGalleryScope: true,
                                 onAction: _canManageStatuses ? () => _editStatus(requirement, status)
                                   : paths.isEmpty ? null : () => showResourceAttachments(
-                                    context, title: requirement['name']?.toString() ?? '書類', attachments: attachments),
+                                    context, title: requirement['name']?.toString() ?? '書類', attachments: attachments,
+                                    gallery: _galleryForWorker(workerId), requireGalleryScope: true),
                                 onOpenDetail: _canManageStatuses ? () => _editStatus(requirement, status)
                                   : paths.isEmpty ? null : () => showResourceAttachments(
-                                    context, title: requirement['name']?.toString() ?? '書類', attachments: attachments),
+                                    context, title: requirement['name']?.toString() ?? '書類', attachments: attachments,
+                                    gallery: _galleryForWorker(workerId), requireGalleryScope: true),
                               ),
                               if (_canManageStatuses && _repository?.exemptionEditingAvailable == true)
                                 Align(alignment: Alignment.centerRight, child: TextButton.icon(
