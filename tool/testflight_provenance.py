@@ -49,7 +49,9 @@ def source():
     sha = run(['git', 'rev-parse', 'HEAD']).decode().strip()
     require(re.fullmatch('[0-9a-f]{40}', sha), 'Invalid commit')
     require(sha == audited, 'Source differs from reviewed commit')
-    require(sha == run(['git', 'rev-parse', 'origin/main']).decode().strip(), 'Stale main')
+    # FETCH_HEAD names the requested remote branch even with a narrow fetch refspec.
+    run(['git', 'fetch', '--quiet', '--no-tags', 'origin', 'refs/heads/main'])
+    require(sha == run(['git', 'rev-parse', 'FETCH_HEAD']).decode().strip(), 'Stale main')
     return sha
 
 
@@ -148,13 +150,18 @@ def check_ci(sha):
     url = 'repos/robin4250/sk-works/actions/runs?head_sha=' + sha + '&per_page=100'
     data = json.loads(run(['gh', 'api', url]))
     require(data.get('total_count', 101) <= 100, 'CI results exceed the bounded response; review required')
+    exact = [r for r in data.get('workflow_runs', [])
+             if r.get('head_sha') == sha and r.get('head_branch') == 'main'
+             and r.get('event') in ('push', 'workflow_dispatch')]
+    require(REQUIRED_CI <= {r.get('name') for r in exact}, 'Missing exact-main CI')
+    # Workflow IDs distinguish separate workflows even if their display names match.
+    groups = {}
+    for item in exact:
+        groups.setdefault(item.get('workflow_id', item.get('name')), []).append(item)
     result = {}
-    for name in REQUIRED_CI:
-        runs = [r for r in data.get('workflow_runs', []) if r.get('name') == name
-                and r.get('head_sha') == sha and r.get('head_branch') == 'main'
-                and r.get('event') in ('push', 'workflow_dispatch')]
-        require(runs, 'Missing exact-main CI: ' + name)
+    for runs in groups.values():
         latest = max(runs, key=lambda r: (r.get('run_number', 0), r.get('run_attempt', 0)))
+        name = latest.get('name', 'Unknown workflow')
         require(latest.get('status') == 'completed' and latest.get('conclusion') == 'success',
                 'Exact-main CI is not successful: ' + name)
         result[name] = latest['id']

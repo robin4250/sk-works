@@ -24,8 +24,8 @@ if [[ "$branch" != "main" ]]; then
   exit 1
 fi
 
-git fetch --quiet origin main
-if [[ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]]; then
+git fetch --quiet --no-tags origin refs/heads/main
+if [[ "$(git rev-parse HEAD)" != "$(git rev-parse FETCH_HEAD)" ]]; then
   echo "✗ ローカルmainがorigin/mainと一致していません。"
   exit 1
 fi

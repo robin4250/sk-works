@@ -268,6 +268,51 @@ class ProvenanceTests(unittest.TestCase):
         with patch.object(p, 'run', return_value=json.dumps({'total_count': len(runs), 'workflow_runs': runs}).encode()):
             with self.assertRaises(ValueError): p.check_ci(SHA)
 
+    def test_extra_exact_main_workflow_must_succeed(self):
+        runs = [{'id': i, 'workflow_id': i, 'name': name, 'head_sha': SHA,
+                 'head_branch': 'main', 'event': 'push', 'run_number': 1,
+                 'run_attempt': 1, 'status': 'completed', 'conclusion': 'success'}
+                for i, name in enumerate(p.REQUIRED_CI)]
+        extra = {**runs[0], 'id': 99, 'workflow_id': 99, 'name': 'Additional safety',
+                 'conclusion': 'failure'}
+        def check(rows):
+            with patch.object(p, 'run', return_value=json.dumps(
+                    {'total_count': len(rows), 'workflow_runs': rows}).encode()):
+                return p.check_ci(SHA)
+        for state in [{'conclusion': 'failure'}, {'status': 'in_progress', 'conclusion': None}]:
+            with self.assertRaises(ValueError): check(runs + [{**extra, **state}])
+        good = {**extra, 'conclusion': 'success', 'run_attempt': 2}
+        self.assertIn('Additional safety', check(runs + [extra, good]))
+        check(runs + [{**extra, 'head_branch': 'other'}, {**extra, 'head_sha': 'b' * 40}])
+
+    def test_narrow_fetch_uses_fresh_remote_main(self):
+        remote, repo = self.root / 'remote', self.root / 'narrow'
+        def git(folder, *args):
+            return subprocess.check_output(['git', '-C', str(folder), *args], stderr=subprocess.DEVNULL).decode().strip()
+        subprocess.run(['git', 'init', '-b', 'main', str(remote)], check=True, capture_output=True)
+        def commit(value):
+            (remote / 'saved.txt').write_text(value)
+            git(remote, 'add', '.')
+            git(remote, '-c', 'user.email=fixture@example.invalid', '-c', 'user.name=Fixture', 'commit', '-m', value)
+            return git(remote, 'rev-parse', 'HEAD')
+        old = commit('old')
+        git(remote, 'branch', 'other')
+        subprocess.run(['git', 'clone', '--single-branch', '--branch', 'other', str(remote), str(repo)], check=True, capture_output=True)
+        git(repo, 'checkout', '-b', 'main', old)
+        git(repo, 'update-ref', 'refs/remotes/origin/main', old)
+        latest = commit('latest')
+        script = str(Path(p.__file__).resolve())
+        def source(sha):
+            return subprocess.run(['python3', script, 'source'], cwd=repo,
+                                  env=dict(os.environ, SKO_AUDITED_SHA=sha), capture_output=True)
+        self.assertNotEqual(source(old).returncode, 0)
+        git(repo, 'checkout', 'main')
+        git(repo, 'merge', '--ff-only', latest)
+        self.assertEqual(source(latest).returncode, 0)
+        self.assertEqual(git(repo, 'rev-parse', 'origin/main'), old)
+        git(repo, 'remote', 'set-url', 'origin', str(self.root / 'missing'))
+        self.assertNotEqual(source(latest).returncode, 0)
+
     def test_dirty_real_git_checkout_is_preserved(self):
         subprocess.run(['git', 'init', '-b', 'main', str(self.root / 'repo')], check=True, capture_output=True)
         repo = self.root / 'repo'
@@ -276,6 +321,7 @@ class ProvenanceTests(unittest.TestCase):
             subprocess.run(['git', '-C', str(repo), *args], check=True, capture_output=True)
         sha = subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD']).decode().strip()
         subprocess.run(['git', '-C', str(repo), 'update-ref', 'refs/remotes/origin/main', sha], check=True)
+        subprocess.run(['git', '-C', str(repo), 'remote', 'add', 'origin', str(repo)], check=True)
         script = str(Path(p.__file__).resolve())
         env = dict(os.environ, SKO_AUDITED_SHA=sha)
         clean = subprocess.run(['python3', script, 'source'], cwd=repo, capture_output=True, env=env)
