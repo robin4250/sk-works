@@ -22,14 +22,14 @@ class TradeDocumentFormPdf {
   double hy(double py)=>top+((order?532:499)-py)*(order?scale:0.35);
   final parts=<pw.Widget>[];
   void line(double x1,double y1,double x2,double y2,{double stroke=0.5}) {
-   parts.add(pw.Positioned(left:x1,top:height-y1,width:x2==x1?stroke:x2-x1,height:y1==y2?stroke:y1-y2,
-    child:pw.Container(color:PdfColors.black)));
+   parts.add(pw.Positioned(left:x1,top:height-y1,child:pw.SizedBox(width:x2==x1?stroke:x2-x1,height:y1==y2?stroke:y1-y2,
+    child:pw.Container(color:PdfColors.black))));
   }
   void text(String value,double x1,double y1,double w,double h,{double size=8,bool center=false,bool bold=false}) {
    if(value.isEmpty)return;
-   parts.add(pw.Positioned(left:x1,top:height-y1-h,width:w,height:h,child:pw.FittedBox(fit:pw.BoxFit.scaleDown,
+   parts.add(pw.Positioned(left:x1,top:height-y1-h,child:pw.SizedBox(width:w,height:h,child:pw.FittedBox(fit:pw.BoxFit.scaleDown,
     alignment:center?pw.Alignment.center:pw.Alignment.centerLeft,child:pw.SizedBox(width:w,child:pw.Text(value,
-     textAlign:center?pw.TextAlign.center:pw.TextAlign.left,style:pw.TextStyle(font:bold?boldFont:regularFont,fontSize:size))))));
+     textAlign:center?pw.TextAlign.center:pw.TextAlign.left,style:pw.TextStyle(font:bold?boldFont:regularFont,fontSize:size)))))));
   }
   void label(String value,double x1,double x2,double high,double low,{double size=8})=>text(value,x1+2,low+2,x2-x1-4,high-low-4,size:size,center:true,bold:true);
   String val(Object? value)=>value?.toString()??'';
@@ -64,17 +64,17 @@ class TradeDocumentFormPdf {
    if(row.$2=='name'){
     // The complete company name and its own saved seal share a bounded row.
     // Place the seal center at the measured right edge; never at the page edge.
-    parts.add(pw.Positioned(left:vx,top:height-bb-23,width:right-vx-3,height:23,child:pw.LayoutBuilder(builder:(context,constraints){
+    parts.add(pw.Positioned(left:vx,top:height-bb-23,child:pw.SizedBox(width:right-vx-3,height:23,child:pw.LayoutBuilder(builder:(context,constraints){
      final available=constraints!.maxWidth,registered=val(issuer['name']);
      final natural=boldFont.getFont(context).stringMetrics(registered).advanceWidth;
      final maxText=available-(sealOn?11:0);
      final fontSize=natural==0?7.5:(maxText/natural).clamp(0.1,7.5).toDouble();
      final printedWidth=natural*fontSize,sealLeft=(printedWidth-11).clamp(0.0,available-22).toDouble();
      return pw.Stack(children:[
-      pw.Positioned(left:0,top:0,width:maxText,height:23,child:pw.Align(alignment:pw.Alignment.centerLeft,child:pw.Text(registered,style:pw.TextStyle(font:boldFont,fontSize:fontSize)))),
-      if(sealOn)pw.Positioned(left:sealLeft,top:0.5,width:22,height:22,child:CompanySealPdf.build(seal.name,font:sealFont,fallbackFont:regularFont,companyId:seal.companyId,uploadedPng:seal.uploadedPng,style:seal.style,size:22)),
+      pw.Positioned(left:0,top:0,child:pw.SizedBox(width:maxText,height:23,child:pw.Align(alignment:pw.Alignment.centerLeft,child:pw.Text(registered,style:pw.TextStyle(font:boldFont,fontSize:fontSize))))),
+      if(sealOn)pw.Positioned(left:sealLeft,top:0.5,child:pw.SizedBox(width:22,height:22,child:CompanySealPdf.build(seal.name,font:sealFont,fallbackFont:regularFont,companyId:seal.companyId,uploadedPng:seal.uploadedPng,style:seal.style,size:22))),
      ]);
-    })));
+    }))));
    }else{text(val(issuer[row.$2]),vx,bb+1,right-vx-3,row.$2=='address'?24:14,size:8);}
    line(vx-2,bb,right,bb,stroke:0.3);
   }
