@@ -28,17 +28,23 @@ A server UUID and authoritative workspace/preview/operation are returned togethe
 The factory crosschecks all server response scopes with existing strict trade
 confirmation models. The panel reuses TradeConfirmationPdf.ownPreview and its
 registered version/hash/PNG validation, disables OS print/share, and requires
-preview acknowledgement plus separate financial and own-seal consent. The
+completed raster stream and decoded image frames before preview acknowledgement,
+plus separate financial and own-seal consent. Pending/error raster never enables
+acknowledgement; all image/renderer awaits recheck current auth/lifecycle and
+dispose stale pages. A controlled pending-capability test proves invalidation
+prevents any retained PDF from reaching the raster API. The
 controller independently checks both choices; transport sends their values,
 not unconditional true. Missing preview, source change or auth history cancels
 all consent. The original document/rendering/calculation code is not changed.
 
+The dedicated real fixture uses a direct native HttpOverrides client with a
+pinned test CA (not Flutter TestHttpOverrides and not a bad-certificate bypass).
 The dedicated real fixture is wired to exercise GoTrue through a trusted local
 TLS proxy, the real Supabase SDK, this factory and existing panel, authoritative
 open and renderer, explicit choices, actual SQL approval, dropped committed HTTP
 response and fresh result read. It also checks default certificate trust rejects
 the self-signed endpoint and logout invalidates displayed results. The device PDF
-raster callback is synthetic; PDF generation and seal-version checks use the
+raster callback is synthetic and held until explicit completion in the test; PDF generation and seal-version checks use the
 existing renderer. Application source/proposal mappings and seeded notification
 rows remain explicit disposable fixture boundaries. No public delivery occurs.
 

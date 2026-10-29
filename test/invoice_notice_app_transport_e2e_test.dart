@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -12,6 +11,8 @@ import 'package:sk_works/features/invoices/invoice_notice_candidate_rpc.dart';
 import 'package:sk_works/features/invoices/invoice_notice_approval_panel.dart';
 import 'package:sk_works/features/invoices/invoice_notice_recovery_controller.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+class _NativeFixtureHttp extends HttpOverrides {}
 
 class _TraceClient extends http.BaseClient {
   _TraceClient(this.inner, this.trace);
@@ -31,7 +32,7 @@ void main() {
     final certificate = env['SKO_INVOICE_APP_CERT'];
     expect(certificate, isNotNull);
     final tls = SecurityContext()..setTrustedCertificates(certificate!);
-    http.Client connection() => IOClient(HttpClient(context: tls));
+    http.Client connection() => IOClient(_NativeFixtureHttp().createHttpClient(tls));
     final client = SupabaseClient(SupabaseBackendConfig.url, env['SKO_INVOICE_APP_KEY']!,
       authOptions: const AuthClientOptions(autoRefreshToken: false), httpClient: connection());
     await tester.runAsync(() => client.auth.signInWithPassword(email: env['SKO_INVOICE_APP_EMAIL']!, password: env['SKO_INVOICE_APP_PASSWORD']!));
@@ -39,7 +40,8 @@ void main() {
     final trace = <Map<String, dynamic>>[];
     // A trusted fixture CA is explicit. Default trust must reject this local
     // self-signed endpoint; there is no badCertificateCallback bypass.
-    final badTrust = createInvoiceNoticeCandidateController(client: client, invoiceId: invoice, sourceRevision: revision, enabled: true)!;
+    final badTrust = createInvoiceNoticeCandidateController(client: client, invoiceId: invoice, sourceRevision: revision, enabled: true,
+      transportClientFactory: () => IOClient(_NativeFixtureHttp().createHttpClient(SecurityContext.defaultContext)))!;
     expect(await tester.runAsync(() => badTrust.tickets.open(notification, invoiceId: invoice, sourceRevision: revision)), false);
     badTrust.dispose();
     final recovery = createInvoiceNoticeCandidateController(client: client, invoiceId: invoice, sourceRevision: revision,
@@ -49,17 +51,18 @@ void main() {
     const channel = MethodChannel('net.nfet.printing');
     const codec = StandardMethodCodec();
     var rasterCalls = 0, legacyReads = 0;
+    void Function()? emitPage;
+    void Function([String? error])? emitEnd;
     final messenger = tester.binding.defaultBinaryMessenger;
     messenger.setMockMethodCallHandler(channel, (call) async {
       if (call.method == 'printingInfo') { return {'canRaster': true, 'canPrint': false, 'canShare': false}; }
       if (call.method == 'rasterPdf') {
         rasterCalls++;
         final job = (call.arguments as Map)['job'];
-        scheduleMicrotask(() {
-          tester.binding.channelBuffers.push(channel.name, codec.encodeMethodCall(MethodCall('onPageRasterized',
-            {'job': job, 'width': 2, 'height': 2, 'image': Uint8List.fromList(List.filled(16, 255))})), (_) {});
-          tester.binding.channelBuffers.push(channel.name, codec.encodeMethodCall(MethodCall('onPageRasterEnd', {'job': job})), (_) {});
-        });
+        emitPage = () => tester.binding.channelBuffers.push(channel.name, codec.encodeMethodCall(MethodCall('onPageRasterized',
+          {'job': job, 'width': 2, 'height': 2, 'image': Uint8List.fromList(List.filled(16, 255))})), (_) {});
+        emitEnd = ([String? error]) => tester.binding.channelBuffers.push(channel.name,
+          codec.encodeMethodCall(MethodCall('onPageRasterEnd', {'job': job, if (error != null) 'error': error})), (_) {});
       }
       return null;
     });
@@ -81,8 +84,24 @@ void main() {
       await until(() => find.text('承認する').evaluate().isNotEmpty, 'authoritative open');
       expect(approveButton().onPressed, isNull); expect(sent(), 0);
       expect(trace.first['body'], {'notification_id': notification, 'invoice_id': invoice, 'source_revision': revision});
+      FilledButton previewButton() => tester.widget<FilledButton>(find.ancestor(of: find.text('表示内容と印影を確認しました'),
+        matching: find.byWidgetPredicate((widget) => widget is FilledButton)).first);
       await tester.tap(find.text('注文請書と登録印影を確認')); await tester.pump();
-      await until(() => find.text('表示内容と印影を確認しました').evaluate().isNotEmpty && rasterCalls > 0, 'saved document and registered seal preview');
+      await until(() => find.text('表示内容と印影を確認しました').evaluate().isNotEmpty && rasterCalls == 1, 'first preview raster requested');
+      expect(previewButton().onPressed, isNull);
+      emitEnd!('fixture raster failure');
+      await until(() => find.text('本文と印影を表示できません').evaluate().isNotEmpty, 'renderer failure');
+      expect(previewButton().onPressed, isNull); expect(sent(), 0);
+      await tester.pageBack(); await tester.pumpAndSettle();
+      expect(approveButton().onPressed, isNull);
+      await tester.tap(find.text('注文請書と登録印影を確認')); await tester.pump();
+      await until(() => rasterCalls == 2, 'second preview raster requested');
+      expect(previewButton().onPressed, isNull);
+      emitPage!();
+      await until(() => find.byType(Image).evaluate().isNotEmpty, 'raster page emitted');
+      expect(previewButton().onPressed, isNull, reason: 'a page before raster completion cannot authorize consent');
+      emitEnd!();
+      await until(() => previewButton().onPressed != null, 'all raster pages decoded and displayed');
       await tester.tap(find.text('表示内容と印影を確認しました')); await tester.pumpAndSettle();
       await tester.tap(find.text('請求書の最終承認と注文請書の内容を確認しました')); await tester.pump();
       expect(approveButton().onPressed, isNull); expect(sent(), 0);
@@ -105,6 +124,7 @@ void main() {
       messenger.setMockMethodCallHandler(channel, null); controller.dispose();
       await tester.runAsync(client.dispose);
     }
-  }, skip: Platform.environment['SKO_INVOICE_APP_CERT'] == null && Platform.environment['SKO_INVOICE_APP_REQUIRED'] != 'true'
-      ? 'Requires dedicated real GoTrue/TLS/PostgreSQL fixture' : false);
+  // Outside dedicated CI this fixture is skipped. Required CI never skips a
+  // missing certificate: the body fails instead.
+  }, skip: Platform.environment['SKO_INVOICE_APP_CERT'] == null && Platform.environment['SKO_INVOICE_APP_REQUIRED'] != 'true');
 }

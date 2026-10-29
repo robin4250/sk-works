@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:printing/printing.dart';
 import 'invoice_approval_readiness.dart';
 import 'invoice_notice_ticket_controller.dart';
@@ -134,7 +136,7 @@ class _InvoiceNoticeApprovalPanelState extends State<InvoiceNoticeApprovalPanel>
       final bytes = await build().timeout(const Duration(seconds: 20));
       if (!mounted || generation != _generation || bytes.isEmpty) { return; }
       final route = MaterialPageRoute<bool>(fullscreenDialog: true, builder: (_) =>
-        _InvoiceNoticeOwnPreview(bytes: bytes, current: () => mounted && generation == _generation));
+        _InvoiceNoticeOwnPreview(bytes: bytes, recovery: widget.recoveryController!, current: () => mounted && generation == _generation));
       _previewRoute = route;
       final reviewed = await Navigator.of(context).push(route);
       if (identical(_previewRoute, route)) { _previewRoute = null; }
@@ -184,25 +186,106 @@ class _InvoiceNoticeApprovalPanelState extends State<InvoiceNoticeApprovalPanel>
 
 
 class _InvoiceNoticeOwnPreview extends StatefulWidget {
-  const _InvoiceNoticeOwnPreview({required this.bytes, required this.current});
+  const _InvoiceNoticeOwnPreview({required this.bytes, required this.current, required this.recovery});
   final Uint8List bytes;
   final bool Function() current;
+  final InvoiceNoticeRecoveryController recovery;
   @override State<_InvoiceNoticeOwnPreview> createState() => _InvoiceNoticeOwnPreviewState();
 }
-class _InvoiceNoticeOwnPreviewState extends State<_InvoiceNoticeOwnPreview> {
-  bool _failed = false;
-  @override Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('注文請書と登録印影')),
-    body: Column(children: [
-      Expanded(child: PdfPreview(build: (_) async => widget.bytes,
-        canChangePageFormat: false, canChangeOrientation: false, allowPrinting: false, allowSharing: false,
-        onError: (context, error) {
-          _failed = true;
-          WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) { setState(() {}); } });
-          return const Center(child: Text('本文と印影を表示できません'));
-        })),
-      SafeArea(top: false, child: FilledButton(onPressed: _failed ? null : () {
-        if (!_failed && widget.current()) { Navigator.of(context).pop(true); }
-      }, child: const Text('表示内容と印影を確認しました'))),
+class _InvoiceNoticeOwnPreviewState extends State<_InvoiceNoticeOwnPreview> with WidgetsBindingObserver {
+  bool _active = true, _failed = false, _finished = false;
+  int _generation = 0;
+  final _pages = <Uint8List>[];
+  final _decoded = <int>{};
+  final _clock = Stopwatch();
+  StreamIterator<PdfRaster>? _iterator;
+  Timer? _timer;
+  bool _current(int version) => mounted && _active && !_failed && version == _generation &&
+      widget.current() && widget.recovery.state != InvoiceNoticeRecoveryState.invalidated &&
+      _clock.elapsed < const Duration(seconds: 20);
+  @override void initState() {
+    super.initState(); WidgetsBinding.instance.addObserver(this);
+    widget.recovery.addListener(_authChanged);
+    _clock.start(); _timer = Timer(const Duration(seconds: 20), _fail);
+    unawaited(_load());
+  }
+  void _authChanged() { if (widget.recovery.state == InvoiceNoticeRecoveryState.invalidated) { _fail(); } }
+  void _fail() {
+    if (!_active) { return; }
+    _active = false; _failed = true; _finished = false; _generation++;
+    _timer?.cancel(); _pages.clear(); _decoded.clear();
+    final iterator = _iterator; _iterator = null;
+    if (iterator != null) { unawaited(iterator.cancel()); }
+    if (mounted) {
+      if (SchedulerBinding.instance.schedulerPhase == SchedulerPhase.persistentCallbacks) {
+        WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) { setState(() {}); } });
+      } else { setState(() {}); }
+    }
+  }
+  void _settleDisplay() {
+    if (_finished && _pages.isNotEmpty && _decoded.length == _pages.length && _current(_generation)) {
+      _clock.stop(); _timer?.cancel();
+    }
+  }
+  @override void didChangeAppLifecycleState(AppLifecycleState state) { if (state != AppLifecycleState.resumed) { _fail(); } }
+  @override void dispose() {
+    widget.recovery.removeListener(_authChanged); WidgetsBinding.instance.removeObserver(this);
+    _active = false; _generation++; _timer?.cancel();
+    final iterator = _iterator; _iterator = null;
+    if (iterator != null) { unawaited(iterator.cancel()); }
+    _pages.clear(); _decoded.clear(); super.dispose();
+  }
+  Future<void> _load() async {
+    final version = _generation;
+    try {
+      if (!_current(version)) { return; }
+      final capabilities = await Printing.info();
+      if (!_current(version) || !capabilities.canRaster) { _fail(); return; }
+      // No lazy callback can return retained PDF bytes after invalidation.
+      final iterator = StreamIterator(Printing.raster(widget.bytes, dpi: 96));
+      _iterator = iterator; var total = 0;
+      while (await iterator.moveNext()) {
+        if (!_current(version)) { _fail(); return; }
+        final page = iterator.current;
+        if (page.width <= 0 || page.height <= 0 || page.width * page.height > 8000000 || _pages.length >= 16) { _fail(); return; }
+        final bytes = await page.toPng();
+        if (!_current(version)) { _fail(); return; }
+        total += bytes.length;
+        if (bytes.isEmpty || bytes.length > 4194304 || total > 16777216) { _fail(); return; }
+        setState(() => _pages.add(bytes));
+      }
+      if (!_current(version) || _pages.isEmpty) { _fail(); return; }
+      setState(() { _finished = true; _settleDisplay(); });
+    } catch (_) { _fail(); }
+  }
+  void _decodedPage(int index, int version) {
+    if (_decoded.contains(index)) { return; }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_current(version) && !_decoded.contains(index)) { setState(() { _decoded.add(index); _settleDisplay(); }); }
+    });
+  }
+  @override Widget build(BuildContext context) {
+    final version = _generation, valid = _current(_generation);
+    final ready = valid && _finished && _pages.isNotEmpty && _decoded.length == _pages.length;
+    return Scaffold(appBar: AppBar(title: const Text('注文請書と登録印影')), body: Column(children: [
+      Expanded(child: !valid ? const Center(child: Text('本文と印影を表示できません')) :
+        _pages.isEmpty ? const Center(child: CircularProgressIndicator()) : ListView(children: [
+          for (var index = 0; index < _pages.length; index++) Image.memory(_pages[index],
+            frameBuilder: (context, image, frame, synchronous) {
+              if (!_current(version)) { return const SizedBox.shrink(); }
+              if (frame != null) { _decodedPage(index, version); }
+              return image;
+            }, errorBuilder: (context, error, stack) {
+              // Disable acknowledgement synchronously, then retire image data
+              // outside this build frame.
+              _failed = true;
+              WidgetsBinding.instance.addPostFrameCallback((_) { _fail(); });
+              return const Text('本文と印影を表示できません');
+            }),
+        ])),
+      SafeArea(top: false, child: FilledButton(onPressed: ready ? () {
+        if (_current(version) && _finished && _decoded.length == _pages.length) { Navigator.of(context).pop(true); }
+      } : null, child: const Text('表示内容と印影を確認しました'))),
     ]));
+  }
 }
