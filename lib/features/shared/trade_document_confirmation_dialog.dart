@@ -261,6 +261,11 @@ class _TradeDocumentConfirmationPageState extends State<TradeDocumentConfirmatio
       if (_current(generation)) setState(() => _error = '過去の承認済み書類を取得できません。');
     } finally { _finish(); }
   }
+  void _verifyPreview(Uint8List bytes){
+    if(_approved){_verifyPrint(bytes);return;}
+    final repository=widget.repository;if(repository is SupabaseTradeConfirmationRepository)repository.requireOutputAdmission();
+    if(!_current(_generation)||!identical(bytes,_bytes)||_visibility!=AppLifecycleState.resumed)throw StateError('書類を開き直してください。');
+  }
   void _verifyPrint(Uint8List bytes) {
     _requireOutput();
     if (!mounted || _revoked || !_approved || !identical(bytes, _bytes) ||
@@ -295,6 +300,7 @@ class _TradeDocumentConfirmationPageState extends State<TradeDocumentConfirmatio
   }
   @override Widget build(BuildContext context) {
     SkoLanguageController.watch(context);
+    final previewBytes=_bytes;
     final enabled = !_busy && _active && !_revoked;
     return Scaffold(appBar: AppBar(title: Text(tr(widget.kind == 'invoice' ? '注文請書の確認' : '注文書の確認'))),
       body: Column(children: [
@@ -305,7 +311,7 @@ class _TradeDocumentConfirmationPageState extends State<TradeDocumentConfirmatio
           Text(tr('前の確認申請を保持しています。新しい申請は送信しません。')),
           TextButton(onPressed: enabled ? _lookup : null, child: Text(tr('結果を確認'))),
         ])),
-        if (_bytes != null) Expanded(child: PdfPreview(build: (_) async => _bytes ?? (throw StateError('書類を再読み込みしてください。')),
+        if (previewBytes != null) Expanded(child: PdfPreview(build: (_) async {_verifyPreview(previewBytes);return previewBytes;},
           canChangePageFormat: false, canChangeOrientation: false, allowPrinting: false,
           allowSharing: false, pdfFileName: widget.kind == 'invoice' ? '注文請書.pdf' : '注文書.pdf'))
         else const Spacer(),
@@ -538,12 +544,13 @@ class _TradeApprovedDocumentPageState extends State<TradeApprovedDocumentPage> w
   @override void dispose() { final repository=widget.repository;if(repository is SupabaseTradeConfirmationRepository)repository.outputAdmissionChanges.removeListener(_admissionChanged);_outputDescriptor=null;_outputScope?.dispose();_revoked=true;_outputChanges.value++;_outputChanges.dispose();_subscription?.cancel(); WidgetsBinding.instance.removeObserver(this); super.dispose(); }
   @override Widget build(BuildContext context) {
     SkoLanguageController.watch(context);
+    final previewBytes=_bytes;
     final enabled = !_busy && !_revoked && _visibility == AppLifecycleState.resumed;
     return Scaffold(appBar: AppBar(title: Text(tr('承認済み書類'))), body: Column(children: [
       if (widget.archive) Padding(padding: const EdgeInsets.all(12), child: Text(tr('過去の承認済み書類です。現在の内容とは異なる場合があります。'))),
       if (_busy) const LinearProgressIndicator(),
       if (_error != null) Padding(padding: const EdgeInsets.all(12), child: Text(tr(_error!))),
-      if (_bytes != null) Expanded(child: PdfPreview(build: (_) async => _bytes ?? (throw StateError('書類を開き直してください。')),
+      if (previewBytes != null) Expanded(child: PdfPreview(build: (_) async {_verify();_requireOutput();if(!identical(previewBytes,_bytes)||(_visibility!=AppLifecycleState.resumed&&!(_printing&&_visibility==AppLifecycleState.inactive)))throw StateError('書類を開き直してください。');return previewBytes;},
         canChangePageFormat: false, canChangeOrientation: false, allowPrinting: false, allowSharing: false))
       else const Spacer(),
       if(_outputPayload!=null)TextButton(onPressed:enabled?_formats:null,child:Text(tr('形式を選んで保存・印刷'))),

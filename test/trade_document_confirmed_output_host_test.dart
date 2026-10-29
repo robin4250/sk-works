@@ -78,6 +78,11 @@ void main(){
         if(invalidation=='logout intent'){
           f.wire.holdLogout=Completer<void>();logout=AppAuthMutationGateway.forClient(f.client).signOut();
           expect(f.wire.logoutStarted.isCompleted,isFalse);expect(f.client.auth.currentSession?.accessToken,f.wire.token);
+          // Invoke parent first, before a queued notifier or child's guard can
+          // clear its cached bytes. Intent must fence the retained builder now.
+          final parentRejected=expectLater(parent(PdfPageFormat.a4),throwsStateError);
+          final childRejected=expectLater(child(PdfPageFormat.a4),throwsStateError);
+          await parentRejected;await childRejected;
         }else{tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);}
         tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);await tester.pumpAndSettle();
         expect(find.byType(PdfPreview,skipOffstage:false),findsNothing);

@@ -129,7 +129,7 @@ class SupabaseTradeConfirmationRepository implements TradeConfirmationRepository
     const keys=['p_company_id','p_local_document_id','p_document_revision','p_kind','expected_document_id'];
     if(scope.length!=keys.length||!keys.every(scope.containsKey)||
       !tradeConfirmationUuid(scope['p_company_id'])||!tradeConfirmationUuid(scope['p_local_document_id'])||!tradeConfirmationUuid(scope['expected_document_id'])||
-      scope['p_local_document_id']==scope['expected_document_id']||scope['p_document_revision'] is! int||(scope['p_document_revision'] as int)<1||!const ['invoice','payment_certificate'].contains(scope['p_kind']))throw const FormatException('承認書類の閲覧対象を確認できません。');
+      scope['p_local_document_id']==scope['expected_document_id']||scope['p_document_revision'] is! int||(scope['p_document_revision'] as int)<1||!const ['invoice','payment_certificate'].contains(scope['p_kind'])){throw const FormatException('承認書類の閲覧対象を確認できません。');}
     return keys.map((key)=>scope[key]).join('/');
   }
   Future<TradeDocumentFormSession> createConfirmedOutputScope(Map<String,dynamic> scope,{
@@ -140,7 +140,7 @@ class SupabaseTradeConfirmationRepository implements TradeConfirmationRepository
     if(evidence['contract_version'] is! int||evidence['contract_version']!=1||evidence['document_revision'] is! int||evidence['company_id']!=scope['p_company_id']||evidence['actor_id']!=_actor||
       evidence['kind']!=scope['p_kind']||evidence['local_document_id']!=scope['p_local_document_id']||
       evidence['document_id']!=scope['expected_document_id']||evidence['document_revision']!=scope['p_document_revision']||
-      evidence['archive']!=archive||!const ['issued','received'].contains(evidence['side']))throw const FormatException('承認書類の閲覧会社を確認できません。');
+      evidence['archive']!=archive||!const ['issued','received'].contains(evidence['side'])){throw const FormatException('承認書類の閲覧会社を確認できません。');}
     await _entryScope.ready();verify();
     final session=TradeDocumentFormSession(_client,target:key,currentTarget:(){
       if(_revoked||!_entryScope.isCurrent)return null;
