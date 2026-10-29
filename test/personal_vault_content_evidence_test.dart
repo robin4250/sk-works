@@ -31,10 +31,10 @@ void main() {
     final file=File('${dir.path}/fixture.pdf');await file.writeAsBytes(bytes);
     final extract=await Process.run('python3',['-c',r'''
 import hashlib,importlib.util,json,pathlib,sys
-s=importlib.util.spec_from_file_location('inspection','docs/review/personal-vault25-content/inspect_pdf_candidate.py')
+s=importlib.util.spec_from_file_location('inspection','docs/review/personal-vault25-content/inspection_worker_candidate.py')
 m=importlib.util.module_from_spec(s);s.loader.exec_module(m)
 b=pathlib.Path(sys.argv[1]).read_bytes()
-r=m.inspect_candidate(b,expected_sha256=hashlib.sha256(b).hexdigest(),expected_owner='Only Owner',forbidden_markers=['OTHER_WORKER_PRIVATE_SENTINEL','COMPANY_INTERNAL_SENTINEL','SEAL_SECRET_SENTINEL'])
+r=m.observe_in_worker(b,enabled=True,expected_sha256=hashlib.sha256(b).hexdigest(),expected_owner='Only Owner',forbidden_markers=['OTHER_WORKER_PRIVATE_SENTINEL','COMPANY_INTERNAL_SENTINEL','SEAL_SECRET_SENTINEL'])
 print(json.dumps(r))
 ''',file.path]);
     expect(extract.exitCode,0,reason:extract.stderr.toString());

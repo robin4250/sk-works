@@ -80,6 +80,9 @@ jobs:
       - name: Scanner unknown-COMMIT recovery boundary
         run: node --test tool/qr-attendance/qr-scanner-registration-recovery.test.mjs
 
+      - name: Scanner native HTTPS registration boundary
+        run: node --test tool/qr-attendance/qr-scanner-registration-https.test.mjs
+
       - name: Native scanner registration receipt and recovery
         env:
           CI: 'true'

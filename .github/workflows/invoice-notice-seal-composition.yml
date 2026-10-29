@@ -2,6 +2,8 @@ name: Invoice notice seal composition review
 on:
   pull_request:
     paths:
+      - 'lib/features/invoices/invoice_notice_recovery_controller.dart'
+      - 'test/invoice_notice_native_receipt_test.dart'
       - 'docs/candidates/trade_document_notice_seal_20261028.sql.review-only'
       - 'tool/trade_document_notice_seal_fixture.mjs'
       - 'tool/trade_document_notice_result_races.mjs'
@@ -33,7 +35,7 @@ permissions:
 jobs:
   isolated-composition:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -69,4 +71,21 @@ jobs:
       - if: matrix.runtime == 'postgres'
         run: node tool/verify_trade_document_notice_seal.mjs "$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js" postgres
         env:
+          SKO_NOTICE_NATIVE_RECEIPT_REQUIRED: 'true'
+          SKO_NOTICE_CLIENT_RECEIPT_FIXTURE: ${{ runner.temp }}/invoice-notice-scoped-receipt.json
           SKO_CONSENT_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_document_consent_fixture
+      - if: matrix.runtime == 'postgres'
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - if: matrix.runtime == 'postgres'
+        run: flutter pub get --enforce-lockfile
+      - if: matrix.runtime == 'postgres'
+        run: flutter analyze lib/features/invoices/invoice_notice_recovery_controller.dart test/invoice_notice_native_receipt_test.dart
+      - if: matrix.runtime == 'postgres'
+        run: flutter test --reporter expanded test/invoice_notice_native_receipt_test.dart
+        env:
+          SKO_NOTICE_NATIVE_RECEIPT_REQUIRED: 'true'
+          SKO_NOTICE_CLIENT_RECEIPT_FIXTURE: ${{ runner.temp }}/invoice-notice-scoped-receipt.json

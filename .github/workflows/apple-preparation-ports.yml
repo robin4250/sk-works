@@ -8,6 +8,8 @@ on:
       - 'test/apple_successor_client_preparation_test.dart'
       - 'lib/features/auth/apple_successor_https_delivery.dart'
       - 'test/apple_successor_https_delivery_test.dart'
+      - 'lib/features/auth/apple_owned_session_coordinator.dart'
+      - 'test/apple_owned_session_coordinator_test.dart'
       - 'docs/review/apple-existing-login-candidate/google_primary*'
       - '.github/workflows/apple-preparation-ports.yml'
 permissions:
@@ -35,4 +37,5 @@ jobs:
       - run: git diff --exit-code -- pubspec.lock
       - run: dart analyze lib/features/auth/apple_native_credential_preparation.dart test/apple_native_credential_preparation_test.dart lib/features/auth/apple_successor_client_preparation.dart test/apple_successor_client_preparation_test.dart
       - run: dart analyze lib/features/auth/apple_successor_https_delivery.dart test/apple_successor_https_delivery_test.dart
-      - run: flutter test test/apple_native_credential_preparation_test.dart test/apple_successor_client_preparation_test.dart test/apple_successor_https_delivery_test.dart --reporter expanded
+      - run: dart analyze lib/features/auth/apple_owned_session_coordinator.dart test/apple_owned_session_coordinator_test.dart
+      - run: flutter test test/apple_native_credential_preparation_test.dart test/apple_successor_client_preparation_test.dart test/apple_successor_https_delivery_test.dart test/apple_owned_session_coordinator_test.dart --reporter expanded

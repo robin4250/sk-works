@@ -10,6 +10,7 @@ import {createScannerRegistrationChallengeAdapter} from './qr-scanner-challenge-
 import {createScannerRegistrationProofIssuer} from './qr-scanner-proof-issuer.mjs';
 import {scannerRegistrationSigningBytes} from './qr-scanner-possession.mjs';
 import {createRecoverableScannerRegistrationAdapter} from './qr-scanner-registration-recovery.mjs';
+import {exerciseScannerHttpsRegistration} from './qr-scanner-registration-https-real.mjs';
 
 export async function exerciseScannerRealAuth({db,database,api,anon,makeUser,request}) {
  if(process.env.CI!=='true'||api.hostname!=='127.0.0.1'||api.port!=='53781'||database.hostname!=='127.0.0.1'||database.port!=='53782')throw Error('disposable scanner fixture required');
@@ -124,6 +125,7 @@ export async function exerciseScannerRealAuth({db,database,api,anon,makeUser,req
   assert.equal((await db.query('select count(*)::int n from qr_attendance_private.scanner_registration_receipts')).rows[0].n,2);
   console.log('PASS isolated real GoTrue -> scanner challenge -> bcrypt proof -> Ed25519 registration; OFF, metadata, tampered JWT, expired/deleted SID and pool cleanup');
   console.log('PASS isolated real GoTrue lost-COMMIT registration receipt recovery; exact old SID, same-UID other SID denied, one audit/receipt, no relink/re-register or receipt deletion');
+  await exerciseScannerHttpsRegistration({db,pool,project,bridge,anon,makeUser,request,clean});
   console.log('LIMIT synthetic company permissions and privileged pool; no public endpoint, real device custody, normal QR attendance writer or production activation');
  } finally {
   await db.query("update private.master_feature_settings set enabled=false where feature_key='qr_attendance'");
