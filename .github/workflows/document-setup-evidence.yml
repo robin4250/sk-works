@@ -1,0 +1,53 @@
+name: Document setup evidence
+on:
+  pull_request:
+    paths:
+      - 'lib/features/tutorial/**'
+      - 'lib/features/people/worker_document_page.dart'
+      - 'test/health_document_guide_status_test.dart'
+      - 'test/tutorial_bank_account_evidence_test.dart'
+      - 'test/worker_document_exemption_test.dart'
+      - '.github/workflows/document-setup-evidence.yml'
+permissions:
+  contents: read
+jobs:
+  document-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - name: Reproduce registered health documents shown as unregistered
+        shell: bash
+        run: |
+          set -euo pipefail
+          saved=$(mktemp -d)
+          files=(lib/features/tutorial/tutorial_evidence_repository.dart lib/features/tutorial/tutorial_page.dart)
+          for i in "${!files[@]}"; do cp "${files[$i]}" "$saved/$i"; done
+          restore() { for i in "${!files[@]}"; do cp "$saved/$i" "${files[$i]}"; cmp "$saved/$i" "${files[$i]}"; done; }
+          trap restore EXIT
+          for file in "${files[@]}"; do git show c0185ca7d354c7d78e5c6d08b49d64ff54916c1c:"$file" > "$file"; done
+          set +e
+          flutter test test/health_document_guide_status_test.dart --reporter expanded > "$saved/baseline.log" 2>&1
+          result=$?
+          set -e
+          cat "$saved/baseline.log"
+          test "$result" -ne 0
+          ! grep -q 'Compilation failed' "$saved/baseline.log"
+          grep -F '登録済み・期限未入力' "$saved/baseline.log"
+          grep -F 'Found 0 widgets with text' "$saved/baseline.log"
+          restore
+          trap - EXIT
+      - name: Analyze and verify corrected document evidence
+        run: |
+          dart analyze lib/features/tutorial/tutorial_evidence_repository.dart lib/features/tutorial/tutorial_page.dart lib/features/people/worker_document_page.dart test/health_document_guide_status_test.dart test/tutorial_bank_account_evidence_test.dart test/worker_document_exemption_test.dart
+          flutter test test/health_document_guide_status_test.dart test/tutorial_bank_account_evidence_test.dart test/worker_document_exemption_test.dart test/tutorial_evidence_repository_test.dart test/tutorial_operational_evidence_test.dart
+          git diff --exit-code -- pubspec.yaml pubspec.lock
