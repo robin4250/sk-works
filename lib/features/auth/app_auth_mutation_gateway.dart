@@ -31,9 +31,26 @@ class AppAuthMutationGateway {
     _active = completion;
     final events = <AuthState>[];
     var failed = false;
+    _Result<T>? accepted;
     final subscription = _client.auth.onAuthStateChange.listen((event) {
       if (events.length >= 32) { failed = true; } else { events.add(event); }
     }, onError: (Object _) { failed = true; }, onDone: () { failed = true; });
+    void validate(_Result<T> result) {
+      if (generation != _generation || failed ||
+          _binding(_client.auth.currentSession) != result.expected) {
+        throw StateError('Authentication changed before completion.');
+      }
+      for (final event in events) {
+        final binding = _binding(event.session);
+        final sameSessionRefresh = binding != null && event.event == AuthChangeEvent.tokenRefreshed &&
+            (binding == before || binding == result.expected);
+        final ownEvent = event.event == result.event &&
+            identical(event.session, result.eventSession);
+        if (!sameSessionRefresh && !ownEvent) {
+          throw StateError('Authentication history changed before completion.');
+        }
+      }
+    }
     try {
       // GoTrue replays its last AuthState to a new listener. Drain exactly the
       // captured session object before dispatch; never discard a live transition.
@@ -49,25 +66,15 @@ class AppAuthMutationGateway {
       final result = await action(before);
       // The SDK publishes AuthState asynchronously after saving its session.
       await Future<void>.value();
-      if (generation != _generation || failed ||
-          _binding(_client.auth.currentSession) != result.expected) {
-        throw StateError('Authentication changed before completion.');
-      }
-      for (final event in events) {
-        final binding = _binding(event.session);
-        final sameSessionRefresh = binding != null && event.event == AuthChangeEvent.tokenRefreshed &&
-            (binding == before || binding == result.expected);
-        final ownEvent = event.event == result.event &&
-            identical(event.session, result.eventSession);
-        if (!sameSessionRefresh && !ownEvent) {
-          throw StateError('Authentication history changed before completion.');
-        }
-      }
+      validate(result);
+      accepted = result;
       return result.value;
     } finally {
-      await subscription.cancel();
-      _active = null;
-      completion.complete();
+      try { await subscription.cancel(); }
+      finally { _active = null; completion.complete(); }
+      // Cancellation itself can yield: logout intent must still win until this
+      // Future exposes its result. Never restore the earlier SDK session.
+      if (accepted != null) validate(accepted);
     }
   }
 

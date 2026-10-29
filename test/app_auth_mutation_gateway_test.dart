@@ -230,4 +230,32 @@ void main() {
     expect(jsonDecode(w.calls.last.body)['token'],'123456');
   });
 
+  test('logout intent wins through SDK result and subscription finalization',() async {
+    for (var hops = 0; hops < 12; hops++) {
+      final fixture = Wire();
+      try {
+        final delayed = Completer<http.Response>();
+        fixture.respond = (request) => request.url.path.endsWith('/logout')
+          ? Future.value(http.Response('',204)) : delayed.future;
+        var requested = false;
+        var exposedAfterLogout = false;
+        final pending = fixture.onboarding.signInWithEmail(email:'fixture@example.invalid',password:'synthetic')
+          .then((_) { exposedAfterLogout = requested; }, onError:(Object error) {
+            expect(error,isA<StateError>());
+          });
+        await fixture.sent(1);
+        Future<void> requestLogout() async {
+          for(var i = 0; i < hops; i++) { await Future<void>.value(); }
+          requested = true;
+          await fixture.auth.signOut();
+        }
+        delayed.complete(Wire.json(session()));
+        final logout = requestLogout();
+        await pending; await logout;
+        expect(exposedAfterLogout,false,reason:'logout at microtask boundary $hops');
+        expect(fixture.client.auth.currentSession,isNull);
+      } finally { await fixture.client.dispose(); }
+    }
+  });
+
 }
