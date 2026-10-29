@@ -37,7 +37,7 @@ void main() {
   client = SupabaseClient('https://qr-key-fixture.invalid','synthetic-public',authOptions: const AuthClientOptions(autoRefreshToken:false),httpClient:MockClient((r) async {
    requests.add(r);
    if(r.method=='POST' && r.url.path=='/auth/v1/token')return http.Response(session(actor),200,headers:{'content-type':'application/json'});
-   expect(r.method,'GET');expect(r.url.toString(),'https://qr-key-fixture.invalid/auth/v1/user');
+   expect(r.method,'GET');expect(r.url.origin,'https://qr-key-fixture.invalid');expect(r.url.path,'/auth/v1/user');expect(r.url.query,isEmpty);expect(r.url.fragment,isEmpty);
    expect(r.headers.entries.where((e)=>e.key.toLowerCase()=='authorization').single.value,'Bearer ${jsonDecode(session(actor))['access_token']}');
    await beforeAuth?.call();return http.Response(jsonEncode(user(authActor)),200,headers:{'content-type':'application/json'});
   }));
