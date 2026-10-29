@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:pdf/pdf.dart';
@@ -13,16 +12,22 @@ final _png = base64Decode('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQ
 ResourceAttachment entry(String key, String title, {String label = '表面', Future<Uint8List> Function()? load}) =>
   ResourceAttachment(label: label, path: 'same-synthetic-path', previewKey: key,
     recordTitle: title, loadBytes: load ?? () async => _png);
-Widget host(ResourceAttachmentGallery gallery, ResourceAttachment selected) => MaterialApp(home: Scaffold(
+Widget host(ResourceAttachmentGallery gallery, ResourceAttachment selected, {double scale=1}) => MaterialApp(
+  builder:(context,child)=>MediaQuery(data:MediaQuery.of(context).copyWith(textScaler:TextScaler.linear(scale)),child:child!),home: Scaffold(
   body: ResourceAttachmentThumbnail(attachment: selected, gallery: gallery, requireGalleryScope: true)));
 Future<void> open(WidgetTester tester) async {
+  tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
   await tester.pumpAndSettle();
   for (var frame=0;frame<30 && tester.widgetList<RawImage>(find.byType(RawImage)).any((image)=>image.image==null);frame++) {
     await tester.runAsync(()=>Future<void>.delayed(const Duration(milliseconds:10)));await tester.pump(const Duration(milliseconds:16));
   }
   await tester.tap(find.byType(ResourceAttachmentThumbnail)); await tester.pumpAndSettle();
+  for(var frame=0;frame<30 && tester.widgetList<RawImage>(find.descendant(of:find.byType(PageView),matching:find.byType(RawImage))).any((image)=>image.image==null);frame++) {
+    await tester.runAsync(()=>Future<void>.delayed(const Duration(milliseconds:10)));await tester.pump(const Duration(milliseconds:16));
+  }
 }
 void main() {
+  setUp(() => TestWidgetsFlutterBinding.ensureInitialized().handleAppLifecycleStateChanged(AppLifecycleState.resumed));
   test('snapshot is immutable, preserves duplicate paths and rejects duplicate record anchors', () {
     final entries = [entry('a:0', '資格A'), entry('b:0', '資格B')];
     final gallery = ResourceAttachmentGallery(source: Object(), workerId: 'w', companyId: 'c', isCurrent: () => true, entries: entries);
@@ -34,7 +39,9 @@ void main() {
   testWidgets('fullscreen opens selected record occurrence and swipe updates real name, side and count', (tester) async {
     final entries = [entry('a:0', '第一資格'), entry('a:1', '第一資格', label: '裏面'), entry('b:0', List.filled(8, '次の長い書類名').join(), label: '1')];
     final gallery = ResourceAttachmentGallery(source: Object(), workerId: 'w', companyId: 'c', isCurrent: () => true, entries: entries);
-    await tester.pumpWidget(host(gallery, entries[1])); await open(tester);
+    tester.view.physicalSize=const Size(320,568);tester.view.devicePixelRatio=1;
+    addTearDown(tester.view.resetPhysicalSize);addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(host(gallery, entries[1],scale:2)); await open(tester);
     expect(find.text('2/3'), findsOneWidget); expect(find.text('第一資格'), findsOneWidget); expect(find.text('裏面'), findsWidgets);
     expect(tester.widget<Dialog>(find.byType(Dialog)).insetPadding, EdgeInsets.zero);
     await tester.drag(find.byType(PageView), const Offset(-600, 0)); await tester.pumpAndSettle();
@@ -42,6 +49,7 @@ void main() {
     await tester.drag(find.byType(PageView), const Offset(600, 0)); await tester.pumpAndSettle();
     expect(find.text('2/3'), findsOneWidget);
     final close = find.byWidgetPredicate((widget) => widget is IconButton && widget.tooltip == '閉じる');
+    final rect=tester.getRect(close);expect(rect.right,lessThanOrEqualTo(320));expect(rect.bottom,lessThanOrEqualTo(568));
     final callback = tester.widget<IconButton>(close).onPressed!;
     await tester.tap(close); callback(); await tester.pumpAndSettle();
     expect(find.byType(PageView), findsNothing); expect(find.byType(ResourceAttachmentThumbnail), findsOneWidget);
@@ -82,6 +90,7 @@ void main() {
   });
 
   testWidgets('retained PDF builder rejects original bytes after the gallery scope is retired',(tester) async {
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     const channel=MethodChannel('net.nfet.printing');
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel,(call) async => call.method=='printingInfo'?{'canRaster':false}:null);
     final document=pw.Document()..addPage(pw.Page(build:(_)=>pw.Text('Synthetic original PDF')));
@@ -103,5 +112,22 @@ void main() {
       tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel,null);
     }
   });
+
+  for(final resumeBeforeReply in [false,true]) {
+    testWidgets('pending open cannot cross background history resume-before-reply=$resumeBeforeReply',(tester) async {
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      final release=Completer<Uint8List>();final attachment=entry('a:0','合成資格',load:()=>release.future);
+      final gallery=ResourceAttachmentGallery(source:Object(),workerId:'w',companyId:'c',isCurrent:()=>true,entries:[attachment]);
+      await tester.pumpWidget(host(gallery,attachment));await tester.pump();
+      await tester.tap(find.byType(ResourceAttachmentThumbnail));
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      if(resumeBeforeReply){tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);}
+      release.complete(_png);await tester.pump();
+      expect(find.byType(PageView),findsNothing);expect(find.byType(InteractiveViewer),findsNothing);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);await tester.pumpAndSettle();
+      expect(find.byType(PageView),findsNothing);expect(find.byType(InteractiveViewer),findsNothing);expect(tester.takeException(),isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
 
 }

@@ -108,6 +108,7 @@ void verify(WidgetTester tester, String title, bool qualifications) {
   expect(gallery.indexOf(card.attachments.first),0);
 }
 Future<void> verifyLiveTitles(WidgetTester tester,String title,bool qualifications) async {
+  tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
   final card=find.byWidgetPredicate((widget)=>widget is ResourceRegistrationCard && widget.title==title).first;
   final thumb=find.descendant(of:card,matching:find.byType(ResourceAttachmentThumbnail)).first;
   for(var frame=0;frame<30 && tester.widgetList<RawImage>(find.descendant(of:thumb,matching:find.byType(RawImage))).any((image)=>image.image==null);frame++) {
@@ -126,7 +127,7 @@ Future<void> verifyLiveTitles(WidgetTester tester,String title,bool qualificatio
 }
 void main() {
   HttpOverrides? previous;
-  setUp(() { previous=HttpOverrides.current;HttpOverrides.global=_Pictures();_changes=StreamController<AuthState>.broadcast(); });
+  setUp(() { TestWidgetsFlutterBinding.ensureInitialized().handleAppLifecycleStateChanged(AppLifecycleState.resumed);previous=HttpOverrides.current;HttpOverrides.global=_Pictures();_changes=StreamController<AuthState>.broadcast(); });
   tearDown(() async { HttpOverrides.global=previous;await _changes.close(); });
   testWidgets('own qualifications wire full saved same-worker names and ordinal identities beyond search results',(tester) async {
     await tester.pumpWidget(MaterialApp(home:OwnQualificationRegistrationPage(repository:_Qualifications()))); await tester.pumpAndSettle();

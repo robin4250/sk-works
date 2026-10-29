@@ -8,8 +8,10 @@ import 'package:sk_works/features/shared/resource_registration_card.dart';
 final _image = base64Decode('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGOQi1rwH4QZYAwARXwIXR74X/8AAAAASUVORK5CYII=');
 
 void main() {
+  setUp(() => TestWidgetsFlutterBinding.ensureInitialized().handleAppLifecycleStateChanged(AppLifecycleState.resumed));
   for (final editor in [true, false]) {
     testWidgets('${editor ? 'qualification editor' : 'saved qualification card'} preview retires with its private navigator', (tester) async {
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       tester.view.physicalSize = const Size(428, 900); tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize); addTearDown(tester.view.resetDevicePixelRatio);
       final scope = ValueNotifier(true); addTearDown(scope.dispose);
@@ -45,6 +47,7 @@ void main() {
 
   for (final size in [const Size(320, 568), const Size(428, 320)]) {
     testWidgets('qualification zoom preview has a visible owned close action at $size with keyboard and safe areas', (tester) async {
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       tester.view.physicalSize = const Size(428, 900); tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize); addTearDown(tester.view.resetDevicePixelRatio); addTearDown(tester.view.resetViewInsets);
       var editorReturns = 0;
