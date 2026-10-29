@@ -1,0 +1,26 @@
+name: Payroll confirmed receipt month compatibility
+on:
+  pull_request:
+    paths:
+      - 'lib/features/payroll/payroll_unit_conditions_repository.dart'
+      - 'test/payroll_receipt_month_contract_test.dart'
+      - '.github/workflows/payroll-receipt-month-contract.yml'
+permissions:
+  contents: read
+jobs:
+  receipt-month:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: git diff --exit-code -- pubspec.lock
+      - run: dart analyze lib/features/payroll/payroll_unit_conditions_repository.dart test/payroll_receipt_month_contract_test.dart
+      - run: flutter test test/payroll_receipt_month_contract_test.dart test/payroll_unit_conditions_repository_test.dart --reporter expanded

@@ -1,7 +1,7 @@
 name: Payroll fixed footer and common allowance UI
 on:
   push:
-    branches: [test/payroll-fixed-footer-20261017]
+    branches: [test/payroll-fixed-footer-20261017, review/payroll-single-footer-20261029]
   pull_request:
     paths:
       - 'lib/features/payroll/**'

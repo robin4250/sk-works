@@ -56,6 +56,10 @@ class _EditorState extends State<TradeDocumentAttachmentEditorPage> {
         _payload.putIfAbsent('payment_conditions',()=> '工事完了確認後、乙の指定口座に振り込む。');
         _payload.putIfAbsent('notes',()=> '');
       }
+      // A fresh invoice appendix must not inherit its parent invoice date.
+      if (saved is! Map && widget.subjectKind == 'invoice') {
+        _payload.remove('issue_date');
+      }
       // Initial defaults remain local before the explicit save.
       _payload = r18InitialValues(payload: _payload,
         sourceDefaults: Map<String, dynamic>.from(data['defaults'] as Map),

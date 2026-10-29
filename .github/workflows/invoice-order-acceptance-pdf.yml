@@ -44,7 +44,8 @@ jobs:
                   page = doc[-1]
                   text = ''.join(page.get_text().split())
                   order_date = '2026-09-15' if 'automatic' in path.stem else '2026年10月15日'
-                  assert '注文請書' in text and order_date in text and '2026年10月16日' in text, (path, text)
+                  acceptance_date = '2026年9月30日' if 'automatic' in path.stem else '2026年10月16日'
+                  assert '注文請書' in text and order_date in text and acceptance_date in text, (path, text)
                   assert '株式会社発注' in text and '株式会社受注' in text
                   assert '9876543210987' in text and '御中' in text
                   assert '2026-10月分' in text and '代表者名' in text

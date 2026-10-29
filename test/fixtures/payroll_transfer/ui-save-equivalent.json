@@ -1,0 +1,27 @@
+{
+  "pay_type": "daily",
+  "day_daily": 10000,
+  "day_overtime": 1000,
+  "income_tax_monthly": 10000,
+  "allowance_name_1": "役職手当",
+  "allowance_1": 550,
+  "allowance_name_2": "勤務手当",
+  "allowance_2": 250,
+  "rate_formula": {
+    "paid_leave_daily_yen": 9000,
+    "position_transfer": {
+      "enabled": true,
+      "items": [
+        {
+          "name": "役職手当",
+          "amount_yen": 11000
+        },
+        {
+          "name": "勤務手当",
+          "amount_yen": 5000
+        }
+      ]
+    }
+  },
+  "custom_deductions": []
+}
