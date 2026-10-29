@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Refuse stale/dirty/wrong-toolchain source before sourcing local settings or
+# generating any iOS project. No environment variable can attest this check.
+release_source_sha="$(bash tool/ios_device_source_guard.sh)"
+
 if [[ -f "tool/local_supabase_env.sh" ]]; then
   source "tool/local_supabase_env.sh"
 fi
@@ -168,6 +172,9 @@ echo "✓ 元々のSKOへ上書きするBundle IDを確認: $BUILT_BUNDLE_ID"
 
 echo
 echo "Release版SKOをiPhoneへインストールします..."
+# Recheck the actual source, branch and freshly fetched main after the build.
+# This is not binary provenance or a lock against concurrent source writers.
+bash tool/ios_device_source_guard.sh "$release_source_sha" >/dev/null
 xcrun devicectl device install app \
   --device "$DEVICE_ID" \
   "$APP_PATH"

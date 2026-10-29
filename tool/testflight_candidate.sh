@@ -33,8 +33,8 @@ if [[ "$branch" != "main" ]]; then
   echo "✗ TestFlight候補はmainから作成します。現在: ${branch:-detached}"
   exit 1
 fi
-git fetch --quiet origin main
-if [[ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]]; then
+git fetch --quiet --no-tags origin refs/heads/main
+if [[ "$(git rev-parse HEAD)" != "$(git rev-parse FETCH_HEAD)" ]]; then
   echo "✗ ローカルHEADがorigin/mainと一致していません。"
   exit 1
 fi
