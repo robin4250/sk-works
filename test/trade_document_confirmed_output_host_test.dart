@@ -152,9 +152,12 @@ void main(){
             final parentRejected=expectLater(parent(PdfPageFormat.a4),throwsStateError);
             final childRejected=expectLater(child(PdfPageFormat.a4),throwsStateError);
             await parentRejected;await childRejected;
-            await f.wire.logoutStarted.future.timeout(const Duration(seconds:5));
+            // logoutStarted belongs to the Widget fixture's FakeAsync zone;
+            // its synchronous marker is checked after pumping, never awaited
+            // from the SDK's real zone.
           });
           debugPrint('confirmed-host-stage $invalidation intent assertions passed');
+          await tester.pump();expect(f.wire.logoutStarted.isCompleted,isTrue);
         }else if(invalidation=='paused'){tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);}
         else{
           probeArmed=true;f.wire.sid='20000000-0000-4000-8000-000000000099';await tester.runAsync(f.login);
