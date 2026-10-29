@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
 import '../auth/secondary_reset_session_guard.dart';
+import '../auth/app_auth_mutation_gateway.dart';
 
 class OwnBankAccountInput {
   OwnBankAccountInput({required String bankName, required String branchName,
@@ -40,8 +41,14 @@ class OwnBankAccountRepository extends ChangeNotifier implements OwnBankAccountG
     if (!_uuid(workerId) || !_uuid(companyId)) throw StateError('本人と会社の情報を確認してください。');
     _session = _client.auth.currentSession;
     _actor = _session?.user.id;
+    _owner = AppAuthMutationGateway.forClient(_client);
+    _admission = _owner.externalFlowAdmission();
     _guard = SecondaryResetSessionGuard(currentSession: () => _client.auth.currentSession,
       changes: _client.auth.onAuthStateChange, onInvalidated: _invalidate);
+    // Do not retain a bank listener if session validation above throws.
+    _quarantineEvents = _owner.logoutQuarantine.changes.listen((state) {
+      if (state != AppLogoutQuarantineState.clear) _invalidate();
+    }, onError: (Object _) => _invalidate(), onDone: _invalidate);
     var first = true;
     _events = _client.auth.onAuthStateChange.listen((event) {
       final replay = first && identical(event.session, _session);
@@ -57,18 +64,30 @@ class OwnBankAccountRepository extends ChangeNotifier implements OwnBankAccountG
   final String workerId, companyId;
   late final Session? _session;
   late final String? _actor;
+  late final AppAuthMutationGateway _owner;
+  late final Future<int?> _admission;
+  int? _epoch;
+  StreamSubscription<AppLogoutQuarantineState>? _quarantineEvents;
   late final SecondaryResetSessionGuard _guard;
   StreamSubscription<AuthState>? _events;
   bool _invalidated = false, _closed = false, _writing = false;
   static bool _uuid(String v) => RegExp(r'^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$').hasMatch(v);
   static const _metadata = 'worker_id,company_id,updated_at';
   @override
-  bool get isCurrent => !_closed && !_invalidated && _guard.isCurrent && _session?.isExpired == false;
+  bool get isCurrent => !_closed && !_invalidated && _guard.isCurrent && _session?.isExpired == false &&
+    _epoch != null && _owner.isExternalFlowCurrent(_epoch!);
   void _invalidate() {
     if (_closed || _invalidated) return;
     _invalidated = true; notifyListeners();
   }
   Future<void> _check() async {
+    // Logout intent closes admission before SDK signOut or a persistence write
+    // completes. Never infer admission solely from a still-present SDK token.
+    final epoch = await _admission;
+    _epoch ??= epoch;
+    if (epoch == null || !_owner.isExternalFlowCurrent(epoch)) {
+      _invalidate(); throw StateError('ログイン状態が変わりました。画面を開き直してください。');
+    }
     await _guard.checkAfterQueuedEvents();
     if (!isCurrent) { _invalidate(); throw StateError('ログイン状態が変わりました。画面を開き直してください。'); }
   }
@@ -130,6 +149,6 @@ class OwnBankAccountRepository extends ChangeNotifier implements OwnBankAccountG
   @override
   Future<void> close() async {
     if (_closed) return;
-    _closed = true; await _events?.cancel(); await _guard.close(); super.dispose();
+    _closed = true; await _quarantineEvents?.cancel(); await _events?.cancel(); await _guard.close(); super.dispose();
   }
 }
