@@ -51,13 +51,15 @@ void main(){
   expect(find.textContaining('birth_date_contract_version'),findsNothing);
   await t.pumpWidget(const SizedBox.shrink());
  });
- for(final supported in [false,true])test('fresh server contract '+supported.toString()+' controls canonical birthday submission',()async{
+ for(final supported in [false,true]) { test('fresh server contract '+supported.toString()+' controls canonical birthday submission',()async{
   final w=fixture.Wire();await w.seed();addTearDown(w.client.dispose);
   Map<String,dynamic>? saved;
   w.respond=(r)async{
    if(r.url.path.endsWith('/company_members'))return fixture.Wire.json([{'company_id':company,'role':'admin'}]);
-   if(r.url.path.endsWith('/rpc/employee_personnel_view'))return fixture.Wire.json({'company_id':company,
-    'records':[{'id':worker,'active':true,if(supported)'birthDateContractVersion':1}]});
+   if(r.url.path.endsWith('/rpc/employee_personnel_view')) {
+    return fixture.Wire.json({'company_id':company,
+     'records':[{'id':worker,'active':true,if(supported)'birthDateContractVersion':1}]});
+   }
    if(r.url.path.endsWith('/rpc/save_worker_personnel_profile')){
     saved=jsonDecode(r.body) as Map<String,dynamic>;
     return fixture.Wire.json({'status':'pending','requires_approval':true});
@@ -70,7 +72,7 @@ void main(){
   else{final result=await future;expect(result['requires_approval'],true);
    expect((saved!['p_payload'] as Map)['birth_date'],'1980-02-29');
    expect(w.calls.last.headers['Authorization'],'Bearer ${w.client.auth.currentSession!.accessToken}');}
- });
+ }); }
  test('legacy omitted date does not add or clear birthday in canonical payload',()async{
   final w=fixture.Wire();addTearDown(w.client.dispose);Map? saved;
   w.respond=(r)async{saved=jsonDecode(r.body) as Map;return fixture.Wire.json({'status':'saved'});};
