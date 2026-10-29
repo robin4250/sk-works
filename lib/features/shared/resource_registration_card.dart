@@ -4,7 +4,6 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
-import 'package:pdf/pdf.dart';
 import 'pdf_pinch_pages.dart';
 import '../../international/language_controller.dart';
 
@@ -59,7 +58,7 @@ ResourceAttachment signedResourceAttachment({
 /// A fixed, already-authorized worker/company response, never a gallery query.
 class ResourceAttachmentGallery {
   ResourceAttachmentGallery({required this.source, required this.workerId,
-    required this.companyId, required this.isCurrent, this.changes, required Iterable<ResourceAttachment> entries})
+    required this.companyId, required this.isCurrent, this.changes, this.signal, required Iterable<ResourceAttachment> entries})
       : entries = List.unmodifiable(entries.where((entry) => entry.registered && entry.loadBytes != null)) {
     final keys = this.entries.map((entry) => entry.previewKey).toList();
     if (workerId.isEmpty || companyId.isEmpty || keys.any((key) => key == null || key.isEmpty) ||
@@ -68,6 +67,7 @@ class ResourceAttachmentGallery {
     }
   }
   final Stream<Object?>? changes;
+  final Listenable? signal;
   final Object source;
   final String workerId, companyId;
   final bool Function() isCurrent;
@@ -264,7 +264,7 @@ class _ResourceAttachmentThumbnailState extends State<ResourceAttachmentThumbnai
       late final DialogRoute<void> route;
       route = DialogRoute<void>(context: context, builder: (previewContext) =>
         _ResourceGalleryViewer(entries: entries, initialIndex: index, initialBytes: bytes,
-          defaultTitle: widget.recordTitle, isCurrent: current, changes: gallery?.changes, onClose: () {
+          defaultTitle: widget.recordTitle, isCurrent: current, changes: gallery?.changes, signal: gallery?.signal, onClose: () {
             if (closing || !route.isCurrent) { return; }
             closing = true; Navigator.of(previewContext).pop();
           }));
@@ -397,8 +397,9 @@ List<String> resourceQualificationMetadata(Map<String, dynamic> row) => [
 
 class _ResourceGalleryViewer extends StatefulWidget {
   const _ResourceGalleryViewer({required this.entries, required this.initialIndex,
-    required this.initialBytes, required this.isCurrent, required this.onClose, this.defaultTitle, this.changes});
+    required this.initialBytes, required this.isCurrent, required this.onClose, this.defaultTitle, this.changes, this.signal});
   final Stream<Object?>? changes;
+  final Listenable? signal;
   final List<ResourceAttachment> entries;
   final int initialIndex;
   final Uint8List initialBytes;
@@ -415,9 +416,11 @@ class _ResourceGalleryViewerState extends State<_ResourceGalleryViewer> with Wid
   bool get _current => mounted && _active && widget.isCurrent();
   @override void initState() {
     super.initState(); WidgetsBinding.instance.addObserver(this);
+    widget.signal?.addListener(_scopeChanged);
     _subscription = widget.changes?.listen((_) { if (!widget.isCurrent()) { _retire(); } },
       onError: (Object error) => _retire(), onDone: _retire);
   }
+  void _scopeChanged() { if (!widget.isCurrent()) { _retire(); } }
   void _retire() {
     if (!_active || !mounted) { return; }
     _active = false; setState(() {}); widget.onClose();
@@ -425,7 +428,7 @@ class _ResourceGalleryViewerState extends State<_ResourceGalleryViewer> with Wid
   @override void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed) { _retire(); }
   }
-  @override void dispose() { _active = false; final subscription = _subscription; _subscription = null; if (subscription != null) { unawaited(subscription.cancel()); } WidgetsBinding.instance.removeObserver(this); _controller.dispose(); super.dispose(); }
+  @override void dispose() { _active = false; widget.signal?.removeListener(_scopeChanged); final subscription = _subscription; _subscription = null; if (subscription != null) { unawaited(subscription.cancel()); } WidgetsBinding.instance.removeObserver(this); _controller.dispose(); super.dispose(); }
   @override Widget build(BuildContext context) {
     final entry = widget.entries[_index];
     return Dialog.fullscreen(child: Scaffold(resizeToAvoidBottomInset: false,

@@ -5,6 +5,7 @@ import '../auth/app_auth_mutation_gateway.dart';
 
 class QualificationCloudRepository {
   QualificationCloudRepository._(this._client);
+  QualificationCloudRepository.forTesting(this._client);
 
   final SupabaseClient _client;
 

@@ -46,6 +46,7 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
   List<Map<String, dynamic>> _exemptions = [];
   bool Function()? _galleryLease;
   int _galleryGeneration = 0;
+  final _galleryChanges = ValueNotifier(0);
   bool _loading = true;
   bool _canManageRequirements = false;
   bool _canManageStatuses = false;
@@ -65,9 +66,10 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
 
   Future<void> _load() async {
     final galleryGeneration = ++_galleryGeneration;
+    _galleryChanges.value++;
     final repository = _repository;
     if (repository == null) {
-      if (!mounted) return;
+      if (!mounted || galleryGeneration != _galleryGeneration) return;
       setState(() {
         _loading = false;
         _error = 'Supabase接続が利用できません。';
@@ -89,7 +91,7 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
       }
       _loadedActorId = actor;
       final data = values[0] as Map<String, List<Map<String, dynamic>>>;
-      if (!mounted) return;
+      if (!mounted || galleryGeneration != _galleryGeneration) return;
       final workers = data['workers'] ?? const <Map<String, dynamic>>[];
       setState(() {
         _galleryLease = galleryGeneration == _galleryGeneration ? galleryLease : null;
@@ -112,7 +114,7 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
         _error = null;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || galleryGeneration != _galleryGeneration) return;
       setState(() {
         _loading = false;
         _error = error.toString();
@@ -147,7 +149,7 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
           previewKey: 'document:$id:$i', recordTitle: requirement['name']?.toString() ?? '書類'));
       }
     }
-    return ResourceAttachmentGallery(source: rows, workerId: workerId, companyId: company, isCurrent: current, changes: repository.attachmentAuthChanges, entries: entries);
+    return ResourceAttachmentGallery(source: rows, workerId: workerId, companyId: company, isCurrent: current, signal: _galleryChanges, changes: repository.attachmentAuthChanges, entries: entries);
   }
 
   @override
@@ -1286,6 +1288,7 @@ class _DocumentExemptionReasonDialogState extends State<_DocumentExemptionReason
   final _reason = TextEditingController();
   @override
   void dispose() {
+    _galleryChanges.dispose();
     _reason.dispose();
     super.dispose();
   }

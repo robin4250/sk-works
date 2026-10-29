@@ -47,6 +47,7 @@ class _OwnQualificationRegistrationPageState
   String _query = '';
   bool Function()? _galleryLease;
   int _galleryGeneration = 0;
+  final _galleryChanges = ValueNotifier(0);
   bool _loading = true;
   bool _registrationDialogOpen = false;
   String? _error;
@@ -59,12 +60,14 @@ class _OwnQualificationRegistrationPageState
 
   @override
   void dispose() {
+    _galleryChanges.dispose();
     _searchController.dispose();
     super.dispose();
   }
 
   Future<void> _load() async {
     final galleryGeneration = ++_galleryGeneration;
+    _galleryChanges.value++;
     final generation = ++_loadGeneration;
     final repository = _repository;
     if (repository == null) {
@@ -557,7 +560,7 @@ class _OwnQualificationRegistrationPageState
           signedUrl: signed, previewKey: 'qualification:$id:$i', recordTitle: titles[row['qualification_master_id']] ?? '資格'));
       }
     }
-    return ResourceAttachmentGallery(source: rows, workerId: worker, companyId: company, isCurrent: current, changes: repository.attachmentAuthChanges, entries: entries);
+    return ResourceAttachmentGallery(source: rows, workerId: worker, companyId: company, isCurrent: current, signal: _galleryChanges, changes: repository.attachmentAuthChanges, entries: entries);
   }
 
   Future<void> _previewPhotos(Map<String, dynamic> row, String title) async {

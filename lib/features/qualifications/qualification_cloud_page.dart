@@ -33,6 +33,7 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
   List<Map<String, dynamic>> _qualifications = [];
   bool Function()? _galleryLease;
   int _galleryGeneration = 0;
+  final _galleryChanges = ValueNotifier(0);
   bool _loading = true;
   bool _registrationDialogOpen = false;
   bool _canManageMaster = false;
@@ -55,6 +56,7 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
 
   @override
   void dispose() {
+    _galleryChanges.dispose();
     _workerQueryController.dispose();
     _qualificationQueryController.dispose();
     super.dispose();
@@ -62,9 +64,10 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
 
   Future<void> _load() async {
     final galleryGeneration = ++_galleryGeneration;
+    _galleryChanges.value++;
     final repository = _repository;
     if (repository == null) {
-      if (!mounted) return;
+      if (!mounted || galleryGeneration != _galleryGeneration) return;
       setState(() {
         _loading = false;
         _error = 'Supabase接続が利用できません。';
@@ -83,7 +86,7 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
         _certificateRepository?.canManageCertificates() ?? Future.value(false),
       ]);
       final data = values[0] as Map<String, dynamic>;
-      if (!mounted) return;
+      if (!mounted || galleryGeneration != _galleryGeneration) return;
       setState(() {
         _galleryLease = galleryGeneration == _galleryGeneration ? galleryLease : null;
         _masters = List<Map<String, dynamic>>.from(data['masters'] as List);
@@ -96,7 +99,7 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
         _error = null;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || galleryGeneration != _galleryGeneration) return;
       setState(() {
         _loading = false;
         _error = error.toString();
@@ -131,7 +134,7 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
           signedUrl: signed, previewKey: 'qualification:$id:$i', recordTitle: titles[row['qualification_master_id']] ?? '資格'));
       }
     }
-    return ResourceAttachmentGallery(source: rows, workerId: workerId, companyId: company, isCurrent: current, changes: _repository!.attachmentAuthChanges, entries: entries);
+    return ResourceAttachmentGallery(source: rows, workerId: workerId, companyId: company, isCurrent: current, signal: _galleryChanges, changes: _repository!.attachmentAuthChanges, entries: entries);
   }
 
   @override

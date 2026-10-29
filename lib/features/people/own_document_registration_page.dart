@@ -166,6 +166,7 @@ class _OwnDocumentRegistrationPageState
   Map<String, dynamic>? _worker;
   bool Function()? _galleryLease;
   int _galleryGeneration = 0;
+  final _galleryChanges = ValueNotifier(0);
   bool _loading = true;
   bool _saving = false;
   String? _error;
@@ -185,6 +186,7 @@ class _OwnDocumentRegistrationPageState
 
   Future<void> _load() async {
     final generation = ++_galleryGeneration;
+    _galleryChanges.value++;
     final repository = _repository;
     if (repository == null) {
       setState(() {
@@ -203,7 +205,7 @@ class _OwnDocumentRegistrationPageState
         try { galleryLease = await repository.captureAttachmentReadScope(); } catch (_) { galleryLease = null; }
       }
       final data = await repository.loadAll();
-      if (!mounted) return;
+      if (!mounted || generation != _galleryGeneration) return;
       final workers = data['workers'] ?? const <Map<String, dynamic>>[];
       final banks = (data['requirements'] ?? const <Map<String,dynamic>>[])
         .where((r) => r['name']=='銀行口座情報' && r['is_active']!=false).toList();
@@ -221,7 +223,7 @@ class _OwnDocumentRegistrationPageState
           if (_bankWorkerId==workerId && _bankCompanyId==companyId) bankState=await _bankGateway?.load();
         } catch (_) { /* Unavailable evidence remains unknown, never registered. */ }
       }
-      if (!mounted) return;
+      if (!mounted || generation != _galleryGeneration) return;
       if (_bankGateway?.isCurrent!=true) bankState=null;
       setState(() {
         _galleryLease = generation == _galleryGeneration ? galleryLease : null;
@@ -235,7 +237,7 @@ class _OwnDocumentRegistrationPageState
         _loading = false;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || generation != _galleryGeneration) return;
       setState(() {
         _loading = false;
         _error = error.toString();
@@ -249,6 +251,7 @@ class _OwnDocumentRegistrationPageState
 
   @override
   void dispose() {
+    _galleryChanges.dispose();
     _bankGateway?.removeListener(_bankChanged);
     if (widget.bankGateway==null && _bankGateway!=null) unawaited(_bankGateway!.close());
     super.dispose();
@@ -635,7 +638,7 @@ class _OwnDocumentRegistrationPageState
     if (gateway is! OwnDocumentGalleryGateway || lease == null || !lease() || worker == null || company == null || company.isEmpty) { return null; }
     bool current() => mounted && !_loading && generation == _galleryGeneration && lease() && identical(rows, _statuses) && identical(requirements, _requirements) &&
       _worker?['id'] == worker && _worker?['company_id'] == company &&
-      (gateway is! OwnDocumentChangeGateway || gateway.isCurrentActor);
+      (gateway is! OwnDocumentChangeGateway || (gateway as OwnDocumentChangeGateway).isCurrentActor);
     if (requirements.any((row) => row['company_id'] != company) || rows.any((row) => row['worker_id'] == worker && row['company_id'] != company)) { return null; }
     final entries = <ResourceAttachment>[];
     for (final requirement in requirements.where((row) => row['company_id'] == company && row['is_active'] != false)) {
@@ -653,7 +656,7 @@ class _OwnDocumentRegistrationPageState
           previewKey: 'document:$id:$i', recordTitle: requirement['name']?.toString() ?? '書類'));
       }
     }
-    return ResourceAttachmentGallery(source: rows, workerId: worker, companyId: company, isCurrent: current, changes: gateway.attachmentAuthChanges, entries: entries);
+    return ResourceAttachmentGallery(source: rows, workerId: worker, companyId: company, isCurrent: current, signal: _galleryChanges, changes: gateway.attachmentAuthChanges, entries: entries);
   }
 
   void _showRegistrationHelp() {
