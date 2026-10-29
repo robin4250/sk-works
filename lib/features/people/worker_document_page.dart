@@ -64,6 +64,9 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
     _load();
   }
 
+  @override
+  void dispose() { _galleryChanges.dispose(); super.dispose(); }
+
   Future<void> _load() async {
     final galleryGeneration = ++_galleryGeneration;
     _galleryChanges.value++;
@@ -1288,7 +1291,6 @@ class _DocumentExemptionReasonDialogState extends State<_DocumentExemptionReason
   final _reason = TextEditingController();
   @override
   void dispose() {
-    _galleryChanges.dispose();
     _reason.dispose();
     super.dispose();
   }
