@@ -12,7 +12,7 @@ const _id = '20000000-0000-0000-0000-000000000001';
 Map<String, dynamic> _user() => {'id': _id, 'aud': 'authenticated', 'app_metadata': <String, dynamic>{}, 'user_metadata': <String, dynamic>{}, 'created_at': '2026-10-16T00:00:00Z'};
 String _token() {
   String part(Object value) => base64Url.encode(utf8.encode(jsonEncode(value))).replaceAll('=', '');
-  return '${part({'alg': 'HS256'})}.${part({'sub': _id, 'role': 'authenticated', 'exp': DateTime.now().millisecondsSinceEpoch ~/ 1000 + 3600})}.synthetic';
+  return '${part({'alg': 'HS256'})}.${part({'sub': _id, 'session_id':'20000000-0000-0000-0000-000000000099', 'role': 'authenticated', 'exp': DateTime.now().millisecondsSinceEpoch ~/ 1000 + 3600})}.synthetic';
 }
 class _Wire {
   _Wire() {

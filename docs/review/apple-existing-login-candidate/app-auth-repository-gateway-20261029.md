@@ -1,0 +1,15 @@
+# Existing app repository mutation gateway
+
+The existing global client is shared by onboarding, legacy sign-in, and profile repositories. Each previously dispatched Auth writes independently. These existing paths now use one typed gateway per client, rejecting overlapping interactive writes rather than queueing password/OTP/profile context across session changes. A logout request invalidates the pending caller synchronously, rejects further writes, waits for the already-dispatched SDK operation to settle, and then invokes the existing SDK default logout (local in pinned GoTrue 2.27.2). Repeated pending logout requests share one completion. No stale-token rollback occurs.
+
+The gateway drains only the SDK cached baseline matching the exact captured session object before dispatch. It checks current UID/SID and observed history after actual SDK completion. Expected own signedIn/userUpdated events require exact returned SDK session object; a fresh external signedIn is interference even if UID/SID matches. Same-session token refresh remains compatible. Legacy membership reads explicitly bind their bearer and reject a changed UID/SID after the response. These are caller-result acceptance checks, not atomic SDK compare-and-swap.
+
+Existing phone/password, email/password, administrator signup/SMS verification, initial password update, company-deferred metadata, profile phone update/verification, and sign-out retain their typed SDK parameters. Profile phone verification may rotate SID for the same account. SMS resend calls do not mutate the session and retain their existing paths. Two old test JWT fixtures gain session_id only; authentication assertions remain intact.
+
+## Remaining boundary
+
+The existing client remains publicly accessible. Google OAuth launch and automatic SDK callback exchange, recovery, automatic refresh, native deep-link handling and SDK persistence remain outside the gateway. Silent raw SDK ABA writes cannot be proved absent. An in-flight SDK login can still write/emit signedIn before the queued logout removes it; the gateway suppresses the pending repository caller's success, not every transient SDK observer exposure. An indefinitely stalled SDK operation also delays logout; there is no timeout that silently releases ownership while the SDK may still write. No credential retries or compensating rollback are introduced.
+
+No durable persistence acknowledgment or global mutation ownership is claimed. The Apple isolated coordinator remains OFF and unconnected; activation requires a single owner from client creation and explicit storage/callback ownership review. No provider/DB/key/production deployment, individual document exemption activation or device delivery is performed.
+
+Validation: dedicated scoped CI pending. Actual pinned Supabase SDK over controlled HTTP transport tests delayed login/logout, cross-repository overlap, pre-dispatch cancellation, cached AuthState admission, observed ABA/fresh-signIn interference, compatible refresh, signup/OTP/profile flows and membership response binding. This does not exercise real GoTrue/provider/device/storage delivery.

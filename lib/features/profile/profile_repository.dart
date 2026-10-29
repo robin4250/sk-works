@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
+import '../auth/app_auth_mutation_gateway.dart';
 
 class ProfileData {
   const ProfileData({
@@ -30,6 +31,8 @@ class ProfileData {
 
 class ProfileRepository {
   ProfileRepository._(this._client);
+
+  ProfileRepository.forClient(this._client);
 
   final SupabaseClient _client;
   static const _bucket = 'profile-photos';
@@ -150,7 +153,7 @@ class ProfileRepository {
   }
   Future<String> requestPhoneChange(String rawPhone) async {
     final normalized = _normalizeJapanesePhone(rawPhone);
-    await _client.auth.updateUser(
+    await AppAuthMutationGateway.forClient(_client).updateUser(
       UserAttributes(phone: normalized),
     );
     return normalized;
@@ -167,8 +170,7 @@ class ProfileRepository {
     required String phone,
     required String code,
   }) async {
-    await _client.auth.verifyOTP(
-      type: OtpType.phoneChange,
+    await AppAuthMutationGateway.forClient(_client).verifyPhoneChange(
       phone: _normalizeJapanesePhone(phone),
       token: code.trim(),
     );
