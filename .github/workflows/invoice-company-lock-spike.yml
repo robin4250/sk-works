@@ -1,0 +1,32 @@
+name: Invoice company lock isolation spike
+on:
+  pull_request:
+    paths:
+      - 'docs/review/invoice-company-lock-spike/**'
+      - '.github/workflows/invoice-company-lock-spike.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  postgres-concurrency:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: sko_lock_fixture
+          POSTGRES_PASSWORD: fixture-only-password
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-save --ignore-scripts pg@8.16.3
+      - run: node docs/review/invoice-company-lock-spike/verify.mjs
+        env:
+          FIXTURE_URL: postgresql://postgres:fixture-only-password@127.0.0.1:5432/sko_lock_fixture
