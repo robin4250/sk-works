@@ -1,4 +1,5 @@
 import 'trade_document_attachment.dart';
+import '../../domain/partner_company_bank_account.dart';
 
 /// Builds only an ephemeral PDF payload; never a financial/source record.
 TradeDocumentAttachment standaloneTradeDocument({required Map<String, dynamic> context,
@@ -45,6 +46,13 @@ TradeDocumentAttachment standaloneTradeDocument({required Map<String, dynamic> c
     payload[key] = value.replaceAll('{order_date}', order);
   }
   if (!acceptance) {
+    if (context['counterparty_bank'] != null) {
+      // Frozen repository context only; editable fields cannot replace a bank.
+      final company = context['company_id'], partner = context['partner_company_id'];
+      if (company is! String || partner is! String) throw StateError('振込先の登録会社を確認できません。');
+      payload['counterparty_bank'] = PartnerCompanyBankAccount.fromJson(
+        context['counterparty_bank'], companyId: company, partnerCompanyId: partner).toJson();
+    }
     payload['period_start'] = date('period_start'); payload['period_end'] = date('period_end');
     if ((payload['period_start'] as String).compareTo(payload['period_end'] as String) > 0) throw StateError('工期を確認してください。');
     for (final key in ['total_amount_yen', 'tax_amount_yen']) {

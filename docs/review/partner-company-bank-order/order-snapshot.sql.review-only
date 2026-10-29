@@ -1,0 +1,71 @@
+-- REVIEW ONLY. Apply only to a disposable fixture until separately reviewed.
+-- The original function bodies are kept intact; canonical ACLs stay unchanged.
+begin;
+set local lock_timeout='5s';
+do $guard$
+declare src record; saver record;
+begin
+ select * into src from pg_proc where oid=to_regprocedure('private.trade_document_source(text,uuid,text)');
+ select * into saver from pg_proc where oid=to_regprocedure('private.save_trade_document_attachment(text,uuid,text,integer,jsonb)');
+ if src.oid is null or saver.oid is null or md5(src.prosrc)<>'ebcc70935938482054943560390038b2'
+  or md5(saver.prosrc)<>'82fa37936aea1e0199e1b359e1379d65'
+  or not src.prosecdef or not saver.prosecdef or src.provolatile<>'v' or saver.provolatile<>'v'
+  or src.proconfig is distinct from array['search_path=""'] or saver.proconfig is distinct from array['search_path=""']
+  or pg_get_userbyid(src.proowner)<>'postgres' or pg_get_userbyid(saver.proowner)<>'postgres'
+  or src.proacl::text is distinct from '{postgres=X/postgres}'
+  or saver.proacl::text is distinct from '{postgres=X/postgres,authenticated=X/postgres}'
+  or to_regprocedure('private.trade_document_source_before_partner_bank(text,uuid,text)') is not null
+  or to_regprocedure('private.save_trade_document_before_partner_bank(text,uuid,text,integer,jsonb)') is not null then
+  raise exception 'Original trade document definitions/attributes changed' using errcode='55000';end if;
+end $guard$;
+alter function private.trade_document_source(text,uuid,text) rename to trade_document_source_before_partner_bank;
+alter function private.save_trade_document_attachment(text,uuid,text,integer,jsonb) rename to save_trade_document_before_partner_bank;
+-- The original save delegate is owner-only so direct calls cannot bypass the
+-- authoritative bank-snapshot wrapper. Canonical authenticated ACL is restored below.
+revoke all on function private.save_trade_document_before_partner_bank(text,uuid,text,integer,jsonb) from authenticated;
+
+create function private.trade_document_source(p_kind text,p_subject uuid,p_source_revision text) returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare source jsonb; cid uuid; partner uuid; bank jsonb;
+begin
+ source:=private.trade_document_source_before_partner_bank(p_kind,p_subject,p_source_revision);
+ if p_kind<>'payment_certificate' or source->>'source_locked'<>'false'
+  or not coalesce((select enabled from private.partner_company_bank_rollout where singleton),false)
+  or exists(select 1 from private.trade_document_attachments where subject_kind=p_kind and subject_id=p_subject) then return source;end if;
+ cid:=(source->>'company_id')::uuid;
+ select partner_company_id into partner from public.payment_certificates where id=p_subject and company_id=cid;
+ bank:=private.partner_company_bank_snapshot(cid,partner);
+ if bank is not null then source:=jsonb_set(source,'{defaults,counterparty_bank}',bank,true);end if;
+ return source;
+end $$;
+revoke all on function private.trade_document_source(text,uuid,text) from public,anon,authenticated,service_role;
+
+create function private.save_trade_document_attachment(p_kind text,p_subject uuid,p_source_revision text,p_expected_version integer,p_payload jsonb) returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare source jsonb; saved private.trade_document_attachments; bank jsonb;
+begin
+ if p_kind<>'payment_certificate' or not coalesce((select enabled from private.partner_company_bank_rollout where singleton),false) then
+  return private.save_trade_document_before_partner_bank(p_kind,p_subject,p_source_revision,p_expected_version,p_payload);end if;
+ -- Delegate authorization/source revision before reading any saved private row.
+ -- Same advisory lock as the original first-save/CAS boundary.
+ perform pg_advisory_xact_lock(hashtextextended('trade-appendix:'||p_kind||':'||p_subject::text,0));
+ source:=private.trade_document_source(p_kind,p_subject,p_source_revision);
+ select * into saved from private.trade_document_attachments where subject_kind=p_kind and subject_id=p_subject;
+ if found then bank:=saved.payload->'counterparty_bank';
+ elsif source->>'source_locked'='false' then
+  bank:=source->'defaults'->'counterparty_bank';
+  -- First save must match the authority snapshot actually shown to the user.
+  -- A newer master (including absence -> first registration) requires reload;
+  -- never silently replace a preview's account or version during save.
+  if nullif(p_payload->'counterparty_bank','null'::jsonb) is distinct from nullif(bank,'null'::jsonb) then
+   raise exception 'Supplier bank snapshot changed; reload the order' using errcode='40001';end if;
+ end if;
+ -- Arbitrary client bank values cannot be signed into a saved order. Existing
+ -- saved snapshots stay exactly their own version, even after master changes.
+ p_payload:=p_payload-'counterparty_bank';
+ if bank is not null and jsonb_typeof(bank)<>'null' then p_payload:=p_payload||jsonb_build_object('counterparty_bank',bank);end if;
+ return private.save_trade_document_before_partner_bank(p_kind,p_subject,p_source_revision,p_expected_version,p_payload);
+end $$;
+revoke all on function private.save_trade_document_attachment(text,uuid,text,integer,jsonb) from public,anon,service_role;
+grant execute on function private.save_trade_document_attachment(text,uuid,text,integer,jsonb) to authenticated;
+commit;
