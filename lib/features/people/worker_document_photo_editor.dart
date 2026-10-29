@@ -167,27 +167,35 @@ class _PhotoEditorState extends State<_PhotoEditor> {
       }
       return;
     }
+    var closing = false;
     showDialog<void>(
       context: context,
-      builder: (context) => Dialog(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Flexible(
-              child: InteractiveViewer(child: _image(photo, height: 500)),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('閉じる'),
-            ),
-          ],
-        ),
-      ),
+      // Follow the editor's navigator, including a private qualification scope.
+      useRootNavigator: false,
+      builder: (previewContext) {
+        final route = ModalRoute.of(previewContext);
+        return Dialog.fullscreen(child: Scaffold(
+          resizeToAvoidBottomInset: false,
+          appBar: AppBar(title: const Text('写真のプレビュー'), leading: IconButton(
+            tooltip: '閉じる', icon: const Icon(Icons.close), onPressed: () {
+              if (closing || route?.isCurrent != true) { return; }
+              closing = true;
+              Navigator.of(previewContext).pop();
+            })),
+          body: SafeArea(top: false, child: Center(child: InteractiveViewer(
+            child: _image(photo, height: 500)))),
+        ));
+      },
     );
   }
 
   @override
   Widget build(BuildContext context) => AlertDialog(
+    // A returning image preview may leave very little room above a keyboard.
+    // Keep title/content scrollable and leave the existing actions reachable.
+    scrollable: true,
+    insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+    actionsPadding: const EdgeInsets.symmetric(horizontal: 8),
     title: Text('登録写真 ${_photos.length}枚'),
     content: SizedBox(
       width: 420,
