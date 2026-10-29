@@ -101,13 +101,19 @@ void main(){
         debugPrint('confirmed-host-stage $invalidation native ended');
         Future<void>? logout;
         if(invalidation=='logout intent'){
-          f.wire.holdLogout=Completer<void>();logout=AppAuthMutationGateway.forClient(f.client).signOut();
-          expect(f.wire.logoutStarted.isCompleted,isFalse);expect(f.client.auth.currentSession?.accessToken,f.wire.token);
-          // Check intent synchronously as well. No queued-notifier assumption
-          // is made: this gateway's quarantine notification is synchronous.
-          final parentRejected=expectLater(parent(PdfPageFormat.a4),throwsStateError);
-          final childRejected=expectLater(child(PdfPageFormat.a4),throwsStateError);
-          await parentRejected;await childRejected;debugPrint('confirmed-host-stage $invalidation intent assertions passed');
+          // Keep the actual SDK mutation, HTTP gate and completion in the
+          // real zone. Awaiting its FakeAsync-owned completion inside runAsync
+          // would strand the SDK continuation after releasing the HTTP gate.
+          await tester.runAsync(()async{
+            f.wire.holdLogout=Completer<void>();logout=AppAuthMutationGateway.forClient(f.client).signOut();
+            expect(f.wire.logoutStarted.isCompleted,isFalse);expect(f.client.auth.currentSession?.accessToken,f.wire.token);
+            // Check intent before awaiting SDK dispatch. Quarantine is sync.
+            final parentRejected=expectLater(parent(PdfPageFormat.a4),throwsStateError);
+            final childRejected=expectLater(child(PdfPageFormat.a4),throwsStateError);
+            await parentRejected;await childRejected;
+            await f.wire.logoutStarted.future.timeout(const Duration(seconds:5));
+          });
+          debugPrint('confirmed-host-stage $invalidation intent assertions passed');
         }else if(invalidation=='paused'){tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);}
         else{
           probeArmed=true;f.wire.sid='20000000-0000-4000-8000-000000000099';await tester.runAsync(f.login);
@@ -120,7 +126,7 @@ void main(){
         expect(find.byType(PdfPreview,skipOffstage:false),findsNothing);
         await expectLater(parent(PdfPageFormat.a4),throwsStateError);await expectLater(child(PdfPageFormat.a4),throwsStateError);
         await expectLater(printing.callback!(PdfPageFormat.a4),throwsStateError);
-        final pendingLogout=logout;if(pendingLogout!=null){debugPrint('confirmed-host-stage $invalidation logout release');f.wire.holdLogout!.complete();await tester.pump();await tester.runAsync(()=>pendingLogout);debugPrint('confirmed-host-stage $invalidation logout completed');}
+        final pendingLogout=logout;if(pendingLogout!=null){debugPrint('confirmed-host-stage $invalidation logout release');await tester.runAsync(()async{f.wire.holdLogout!.complete();await pendingLogout.timeout(const Duration(seconds:5));});await tester.pump();debugPrint('confirmed-host-stage $invalidation logout completed');}
         expect(f.wire.rpcs,hasLength(2));expect(tester.takeException(),isNull);
       }finally{debugPrint('confirmed-host-stage $invalidation cleanup');final subscription=probe;if(subscription!=null)await tester.runAsync(subscription.cancel);await _close(tester,f,printing);debugPrint('confirmed-host-stage $invalidation cleaned');}
     }
