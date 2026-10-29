@@ -98,3 +98,21 @@ Local presence may itself cause real iOS inactive transitions: current guards
 remain strict, and mocked channels/compilation do not establish that physical
 Face ID/passcode UX succeeds. Signed-device inactive/background/cancellation
 checks remain required before activation; no lifecycle condition is relaxed.
+
+## Retired initial load continuation (OFF)
+
+The original controller released its prior session owner with an await, then
+unconditionally reacquired an SDK subscription. Immediate disposal or a newer
+load could retire that continuation during the await (even the initial null
+owner yields). A captured load epoch and disposal check now refuse reacquisition
+before constructing the new owner. This does not change session, company, SID,
+journal, key, password, or server permission rules.
+
+Two focused regressions observe subscription/lookup requests while delegating
+to the exact actual SDK Session and Auth event stream: disposal must acquire
+nothing, and two initial loads must acquire only the latest owner. CI first
+runs those tests against the exact original d7c105d5 controller, requires the
+specific subscription assertion failures, and restores/hash-checks the corrected
+source before the full focused suite. CI results remain pending until observed.
+Physical Keychain/presence, hosting, attendance integration and activation remain
+separate incomplete stages; this is not evidence of a registered new device.

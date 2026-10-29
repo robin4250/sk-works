@@ -21,7 +21,7 @@ try {
  create function auth.uid() returns uuid language sql stable as $$select (auth.jwt()->>'sub')::uuid$$;
  create function auth.role() returns text language sql stable as $$select auth.jwt()->>'role'$$;
  create table auth.sessions(id uuid primary key,user_id uuid not null,not_after timestamptz);
- create table auth.users(id uuid primary key,provider text not null);
+ create table auth.users(id uuid primary key,provider text not null,is_anonymous boolean default false,banned_until timestamptz,encrypted_password text);
  create table public.companies(id uuid primary key,name text not null);
  create table public.company_members(company_id uuid not null,user_id uuid not null,role text not null,primary key(company_id,user_id));
  create table private.account_deletion_access_restrictions(user_id uuid primary key);
@@ -41,7 +41,7 @@ try {
  await admin.query(await fs.readFile(new URL('../../supabase/tests/fixtures/reauthentication_master_before.sql',import.meta.url),'utf8'));
  await admin.query('insert into auth.sessions values($1,$4,null),($2,$4,null),($3,$5,null)',[sa,sa2,sb,a,b]);
  await admin.query('insert into private.master_admins values($1,true)',[a]);
- await admin.query("insert into auth.users values($1,'phone'),($2,'phone'),('10000000-0000-0000-0000-000000000003','apple'),('10000000-0000-0000-0000-000000000004','google')",[a,b]);
+ await admin.query("insert into auth.users(id,provider) values($1,'phone'),($2,'phone'),('10000000-0000-0000-0000-000000000003','apple'),('10000000-0000-0000-0000-000000000004','google')",[a,b]);
  await admin.query("insert into public.companies values('30000000-0000-0000-0000-000000000001','synthetic company')");
  await admin.query(`insert into public.company_members values('30000000-0000-0000-0000-000000000001',$1,'owner'),('30000000-0000-0000-0000-000000000001',$2,'admin'),('30000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000003','manager'),('30000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000004','viewer')`,[a,b]);
  await admin.query('revoke all on function public.set_secondary_password(text),public.set_master_feature_enabled(text,boolean) from public,anon;grant execute on function public.set_secondary_password(text),public.set_master_feature_enabled(text,boolean) to authenticated,service_role');

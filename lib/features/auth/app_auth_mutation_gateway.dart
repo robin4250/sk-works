@@ -42,7 +42,34 @@ class _LogoutSignal implements AppLogoutQuarantineSignal {
 }
 
 class AppAuthMutationGateway {
-  AppAuthMutationGateway._(this._client);
+  AppAuthMutationGateway._(this._client) {
+    Session? initial = _client.auth.currentSession;
+    var baseline = true;
+    var seen = false;
+    _externalHistory = _client.auth.onAuthStateChange.listen((event) {
+      // Ignore only the SDK's cached exact-session replay. A subsequent live
+      // event, including same-session signedIn, always advances the revision.
+      final cached = baseline && !seen && identical(event.session, initial) &&
+          (event.event == AuthChangeEvent.initialSession ||
+              (initial != null && event.event != AuthChangeEvent.signedOut));
+      seen = true;
+      if (!cached) _externalRevision++;
+    }, onError: (Object _) => _closeExternalHistory(), onDone: _closeExternalHistory);
+    _externalReady = Future<void>.value().then((_) { baseline = false; initial = null; });
+  }
+  StreamSubscription<AuthState>? _externalHistory;
+  late final Future<void> _externalReady;
+  int _externalRevision = 0;
+  bool _externalClosed = false;
+  void _closeExternalHistory() {
+    _externalClosed = true;
+    _externalRevision++;
+    final subscription = _externalHistory;
+    _externalHistory = null;
+    if (subscription != null) {
+      unawaited(subscription.cancel().catchError((Object _) { _externalClosed = true; }));
+    }
+  }
   static final _owners = Expando<AppAuthMutationGateway>();
   static AppAuthMutationGateway forClient(SupabaseClient client) =>
       _owners[client] ??= AppAuthMutationGateway._(client);
@@ -63,6 +90,19 @@ class AppAuthMutationGateway {
   int _generation = 0;
   final _quarantine = _LogoutSignal();
   AppLogoutQuarantineSignal get logoutQuarantine => _quarantine;
+
+  /// Read-only external flow admission, not SDK mutation ownership/CAS.
+  /// Stream failure closes this view until a new client is created.
+  int? get _externalFlowEpoch => !_externalClosed && _active == null && _logout == null &&
+      _quarantine.state == AppLogoutQuarantineState.clear ? _externalRevision : null;
+  Future<int?> externalFlowAdmission() async {
+    final initial = _client.auth.currentSession;
+    final revision = _externalRevision;
+    await _externalReady;
+    if (!identical(initial, _client.auth.currentSession) || revision != _externalRevision) return null;
+    return _externalFlowEpoch;
+  }
+  bool isExternalFlowCurrent(int epoch) => _externalFlowEpoch == epoch;
 
   AppleSessionNavigationBinding? _binding(Session? session) =>
       AppleSessionNavigationBinding.fromSession(session);
@@ -173,6 +213,7 @@ class AppAuthMutationGateway {
     if (existing != null) return existing;
     // Invalidate pending callers and quarantine UI before awaiting any SDK work.
     _generation++;
+    _externalRevision++;
     final completion = Completer<void>();
     _logout = completion.future;
     _quarantine._set(AppLogoutQuarantineState.pending);
