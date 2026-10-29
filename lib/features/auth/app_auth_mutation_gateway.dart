@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'apple_session_navigation_binding.dart';
+import 'app_auth_logout_persistence.dart';
 
 /// Serializes app-owned repository writes to an existing SDK client.
 /// SDK deep links, OAuth callbacks, automatic refresh and storage remain outside
@@ -45,7 +46,18 @@ class AppAuthMutationGateway {
   static final _owners = Expando<AppAuthMutationGateway>();
   static AppAuthMutationGateway forClient(SupabaseClient client) =>
       _owners[client] ??= AppAuthMutationGateway._(client);
+  static AppAuthMutationGateway bindPersistence(SupabaseClient client, AppLogoutPersistenceFence persistence) {
+    final owner = forClient(client);
+    if (owner._active != null || owner._logout != null ||
+        (owner._persistence != null && !identical(owner._persistence, persistence))) {
+      throw StateError('Auth persistence owner cannot be replaced.');
+    }
+    owner._persistence = persistence;
+    if (persistence.blocked) owner._quarantine._set(AppLogoutQuarantineState.failed);
+    return owner;
+  }
   final SupabaseClient _client;
+  AppLogoutPersistenceFence? _persistence;
   Completer<void>? _active;
   Future<void>? _logout;
   int _generation = 0;
@@ -167,7 +179,9 @@ class AppAuthMutationGateway {
     final pending = _active?.future;
     unawaited(() async {
       StreamSubscription<AuthState>? confirmation;
+      var released = false;
       try {
+        await _persistence?.persistIntent();
         if (pending != null) await pending;
         final events = <AuthState>[];
         var failed = false;
@@ -181,18 +195,24 @@ class AppAuthMutationGateway {
         failed = false;
         await _client.auth.signOut(); // Preserve pinned SDK default local scope.
         await Future<void>.value();
+        bool confirmed() => !failed && _client.auth.currentSession == null &&
+            events.any((event) => event.event == AuthChangeEvent.signedOut && event.session == null) &&
+            !events.any((event) => event.session != null);
+        if (!confirmed()) throw StateError('SDK logout could not be confirmed.');
+        await _persistence?.confirmLocalRemoval();
+        await _persistence?.releaseFence(confirmed);
+        released = _persistence != null;
         await confirmation.cancel();
         confirmation = null;
-        if (failed || _client.auth.currentSession != null ||
-            !events.any((event) => event.event == AuthChangeEvent.signedOut && event.session == null) ||
-            events.any((event) => event.session != null)) {
-          throw StateError('SDK logout could not be confirmed.');
-        }
+        if (!confirmed()) throw StateError('SDK logout could not be confirmed.');
         // No await between confirmation and releasing the in-memory UI fence.
         _logout = null;
         _quarantine._set(AppLogoutQuarantineState.clear);
         completion.complete();
       } catch (error, stack) {
+        if (released) {
+          try { await _persistence?.persistIntent(); } catch (_) { /* UI remains blocked. */ }
+        }
         _logout = null;
         _quarantine._set(AppLogoutQuarantineState.failed);
         completion.completeError(error, stack);
