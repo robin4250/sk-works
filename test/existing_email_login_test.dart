@@ -105,7 +105,7 @@ void main() {
   testWidgets('existing email session completes with the same returned user', (tester) async {
     const id = '20000000-0000-0000-0000-000000000001';
     String part(Object value) => base64Url.encode(utf8.encode(jsonEncode(value))).replaceAll('=', '');
-    final token = '${part({'alg': 'HS256'})}.${part({'sub': id, 'exp': DateTime.now().millisecondsSinceEpoch ~/ 1000 + 3600})}.synthetic';
+    final token = '${part({'alg': 'HS256'})}.${part({'sub': id, 'session_id':'20000000-0000-0000-0000-000000000099', 'exp': DateTime.now().millisecondsSinceEpoch ~/ 1000 + 3600})}.synthetic';
     var authenticated = 0;
     await show(tester, () => authenticated++);
     await tester.tap(find.text('登録済みのメールでログインする'));

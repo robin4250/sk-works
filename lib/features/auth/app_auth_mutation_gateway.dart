@@ -37,7 +37,8 @@ class AppAuthMutationGateway {
     try {
       // GoTrue replays its last AuthState to a new listener. Drain exactly the
       // captured session object before dispatch; never discard a live transition.
-      await Future<void>.delayed(Duration.zero);
+      // Pinned ReplaySubject schedules one microtask, not a timer.
+      await Future<void>.value();
       if (generation != _generation || failed || events.length > 1 ||
           !identical(_client.auth.currentSession, initialSession) ||
           events.any((event) => !identical(event.session, initialSession) ||
@@ -47,7 +48,7 @@ class AppAuthMutationGateway {
       events.clear();
       final result = await action(before);
       // The SDK publishes AuthState asynchronously after saving its session.
-      await Future<void>.delayed(Duration.zero);
+      await Future<void>.value();
       if (generation != _generation || failed ||
           _binding(_client.auth.currentSession) != result.expected) {
         throw StateError('Authentication changed before completion.');
