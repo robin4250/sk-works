@@ -1,0 +1,22 @@
+-- REVIEW ONLY. Never use after any request/event; preserves all original rows/functions.
+begin;
+do $$begin
+ if (select enabled from private.worker_document_change_rollout where singleton) is distinct from false
+  or exists(select 1 from private.worker_document_changes)
+  or exists(select 1 from private.worker_document_apply_tickets)
+  or exists(select 1 from private.worker_document_change_events)
+  or (select catalog from private.worker_document_change_installation where singleton) is distinct from private.worker_document_change_catalog() then
+  raise sqlstate '55000' using message='Document module used/enabled/drifted; preserve history and inspect';end if;
+end $$;
+drop trigger zz_worker_document_change_guard on public.worker_document_statuses;
+drop function public.worker_document_change(text,jsonb);
+drop function private.worker_document_change(text,jsonb);
+drop function private.worker_document_change_guard();
+drop function private.worker_document_change_result(private.worker_document_changes);
+drop function private.worker_document_change_can_review(uuid);
+drop function private.worker_document_change_can_manage(uuid);
+drop function private.worker_document_change_snapshot(jsonb);
+drop function private.worker_document_change_enabled();
+drop function private.worker_document_change_catalog();
+drop table private.worker_document_apply_tickets,private.worker_document_changes,private.worker_document_change_events,private.worker_document_change_rollout,private.worker_document_change_installation;
+commit;
