@@ -1,4 +1,5 @@
 import 'trade_document_attachment.dart';
+import '../../domain/trade_document_terms_snapshot.dart';
 import '../../domain/partner_company_bank_account.dart';
 
 /// Builds only an ephemeral PDF payload; never a financial/source record.
@@ -64,5 +65,5 @@ TradeDocumentAttachment standaloneTradeDocument({required Map<String, dynamic> c
     }
     if ((payload['tax_amount_yen'] as int) > (payload['total_amount_yen'] as int)) throw StateError('消費税額が請負代金を超えています。');
   }
-  return TradeDocumentAttachment.fromJson({'version': 1, 'payload': payload});
+  return TradeDocumentAttachment.fromJson({'version': 1, 'payload': TradeDocumentTermsSnapshot.initialize(payload)});
 }

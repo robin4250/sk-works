@@ -35,6 +35,10 @@ export async function verifyMonthlyReview(db,c){
  }
  const epochAfter=await q("select private.trade_document_source('payment_certificate',$1,'1') v",[epochParent]);
  for(const key of ['source_fingerprint','source_revision','source_locked'])check(epochAfter[key],epochBefore[key]);
+ if(c.confirmedTerms){
+  await db.exec(await fs.readFile('docs/review/trade-document-terms/save-guard.sql.review-only','utf8'));
+  await (await import('./trade_document_terms_save_fixture.mjs')).verifyTermsSave(db,{id,company:A,partner:PARTNER,actor:()=>actor(UA),expectedDelegate:'82fa37936aea1e0199e1b359e1379d65'});
+ }
  check(epochAfter.defaults.tax_amount_yen,10000);
  check(epochAfter.defaults.counterparty,{name:'乙会社',address:'登録乙住所',corporate_number:'2222222222222',representative_name:'登録乙代表'});
  check(epochAfter.defaults.issuer.representative_name,'登録甲代表');
@@ -66,6 +70,7 @@ export async function verifyMonthlyReview(db,c){
   const payload={...workspace.defaults,issue_date:'2026-10-22',work_name:'保存済月次確認',work_address:'東京都',
    intro_text:'合成発注',payment_conditions:'翌月末',notes:'',issuer:{...workspace.defaults.issuer,representative_name:'甲代表'},
    counterparty:{...workspace.defaults.counterparty,corporate_number:'2222222222222'}};
+  if(c.confirmedTerms)payload.contract_terms=c.confirmedTerms;
   await q("select public.save_trade_document_attachment('payment_certificate',$1,'1',0,$2::jsonb) v",[parent,JSON.stringify(payload)]);
   const body={...payload,issuer_company_id:A,counterparty_company_id:B,transaction_id:doc};delete body.company_seal_snapshot;delete body.company_seal_enabled;
   await q("select trade_document_consent_private.prepare_document($1,$2,$3,0,$4::jsonb,'payment_certificate',$5,'1',1) v",[doc,A,B,JSON.stringify(body),parent]);

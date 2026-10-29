@@ -1,4 +1,5 @@
 import '../shared/r18_defaults.dart';
+import '../../domain/trade_document_terms_snapshot.dart';
 import '../shared/trade_document_attachment.dart';
 
 /// Selects an appendix without saving or replacing a historical document.
@@ -59,12 +60,12 @@ class PaymentOrderResolver {
     payload.putIfAbsent('notes', () => '');
     final result = TradeDocumentAttachment.fromJson({
       'version': 1,
-      'payload': r18InitialValues(
+      'payload': TradeDocumentTermsSnapshot.initialize(r18InitialValues(
         payload: payload,
         sourceDefaults: defaults,
         hasSavedAttachment: false,
         subjectKind: 'payment_certificate',
-      ),
+      )),
     });
     if (result.payload['kind'] != 'order') {
       throw StateError('注文書の種類を確認できません。');

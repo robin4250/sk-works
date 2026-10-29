@@ -1,0 +1,57 @@
+-- REVIEW ONLY. No production application. Keep the 16KiB input bound unchanged.
+-- Accepted order: original current core -> terms, OR bank candidate -> terms.
+-- The frozen bank candidate cannot apply after this wrapper (its own pin rejects).
+begin;
+set local lock_timeout='5s';
+do $guard$
+declare src record;saver record;baseline boolean;banked boolean;
+begin
+ select * into src from pg_proc where oid=to_regprocedure('private.trade_document_source(text,uuid,text)');
+ select * into saver from pg_proc where oid=to_regprocedure('private.save_trade_document_attachment(text,uuid,text,integer,jsonb)');
+ baseline:=md5(src.prosrc)='ebcc70935938482054943560390038b2' and md5(saver.prosrc)='82fa37936aea1e0199e1b359e1379d65';
+ banked:=md5(src.prosrc)='1f877168bc5767b2efb6946a19c3d198' and md5(saver.prosrc)='b7711fe5caf45cf8afabc39856a86a0e';
+ if src.oid is null or saver.oid is null or not coalesce(baseline or banked,false)
+  or not src.prosecdef or not saver.prosecdef or src.provolatile<>'v' or saver.provolatile<>'v'
+  or src.proconfig is distinct from array['search_path=""'] or saver.proconfig is distinct from array['search_path=""']
+  or pg_get_userbyid(src.proowner)<>'postgres' or pg_get_userbyid(saver.proowner)<>'postgres'
+  or src.proacl::text is distinct from '{postgres=X/postgres}'
+  or saver.proacl::text is distinct from '{postgres=X/postgres,authenticated=X/postgres}'
+  or to_regprocedure('private.save_trade_document_before_confirmed_terms(text,uuid,text,integer,jsonb)') is not null then
+  raise exception 'Confirmed terms predecessor definitions/attributes changed' using errcode='55000';end if;
+ if banked then
+  if not exists(select 1 from pg_proc where oid=to_regprocedure('private.trade_document_source_before_partner_bank(text,uuid,text)') and md5(prosrc)='ebcc70935938482054943560390038b2' and prosecdef and provolatile='v' and pg_get_userbyid(proowner)='postgres' and proconfig=array['search_path=""']::text[] and proacl::text='{postgres=X/postgres}')
+   or not exists(select 1 from pg_proc where oid=to_regprocedure('private.save_trade_document_before_partner_bank(text,uuid,text,integer,jsonb)') and md5(prosrc)='82fa37936aea1e0199e1b359e1379d65' and prosecdef and provolatile='v' and pg_get_userbyid(proowner)='postgres' and proconfig=array['search_path=""']::text[] and proacl::text='{postgres=X/postgres}') then
+   raise exception 'Bank candidate original delegates changed' using errcode='55000';end if;
+ end if;
+end $guard$;
+alter function private.save_trade_document_attachment(text,uuid,text,integer,jsonb) rename to save_trade_document_before_confirmed_terms;
+revoke all on function private.save_trade_document_before_confirmed_terms(text,uuid,text,integer,jsonb) from authenticated;
+create function private.save_trade_document_attachment(p_kind text,p_subject uuid,p_source_revision text,p_expected_version integer,p_payload jsonb) returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare source jsonb;saved private.trade_document_attachments;
+ known constant jsonb:='{"schema":1,"version":1,"title":"[ 工事請負契約条項 ]","source_sha256":"3acf9090f2c027840bba43351f4d9e173759baa8b7c0340c05db9e28731f0d1f","renderer_contract":"sko-original-form-20261029-v1","design_sha256":"942bad918b696b4c2c527dbf2fca9d050e4fb38a3674cff115eb0755793b8a18"}';
+begin
+ perform pg_advisory_xact_lock(hashtextextended('trade-appendix:'||p_kind||':'||p_subject::text,0));
+ -- Preserve the predecessor's company/source/management admission before a
+ -- private saved row is inspected. Its complete CAS/locked/size/seal checks run below.
+ source:=private.trade_document_source(p_kind,p_subject,p_source_revision);
+ if source->>'can_manage' is distinct from 'true' then raise exception '管理者のみ保存できます。' using errcode='42501';end if;
+ select * into saved from private.trade_document_attachments where subject_kind=p_kind and subject_id=p_subject and company_id=(source->>'company_id')::uuid for update;
+ if found and (p_payload->'contract_terms') is distinct from (saved.payload->'contract_terms') then
+  raise exception 'Saved terms reference is immutable' using errcode='40001';end if;
+ if p_payload ? 'contract_terms' and ((p_payload->'contract_terms') is distinct from known
+  or p_payload#>>'{contract_terms,schema}' is distinct from '1'
+  or p_payload#>>'{contract_terms,version}' is distinct from '1') then
+  raise exception 'Unknown confirmed terms reference' using errcode='22023';end if;
+ return private.save_trade_document_before_confirmed_terms(p_kind,p_subject,p_source_revision,p_expected_version,p_payload);
+end $$;
+revoke all on function private.save_trade_document_attachment(text,uuid,text,integer,jsonb) from public,anon,service_role;
+grant execute on function private.save_trade_document_attachment(text,uuid,text,integer,jsonb) to authenticated;
+-- The generated expected prosrc digest is checked after creation as well.
+do $result$ begin
+ if not exists(select 1 from pg_proc where oid='private.save_trade_document_attachment(text,uuid,text,integer,jsonb)'::regprocedure
+ and md5(prosrc)='04501fda2c30a17257142dc02fc87b6d' and prosecdef and provolatile='v' and pg_get_userbyid(proowner)='postgres'
+ and proconfig=array['search_path=""']::text[] and proacl::text='{postgres=X/postgres,authenticated=X/postgres}') then
+ raise exception 'Confirmed terms wrapper attributes changed' using errcode='55000';end if;
+end $result$;
+commit;

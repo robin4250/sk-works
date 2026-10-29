@@ -1,3 +1,4 @@
+import '../../domain/trade_document_terms_snapshot.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../data/supabase_backend.dart';
@@ -64,6 +65,7 @@ class _EditorState extends State<TradeDocumentAttachmentEditorPage> {
       _payload = r18InitialValues(payload: _payload,
         sourceDefaults: Map<String, dynamic>.from(data['defaults'] as Map),
         hasSavedAttachment: saved is Map, subjectKind: widget.subjectKind);
+      if(saved is! Map && data['source_locked']==false) _payload=TradeDocumentTermsSnapshot.initialize(_payload);
       _payload = widget.initialInput?.apply(payload: _payload, workspace: data,
         actor: _actor, subjectKind: widget.subjectKind, subject: widget.subjectId,
         revision: widget.sourceRevision) ?? _payload;
