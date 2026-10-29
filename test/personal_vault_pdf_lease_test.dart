@@ -101,11 +101,13 @@ void main() {
     expect(invoked,isFalse);
   });
   testWidgets('invalidated preview removes only its owned route, preserving a page above it', (tester) async {
-    final ready = Completer<PersonalVaultPdfLease>(), native = Completer<void>();
+    late Completer<void> native;
     late Future<void> failed;
-    // Start the repository operation in the real zone too: moving only the
-    // waiter would leave its session-drain timer trapped in the fake clock.
+    // Create the completers in the same real zone as the repository operation;
+    // a fake-zone completer can schedule its completion into the paused clock.
     final lease = await tester.runAsync(() async {
+      final ready = Completer<PersonalVaultPdfLease>();
+      native = Completer<void>();
       final pending = f.repository.withOwnPdf<void>(entry,(lease) { ready.complete(lease); return native.future; });
       failed = expectLater(pending,throwsStateError);
       return ready.future;
