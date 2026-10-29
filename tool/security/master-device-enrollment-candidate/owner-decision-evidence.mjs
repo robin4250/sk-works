@@ -5,6 +5,7 @@
 import {ownerDecisionPayload,verifyOwnerDecisionAttestation} from './owner-decision-attestation.mjs';
 import {captureOwnerIssuerCheckpoint} from './owner-issuer-continuity.mjs';
 import {ownerIssuerPinWithinTransaction} from './owner-issuer-store.mjs';
+import {createHash} from 'node:crypto';
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 function scalarSnapshot(value){
  if(!value||typeof value!=='object'||![Object.prototype,null].includes(Object.getPrototypeOf(value)))throw Error('plain scalar evidence required');
@@ -75,5 +76,54 @@ async function recordWithIssuer({pool,actor,session,requestId},signed,resolveIss
    [requestId,evidence.issuerKeyId,evidence.decision,evidence.attestationSha256,evidence.issuedMs,evidence.expiresMs,payload,signature]);
   if(original.rows.length!==1)throw Error('original evidence unavailable');
   await c.query('commit');return Object.freeze({requestId,status:'evidence_recorded',attestationSha256:evidence.attestationSha256});
+ }catch(error){try{await c.query('rollback');}catch{}throw error;}finally{c.release();}
+}
+
+// Historical, read-only reconciliation of an exact receipt already submitted.
+// Never re-admit it under an old/current issuer or infer permission to activate.
+export async function readOwnOwnerDecisionEvidenceResult({enabled=false,pool,actor,session,requestId,receipt}){
+ if(enabled!==true)throw Error('owner evidence result is disabled');
+ const signed=scalarSnapshot(receipt),fields=['version','issuerKeyId','decision','requestId','actor','requesterSession','deviceId','pendingId','challengeId','keySha256','reviewNonce','issuedMs','expiresMs','signature'];
+ if(Object.keys(signed).length!==fields.length||fields.some(k=>!Object.hasOwn(signed,k))||
+  ![actor,session,requestId].every(x=>typeof x==='string'&&uuid.test(x))||signed.actor!==actor||signed.requesterSession!==session||signed.requestId!==requestId||
+  typeof signed.signature!=='string'||!/^[A-Za-z0-9_-]{86}$/.test(signed.signature)||!pool||typeof pool.connect!=='function')throw Error('exact original receipt required');
+ const payload=ownerDecisionPayload(signed),signature=Buffer.from(signed.signature,'base64url');
+ if(signature.length!==64||signature.toString('base64url')!==signed.signature)throw Error('canonical receipt signature required');
+ const hash=createHash('sha256').update(payload).update(signature).digest('hex');
+ const c=await pool.connect();
+ try{
+  await c.query('begin');await c.query("set local lock_timeout='1s'");await c.query("set local statement_timeout='5s'");
+  const identity=await c.query('select auth.uid() as actor,private.require_reauthentication_session() as session,public.is_current_user_master_admin() as master');
+  if(identity.rows.length!==1||identity.rows[0].actor!==actor||identity.rows[0].session!==session||identity.rows[0].master!==true)throw Error('eligible original owner session required');
+  // Match the write/cancellation lock order, without requiring the historical
+  // proof/receipt to be unexpired. An eligible owned device is still required.
+  const device=await c.query(`select id from private.master_devices where id=$1 and master_user_id=$2 and not is_locked and revoked_at is null for share`,[signed.deviceId,actor]);
+  if(device.rows.length!==1)throw Error('eligible owned device required');
+  const source=await c.query(`select ch.expires_ms from master_device_enrollment_candidate.key_possession_challenges ch
+   join master_device_enrollment_candidate.pending_key_migrations p on p.id=$2 and p.actor=ch.actor and p.device_id=ch.device_id and p.key_sha256=ch.key_sha256
+   where ch.id=$1 and ch.actor=auth.uid() and ch.actor=$3 and ch.session_id=private.require_reauthentication_session() and ch.session_id=$4
+    and ch.device_id=$5 and ch.key_sha256=$6 and ch.consumed_at is not null and p.status='pending' and public.is_current_user_master_admin() for share of ch,p`,
+   [signed.challengeId,signed.pendingId,actor,session,signed.deviceId,signed.keySha256]);
+  if(source.rows.length!==1)throw Error('original pending proof required');
+  const original=await c.query(`select id,expires_ms from master_device_enrollment_candidate.owner_approval_requests
+   where id=$1 and actor=auth.uid() and actor=$2 and requester_session=private.require_reauthentication_session() and requester_session=$3
+    and device_id=$4 and pending_id=$5 and challenge_id=$6 and key_sha256=$7 and review_nonce=$8
+    and expires_ms=$9 and status='awaiting_independent_owner' and public.is_current_user_master_admin() for share`,
+   [requestId,actor,session,signed.deviceId,signed.pendingId,signed.challengeId,signed.keySha256,signed.reviewNonce,source.rows[0].expires_ms]);
+  if(original.rows.length!==1)throw Error('original owner request required');
+  const stored=await c.query(`select issuer_key_id,decision,attestation_sha256,issued_ms,expires_ms,attestation_payload,attestation_signature
+   from master_device_enrollment_candidate.owner_decision_evidence where request_id=$1
+    and auth.uid()=$2 and private.require_reauthentication_session()=$3 and public.is_current_user_master_admin() for share`,[requestId,actor,session]);
+  if(stored.rows.length>1)throw Error('ambiguous original evidence');
+  const row=stored.rows[0];
+  if(row&&(row.issuer_key_id!==signed.issuerKeyId||row.decision!==signed.decision||row.attestation_sha256!==hash||row.issued_ms!==signed.issuedMs||row.expires_ms!==signed.expiresMs||
+   !Buffer.from(row.attestation_payload).equals(payload)||!Buffer.from(row.attestation_signature).equals(signature)))throw Error('receipt differs from immutable original');
+  const state=await c.query(`select exists(select 1 from master_device_enrollment_candidate.owner_approval_request_cancellations where request_id=$1) as cancelled,
+   $2::float8<=floor(extract(epoch from clock_timestamp())*1000) as expired
+   where auth.uid()=$3 and private.require_reauthentication_session()=$4 and public.is_current_user_master_admin()`,[requestId,original.rows[0].expires_ms,actor,session]);
+  if(state.rows.length!==1)throw Error('original owner state unavailable');
+  const requestState=state.rows[0].cancelled?'cancelled':state.rows[0].expired?'expired':'awaiting_independent_owner';
+  await c.query('commit');
+  return Object.freeze({requestId,status:row?'evidence_recorded':'evidence_unconfirmed',requestState,...(row?{attestationSha256:hash}:{})});
  }catch(error){try{await c.query('rollback');}catch{}throw error;}finally{c.release();}
 }

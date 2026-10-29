@@ -9,6 +9,16 @@ import 'package:sk_works/features/auth/secure_onboarding_pages.dart';
 import 'package:sk_works/features/auth/secure_onboarding_repository.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+// The pinned SDK subscription cancellation may complete in the real setup
+// zone; drain that work as well as Flutter's fake UI scheduler.
+Future<void> _settleAuth(WidgetTester tester) async {
+  for (var i = 0; i < 20; i++) {
+    await tester.runAsync(() async { await Future<void>.delayed(Duration.zero); });
+    await tester.pump(const Duration(milliseconds: 10));
+    if (find.byType(CircularProgressIndicator).evaluate().isEmpty) break;
+  }
+  await tester.pumpAndSettle();
+}
 void main() {
   late SupabaseClient client;
   late SecureOnboardingRepository repository;
@@ -95,7 +105,7 @@ void main() {
         headers: {'content-type': 'application/json'}));
       await Future<void>.delayed(Duration.zero);
     });
-    await tester.pumpAndSettle();
+    await _settleAuth(tester);
     expect(authenticated, 0);
     expect(find.text('登録済みのメールアドレスまたは本パスワードを確認してください。'), findsOneWidget);
     expect(find.text('メールアドレスでログイン'), findsOneWidget);
@@ -105,7 +115,7 @@ void main() {
   testWidgets('existing email session completes with the same returned user', (tester) async {
     const id = '20000000-0000-0000-0000-000000000001';
     String part(Object value) => base64Url.encode(utf8.encode(jsonEncode(value))).replaceAll('=', '');
-    final token = '${part({'alg': 'HS256'})}.${part({'sub': id, 'exp': DateTime.now().millisecondsSinceEpoch ~/ 1000 + 3600})}.synthetic';
+    final token = '${part({'alg': 'HS256'})}.${part({'sub': id, 'session_id':'20000000-0000-0000-0000-000000000099', 'exp': DateTime.now().millisecondsSinceEpoch ~/ 1000 + 3600})}.synthetic';
     var authenticated = 0;
     await show(tester, () => authenticated++);
     await tester.tap(find.text('登録済みのメールでログインする'));
@@ -121,7 +131,7 @@ void main() {
       }), 200, headers: {'content-type': 'application/json'}));
       await Future<void>.delayed(Duration.zero);
     });
-    await tester.pumpAndSettle();
+    await _settleAuth(tester);
     expect(authenticated, 1);
     expect(client.auth.currentUser!.id, id);
     expect(requests, hasLength(1));

@@ -1,0 +1,30 @@
+name: App Auth repository mutation gateway
+on:
+  pull_request:
+    paths:
+      - 'lib/features/auth/app_auth_mutation_gateway.dart'
+      - 'lib/features/auth/secure_onboarding_repository.dart'
+      - 'lib/data/supabase_auth_repository.dart'
+      - 'lib/features/profile/profile_repository.dart'
+      - 'test/app_auth_mutation_gateway_test.dart'
+      - 'test/employee_password_preflight_test.dart'
+      - 'test/primary_password_recovery_widget_test.dart'
+      - '.github/workflows/app-auth-mutation-gateway.yml'
+permissions:
+  contents: read
+jobs:
+  repository-sdk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: git diff --exit-code -- pubspec.lock
+      - run: dart analyze lib/features/auth/app_auth_mutation_gateway.dart lib/features/auth/secure_onboarding_repository.dart lib/data/supabase_auth_repository.dart lib/features/profile/profile_repository.dart test/app_auth_mutation_gateway_test.dart
+      - run: flutter test test/app_auth_mutation_gateway_test.dart --reporter expanded
+      - run: flutter test test/existing_email_login_test.dart test/existing_google_login_test.dart test/employee_password_preflight_test.dart test/primary_password_recovery_widget_test.dart test/phone_only_login_contract_test.dart test/profile_phone_change_test.dart --reporter expanded

@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
+import 'app_auth_mutation_gateway.dart';
 import '../../international/countries/jp/japan_phone_rules.dart';
 
 class EmployeeOnboardingState {
@@ -34,6 +35,7 @@ class SecureOnboardingRepository {
   SecureOnboardingRepository.forClient(this._client);
 
   final SupabaseClient _client;
+  AppAuthMutationGateway get _auth => AppAuthMutationGateway.forClient(_client);
 
   static SecureOnboardingRepository? maybeCreate() {
     if (!SupabaseBackend.isInitialized) return null;
@@ -56,15 +58,14 @@ class SecureOnboardingRepository {
     required String password,
   }) async {
     final normalized = normalizeJapanesePhone(phone);
-    final response = await _client.auth.signUp(
+    final established = await _auth.signUp(
       phone: normalized,
       password: password,
-      channel: OtpChannel.sms,
       data: const {
         'sko_registration_type': 'admin',
       },
     );
-    return response.session != null;
+    return established;
   }
 
   Future<void> resendSmsCode({required String phone}) async {
@@ -78,8 +79,7 @@ class SecureOnboardingRepository {
     required String phone,
     required String code,
   }) async {
-    await _client.auth.verifyOTP(
-      type: OtpType.sms,
+    await _auth.verifySmsCode(
       phone: normalizeJapanesePhone(phone),
       token: code.trim(),
     );
@@ -94,7 +94,7 @@ class SecureOnboardingRepository {
     if (!isSupportedEmailValue(normalized)) {
       throw ArgumentError('invalid email');
     }
-    await _client.auth.signInWithPassword(
+    await _auth.signInWithPassword(
       email: normalized,
       password: password,
     );
@@ -107,7 +107,7 @@ class SecureOnboardingRepository {
     required String phone,
     required String password,
   }) async {
-    await _client.auth.signInWithPassword(
+    await _auth.signInWithPassword(
       phone: normalizeJapanesePhone(phone),
       password: password,
     );
@@ -117,7 +117,7 @@ class SecureOnboardingRepository {
     if (password.length < 8) {
       throw StateError('password must be at least 8 characters');
     }
-    await _client.auth.updateUser(
+    await _auth.updateUser(
       UserAttributes(password: password),
     );
   }
@@ -266,12 +266,12 @@ class SecureOnboardingRepository {
     final current = _client.auth.currentUser;
     final metadata = Map<String, dynamic>.from(current?.userMetadata ?? const {});
     metadata['sko_company_setup_deferred'] = value;
-    await _client.auth.updateUser(
+    await _auth.updateUser(
       UserAttributes(data: metadata),
     );
   }
 
-  Future<void> signOut() => _client.auth.signOut();
+  Future<void> signOut() => _auth.signOut();
 
   String? _nullable(String? value) {
     final text = value?.trim() ?? '';

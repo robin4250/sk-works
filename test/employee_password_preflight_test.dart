@@ -17,7 +17,7 @@ void main() {
   String part(Object value) =>
       base64Url.encode(utf8.encode(jsonEncode(value))).replaceAll('=', '');
   final token =
-      '${part({'alg': 'HS256'})}.${part({'sub': id, 'exp': DateTime.now().millisecondsSinceEpoch ~/ 1000 + 3600})}.synthetic';
+      '${part({'alg': 'HS256'})}.${part({'sub': id, 'session_id':'20000000-0000-0000-0000-000000000099', 'exp': DateTime.now().millisecondsSinceEpoch ~/ 1000 + 3600})}.synthetic';
   for (final status in [
     'missing_session',
     'state_error',

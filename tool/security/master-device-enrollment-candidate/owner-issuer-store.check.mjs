@@ -12,6 +12,7 @@ import {migrationPossessionPayload} from './key-migration-possession.mjs';
 import {storeProvenPendingDeviceKey} from './key-migration-proven-adapter.mjs';
 import {requestIndependentOwnerApproval} from './key-migration-owner-request.mjs';
 import {handleMigrationChallengeRequest} from './key-migration-challenge-http-candidate.mjs';
+import {cancelIndependentOwnerApprovalRequest} from './key-migration-owner-request-lifecycle.mjs';
 const id=n=>`00000000-0000-0000-0000-${String(n).padStart(12,'0')}`;
 const actor=id(1),session=id(2),deviceId=id(3);
 const pair=()=>{const k=generateKeyPairSync('ed25519');return {...k,jwk:k.publicKey.export({format:'jwk'})};};
@@ -60,15 +61,15 @@ export async function checkOwnerIssuerStore({pool,nativeConcurrency=false,pglite
   const receipt={...unsigned,signature:sign(null,ownerDecisionPayload(unsigned),key.privateKey).toString('base64url')};
   return {enabled:true,pool:poolOverride,actor,session,requestId,receipt,authorityCheckpoint:external};
  }
- async function httpEvidence(args,{enabled=true,external=args.authorityCheckpoint,extra={},mutateContext=false,fixedPin}={}){
+ async function httpEvidence(args,{enabled=true,action='owner-evidence',external=args.authorityCheckpoint,extra={},mutateContext=false,fixedPin,checkpointUnavailable=false}={}){
   const token='synthetic-owner-evidence-auth-token',context={actor,session,pool:args.pool};let checkpointCalls=0;
   const response=await handleMigrationChallengeRequest(new Request('https://fixture.invalid/master/migration',{
    method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},
-   body:JSON.stringify({action:'owner-evidence',requestId:args.requestId,receipt:args.receipt,...extra})}),{
+   body:JSON.stringify({action,requestId:args.requestId,receipt:args.receipt,...extra})}),{
    authenticateBearer:async bearer=>{assert.equal(bearer,token);return context;},
    ownerEvidence:{enabled,pinnedIssuer:fixedPin,loadAuthorityCheckpoint:async who=>{
     checkpointCalls++;assert.equal(who.actor,actor);assert.equal(who.session,session);assert.ok(Object.isFrozen(who));
-    if(mutateContext){context.actor=id(999);context.session=id(998);}return external;
+    if(mutateContext){context.actor=id(999);context.session=id(998);}if(checkpointUnavailable)throw Error('fixture external checkpoint unavailable');return external;
    }},
   });
   return {response,checkpointCalls};
@@ -108,6 +109,46 @@ export async function checkOwnerIssuerStore({pool,nativeConcurrency=false,pglite
  await pool.query('update master_device_enrollment_candidate.owner_issuer_heads set pin=$2::jsonb where authority_id=$1',[f.pin.authorityId,JSON.stringify(r.prepared.next)]);
  const oldEvidence=(await pool.query('select attestation_payload,attestation_signature from master_device_enrollment_candidate.owner_decision_evidence where request_id=$1',[firstRequest])).rows[0];
  assert.equal(verify(null,Buffer.from(oldEvidence.attestation_payload),f.old.publicKey,Buffer.from(oldEvidence.attestation_signature)),true,'historical original remains verifiable');
+ // Simulate a real DB commit whose ACK is lost before the handler can respond.
+ // The follow-up action only reads the exact original; it never retries writing.
+ let lostAck=false;
+ const lossPool={connect:async()=>{const c=await fixturePool.connect();return {release:()=>c.release(),query:async(sql,args)=>{
+  const result=await c.query(sql,args);if(sql==='commit'&&!lostAck){lostAck=true;throw Error('synthetic lost commit ACK');}return result;
+ }};}};
+ const uncertainId=await request(),uncertain=await evidence(uncertainId,f.next,'issuer_new',externalNext,lossPool);
+ assert.equal((await httpEvidence(uncertain)).response.status,409);assert.equal(lostAck,true);
+ assert.equal(Number((await pool.query('select count(*) as n from master_device_enrollment_candidate.owner_decision_evidence where request_id=$1',[uncertainId])).rows[0].n),1);
+ const lookupQueries=[];
+ const lookupPool={connect:async()=>{const c=await fixturePool.connect();return {release:()=>c.release(),query:(sql,args)=>{lookupQueries.push(sql);return c.query(sql,args);}};}};
+ const lookupArgs={...uncertain,pool:lookupPool};
+ const lookup=await httpEvidence(lookupArgs,{action:'owner-evidence-result',checkpointUnavailable:true});
+ assert.equal(lookup.response.status,200);assert.equal(lookup.checkpointCalls,0);
+ const reconciled=(await lookup.response.json()).evidenceResult;assert.equal(reconciled.status,'evidence_recorded');assert.equal(reconciled.requestState,'awaiting_independent_owner');
+ assert.equal(lookup.response.headers.get('cache-control'),'no-store');
+ assert.equal(lookupQueries.some(sql=>/^\s*(insert|update|delete|truncate)\b/i.test(sql)),false,'lookup may not mutate or retry evidence');
+ assert.equal(Number((await pool.query('select count(*) as n from master_device_enrollment_candidate.owner_decision_evidence where request_id=$1',[uncertainId])).rows[0].n),1);
+ const offLookup=await httpEvidence(lookupArgs,{action:'owner-evidence-result',enabled:false});assert.equal(offLookup.response.status,503);
+ const changedSignature=Buffer.from(uncertain.receipt.signature,'base64url');changedSignature[0]^=1;
+ for(const patch of [{signature:changedSignature.toString('base64url')},{decision:'denied'},{reviewNonce:'0'.repeat(64)},{actor:id(9)},{requesterSession:id(999)}]){
+  assert.equal((await httpEvidence({...lookupArgs,receipt:{...uncertain.receipt,...patch}},{action:'owner-evidence-result'})).response.status,409);
+ }
+ const absentId=await request(),absent=await evidence(absentId,f.next,'issuer_new',externalNext);
+ const unconfirmed=await httpEvidence(absent,{action:'owner-evidence-result'});assert.equal(unconfirmed.response.status,200);
+ assert.equal((await unconfirmed.response.json()).evidenceResult.status,'evidence_unconfirmed','absence is not permission to replay or a definitive rollback');
+ await cancelIndependentOwnerApprovalRequest({pool:fixturePool,actor,session,requestId:uncertainId});
+ const withdrawn=await httpEvidence(lookupArgs,{action:'owner-evidence-result'});assert.equal(withdrawn.response.status,200);
+ assert.equal((await withdrawn.response.json()).evidenceResult.requestState,'cancelled');
+ assert.equal((await httpEvidence({...uncertain,pool:fixturePool})).response.status,409,'readback cannot revive a withdrawn request');
+ // Reconciliation remains historical after issuer retirement and fixture expiry.
+ await pool.query(`update master_device_enrollment_candidate.key_possession_challenges
+  set created_ms=floor(extract(epoch from clock_timestamp())*1000)-120000,
+   expires_ms=floor(extract(epoch from clock_timestamp())*1000)-60000 where id=$1`,[oldReceipt.receipt.challengeId]);
+ await pool.query(`update master_device_enrollment_candidate.owner_approval_requests set expires_ms=
+  (select expires_ms from master_device_enrollment_candidate.key_possession_challenges where id=$1) where id=$2`,[oldReceipt.receipt.challengeId,firstRequest]);
+ const historical=await httpEvidence(oldReceipt,{action:'owner-evidence-result',checkpointUnavailable:true});assert.equal(historical.response.status,200);
+ const historicalResult=(await historical.response.json()).evidenceResult;assert.equal(historicalResult.status,'evidence_recorded');assert.equal(historicalResult.requestState,'expired');
+ const preserved=(await pool.query('select attestation_payload,attestation_signature from master_device_enrollment_candidate.owner_decision_evidence where request_id=$1',[firstRequest])).rows[0];
+ assert.deepEqual(preserved,oldEvidence,'historical lookup preserves original bytes');
  for(const sql of ['update master_device_enrollment_candidate.owner_issuer_transitions set previous_sha256=previous_sha256','delete from master_device_enrollment_candidate.owner_issuer_transitions','truncate master_device_enrollment_candidate.owner_issuer_transitions'])await assert.rejects(pool.query(sql),e=>e.code==='55000');
  for(const role of ['anon','authenticated','service_role'])for(const table of ['owner_issuer_heads','owner_issuer_transitions']){
   const c=await pool.connect();try{await c.query('begin');await c.query('set local role '+role);await assert.rejects(c.query('select * from master_device_enrollment_candidate.'+table),e=>e.code==='42501');}finally{await c.query('rollback');c.release();}
@@ -161,6 +202,6 @@ export async function checkOwnerIssuerStore({pool,nativeConcurrency=false,pglite
  assert.equal((await pool.query('select device_key from private.master_devices where id=$1',[deviceId])).rows[0].device_key,'legacy-original');
  assert.equal(Number((await pool.query('select count(*) as n from private.master_devices')).rows[0].n),1);
  assert.equal(Number((await pool.query("select count(*) as n from master_device_enrollment_candidate.pending_key_migrations where status<>'pending'")).rows[0].n),0);
- console.log('Issuer persistence: OFF, exact checkpoint, atomic signed-history/CAS, replay/fork refusal, rollback, snapshots, append-only/ACL, actual HTTP-to-current-issuer receipt composition/no fixed-pin fallback and unchanged devices passed. Synthetic authority/Auth fixtures only.');
+ console.log('Issuer persistence: OFF, exact checkpoint, atomic signed-history/CAS, replay/fork refusal, rollback, snapshots, append-only/ACL, actual HTTP-to-current-issuer receipt/no fixed-pin fallback, lost-commit ACK exact readback/no writes, historical cancelled/expired result and unchanged devices passed. Synthetic authority/Auth fixtures only.');
  if(nativeConcurrency)console.log('Native separate-connection forks/duplicate transitions and receipt-vs-rotation lock ordering passed.');
 }

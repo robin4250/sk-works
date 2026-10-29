@@ -226,6 +226,7 @@ entries = {
     "NSPhotoLibraryUsageDescription": "SKOでプロフィール写真や現場・チャットの写真を選択するため写真ライブラリを使用します。",
     "ITSAppUsesNonExemptEncryption": False,
     "SKOAppleCredentialPreparationEnabled": False,
+    "SKOQRScannerKeyPreparationEnabled": False,
 }
 
 for key, value in entries.items():
@@ -348,6 +349,7 @@ import UserNotifications
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
+  private var skoQRScannerKeyChannel: SKOQRScannerKeyChannel?
   private var skoAppleCredentialChannel: SKOAppleCredentialChannel?
   private var skoMapChannel: FlutterMethodChannel?
   private var skoCaptureChannel: FlutterMethodChannel?
@@ -525,6 +527,9 @@ import UserNotifications
     }
     if let registrar = self.registrar(forPlugin: "SkoAppleCredential") {
       skoAppleCredentialChannel = SKOAppleCredentialChannel(messenger: registrar.messenger())
+    }
+    if let registrar = self.registrar(forPlugin: "SkoQRScannerKey") {
+      skoQRScannerKeyChannel = SKOQRScannerKeyChannel(messenger: registrar.messenger())
     }
     return launched
   }
@@ -869,6 +874,8 @@ SWIFT
 # OFF Apple credential acquisition only; no provider, entitlement or session mutation.
 cat tool/ios/apple_credential_state.swift >> ios/Runner/AppDelegate.swift
 cat tool/ios/apple_credential.swift >> ios/Runner/AppDelegate.swift
+# Scanner custody remains OFF; no registration route or feature is enabled.
+cat tool/ios/qr_scanner_key.swift >> ios/Runner/AppDelegate.swift
 # Keep the native reminder implementation versioned and last, including reused projects.
 cat tool/ios/checkout_reminders.swift >> ios/Runner/AppDelegate.swift
 

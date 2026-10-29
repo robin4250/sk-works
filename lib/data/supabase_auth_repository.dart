@@ -1,6 +1,8 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'contracts.dart';
+import '../features/auth/app_auth_mutation_gateway.dart';
+import '../features/auth/apple_session_navigation_binding.dart';
 
 class SupabaseAuthRepository implements AuthRepository {
   SupabaseAuthRepository(this._client);
@@ -16,11 +18,10 @@ class SupabaseAuthRepository implements AuthRepository {
 
   @override
   Future<AppUser> signIn({required String email, required String password}) async {
-    final response = await _client.auth.signInWithPassword(
+    final user = await AppAuthMutationGateway.forClient(_client).signInWithPassword(
       email: email,
       password: password,
     );
-    final user = response.user;
     if (user == null) {
       throw StateError('Sign-in succeeded without a user record.');
     }
@@ -29,15 +30,24 @@ class SupabaseAuthRepository implements AuthRepository {
 
   @override
   Future<void> signOut() async {
-    await _client.auth.signOut();
+    await AppAuthMutationGateway.forClient(_client).signOut();
   }
 
   Future<AppUser> _loadMembership(String userId, String? fallbackName) async {
+    final session = _client.auth.currentSession;
+    final binding = AppleSessionNavigationBinding.fromSession(session);
+    if (session == null || session.user.id != userId || binding == null) {
+      throw StateError('Authentication changed before membership read.');
+    }
     final rows = await _client
         .from('company_members')
         .select('company_id, role')
         .eq('user_id', userId)
-        .limit(1);
+        .limit(1)
+        .setHeader('Authorization', 'Bearer ${session.accessToken}');
+    if (AppleSessionNavigationBinding.fromSession(_client.auth.currentSession) != binding) {
+      throw StateError('Authentication changed during membership read.');
+    }
 
     if (rows.isEmpty) {
       throw StateError('No SK WORKS company membership exists for this account.');
