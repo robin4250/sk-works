@@ -145,7 +145,8 @@ String _changeId(int n) =>
 
 class _ChangeGateway extends _PhotosGateway
     implements OwnDocumentChangeGateway {
-  _ChangeGateway(this.rpc);
+  _ChangeGateway(this.rpc, {this.requiredDocument=false});
+  final bool requiredDocument;
   final Future<Object?> Function(String, Map<String, dynamic>) rpc;
   final events = StreamController<void>.broadcast(sync: true);
   String actor = _changeId(6);
@@ -175,6 +176,7 @@ class _ChangeGateway extends _PhotosGateway
         'name': '運転免許証',
         'scope': 'internal',
         'is_active': true,
+        'is_required': requiredDocument,
       },
     ],
     'statuses': [
@@ -221,6 +223,43 @@ void main() {
       await tester.runAsync(() => gateway.events.close());
     },
   );
+  testWidgets('partial saved required metadata opens existing edit approval without direct overwrite', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final actions=<String>[];Map<String,dynamic>? prepared;
+    Map<String,dynamic> receipt(String state)=>{
+      'version':1,'id':prepared!['request_id'],'target_id':_changeId(2),
+      'company_id':_changeId(3),'worker_id':_changeId(4),'requirement_id':_changeId(5),
+      'requested_by':_changeId(6),'status':state,'can_review':false,
+      'previous':{'id':_changeId(2),'company_id':_changeId(3),'worker_id':_changeId(4),
+        'requirement_id':_changeId(5),'updated_at':'2026-10-18T00:00:00Z'},
+      'proposed':prepared!['proposed'],
+    };
+    final gateway=_ChangeGateway((action,data) async {
+      actions.add(action);
+      if(action=='capability')return {'version':1,'change_requests_available':true,
+        'new_upload_available':false,'max_photos':20,'self_approval_allowed':false};
+      if(action=='prepare'){prepared=Map<String,dynamic>.from(data);return receipt('draft');}
+      if(action=='submit'){expect(data['request_id'],prepared!['request_id']);return receipt('pending');}
+      throw StateError('Unexpected synthetic action');
+    },requiredDocument:true);
+    final original=Map<String,dynamic>.from((await gateway.loadAll())['statuses']!.single);
+    await tester.pumpWidget(MaterialApp(home:OwnDocumentRegistrationPage(gateway:gateway)));
+    await tester.pumpAndSettle();
+    expect(find.text('添付待ち'),findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton,'登録').first);await tester.pumpAndSettle();
+    expect(find.text('書類の変更申請'),findsOneWidget);
+    expect(tester.widget<TextField>(find.widgetWithText(TextField,'備考')).controller!.text,'existing');
+    await tester.enterText(find.widgetWithText(TextField,'備考'),'synthetic revised note');
+    await tester.tap(find.text('変更を申請'));await tester.pumpAndSettle();
+    expect(actions,['capability','prepare','submit']);
+    expect((prepared!['proposed'] as Map)['notes'],'synthetic revised note');
+    expect((prepared!['proposed'] as Map)['attachment_paths'],isEmpty);
+    expect(prepared!['expected_updated_at'],'2026-10-18T00:00:00Z');
+    expect(find.textContaining('承認されるまで正式な書類は変わりません'),findsOneWidget);
+    expect(gateway.calls,isEmpty);expect(gateway.edits,isEmpty);
+    expect((await gateway.loadAll())['statuses']!.single,original);
+    await tester.pumpWidget(const SizedBox());await tester.runAsync(()=>gateway.events.close());
+  });
   testWidgets('actor ABA during membership lookup cannot enter change flow', (
     tester,
   ) async {

@@ -1,0 +1,23 @@
+name: Own document edit entry
+on:
+  pull_request:
+    paths:
+      - 'lib/features/people/own_document_registration_page.dart'
+      - 'test/own_document_registration_save_test.dart'
+      - 'test/own_required_document_status_test.dart'
+      - '.github/workflows/own-document-edit-entry.yml'
+permissions:
+  contents: read
+jobs:
+  client:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter test test/own_document_registration_save_test.dart --plain-name 'partial saved required metadata opens existing edit approval without direct overwrite'
