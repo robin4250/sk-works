@@ -136,7 +136,7 @@ void main(){
   f.controller.dispose();f.controller=f.makeController();await f.controller.load();expect(f.controller.view,ScannerRegistrationView.blocked);expect(jsonEncode(f.stored),snapshot);
  });
  test('missing existing recovery state never automatically initializes or rotates identity',() async {
-  await f.passwordStage();final operations=List<String>.from(f.operations);f.stored=null;await f.controller.reconcile();expect(f.controller.view,ScannerRegistrationView.uncertain);expect(f.stored,isNull);expect(f.operations,operations);
+  await f.passwordStage();final operations=List<String>.from(f.operations);f.stored=null;await f.controller.reconcile();expect(f.controller.view,ScannerRegistrationView.blocked);expect(f.stored,isNull);expect(f.operations,operations);
   await f.controller.load();expect(f.controller.view,ScannerRegistrationView.blocked);expect(f.stored,isNull);
  });
  testWidgets('unexposed page requires explicit new setup and clears password through real controller flow',(tester) async {
@@ -145,10 +145,18 @@ void main(){
   final begin=find.byKey(const Key('scanner-new-logical-device'));expect(tester.widget<FilledButton>(begin).onPressed,isNull);
   await tester.tap(find.byType(CheckboxListTile));await tester.pump();await tester.tap(begin);await tester.pumpAndSettle();
   expect(f.stored!['stage'],'key_pending');expect(f.operations,isEmpty);
-  await tester.tap(find.widgetWithText(FilledButton,'この端末の鍵を準備'));await tester.pumpAndSettle();
-  await tester.tap(find.widgetWithText(FilledButton,'登録手続きを開始'));await tester.pumpAndSettle();
+  Future<void> invokeAndDrain(Finder button) async {
+   await tester.runAsync(() async {
+    await tester.tap(button);
+    final clock=Stopwatch()..start();
+    while(f.controller.busy){if(clock.elapsed>const Duration(seconds:5))throw StateError('fixture runtime did not finish');await Future<void>.delayed(const Duration(milliseconds:1));}
+   });
+   await tester.pumpAndSettle();
+  }
+  await invokeAndDrain(find.widgetWithText(FilledButton,'この端末の鍵を準備'));
+  await invokeAndDrain(find.widgetWithText(FilledButton,'登録手続きを開始'));
   await tester.enterText(find.byKey(const Key('scanner-dedicated-password')),'synthetic-secondary-password');
-  await tester.tap(find.widgetWithText(FilledButton,'本人確認して登録'));await tester.pumpAndSettle();
+  await invokeAndDrain(find.widgetWithText(FilledButton,'本人確認して登録'));
   expect(f.controller.view,ScannerRegistrationView.confirmed);expect(find.text('synthetic-secondary-password'),findsNothing);expect(find.byType(TextField),findsNothing);f.noSecrets();
   await tester.pumpWidget(const SizedBox());
  });

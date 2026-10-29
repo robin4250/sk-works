@@ -5,6 +5,8 @@ import 'scanner_registration_key.dart';
 import 'scanner_registration_pending.dart';
 import 'scanner_registration_transport.dart';
 
+class _RecoveryBlocked implements Exception { const _RecoveryBlocked(); }
+
 enum ScannerRegistrationView { disabled,loading,newLogicalDevice,keyPreparation,ready,password,wrongPassword,busy,uncertain,proofLost,confirmed,blocked }
 
 /// Unexposed/OFF composition of the actual native custody and HTTPS contract.
@@ -35,20 +37,21 @@ class ScannerRegistrationController extends ChangeNotifier {
    owner.invalidated.then((_) {if(!_disposed && identical(_owner,owner)){_epoch++;_busy=false;_emit(ScannerRegistrationView.blocked);}});
   }catch(_){_emit(ScannerRegistrationView.blocked);return;}
   await _run((epoch) async {
-   final value=await journal.read(_owner!,company);_live(epoch);
-   if(value==null){if(pending!=null || _setupAttempted)throw StateError('元の状態がありません。');_emit(ScannerRegistrationView.newLogicalDevice);return;}
+   ScannerRegistrationPending? value;
+   try{value=await journal.read(_owner!,company);}catch(_){throw const _RecoveryBlocked();}_live(epoch);
+   if(value==null){if(pending!=null || _setupAttempted)throw const _RecoveryBlocked();_emit(ScannerRegistrationView.newLogicalDevice);return;}
    _adopt(value);await _reconcile(epoch);
   });
  }
  void _adopt(ScannerRegistrationPending value){
   final old=pending;
-  if(old!=null && (!old.sameImmutable(value) || value.version<old.version))throw StateError('保存された手続きが変更されています。');pending=value;
+  if(old!=null && (!old.sameImmutable(value) || value.version<old.version))throw const _RecoveryBlocked();pending=value;
  }
  Future<void> _run(Future<void> Function(int epoch) action) async {
   if(_disposed || _busy || !enabled || _owner==null)return;
   final epoch=_epoch;_busy=true;_emit(ScannerRegistrationView.busy);
   try{_live(epoch);await action(epoch);_live(epoch);}
-  catch(_){if(!_disposed && epoch==_epoch){var live=true;try{_owner!.live();}catch(_){live=false;}_emit(!live||pending==null?ScannerRegistrationView.blocked:ScannerRegistrationView.uncertain);}}
+  catch(error){if(!_disposed && epoch==_epoch){var live=true;try{_owner!.live();}catch(_){live=false;}_emit(error is _RecoveryBlocked||!live||pending==null?ScannerRegistrationView.blocked:ScannerRegistrationView.uncertain);}}
   finally{if(!_disposed && epoch==_epoch){_busy=false;notifyListeners();}}
  }
  Future<void> _advance(int epoch,String next,Map<String,dynamic> patch) async {
@@ -105,8 +108,9 @@ class ScannerRegistrationController extends ChangeNotifier {
  Future<void> reconcile() async {
   if(!canReconcile)return;
   await _run((epoch) async {
-   final value=await journal.read(_owner!,company);_live(epoch);
-   if(value==null)throw StateError('元の記録がありません。');_adopt(value);await _reconcile(epoch);
+   ScannerRegistrationPending? value;
+   try{value=await journal.read(_owner!,company);}catch(_){throw const _RecoveryBlocked();}_live(epoch);
+   if(value==null)throw const _RecoveryBlocked();_adopt(value);await _reconcile(epoch);
   });
  }
  Future<void> _readReceipt(int epoch) async {

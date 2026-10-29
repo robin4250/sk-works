@@ -10,6 +10,7 @@ import 'package:sk_works/features/qr_attendance/scanner_registration_transport.d
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'scanner_registration_flow_test.dart' as fixture;
 
+class _NativeFixtureHttp extends HttpOverrides {}
 class _Tls {
  late Directory directory;late HttpServer server;late IOClient httpClient;late SupabaseClient auth;
  late ScannerRegistrationSession owner;late ScannerRegistrationTransport transport;
@@ -30,7 +31,7 @@ class _Tls {
    }catch(error){if(error is TestFailure)fixtureFailure=error;try{await request.response.close();}catch(_){}}
   });
   final trusted=SecurityContext(withTrustedRoots:false)..setTrustedCertificates(cert.path);
-  httpClient=IOClient(HttpClient(context:trusted));
+  httpClient=IOClient(_NativeFixtureHttp().createHttpClient(trusted));
   auth=SupabaseClient('https://qr-auth-fixture.invalid','synthetic-public',authOptions:const AuthClientOptions(autoRefreshToken:false),httpClient:MockClient((r) async {
    expect(r.url.origin,'https://qr-auth-fixture.invalid');expect(r.url.path,'/auth/v1/user');expect(r.url.query,isEmpty);
    return http.Response(jsonEncode((jsonDecode(fixture.sdkSession()) as Map)['user']),200,headers:{'content-type':'application/json'});
