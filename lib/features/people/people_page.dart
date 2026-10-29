@@ -11,7 +11,7 @@ extension PersonKindLabel on PersonKind {
   String get label => switch (this) {
     PersonKind.employee => '社員',
     PersonKind.partnerCompany => '協力会社',
-    PersonKind.partnerWorker => '協力会社作業員',
+    PersonKind.partnerWorker => '協力会社従業員',
   };
 }
 
@@ -29,6 +29,8 @@ class PersonRecord {
     this.employeeNumber = '',
     this.department = '',
     this.hireDate = '',
+    this.birthDate = '',
+    this.birthDateContractVersion = 0,
     this.notes = '',
     this.active = true,
     this.createdAt = '',
@@ -55,6 +57,8 @@ class PersonRecord {
   final String employeeNumber;
   final String department;
   final String hireDate;
+  final String birthDate;
+  final int birthDateContractVersion;
   final String notes;
   final bool active;
   final String createdAt;
@@ -81,6 +85,8 @@ class PersonRecord {
     'employeeNumber': employeeNumber,
     'department': department,
     'hireDate': hireDate,
+    'birthDate': birthDate,
+    'birthDateContractVersion': birthDateContractVersion,
     'notes': notes,
     'active': active,
     'createdAt': createdAt,
@@ -113,6 +119,8 @@ class PersonRecord {
           (json['employeeNumber'] ?? json['employee_number'])?.toString() ?? '',
       department: json['department']?.toString() ?? '',
       hireDate: (json['hireDate'] ?? json['hire_date'])?.toString() ?? '',
+      birthDate: (json['birthDate'] ?? json['birth_date'])?.toString() ?? '',
+      birthDateContractVersion: (json['birthDateContractVersion'] ?? json['birth_date_contract_version']) == 1 ? 1 : 0,
       notes: json['notes']?.toString() ?? '',
       active: json['active'] is bool ? json['active'] as bool : true,
       createdAt: json['createdAt']?.toString() ?? '',

@@ -1,0 +1,75 @@
+name: Employee bank initial registration candidate
+on:
+  pull_request:
+    paths:
+      - 'lib/features/people/employee_bank_*'
+      - 'test/employee_bank_*'
+      - 'tool/staged/employee_bank_initial*'
+      - 'tool/security/employee_bank_initial*'
+      - 'tool/security/employee_bank_initial/**'
+      - 'supabase/functions/reauthenticate-operation/handler.mjs'
+      - '.github/workflows/employee-bank-initial-registration.yml'
+permissions:
+  contents: read
+jobs:
+  boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node --test tool/security/employee_bank_initial.handler.test.mjs tool/security/reauthentication_handler_test.mjs
+      - run: node tool/security/employee_bank_initial.gotrue.mjs --check-generated
+      - run: python3 tool/security/employee_bank_initial/generate-candidate.py
+      - run: git diff --exit-code -- tool/staged/employee_bank_initial_registration.sql.review-only tool/staged/employee_bank_initial_registration.restore-unused.sql.review-only tool/security/employee_bank_initial/expected-candidate-definitions.json
+  postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: synthetic_employee_bank_fixture_only
+          POSTGRES_DB: sko_employee_bank_fixture
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --prefix /tmp/employee-bank-deps --no-audit --no-fund pg@8.16.3
+      - run: node tool/security/employee_bank_initial.postgres.mjs /tmp/employee-bank-deps/node_modules/pg/lib/index.js
+        env:
+          SKO_EMPLOYEE_BANK_FIXTURE_URL: postgres://postgres:synthetic_employee_bank_fixture_only@127.0.0.1:5432/sko_employee_bank_fixture
+  real-auth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --prefix /tmp/employee-bank-deps --no-audit --no-fund pg@8.16.3
+      - run: node tool/security/employee_bank_initial.gotrue.mjs
+        env:
+          SKO_EMPLOYEE_BANK_REAL_AUTH: contract-v1
+          SKO_EMPLOYEE_BANK_PG_MODULE: /tmp/employee-bank-deps/node_modules/pg/lib/index.js
+  client:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze lib/features/people/employee_bank_account_repository.dart lib/features/people/employee_bank_account_section.dart test/employee_bank_account_repository_test.dart test/employee_bank_account_section_test.dart
+      - run: flutter test test/employee_bank_account_repository_test.dart test/employee_bank_account_section_test.dart

@@ -31,7 +31,8 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
   final _records = <PersonRecord>[];
   PersonnelPrivacySession? _privacy;
   String _query = '';
-  PersonKind? _filter;
+  PersonKind? _filter = PersonKind.employee;
+  bool _retired = false;
   bool _loading = true;
   bool _canManagePeople = false;
   bool _canViewPeople = false;
@@ -58,7 +59,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
       else if(session?.snapshot==null){
         if(session?.active==false)_refreshContactsOnResume=true;
         final basic=_records.map((record)=>PersonRecord.fromJson({...record.toJson(),
-          'phone':'','email':'','notes':'','bloodType':'','address':'',
+          'phone':'','email':'','notes':'','birthDate':'','birthDateContractVersion':0,'bloodType':'','address':'',
           'emergencyName':'','emergencyRelation':'','emergencyPhone':'','emergencyAddress':'',
           'familyComposition':'','familyMembers':<dynamic>[],
         })).toList(growable:false);
@@ -84,7 +85,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
       session.verify(lease);
       if(!mounted||_privacy!=session)return;
       setState((){_records..clear()..addAll(rows.map((row)=>PersonRecord.fromJson({...row,
-        'bloodType':'','address':'','emergencyName':'','emergencyRelation':'',
+        'birthDate':'','birthDateContractVersion':0,'bloodType':'','address':'','emergencyName':'','emergencyRelation':'',
         'emergencyPhone':'','emergencyAddress':'','familyComposition':'','familyMembers':<dynamic>[],
       })));});
     }catch(_){/* Keep scrubbed roster; never restore a stale response. */}
@@ -121,7 +122,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
       if (actor == null || repository.actorId != actor) throw StateError('ログイン情報が変更されました。再読み込みしてください。');
       final rows = values[0] as List<Map<String, dynamic>>;
       final loaded = rows.map((row)=>PersonRecord.fromJson({...row,
-        'bloodType':'','address':'','emergencyName':'','emergencyRelation':'',
+        'birthDate':'','birthDateContractVersion':0,'bloodType':'','address':'','emergencyName':'','emergencyRelation':'',
         'emergencyPhone':'','emergencyAddress':'','familyComposition':'','familyMembers':<dynamic>[],
       })).toList();
       if (!mounted || _privacy!=privacy || privacy.revoked || !privacy.active) return;
@@ -152,7 +153,9 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
   Widget build(BuildContext context) {
     final needle = _query.trim().toLowerCase();
     final filtered = _records.where((record) {
-      final matchesKind = _filter == null || record.kind == _filter;
+      final matchesKind = _retired
+          ? !record.active && record.kind != PersonKind.partnerCompany
+          : record.active && record.kind == _filter;
       final haystack = [
         record.name,
         record.companyName,
@@ -248,20 +251,16 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
                 children: [
-                  ChoiceChip(
-                    label: Text(SkoLanguageController.tr('すべて')),
-                    selected: _filter == null,
-                    onSelected: (_) => setState(() => _filter = null),
-                  ),
-                  const SizedBox(width: 8),
                   for (final kind in PersonKind.values) ...[
                     ChoiceChip(
                       label: Text(kind.label),
-                      selected: _filter == kind,
-                      onSelected: (_) => setState(() => _filter = kind),
+                      selected: !_retired && _filter == kind,
+                      onSelected: (_) => setState(() { _filter = kind; _retired = false; }),
                     ),
                     const SizedBox(width: 8),
                   ],
+                  ChoiceChip(label: const Text('退職者'), selected: _retired,
+                    onSelected: (_) => setState(() => _retired = true)),
                 ],
               ),
             ),

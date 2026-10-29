@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'employee_personnel_edit_page.dart';
+import 'employee_bank_account_section.dart';
+import 'employee_portrait_registration_page.dart';
+import '../auth/secondary_protected_page.dart';
+import 'employee_retirement_page.dart';
 import 'employee_personnel_print_page.dart';
 import 'people_page.dart';
 import 'people_cloud_repository.dart';
@@ -17,6 +21,7 @@ class EmployeePersonnelDetailPage extends StatelessWidget {
     this.canManage = true,
     required this.canViewFamily,
     this.portraitLoader,
+    this.portraitRegistrationBuilder,
     this.privacySession,
     bool privacyResolved=false,
   }) : _privacyResolved=privacyResolved;
@@ -27,6 +32,8 @@ class EmployeePersonnelDetailPage extends StatelessWidget {
   final bool canManage;
   final bool canViewFamily;
   final Future<String?> Function()? portraitLoader;
+  @visibleForTesting
+  final Widget Function(PersonnelPrivacySession, String, String)? portraitRegistrationBuilder;
   final PersonnelPrivacySession? privacySession;
   final bool _privacyResolved;
 
@@ -114,6 +121,35 @@ class EmployeePersonnelDetailPage extends StatelessWidget {
     })));
   }
 
+  Future<void> _retire(BuildContext context) async {
+    final session = privacySession;
+    if (session == null || !canManage || !record.active) return;
+    try {
+      await session.read(workerIds: {record.id});
+      session.verify(session.epoch);
+      if (session.snapshot?.canManage != true || !context.mounted) return;
+      final retired = await Navigator.of(context).push<bool>(MaterialPageRoute(
+        builder: (_) => PersonnelPrivacyView(session: session, builder: (context, rows) {
+          final current = rows.where((row) => row['id'] == record.id).toList();
+          if (session.snapshot?.canManage != true || current.length != 1 ||
+              current.single['active'] != true) {
+            return const Center(child: Text('対象または管理権限を確認できません。'));
+          }
+          return SecondaryProtectedPage(title: '退職手続き',
+            child: EmployeeRetirementPage(companyId: session.company,
+              workerId: record.id, workerName: record.name, privacySession: session));
+        }),
+      ));
+      await session.refresh();
+      if (retired == true && context.mounted) Navigator.of(context).pop();
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('対象と管理権限を再確認してください。')));
+      }
+    }
+  }
+
   Future<void> _callPhone(BuildContext context, String phone) async {
     final session=privacySession;
     if(session!=null){try{await session.read(workerIds:{record.id});session.verify(session.epoch);}catch(_){return;}}
@@ -179,7 +215,7 @@ class EmployeePersonnelDetailPage extends StatelessWidget {
         return EmployeePersonnelDetailPage(record:PersonRecord.fromJson(current.single),
           allEmployees:raw.map(PersonRecord.fromJson).toList(growable:false),
           companyName:companyName,canManage:session.snapshot!.canManage&&current.single['personnelBasicOnly']!=true,canViewFamily:current.single['personnelBasicOnly']!=true,
-          portraitLoader:portraitLoader,privacySession:session,privacyResolved:true);
+          portraitLoader:portraitLoader,portraitRegistrationBuilder:portraitRegistrationBuilder,privacySession:session,privacyResolved:true);
       });
     }
     final rows = <(String, String)>[
@@ -189,6 +225,7 @@ class EmployeePersonnelDetailPage extends StatelessWidget {
       ('血液型', record.bloodType),
       ('所属', record.department),
       ('職種', record.role),
+      ('生年月日', record.birthDate.replaceAll('-', '/')),
       ('入社日', record.hireDate.replaceAll('-', '/')),
     ];
 
@@ -203,7 +240,23 @@ class EmployeePersonnelDetailPage extends StatelessWidget {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
           children: [
-            _PersonnelPortrait(key: ValueKey(record.id), loader: portraitLoader),
+            if (canManage && record.active && privacySession != null)
+              OutlinedButton.icon(onPressed: () => _retire(context),
+                icon: const Icon(Icons.person_remove_outlined), label: const Text('退職手続き')),
+            if (!record.active) const Text('退職者'),
+            if (canManage && privacySession != null)
+              _EmployeePortraitEntry(
+                key: ValueKey('employee-portrait-entry:${privacySession!.company}:${record.id}'),
+                session: privacySession!, workerId: record.id, loader: portraitLoader,
+                registrationBuilder: () => portraitRegistrationBuilder?.call(privacySession!, record.id, companyName)
+                  ?? EmployeePortraitRegistrationPage(privacySession: privacySession!,
+                    workerId: record.id, companyName: companyName))
+            else
+              _PersonnelPortrait(key: ValueKey(record.id), loader: portraitLoader),
+            if (privacySession != null)
+              EmployeeBankAccountSection(
+                key: ValueKey('employee-bank:${privacySession!.company}:${record.id}'),
+                companyId: privacySession!.company, workerId: record.id, employeeName: record.name),
             const SizedBox(height: 12),
             Card(
               clipBehavior: Clip.antiAlias,
@@ -448,3 +501,59 @@ class _PersonnelPortraitState extends State<_PersonnelPortrait> {
   );
 }
 
+
+class _EmployeePortraitEntry extends StatefulWidget {
+  const _EmployeePortraitEntry({super.key, required this.session,
+    required this.workerId, required this.loader, required this.registrationBuilder});
+  final PersonnelPrivacySession session;
+  final String workerId;
+  final Future<String?> Function()? loader;
+  final Widget Function() registrationBuilder;
+  @override State<_EmployeePortraitEntry> createState() => _EmployeePortraitEntryState();
+}
+class _EmployeePortraitEntryState extends State<_EmployeePortraitEntry> {
+  int _revision = 0;
+  bool _busy = false;
+  bool _allowed(PersonnelPrivacySession session, String worker) =>
+    mounted && session.active && !session.revoked &&
+    identical(widget.session, session) && widget.workerId == worker &&
+    session.snapshot?.canManage == true && session.snapshot!.records.any((row) =>
+      row['id'] == worker && row['personnelBasicOnly'] != true);
+  Future<void> _open() async {
+    if (_busy) return;
+    final session = widget.session, worker = widget.workerId;
+    final lease = session.epoch;
+    setState(() => _busy = true);
+    try {
+      await session.read(workerIds: {worker});
+      session.verify(lease);
+      if (!mounted || !_allowed(session, worker)) return;
+      final saved = await Navigator.of(context).push<bool>(MaterialPageRoute(
+        builder: (_) => PersonnelPrivacyView(session: session, builder: (context, _) {
+          if (!_allowed(session, worker)) {
+            return const Center(child: Text('対象と管理権限を再確認してください。'));
+          }
+          return widget.registrationBuilder();
+        }),
+      ));
+      if (saved != true) return;
+      await session.read(workerIds: {worker});
+      session.verify(lease);
+      if (!mounted || !_allowed(session, worker)) return;
+      setState(() => _revision++);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('対象と管理権限を再確認してください。')));
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+  @override Widget build(BuildContext context) => Column(children: [
+    _PersonnelPortrait(key: ValueKey('employee-portrait:${widget.workerId}:$_revision'), loader: widget.loader),
+    OutlinedButton.icon(key: const Key('employee-portrait-register'),
+      onPressed: _busy ? null : _open, icon: const Icon(Icons.add_a_photo_outlined),
+      label: const Text('顔写真を登録・変更')),
+  ]);
+}

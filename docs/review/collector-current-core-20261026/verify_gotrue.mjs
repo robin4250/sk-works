@@ -16,7 +16,22 @@ try{
  await fs.mkdir(workdir,{mode:0o700});owns=true;await fs.writeFile(path.join(workdir,'owned-fixture.json'),JSON.stringify({project,ports:[54020,54021,54022]}),{mode:0o600});await cli(['init']);
  const configPath=path.join(workdir,'supabase/config.toml');let config=await fs.readFile(configPath,'utf8');config=config.replace(/^project_id = .*$/m,`project_id = "${project}"`).replaceAll('54321','54021').replaceAll('54322','54022').replaceAll('54320','54020').replaceAll('54323','54023').replaceAll('54324','54024').replaceAll('54327','54027').replaceAll('54329','54029').replaceAll('127.0.0.1:3000','127.0.0.1:54021').replace(/(\[db.seed\][\s\S]*?enabled = )true/,'$1false');await fs.writeFile(configPath,config,{mode:0o600});
  const functions=path.join(workdir,'supabase/functions');const fn=path.join(functions,'reauthenticate-operation');await fs.mkdir(fn,{recursive:true});for(const name of ['index.ts','handler.mjs'])await fs.copyFile(path.join(repo,'supabase/functions/reauthenticate-operation',name),path.join(fn,name));
- const baseline=path.join(functions,'collector-baseline-proof');await fs.mkdir(baseline);await fs.copyFile(path.join(fn,'index.ts'),path.join(baseline,'index.ts'));const candidate=await fs.readFile(path.join(fn,'handler.mjs'),'utf8');const before=candidate.replace(" ['master.security_collector.read', 'master_security'],\n",'').replace("  if(payload.operation==='master.security_collector.read'&&(Object.keys(target).join(',')!=='scope'||target.scope!=='decoy_collector'))return reply(400,{error:'invalid_request'});\n",'');eq(hash(before),hash(await read('./sources/handler.mjs')),'Exact original handler baseline preserved');await fs.writeFile(path.join(baseline,'handler.mjs'),before,{mode:0o600});
+ const baseline=path.join(functions,'collector-baseline-proof');await fs.mkdir(baseline);await fs.copyFile(path.join(fn,'index.ts'),path.join(baseline,'index.ts'));const candidate=await fs.readFile(path.join(fn,'handler.mjs'),'utf8');
+ const historical=await read('./sources/handler.mjs');
+ eq(hash(historical),'4751253ed0f8e3739d43bac8fa97930d28873389d32516ba169e1177a49dfd05','Exact immutable historical handler baseline preserved');
+ // New unrelated operations must not redefine the historical comparison. The
+ // real baseline still rejects collector, while the current handler must retain
+ // its exact collector registration/target guards and genuine password path.
+ for(const invariant of [
+  " ['master.security_collector.read', 'master_security'],\n",
+  "  if(payload.operation==='master.security_collector.read'&&(Object.keys(target).join(',')!=='scope'||target.scope!=='decoy_collector'))return reply(400,{error:'invalid_request'});\n",
+  "const response=await request('/auth/v1/user'",
+  "const result=await request('/auth/v1/token?grant_type=password'",
+  "tempClaims.session_id===session",
+  "request('/auth/v1/logout?scope=local'",
+  "return await issue(user.id,session,payload.operation,target)",
+ ])eq(candidate.split(invariant).length,invariant==="request('/auth/v1/logout?scope=local'"?3:2,'Current collector/password protection preserved');
+ await fs.writeFile(path.join(baseline,'handler.mjs'),historical,{mode:0o600});
  phase='local-stack';const existing=await run('docker',['ps','-a','--filter','name='+project,'--format','{{.ID}}']);eq(existing.stdout.trim(),'','No fixture collision');started=true;await cli(['start','--exclude','edge-runtime,realtime,storage-api,imgproxy,studio,postgres-meta,logflare,vector,supavisor'],600000);const status=JSON.parse((await cli(['status','--output','json'])).stdout);const api=new URL(status.API_URL),database=new URL(status.DB_URL);if(api.protocol!=='http:'||!['127.0.0.1','localhost','[::1]'].includes(api.hostname)||api.port!=='54021'||!['127.0.0.1','localhost','[::1]'].includes(database.hostname)||database.port!=='54022'||database.pathname!=='/postgres')throw Error('Unexpected fixture endpoint');
  const publicKey=status.ANON_KEY??status.PUBLISHABLE_KEY,serviceKey=status.SERVICE_ROLE_KEY??status.SECRET_KEY;if(typeof publicKey!=='string'||typeof serviceKey!=='string')throw Error('Missing fixture key');
  const serviceHeaders={apikey:serviceKey,...(!serviceKey.startsWith('sb_secret_')?{Authorization:'Bearer '+serviceKey}:{})};

@@ -1,0 +1,176 @@
+-- REVIEW ONLY. Fourth-function compatibility followup; no production authorization.
+-- Original definition reused from existing repository personnel fixture.
+begin;
+set local lock_timeout='5s';
+do $attributes$ begin
+ if not exists(select 1 from pg_proc where oid=to_regprocedure('public.save_worker_personnel_profile(uuid,jsonb)')
+ and pg_get_userbyid(proowner)='postgres' and prosecdef and provolatile='v'
+ and not proisstrict and not proleakproof and proparallel='u' and prokind='f' and not proretset
+ and prorettype='jsonb'::regtype and proconfig=array['search_path=""']::text[]
+ and proacl::text='{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}')
+ then raise exception 'personnel_birth_noop_attributes_drift';end if;
+end $attributes$;
+do $body$ begin
+ if not exists(select 1 from pg_proc where oid=to_regprocedure('public.save_worker_personnel_profile(uuid,jsonb)') and md5(prosrc)='c11956bf0845ab725312928c2422a7ab') then raise exception 'personnel_birth_noop_body_drift';end if;
+end $body$;
+do $dependency$ begin
+ if not exists(select 1 from information_schema.columns where table_schema='public' and table_name='worker_personnel_profiles' and column_name='birth_date' and data_type='date')
+ or not exists(select 1 from pg_proc where oid=to_regprocedure('private.worker_personnel_payload(uuid)') and md5(prosrc)='4619b54556b9262dc22b95a4a65fc59f')
+ then raise exception 'personnel_birth_noop_birthday_dependency_missing';end if;
+end $dependency$;
+CREATE OR REPLACE FUNCTION public.save_worker_personnel_profile(p_worker_id uuid, p_payload jsonb)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare
+  v_company uuid;
+  v_existing boolean;
+  v_request uuid;
+  v_current jsonb;
+  v_comparison_payload jsonb;
+  v_birth_date date;
+  v_actor uuid:=auth.uid();
+  v_actor_role text;
+  v_required integer;
+begin
+  if v_actor is null then raise exception 'ログインが必要です'; end if;
+  if not private.can_edit_worker_personnel(p_worker_id) then
+    raise exception '社員個人情報を変更する権限がありません';
+  end if;
+
+  select w.company_id into v_company
+  from public.workers w
+  where w.id=p_worker_id;
+
+  if v_company is null then raise exception '社員を確認できません'; end if;
+
+  -- Reject a manual duplicate before a pending approval request is created.
+  -- The trigger/index recheck at application time covers approval-time races.
+  if p_payload ? 'employee_number' and nullif(btrim(p_payload->>'employee_number'),'') is not null then
+    if length(btrim(p_payload->>'employee_number'))>40 then
+      raise exception using errcode='22001',message='employee_number_too_long';
+    end if;
+    if exists(select 1 from public.workers w where w.company_id=v_company
+      and w.id<>p_worker_id
+      and upper(btrim(w.employee_number))=upper(btrim(p_payload->>'employee_number'))) then
+      raise exception using errcode='23505',message='employee_number_duplicate',
+        constraint='workers_company_employee_number_unique';
+    end if;
+  end if;
+
+
+  select cm.role::text into v_actor_role
+  from public.company_members cm
+  where cm.company_id=v_company
+    and cm.user_id=v_actor
+  limit 1;
+
+  if v_actor_role is null then
+    raise exception '会社への所属が必要です';
+  end if;
+
+  select exists(
+    select 1
+    from public.worker_personnel_profiles p
+    where p.worker_id=p_worker_id
+  ) into v_existing;
+
+  v_current:=private.worker_personnel_payload(p_worker_id);
+
+  -- Protocol metadata is excluded only from comparison. Do not add a missing
+  -- birthday to p_payload: stored proposals must retain omission semantics.
+  v_comparison_payload:=p_payload - 'birth_date_contract_version';
+  if p_payload ? 'birth_date' then
+    -- Match the existing birthday apply contract exactly: explicit NULL/empty
+    -- clears, calendar-invalid/out-of-range dates reject, no rollover accepted.
+    begin
+      v_birth_date:=nullif(p_payload->>'birth_date','')::date;
+    exception when others then
+      raise exception '生年月日を確認してください' using errcode='22023';
+    end;
+    if v_birth_date is not null and
+      (v_birth_date<date '1900-01-01' or v_birth_date>current_date) then
+      raise exception '生年月日を確認してください' using errcode='22023';
+    end if;
+    v_comparison_payload:=v_comparison_payload || jsonb_build_object('birth_date',v_birth_date);
+  else
+    v_comparison_payload:=v_comparison_payload || jsonb_build_object('birth_date',v_current->'birth_date');
+  end if;
+
+  if not v_existing then
+    perform private.apply_worker_personnel_payload(p_worker_id,p_payload,v_actor);
+    return jsonb_build_object(
+      'status','saved',
+      'requires_approval',false,
+      'saved_directly',true
+    );
+  end if;
+
+  if (v_current - 'birth_date_contract_version')=v_comparison_payload then
+    return jsonb_build_object(
+      'status','unchanged',
+      'requires_approval',false,
+      'saved_directly',false
+    );
+  end if;
+
+  if v_actor_role in ('owner','admin') then
+    perform private.apply_worker_personnel_payload(p_worker_id,p_payload,v_actor);
+
+    update public.worker_personnel_change_requests
+    set status='rejected',resolved_at=now()
+    where worker_id=p_worker_id
+      and status='pending';
+
+    return jsonb_build_object(
+      'status','saved',
+      'requires_approval',false,
+      'saved_directly',true
+    );
+  end if;
+
+  select count(*)::integer into v_required
+  from public.worker_personnel_approvers a
+  where a.company_id=v_company
+    and a.user_id<>v_actor;
+
+  if v_required<1 then
+    raise exception '社員個人情報の承認者を1〜3名で設定してください（申請者本人は承認できません）';
+  end if;
+
+  v_required:=least(v_required,3);
+
+  update public.worker_personnel_change_requests
+  set status='rejected',resolved_at=now()
+  where worker_id=p_worker_id
+    and requested_by=v_actor
+    and status='pending';
+
+  insert into public.worker_personnel_change_requests(
+    company_id,worker_id,requested_by,proposed,required_approvals
+  ) values(v_company,p_worker_id,v_actor,p_payload,v_required)
+  returning id into v_request;
+
+  insert into public.app_notifications(
+    company_id,recipient_user_id,kind,title,body,action_key,action_id
+  )
+  select v_company,a.user_id,'approval','社員個人情報の変更申請',
+    '社員個人情報の変更申請があります。登録済み承認者の承認後に反映されます。',
+    'worker_personnel_change',v_request
+  from public.worker_personnel_approvers a
+  where a.company_id=v_company
+    and a.user_id<>v_actor;
+
+  return jsonb_build_object(
+    'status','pending',
+    'requires_approval',true,
+    'request_id',v_request,
+    'required_approvals',v_required,
+    'saved_directly',false
+  );
+end
+$function$;
+
+commit;

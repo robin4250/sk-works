@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -5,6 +6,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'worker_document_repository.dart';
+import 'own_bank_account_page.dart';
+import 'own_bank_account_repository.dart';
 import 'worker_document_exemption.dart';
 import 'worker_document_change_flow.dart';
 import 'worker_document_change_repository.dart';
@@ -128,9 +131,10 @@ class _OwnDocumentRepositoryGateway
 }
 
 class OwnDocumentRegistrationPage extends StatefulWidget {
-  const OwnDocumentRegistrationPage({super.key, this.gateway, this.pickPhoto});
+  const OwnDocumentRegistrationPage({super.key, this.gateway, this.pickPhoto, this.bankGateway});
 
   final OwnDocumentRegistrationGateway? gateway;
+  final OwnBankAccountGateway? bankGateway;
   final Future<XFile?> Function(ImageSource source)? pickPhoto;
 
   @override
@@ -142,6 +146,9 @@ class _OwnDocumentRegistrationPageState
     extends State<OwnDocumentRegistrationPage> {
   OwnDocumentRegistrationGateway? _repository;
   final _picker = ImagePicker();
+  OwnBankAccountGateway? _bankGateway;
+  OwnBankAccountState? _bankState;
+  String? _bankWorkerId, _bankCompanyId;
 
   List<Map<String, dynamic>> _requirements = const [];
   List<Map<String, dynamic>> _statuses = const [];
@@ -179,10 +186,29 @@ class _OwnDocumentRegistrationPageState
     });
     try {
       final data = await repository.loadAll();
-      final workers = data['workers'] ?? const <Map<String, dynamic>>[];
       if (!mounted) return;
+      final workers = data['workers'] ?? const <Map<String, dynamic>>[];
+      final banks = (data['requirements'] ?? const <Map<String,dynamic>>[])
+        .where((r) => r['name']=='銀行口座情報' && r['is_active']!=false).toList();
+      final companies = banks.map((r)=>r['company_id']?.toString()).whereType<String>().toSet();
+      final workerId = workers.length==1 ? workers.single['id']?.toString() : null;
+      final companyId = companies.length==1 ? companies.single : null;
+      OwnBankAccountState? bankState;
+      if (banks.isNotEmpty && workerId!=null && companyId!=null) {
+        try {
+          if (_bankGateway==null) {
+            _bankGateway=widget.bankGateway ?? OwnBankAccountRepository.maybeCreate(workerId:workerId,companyId:companyId);
+            _bankWorkerId=workerId; _bankCompanyId=companyId;
+            _bankGateway?.addListener(_bankChanged);
+          }
+          if (_bankWorkerId==workerId && _bankCompanyId==companyId) bankState=await _bankGateway?.load();
+        } catch (_) { /* Unavailable evidence remains unknown, never registered. */ }
+      }
+      if (!mounted) return;
+      if (_bankGateway?.isCurrent!=true) bankState=null;
       setState(() {
         _worker = workers.isEmpty ? null : workers.first;
+        _bankState=bankState;
         _requirements = (data['requirements'] ?? const <Map<String, dynamic>>[])
             .where((row) => row['is_active'] != false)
             .toList(growable: false);
@@ -197,6 +223,27 @@ class _OwnDocumentRegistrationPageState
         _error = error.toString();
       });
     }
+  }
+
+  void _bankChanged() {
+    if (mounted && _bankGateway?.isCurrent!=true) setState(()=>_bankState=null);
+  }
+
+  @override
+  void dispose() {
+    _bankGateway?.removeListener(_bankChanged);
+    if (widget.bankGateway==null && _bankGateway!=null) unawaited(_bankGateway!.close());
+    super.dispose();
+  }
+
+  Future<void> _openBank() async {
+    if (_saving || _bankWorkerId==null || _bankCompanyId==null) return;
+    setState(()=>_saving=true);
+    try {
+      await Navigator.of(context).push<void>(MaterialPageRoute(builder:(_) => OwnBankAccountPage(
+        workerId:_bankWorkerId!, companyId:_bankCompanyId!, gateway:_bankGateway)));
+      if (mounted) await _load();
+    } finally { if (mounted) setState(()=>_saving=false); }
   }
 
   Map<String, dynamic>? _statusFor(String requirementId) {
@@ -238,12 +285,18 @@ class _OwnDocumentRegistrationPageState
     final repository = _repository;
     if (repository == null || _requirements.isEmpty || _saving) return;
 
+    final initial = _requirements.where((r)=>r['id']?.toString()==initialRequirementId);
+    if ((initialRequirementId!=null && initial.any((r)=>r['name']=='銀行口座情報')) ||
+        _requirements.every((r)=>r['name']=='銀行口座情報')) {
+      await _openBank(); return;
+    }
     if (initialRequirementId != null && await _changeRegistered(_statusFor(initialRequirementId))) return;
     if (!mounted) return;
 
     final needle = _query.trim().toLowerCase();
     final candidates = _requirements
         .where((row) {
+          if (row['name']=='銀行口座情報') return false;
           if (needle.isEmpty) return true;
           return [
             row['name'],
@@ -307,10 +360,13 @@ class _OwnDocumentRegistrationPageState
                   )),
                   const SizedBox(height: 8),
                   _documentRegistrationStep(
-                    '②', '有効期限', expiresAt == null ? '任意' : '設定済み',
+                    '②', '有効期限', expiresAt == null
+                      ? (candidates.any((r)=>r['id']?.toString()==requirementId && r['expiry_required']==true)
+                          ? '準備完了に必要' : '任意') : '設定済み',
                     ListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('有効期限'),
+                    title: Text(candidates.any((r)=>r['id']?.toString()==requirementId && r['expiry_required']==true)
+                        ? '有効期限（準備完了に必要）' : '有効期限'),
                     subtitle: Text(
                       expiresAt == null
                           ? '未設定'
@@ -565,7 +621,8 @@ class _OwnDocumentRegistrationPageState
             '見出し・一覧・登録フォームの文字を小さめに揃えています。iPhoneの文字サイズ設定による拡大は利用できます。'
             '\n\n写真は表面・裏面・追加写真をまとめて保存できます。写真をタップすると拡大表示できます。'
             '自社・取引会社で共用の書類は、一度の登録を両方で使います。再撮影は不要です。'
-            '一覧の「確認・編集」で、写真の追加・差し替え・並べ替え・一覧からの削除ができます。'
+            '保存済み書類は一覧から変更申請に進み、期限・備考と保存済み写真の並べ替え・一覧からの除外を申請できます。承認されるまで正式な書類は変わりません。'
+            '保存済み書類への新しい写真の追加・差し替えは準備中です。'
             '小さい画像・PDFを押すと、その場で拡大できます。下の「書類を登録」から既存の書類を登録します。'
             '写真の選択や撮影をキャンセルした場合は保存しません。'
             '\n\n写真の送信や登録に失敗した場合は、登録成功として扱いません。'
@@ -699,12 +756,12 @@ class _OwnDocumentRegistrationPageState
                           final attachmentMissing = status != null && isRequired &&
                               !isBank && primaryPath.isEmpty;
                           final bankUnconfirmed =
-                              status != null && isRequired && isBank;
+                              isBank && _bankState?.registered!=true;
                           final statusMissing = statusValue == 'not_submitted' ||
                               statusValue == 'missing' || statusValue == 'expired';
-                          final incomplete = needsRegistration || attachmentMissing ||
-                              bankUnconfirmed || statusMissing;
-                          final label = status == null || statusValue == 'not_submitted' ||
+                          final incomplete = isBank ? _bankState?.registered!=true :
+                              needsRegistration || attachmentMissing || statusMissing;
+                          final label = isBank ? (_bankState?.registered==true ? '登録済み' : _bankState==null ? '口座情報を確認' : '未登録') : status == null || statusValue == 'not_submitted' ||
                                   statusValue == 'missing'
                               ? '未登録'
                               : statusValue == 'expired'
@@ -721,11 +778,9 @@ class _OwnDocumentRegistrationPageState
                                 path: paths[i], signedUrl: gateway is OwnDocumentPhotoGateway
                                   ? gateway.signedUrl : (_) async => throw StateError('Attachment unavailable')),
                           ];
-                          final action = _saving ? null : attachmentMissing &&
+                          final action = _saving ? null : isBank ? _openBank : attachmentMissing &&
                                   workerDocumentHasRegisteredContent(status)
-                            ? () => ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text(
-                                  '登録済み書類への添付追加は準備中です。')))
+                            ? () => _changeRegistered(status)
                             : needsRegistration
                             ? () => _registerDocument(initialRequirementId: id)
                             : gateway is OwnDocumentPhotoGateway
@@ -740,7 +795,7 @@ class _OwnDocumentRegistrationPageState
                             registered: exempt || !incomplete,
                             statusLabel: exempt ? '提出免除' : label,
                             dateLabel: dates.isEmpty ? '' : dates.first,
-                            detailLabel: [if (exempt) '管理者設定：${exemption!['reason']}', if (status != null) resourceDocumentReviewLabel(status['status']),
+                            detailLabel: [if (exempt) '管理者設定：${exemption!['reason']}', if (!exempt && status != null) resourceDocumentReviewLabel(status['status']),
                               workerDocumentScopeLabel(requirement['scope']),
                               if ((status?['expires_at']?.toString() ?? '').isNotEmpty) '期限 ${status?['expires_at']}',
                               if (paths.length > 2) '添付 ${paths.length}件（詳細で確認）'].join(' / '),

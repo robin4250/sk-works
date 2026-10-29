@@ -930,10 +930,12 @@ class WorkerDocumentRepository {
     required String notes,
     required List<WorkerDocumentPhoto> photos,
     required Map<String, dynamic>? expectedRow,
+    void Function()? requireScope,
   }) async {
     if (!_photoSchemaAvailable) throw StateError(photoPreparationMessage);
     final actor = _client.auth.currentUser?.id;
     void requireActor() {
+      requireScope?.call();
       if (actor == null || _client.auth.currentUser?.id != actor) {
         throw StateError('ログイン情報が変更されました。再読み込みしてください。');
       }

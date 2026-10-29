@@ -4,7 +4,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/people/own_document_registration_page.dart';
 
 class FakeGateway implements OwnDocumentRegistrationGateway {
-  FakeGateway(this.requirement, this.status);
+  FakeGateway(this.requirement, this.status, {this.exemptions=const []});
+  final List<Map<String,dynamic>> exemptions;
+  int saves=0;
   final Map<String, dynamic> requirement;
   final Map<String, dynamic>? status;
   @override
@@ -12,12 +14,13 @@ class FakeGateway implements OwnDocumentRegistrationGateway {
     'workers': [{'id': 'worker', 'name': '本人'}],
     'requirements': [requirement],
     'statuses': [if (status != null) status!],
+    'exemptions':exemptions,
   };
   @override
   Future<void> saveOwnDocument({required String requirementId,
     DateTime? expiresAt, required String notes,
     Uint8List? attachmentBytes, String? originalFilename,
-    bool requireEmptyAttachment = false}) async {}
+    bool requireEmptyAttachment = false}) async {saves++;}
 }
 
 void main() {
@@ -35,7 +38,7 @@ void main() {
     expect(find.text('登録済み'), findsNothing);
     await tester.tap(find.byTooltip('詳細を確認'));
     await tester.pump();
-    expect(find.text('登録済み書類への添付追加は準備中です。'), findsOneWidget);
+    expect(find.text('書類変更申請は準備中です。'), findsOneWidget);
   });
   testWidgets('添付があれば登録済み、任意書類は添付を強制しない', (tester) async {
     await show(tester, req('免許証'), {'requirement_id':'r','status':'submitted','attachment_path':'private/object'});
@@ -49,4 +52,25 @@ void main() {
     await show(tester, req('銀行口座情報'), {'requirement_id':'r','status':'submitted'});
     expect(find.text('口座情報を確認'), findsOneWidget);
   });
+  testWidgets('提出免除は未確認の書類状態を併記せず原本を保持する', (tester) async {
+    final status=<String,dynamic>{'requirement_id':'r','status':'submitted','attachment_path':'retained/synthetic-original'};
+    final gateway=FakeGateway(req('健康診断書'),status,exemptions:[
+      {'worker_id':'worker','requirement_id':'r','active':true,'version':1,'reason':'管理者確認'}]);
+    await tester.pumpWidget(MaterialApp(home:OwnDocumentRegistrationPage(gateway:gateway)));
+    await tester.pumpAndSettle();
+    expect(find.text('提出免除'),findsOneWidget);
+    expect(find.textContaining('未確認'),findsNothing);
+    expect(find.textContaining('提出済み'),findsNothing);
+    expect(status['attachment_path'],'retained/synthetic-original');expect(gateway.saves,0);
+  });
+  testWidgets('期限必須の健康書類は準備完了に期限が必要と示し部分保存は保つ', (tester) async {
+    final gateway=FakeGateway({...req('健康診断書'),'expiry_required':true},null);
+    await tester.pumpWidget(MaterialApp(home:OwnDocumentRegistrationPage(gateway:gateway)));
+    await tester.pumpAndSettle();await tester.tap(find.widgetWithText(FilledButton,'書類を登録'));await tester.pumpAndSettle();
+    expect(find.text('有効期限（準備完了に必要）'),findsOneWidget);
+    expect(find.text('準備完了に必要'),findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton,'登録').last);await tester.pumpAndSettle();
+    expect(gateway.saves,1);
+  });
+
 }
