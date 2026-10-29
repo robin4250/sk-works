@@ -1,0 +1,50 @@
+name: Trade form format UI connection proof
+on:
+  pull_request:
+    paths:
+      - 'test/trade_document_format_ui_connection_test.dart'
+      - '.github/workflows/trade-document-format-ui-proof.yml'
+permissions:
+  contents: read
+jobs:
+  format-ui-connection:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: '3.47.5', channel: stable, cache: true}
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze test/trade_document_format_ui_connection_test.dart
+      - run: timeout 120s flutter test --reporter expanded --timeout 45s test/trade_document_format_ui_connection_test.dart
+        env: {TRADE_FORMAT_UI_OUTPUT_DIR: build/trade-format-ui-proof}
+      - run: python -m pip install PyMuPDF==1.26.4
+      - name: Verify actual UI outputs and unchanged financial bundles
+        run: |
+          python - <<'PY'
+          import fitz
+          from pathlib import Path
+          folder=Path('build/trade-format-ui-proof')
+          modes={'a4TwoPages':(2,595.28,841.89),'a3Landscape':(1,1190.55,841.89),'a4Duplex':(2,595.28,841.89)}
+          for mode,(count,width,height) in modes.items():
+              with fitz.open(folder/f'ui-{mode}.pdf') as doc:
+                  assert len(doc)==count,(mode,len(doc))
+                  assert all(abs(p.rect.width-width)<.1 and abs(p.rect.height-height)<.1 for p in doc),mode
+                  text=''.join(p.get_text() for p in doc)
+                  assert 'Synthetic original contract' in text,mode
+                  assert '工事請負契約条項' in ''.join(text.split()),mode
+                  assert '工事代金支払明細書' not in ''.join(text.split()),mode
+                  if mode=='a4Duplex':assert '/DuplexFlipLongEdge' in doc.xref_object(doc.pdf_catalog())
+          for kind in ['order','acceptance']:
+              with fitz.open(folder/f'{kind}-financial-baseline.pdf') as baseline,fitz.open(folder/f'{kind}-financial-before.pdf') as before,fitz.open(folder/f'{kind}-financial-after.pdf') as after:
+                  assert len(baseline)==1 and len(before)==len(after)==3,(kind,len(baseline),len(before),len(after))
+                  assert all(abs(p.rect.width-595.28)<.1 and abs(p.rect.height-841.89)<.1 for p in after),kind
+                  assert baseline[0].get_text()==before[0].get_text()==after[0].get_text(),kind
+                  assert baseline[0].get_pixmap().samples==before[0].get_pixmap().samples==after[0].get_pixmap().samples,kind
+                  assert '工事請負契約条項' in ''.join(after[2].get_text().split()),kind
+          print('Actual dropdown: A3 -> duplex -> A4; form-only formats verified; both financial bundles retain three A4 pages and exact original first-page pixels/text')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: trade-format-ui-proof, path: build/trade-format-ui-proof}
+      - run: git diff --exit-code -- pubspec.yaml pubspec.lock
