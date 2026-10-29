@@ -131,7 +131,7 @@ void main() {
       expect(command['expected_hash'], matches(RegExp(r'^[a-f0-9]{64}$')));
       expect(command['financial_confirmed'], true); expect(command['seal_confirmed'], true);
       expect(trace.where((row) => (row['path'] as String).endsWith('/result')), hasLength(1));
-      await tester.runAsync(() => client.auth.signOut());
+      await tester.runAsync(() => client.auth.signOut(scope: SignOutScope.local));
       await tester.runAsync(() => client.auth.signInWithPassword(email: env['SKO_INVOICE_APP_EMAIL']!, password: env['SKO_INVOICE_APP_PASSWORD']!));
       await tester.pump(); expect(controller.state, InvoiceNoticeRecoveryState.invalidated);
       expect(find.text('承認済み'), findsNothing); expect(sent(), 1);
