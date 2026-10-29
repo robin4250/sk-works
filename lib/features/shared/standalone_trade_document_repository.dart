@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../data/supabase_backend.dart';
 import '../../domain/company_seal_snapshot.dart';
+import '../../domain/partner_company_bank_account.dart';
 
 /// Read-only registration context. No financial rows, contract saves or uploads.
 class StandaloneTradeDocumentRepository {
@@ -72,7 +73,42 @@ class StandaloneTradeDocumentRepository {
     final kind = acceptance ? 'invoice' : 'payment_certificate';
     final template = await _rpc('trade_document_template', {'p_kind': kind, 'p_company': companyId});
     if (template is! Map || template['payload'] is! Map) throw StateError('工事初期文を確認できません。');
+    // Only the canonical directory link authorizes an optional supplier-bank
+    // lookup. Names, customer links and caller form fields never select a bank.
+    final partnerId = acceptance ? null : partner['partner_company_id'];
+    Map<String, dynamic>? bank;
+    if (partnerId != null) {
+      if (partnerId is! String || !RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$').hasMatch(partnerId)) {
+        throw StateError('受注者の協力会社登録を確認できません。');
+      }
+      Object? result;
+      var backendAbsent = false;
+      try {
+        result = await _rpc('partner_company_bank_read', {'p_company': companyId, 'p_partner': partnerId});
+      } on PostgrestException catch (error) {
+        if (!const ['PGRST202', '42883'].contains(error.code)) rethrow;
+        verify(); // An absent unreleased backend retains the legacy bank-free order.
+        backendAbsent = true;
+      }
+      if (!backendAbsent) {
+        if (result is! Map || result.length != 5 || result['company_id'] != companyId ||
+            result['partner_company_id'] != partnerId || result['available'] is! bool ||
+            result['version'] is! int || result['version'] < 0) {
+          throw StateError('受注者の振込先の所属を確認できません。');
+        }
+        final snapshot = result['bank'] == null ? null : PartnerCompanyBankAccount.fromJson(
+          result['bank'], companyId: companyId, partnerCompanyId: partnerId);
+        if ((snapshot?.bankVersion ?? 0) != result['version'] ||
+            (result['available'] == false && (snapshot != null || result['version'] != 0))) {
+          throw StateError('受注者の振込先の保存版を確認できません。');
+        }
+        bank = snapshot?.toJson();
+      }
+    }
+    verify();
     return {'company_id': companyId, 'trade_company_id': tradeCompanyId, 'acceptance': acceptance,
+      if (partnerId != null) 'partner_company_id': partnerId,
+      if (bank != null) 'counterparty_bank': bank,
       'issuer': {'name': profile['name'], 'address': profile['address'] ?? '',
         'corporate_number': profile['corporate_number'] ?? '', 'representative_name': profile['representative_name'] ?? ''},
       'counterparty': {'name': partner['name'], 'address': partner['address'] ?? '',

@@ -1,4 +1,5 @@
 import '../../domain/company_seal_snapshot.dart';
+import '../../domain/partner_company_bank_account.dart';
 
 /// Explicitly saved monthly appendix. No legacy document opts in implicitly.
 class TradeDocumentAttachment {
@@ -19,6 +20,9 @@ class TradeDocumentAttachment {
       if (payload[key] is! Map || (payload[key]['name']?.toString().trim() ?? '').isEmpty) {
         throw StateError('別添書類の会社を確認できません。');
       }
+    }
+    if(payload['kind']=='order' && payload['counterparty_bank']!=null) {
+      PartnerCompanyBankAccount.fromJson(payload['counterparty_bank']);
     }
     CompanySealSnapshot.fromJson(payload['company_seal_snapshot']);
     return TradeDocumentAttachment(version:json['version'] as int, payload:Map.unmodifiable(payload));
