@@ -121,8 +121,11 @@ void main() {
     await tester.tap(find.text('承認する')); await tester.pumpAndSettle();
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused); await tester.pump();
     expect(recovery.state, InvoiceNoticeRecoveryState.invalidated);
-    expect(find.text('保存済みの承認結果を確認'), findsNothing);
+    // Paused apps do not produce frames. Verify the terminal model while
+    // paused, then its rendered state on the first frame after resume.
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    expect(find.text('保存済みの承認結果を確認'), findsNothing);
     await tester.pumpWidget(const SizedBox.shrink());
   });
 }
