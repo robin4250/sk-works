@@ -84,17 +84,21 @@ void main(){
         });};
       }
       try{
-        await _mount(tester,f);final parent=tester.widget<PdfPreview>(find.byType(PdfPreview)).build;retainedParent=parent;
+        debugPrint('confirmed-host-stage $invalidation mount');
+        await _mount(tester,f);debugPrint('confirmed-host-stage $invalidation mounted');final parent=tester.widget<PdfPreview>(find.byType(PdfPreview)).build;retainedParent=parent;
         await tester.tap(find.widgetWithText(TextButton,'形式を選んで保存・印刷'));await tester.pumpAndSettle();
         final child=tester.widget<PdfPreview>(find.byType(PdfPreview)).build;
+        debugPrint('confirmed-host-stage $invalidation child mounted');
         final originalBytes=await parent(PdfPageFormat.a4);
         await tester.tap(find.descendant(of:find.byType(TradeDocumentOutputPage),matching:find.widgetWithText(OutlinedButton,'印刷')));await tester.pump();
+        debugPrint('confirmed-host-stage $invalidation native entered');
         expect(printing.calls,1);expect(printing.callback,isNotNull);
         tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
         expect(await printing.callback!(PdfPageFormat.a4),originalBytes);
         expect(await parent(PdfPageFormat.a4),originalBytes);expect(await child(PdfPageFormat.a4),originalBytes);
         tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);printing.done.complete(false);await tester.pumpAndSettle();
         await expectLater(printing.callback!(PdfPageFormat.a4),throwsStateError);
+        debugPrint('confirmed-host-stage $invalidation native ended');
         Future<void>? logout;
         if(invalidation=='logout intent'){
           f.wire.holdLogout=Completer<void>();logout=AppAuthMutationGateway.forClient(f.client).signOut();
@@ -103,7 +107,7 @@ void main(){
           // is made: this gateway's quarantine notification is synchronous.
           final parentRejected=expectLater(parent(PdfPageFormat.a4),throwsStateError);
           final childRejected=expectLater(child(PdfPageFormat.a4),throwsStateError);
-          await parentRejected;await childRejected;
+          await parentRejected;await childRejected;debugPrint('confirmed-host-stage $invalidation intent assertions passed');
         }else if(invalidation=='paused'){tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);}
         else{
           probeArmed=true;f.wire.sid='20000000-0000-4000-8000-000000000099';await tester.runAsync(f.login);
@@ -116,9 +120,9 @@ void main(){
         expect(find.byType(PdfPreview,skipOffstage:false),findsNothing);
         await expectLater(parent(PdfPageFormat.a4),throwsStateError);await expectLater(child(PdfPageFormat.a4),throwsStateError);
         await expectLater(printing.callback!(PdfPageFormat.a4),throwsStateError);
-        final pendingLogout=logout;if(pendingLogout!=null){f.wire.holdLogout!.complete();await tester.pump();await tester.runAsync(()=>pendingLogout);}
+        final pendingLogout=logout;if(pendingLogout!=null){debugPrint('confirmed-host-stage $invalidation logout release');f.wire.holdLogout!.complete();await tester.pump();await tester.runAsync(()=>pendingLogout);debugPrint('confirmed-host-stage $invalidation logout completed');}
         expect(f.wire.rpcs,hasLength(2));expect(tester.takeException(),isNull);
-      }finally{final subscription=probe;if(subscription!=null)await tester.runAsync(subscription.cancel);await _close(tester,f,printing);}
+      }finally{debugPrint('confirmed-host-stage $invalidation cleanup');final subscription=probe;if(subscription!=null)await tester.runAsync(subscription.cancel);await _close(tester,f,printing);debugPrint('confirmed-host-stage $invalidation cleaned');}
     }
   });
 }

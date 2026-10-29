@@ -37,15 +37,15 @@ jobs:
           test "$(git hash-object "$source_file")" = f294565b7da5aaa1f7db31f3436445a2018a4106
           mkdir -p build/confirmed-output-boundary
           set +e
-          flutter test --reporter expanded --plain-name 'only actual child native call permits parent inactive; completed callbacks reject logout intent and paused history' test/trade_document_confirmed_output_host_test.dart > build/confirmed-output-boundary/baseline.log 2>&1
-          baseline_status=$?
+          flutter test --reporter expanded --plain-name 'only actual child native call permits parent inactive; completed callbacks reject logout intent and paused history' test/trade_document_confirmed_output_host_test.dart 2>&1 | tee build/confirmed-output-boundary/baseline.log
+          baseline_status=${PIPESTATUS[0]}
           set -e
           restore
           trap - EXIT
           test "$baseline_status" -ne 0
           # A setup/cleanup failure or listener that never ran is not RED proof.
-          rg -F 'retained-builder-probe returned_bytes=true state_error=false' build/confirmed-output-boundary/baseline.log
-          rg -F 'The earlier real SDK listener calls' build/confirmed-output-boundary/baseline.log
+          grep -F 'retained-builder-probe returned_bytes=true state_error=false' build/confirmed-output-boundary/baseline.log
+          grep -F 'The earlier real SDK listener calls' build/confirmed-output-boundary/baseline.log
           echo 'Exact original callback returned cached bytes across the observed actual SDK boundary; corrected source restored by hash.'
       - run: flutter test --reporter expanded test/trade_document_confirmed_output_session_test.dart test/trade_document_confirmed_output_host_test.dart test/trade_document_confirmation_test.dart
       - uses: actions/upload-artifact@v4
