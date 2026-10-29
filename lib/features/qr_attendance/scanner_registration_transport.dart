@@ -90,19 +90,44 @@ class ScannerRegistrationTransport {
       ..headers.addAll({'content-type':'application/json; charset=utf-8','authorization':'Bearer ${owner.token}'})
       ..bodyBytes=bytes;
     owner.live();
+    var retired=false;
+    http.StreamedResponse? ownedResponse;
+    StreamSubscription<List<int>>? ownedBody;
+    void cancelUnconsumed(http.StreamedResponse response){
+      try{unawaited(response.stream.listen(null,onError:(Object _){}).cancel().catchError((Object _){}));}catch(_){}
+    }
+    Future<http.StreamedResponse> send() async {
+      final response=await client.send(request);
+      if(retired){cancelUnconsumed(response);throw _unavailable();}
+      ownedResponse=response;
+      return response;
+    }
     try {
-      final response=await owner.wait(()=>client.send(request),remaining());
+      final response=await owner.wait(send,remaining());
       remaining();
       if(response.statusCode!=200 || (response.contentLength ?? 0)>16384 ||
           !RegExp(r'^application/json(?:;\s*charset=utf-8)?$',caseSensitive:false).hasMatch(response.headers['content-type']??'')) { throw _unavailable(); }
-      final collected=<int>[];
-      await owner.wait(() async { await for(final chunk in response.stream) { owner.live();remaining();if(chunk.length>16384-collected.length)throw _unavailable();collected.addAll(chunk); } },remaining());
+      final collected=<int>[],done=Completer<void>();
+      final body=owner.wait(()=>done.future,remaining());
+      ownedBody=response.stream.listen((chunk){
+        if(done.isCompleted)return;
+        try{owner.live();remaining();if(chunk.length>16384-collected.length)throw _unavailable();collected.addAll(chunk);}
+        catch(_){done.completeError(_unavailable());}
+      },onDone:(){if(!done.isCompleted)done.complete();},onError:(Object _,StackTrace stack){if(!done.isCompleted)done.completeError(_unavailable(),stack);});
+      await body;
       if(clock.elapsed>=const Duration(seconds:15)) { throw _unavailable(); }
       final value=jsonDecode(utf8.decode(collected,allowMalformed:false));owner.live();remaining();
       if(value is! Map<String,dynamic> || value['schema']!=1 || value['requestId']!=requestId || value['operation']!=operation) { throw _unavailable(); }
       return value;
     } catch (_) { throw _unavailable(); }
-    finally { timer.cancel();if(!abort.isCompleted) abort.complete(); }
+    finally {
+      retired=true;timer.cancel();if(!abort.isCompleted) abort.complete();
+      // AbortableRequest alone need not dispose a response after its headers.
+      // We own this one response/subscription, never the shared Auth client.
+      final subscription=ownedBody;
+      if(subscription!=null){try{unawaited(subscription.cancel().catchError((Object _){}));}catch(_){}}
+      else{final response=ownedResponse;if(response!=null)cancelUnconsumed(response);}
+    }
   }
   Map<String,dynamic> _scope(ScannerRegistrationSession owner,ScannerRegistrationKey key) {
     owner.live();

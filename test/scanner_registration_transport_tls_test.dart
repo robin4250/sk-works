@@ -11,10 +11,28 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'scanner_registration_flow_test.dart' as fixture;
 
 class _NativeFixtureHttp extends HttpOverrides {}
+class _LateHeaders extends http.BaseClient {
+ final started=Completer<void>(),response=Completer<http.StreamedResponse>();
+ @override Future<http.StreamedResponse> send(http.BaseRequest request){started.complete();return response.future;}
+}
+// Delivers headers, then retires the owner immediately after the await
+// continuation acquires them, before the outer wait performs its live check.
+class _RetiringFuture implements Future<http.StreamedResponse> {
+ _RetiringFuture(this.base,this.retire);final Future<http.StreamedResponse> base;final void Function() retire;
+ @override Future<R> then<R>(FutureOr<R> Function(http.StreamedResponse) onValue,{Function? onError})=>base.then<R>((value){final result=onValue(value);retire();return result;},onError:onError);
+ @override Future<http.StreamedResponse> catchError(Function onError,{bool Function(Object)? test})=>base.catchError(onError,test:test);
+ @override Future<http.StreamedResponse> whenComplete(FutureOr<void> Function() action)=>base.whenComplete(action);
+ @override Future<http.StreamedResponse> timeout(Duration timeLimit,{FutureOr<http.StreamedResponse> Function()? onTimeout})=>base.timeout(timeLimit,onTimeout:onTimeout);
+ @override Stream<http.StreamedResponse> asStream()=>base.asStream();
+}
+class _RetiringHeaders extends http.BaseClient {
+ _RetiringHeaders(this.response,this.retire);final http.StreamedResponse response;final void Function() retire;
+ @override Future<http.StreamedResponse> send(http.BaseRequest request)=>_RetiringFuture(Future.value(response),retire);
+}
 class _Tls {
  late Directory directory;late HttpServer server;late IOClient httpClient;late SupabaseClient auth;
  late ScannerRegistrationSession owner;late ScannerRegistrationTransport transport;
- final closed=Completer<void>();int requests=0;Object? fixtureFailure;
+ final closed=Completer<void>();final sockets=<Socket>[];int requests=0;Object? fixtureFailure;
  Future<void> open(Future<void> Function(HttpRequest request,Map<String,dynamic> body) handle) async {
   directory=await Directory.systemTemp.createTemp('qr-registration-tls-');
   final cert=File('${directory.path}/cert.pem'),key=File('${directory.path}/key.pem');
@@ -23,7 +41,7 @@ class _Tls {
   final context=SecurityContext()..useCertificateChain(cert.path)..usePrivateKey(key.path);
   server=await HttpServer.bindSecure(InternetAddress.loopbackIPv4,0,context);
   server.listen((request) async {
-   requests++;request.response.done.then((_) {if(!closed.isCompleted)closed.complete();},onError:(Object _) {if(!closed.isCompleted)closed.complete();});
+   requests++;
    try{
     expect(request.method,'POST');expect(request.uri.path,'/qr/scanner/registration');expect(request.headers.value('authorization'),'Bearer ${jsonDecode(fixture.sdkSession())['access_token']}');
     final body=jsonDecode(await utf8.decoder.bind(request).join()) as Map<String,dynamic>;
@@ -38,8 +56,17 @@ class _Tls {
   }));await auth.auth.setInitialSession(fixture.sdkSession());owner=ScannerRegistrationSession(auth);
   transport=ScannerRegistrationTransport.forTesting(origin:Uri(scheme:'https',host:'127.0.0.1',port:server.port),client:httpClient,enabled:true);
  }
+ Future<void> stall(HttpRequest request) async {
+  final chunked=request.response.contentLength<0;
+  if(chunked)request.response.headers.set(HttpHeaders.transferEncodingHeader,'chunked');
+  final socket=await request.response.detachSocket(writeHeaders:true);sockets.add(socket);
+  // Observe actual peer socket shutdown, not HttpResponse.done (which is not
+  // a peer-close signal and may settle merely because the response detached).
+  socket.listen((_) {},onDone:(){if(!closed.isCompleted)closed.complete();},onError:(Object _){if(!closed.isCompleted)closed.complete();},cancelOnError:true);
+  socket.add(chunked?utf8.encode('1\r\n{\r\n'):[123]);await socket.flush();
+ }
  Future<String?> receipt()=>transport.receipt(owner,ScannerRegistrationKey(actor:fixture.actor,company:fixture.company,device:fixture.device,handle:fixture.handle,publicKeyHex:fixture.publicKey),fixture.nonce,fixture.challengeId);
- Future<void> close() async {await owner.dispose();httpClient.close();await server.close(force:true);await auth.dispose();await directory.delete(recursive:true);if(fixtureFailure!=null)throw fixtureFailure!;}
+ Future<void> close() async {await owner.dispose();httpClient.close();for(final socket in sockets){socket.destroy();}await server.close(force:true);await auth.dispose();await directory.delete(recursive:true);if(fixtureFailure!=null)throw fixtureFailure!;}
 }
 void main(){
  TestWidgetsFlutterBinding.ensureInitialized();
@@ -52,18 +79,40 @@ void main(){
    final f=_Tls();await f.open((r,b) async {
     r.response.headers.contentType=ContentType.json;
     if(mode=='error'){r.response.statusCode=503;}else if(mode=='redirect'){r.response.statusCode=307;r.response.headers.set('location','https://foreign-fixture.invalid/credential-leak');}else{r.response.contentLength=20000;}
-    r.response.write('{');await r.response.flush();
+    await f.stall(r);
    });
    try{await expectLater(f.receipt(),throwsStateError);await f.closed.future.timeout(const Duration(seconds:3));expect(f.requests,1);}finally{await f.close();}
   }
  });
  test('one absolute15s budget aborts slow headers then stalled TLS body (not15s plus15s)',() async {
-  final f=_Tls();await f.open((r,b) async {await Future<void>.delayed(const Duration(seconds:14));r.response.headers.contentType=ContentType.json;r.response.write('{');await r.response.flush();});
+  final f=_Tls();await f.open((r,b) async {await Future<void>.delayed(const Duration(seconds:14));r.response.headers.contentType=ContentType.json;await f.stall(r);});
   try{
    final clock=Stopwatch()..start();await expectLater(f.receipt(),throwsStateError);await f.closed.future.timeout(const Duration(seconds:3));
    expect(clock.elapsed,lessThan(const Duration(seconds:20)));expect(clock.elapsed,greaterThan(const Duration(seconds:14)));expect(f.requests,1);
   }finally{await f.close();}
  },timeout:const Timeout(Duration(seconds:30)));
+ test('late headers after owner retirement cancel their unconsumed response stream',() async {
+  final f=_Tls();await f.open((r,b) async {throw StateError('late-header fixture must not use the network');});
+  final delayed=_LateHeaders(),cancelled=Completer<void>();
+  final body=StreamController<List<int>>(onCancel:(){if(!cancelled.isCompleted)cancelled.complete();});
+  final transport=ScannerRegistrationTransport.forTesting(origin:f.transport.origin,client:delayed,enabled:true);
+  try{
+   final pending=transport.receipt(f.owner,ScannerRegistrationKey(actor:fixture.actor,company:fixture.company,device:fixture.device,handle:fixture.handle,publicKeyHex:fixture.publicKey),fixture.nonce,fixture.challengeId);
+   final rejected=expectLater(pending,throwsStateError);await delayed.started.future;await f.owner.dispose();await rejected;
+   delayed.response.complete(http.StreamedResponse(body.stream,200,headers:{'content-type':'application/json'}));
+   await cancelled.future.timeout(const Duration(seconds:1));expect(f.requests,0);
+  }finally{await body.close();await f.close();}
+ });
+ test('headers acquired immediately before owner post-await invalidation are still disposed',() async {
+  final f=_Tls();await f.open((r,b) async {throw StateError('controlled header race must not use the network');});
+  final cancelled=Completer<void>(),body=StreamController<List<int>>(onCancel:(){if(!cancelled.isCompleted)cancelled.complete();});
+  final controlled=_RetiringHeaders(http.StreamedResponse(body.stream,200,headers:{'content-type':'application/json'}),f.owner.invalidate);
+  final transport=ScannerRegistrationTransport.forTesting(origin:f.transport.origin,client:controlled,enabled:true);
+  try{
+   await expectLater(transport.receipt(f.owner,ScannerRegistrationKey(actor:fixture.actor,company:fixture.company,device:fixture.device,handle:fixture.handle,publicKeyHex:fixture.publicKey),fixture.nonce,fixture.challengeId),throwsStateError);
+   await cancelled.future.timeout(const Duration(seconds:1));expect(f.requests,0);
+  }finally{await body.close();await f.close();}
+ });
  test('actual TLS oversized chunk and invalid UTF8 reject without decoding unbounded data',() async {
   for(final bytes in [List.filled(17000,32),[255]]){
    final f=_Tls();await f.open((r,b) async {r.response.headers.contentType=ContentType.json;r.response.add(bytes);await r.response.close();});
