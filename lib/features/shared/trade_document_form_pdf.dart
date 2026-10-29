@@ -38,7 +38,24 @@ class TradeDocumentFormPdf {
     alignment:center?pw.Alignment.center:pw.Alignment.centerLeft,child:pw.SizedBox(width:w,child:pw.Text(value,
      textAlign:center?pw.TextAlign.center:pw.TextAlign.left,style:pw.TextStyle(font:bold?boldFont:regularFont,fontSize:size)))))));
   }
-  void label(String value,double x1,double x2,double high,double low,{double size=8})=>text(value,x1+2,low+2,x2-x1-4,high-low-4,size:size,center:true,bold:true);
+  void label(String value,double x1,double x2,double high,double low,{double size=8}) {
+   if(!value.contains('\u3000')) {
+    text(value,x1+2,low+2,x2-x1-4,high-low-4,size:size,center:true,bold:true);
+    return;
+   }
+   // Approved static labels use one full em per ideographic space. Text's
+   // whitespace shaping collapses that advance; boxes reserve it without ink.
+   final runs=value.split('\u3000');
+   parts.add(pw.Positioned(left:x1+2,top:height-low-2-(high-low-4),
+    child:pw.SizedBox(width:x2-x1-4,height:high-low-4,child:pw.FittedBox(
+     fit:pw.BoxFit.scaleDown,alignment:pw.Alignment.center,
+     child:pw.Row(mainAxisSize:pw.MainAxisSize.min,children:[
+      for(var i=0;i<runs.length;i++)...[
+       if(runs[i].isNotEmpty)pw.Text(runs[i],style:pw.TextStyle(font:boldFont,fontSize:size)),
+       if(i<runs.length-1)pw.SizedBox(width:size),
+      ],
+     ])))));
+  }
   String val(Object? value)=>value?.toString()??'';
   String money(Object? value){if(value is! int||value<0)throw StateError('契約金額を確認できません。');return value.toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'),(_)=>',');}
   void date(Object? raw,double xx,double low,double high,{bool labelEra=true}) {
