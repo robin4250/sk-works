@@ -83,8 +83,8 @@ class OwnBankAccountRepository extends ChangeNotifier implements OwnBankAccountG
       throw StateError('所属会社を確認できません。');
     }
     final worker = await _client.from('workers').select('id,company_id,user_id')
-      .eq('id',workerId).eq('company_id',companyId).eq('user_id',_actor!).eq('status','active')
-      .setHeader('Authorization','Bearer ${_session!.accessToken}').maybeSingle()
+      .eq('id',workerId).eq('company_id',companyId).eq('user_id',_actor).eq('status','active')
+      .setHeader('Authorization','Bearer ${_session.accessToken}').maybeSingle()
       .timeout(const Duration(seconds:30));
     await _check();
     if (worker == null || worker['id'] != workerId || worker['company_id'] != companyId || worker['user_id'] != _actor) {

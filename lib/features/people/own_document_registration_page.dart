@@ -360,10 +360,13 @@ class _OwnDocumentRegistrationPageState
                   )),
                   const SizedBox(height: 8),
                   _documentRegistrationStep(
-                    '②', '有効期限', expiresAt == null ? '任意' : '設定済み',
+                    '②', '有効期限', expiresAt == null
+                      ? (candidates.any((r)=>r['id']?.toString()==requirementId && r['expiry_required']==true)
+                          ? '準備完了に必要' : '任意') : '設定済み',
                     ListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('有効期限'),
+                    title: Text(candidates.any((r)=>r['id']?.toString()==requirementId && r['expiry_required']==true)
+                        ? '有効期限（準備完了に必要）' : '有効期限'),
                     subtitle: Text(
                       expiresAt == null
                           ? '未設定'
@@ -793,7 +796,7 @@ class _OwnDocumentRegistrationPageState
                             registered: exempt || !incomplete,
                             statusLabel: exempt ? '提出免除' : label,
                             dateLabel: dates.isEmpty ? '' : dates.first,
-                            detailLabel: [if (exempt) '管理者設定：${exemption!['reason']}', if (status != null) resourceDocumentReviewLabel(status['status']),
+                            detailLabel: [if (exempt) '管理者設定：${exemption!['reason']}', if (!exempt && status != null) resourceDocumentReviewLabel(status['status']),
                               workerDocumentScopeLabel(requirement['scope']),
                               if ((status?['expires_at']?.toString() ?? '').isNotEmpty) '期限 ${status?['expires_at']}',
                               if (paths.length > 2) '添付 ${paths.length}件（詳細で確認）'].join(' / '),
