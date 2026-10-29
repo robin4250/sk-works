@@ -102,12 +102,12 @@ void main() {
       await tester.drag(find.byType(ListView), const Offset(0, -1000)); await ioFrames();
       await tester.drag(find.byType(ListView), const Offset(0, -1000)); await ioFrames();
       expect(acknowledgement().onPressed, isNotNull, reason: 'all rendered pages were decoded and visited');
-      await tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
       await ioFrames();
       expect(recovery.state, InvoiceNoticeRecoveryState.invalidated);
       expect(find.text('表示内容と印影を確認しました'), findsNothing);
       expect(sent, 0);
-      await tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       await ioFrames(); expect(find.text('表示内容と印影を確認しました'), findsNothing);
       await tester.pumpWidget(const SizedBox.shrink());
     } finally {
