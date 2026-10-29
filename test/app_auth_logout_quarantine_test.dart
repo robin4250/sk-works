@@ -36,7 +36,7 @@ Future<void> cleanup(WidgetTester tester, fixture.Wire w) async {
 }
 void main() {
   testWidgets('logout intent destroys private Navigator before stalled SDK mutation completes', (tester) async {
-    final w=fixture.Wire();
+    final w=(await tester.runAsync(() async => fixture.Wire()))!;
     try {
       await tester.runAsync(() => w.seed());
       final navigator=GlobalKey<NavigatorState>();
@@ -45,10 +45,10 @@ void main() {
       unawaited(navigator.currentState!.push(MaterialPageRoute<void>(builder:(_)=>_PrivatePage(()=>disposed++))));
       await tester.pumpAndSettle();
       final oldNavigator=navigator.currentState;
-      final loginReply=Completer<http.Response>();
-      final logoutReply=Completer<http.Response>();
+      final loginReply=(await tester.runAsync(() async => Completer<http.Response>()))!;
+      final logoutReply=(await tester.runAsync(() async => Completer<http.Response>()))!;
       final events=<AuthState>[];
-      final observer=w.client.auth.onAuthStateChange.listen(events.add);
+      final observer=(await tester.runAsync(() async => w.client.auth.onAuthStateChange.listen(events.add)))!;
       w.respond=(request)=>request.url.path.endsWith('/logout') ? logoutReply.future : loginReply.future;
       final login=w.onboarding.signInWithEmail(email:'fixture@example.invalid',password:'synthetic');
       final rejected=expectLater(login,throwsStateError);
@@ -63,13 +63,15 @@ void main() {
       expect(find.text('ログアウト状態を確認しています。'),findsOneWidget);
       await tester.pump(const Duration(seconds:20));
       expect(find.text('fresh root'),findsNothing); // No timer releases quarantine.
-      loginReply.complete(fixture.Wire.json(fixture.session(sessionId:fixture.nextSid)));
+      await tester.runAsync(() async { loginReply.complete(fixture.Wire.json(fixture.session(sessionId:fixture.nextSid))); });
+      await tester.pump(Duration.zero);
       await drain(tester); await rejected;
       expect(events.any((e)=>e.event==AuthChangeEvent.signedIn && e.session!=null),true);
       expect(w.calls.where((r)=>r.url.path.endsWith('/logout')),hasLength(1));
       expect(w.auth.logoutQuarantine.state,AppLogoutQuarantineState.pending);
       expect(find.text('fresh root'),findsNothing);
-      logoutReply.complete(http.Response('',204));
+      await tester.runAsync(() async { logoutReply.complete(http.Response('',204)); });
+      await tester.pump(Duration.zero);
       await drain(tester); await logout;
       expect(w.auth.logoutQuarantine.state,AppLogoutQuarantineState.clear);
       expect(w.client.auth.currentSession,isNull);
@@ -81,17 +83,18 @@ void main() {
   });
 
   testWidgets('SDK logout failure stays blocked across raw signin and offers safe local retry', (tester) async {
-    final w=fixture.Wire();
+    final w=(await tester.runAsync(() async => fixture.Wire()))!;
     try {
       await tester.runAsync(() => w.seed());
       final navigator=GlobalKey<NavigatorState>();
       await mount(tester,w,navigator);
-      final reply=Completer<http.Response>();
+      final reply=(await tester.runAsync(() async => Completer<http.Response>()))!;
       w.respond=(_)=>reply.future;
       final logout=w.auth.signOut();
       final rejected=expectLater(logout,throwsA(isA<AuthException>()));
       await drain(tester);
-      reply.complete(http.Response('{"message":"unavailable"}',503,headers:{'content-type':'application/json'}));
+      await tester.runAsync(() async { reply.complete(http.Response('{"message":"unavailable"}',503,headers:{'content-type':'application/json'})); });
+      await tester.pump(Duration.zero);
       await drain(tester); await rejected;
       expect(w.auth.logoutQuarantine.state,AppLogoutQuarantineState.failed);
       expect(find.text('fresh root'),findsNothing);
@@ -112,12 +115,12 @@ void main() {
   });
 
   testWidgets('late SDK signin during logout confirmation cannot release quarantine', (tester) async {
-    final w=fixture.Wire();
+    final w=(await tester.runAsync(() async => fixture.Wire()))!;
     try {
       await tester.runAsync(() => w.seed());
       final navigator=GlobalKey<NavigatorState>();
       await mount(tester,w,navigator);
-      final reply=Completer<http.Response>();
+      final reply=(await tester.runAsync(() async => Completer<http.Response>()))!;
       w.respond=(_)=>reply.future;
       final logout=w.auth.signOut();
       final rejected=expectLater(logout,throwsStateError);
@@ -126,7 +129,8 @@ void main() {
       w.respond=(request)=>request.url.path.endsWith('/logout') ? reply.future
           : Future.value(fixture.Wire.json(fixture.session(sessionId:fixture.nextSid)));
       await tester.runAsync(() => w.client.auth.signInWithPassword(email:'fixture@example.invalid',password:'synthetic'));
-      reply.complete(http.Response('',204));
+      await tester.runAsync(() async { reply.complete(http.Response('',204)); });
+      await tester.pump(Duration.zero);
       await drain(tester); await rejected;
       expect(w.auth.logoutQuarantine.state,AppLogoutQuarantineState.failed);
       expect(w.client.auth.currentSession?.refreshToken,'synthetic-${fixture.nextSid}');
@@ -136,10 +140,10 @@ void main() {
   });
 
   testWidgets('remount while logout hangs reads quarantine snapshot before rendering child', (tester) async {
-    final w=fixture.Wire();
+    final w=(await tester.runAsync(() async => fixture.Wire()))!;
     try {
       await tester.runAsync(() => w.seed());
-      final reply=Completer<http.Response>();
+      final reply=(await tester.runAsync(() async => Completer<http.Response>()))!;
       w.respond=(_)=>reply.future;
       final logout=w.auth.signOut();
       await drain(tester);
@@ -149,14 +153,15 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
       await mount(tester,w,GlobalKey<NavigatorState>());
       expect(find.text('fresh root'),findsNothing);
-      reply.complete(http.Response('',204));
+      await tester.runAsync(() async { reply.complete(http.Response('',204)); });
+      await tester.pump(Duration.zero);
       await drain(tester); await logout;
       expect(find.text('fresh root'),findsOneWidget);
     } finally { await cleanup(tester,w); }
   });
 
   testWidgets('retry after failed server request with no local session needs no stale token resend', (tester) async {
-    final w=fixture.Wire();
+    final w=(await tester.runAsync(() async => fixture.Wire()))!;
     try {
       await tester.runAsync(() => w.seed());
       await mount(tester,w,GlobalKey<NavigatorState>());
