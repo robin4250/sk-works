@@ -22,11 +22,12 @@ export async function verifyInvoiceNoticeApp(db,c,context){
   await execute('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',key,'-out',cert,'-days','1','-subj','/CN=127.0.0.1','-addext','subjectAltName=IP:127.0.0.1'],{timeout:15000,maxBuffer:65536});
   await fs.chmod(key,0o600);await fs.chmod(cert,0o600);
   const handler=createInvoiceNoticeTransport({enabled:true,authOrigin:api.origin,apiKey:publicKey,connect:async()=>{const peer=new pg.Client({connectionString:database.href,connectionTimeoutMillis:5000});await peer.connect();return peer;}});
-  let commands=0,dropped=false,opens=0,reads=0;
+  let commands=0,dropped=false,opens=0,reads=0,authRequests=0,tlsRejections=0;
   server=https.createServer({key:await fs.readFile(key),cert:await fs.readFile(cert)},async(req,res)=>{
    try{
     const incoming=new URL(req.url,'https://127.0.0.1');
     if(['/auth/v1/token','/auth/v1/user','/auth/v1/logout'].includes(incoming.pathname)){
+     authRequests++;
      const chunks=[];let size=0;for await(const chunk of req){size+=chunk.length;if(size>65536)throw Error('auth fixture request limit');chunks.push(chunk);}
      const target=new URL(incoming.pathname+incoming.search,api);
      const result=await fetch(target,{method:req.method,redirect:'error',signal:AbortSignal.timeout(10000),headers:{apikey:publicKey,...(req.headers.authorization?{authorization:req.headers.authorization}:{}),'content-type':'application/json'},...(size?{body:Buffer.concat(chunks)}:{})});
@@ -40,16 +41,22 @@ export async function verifyInvoiceNoticeApp(db,c,context){
     res.writeHead(result.status,Object.fromEntries(result.headers));res.end(Buffer.from(await result.arrayBuffer()));
    }catch{res.writeHead(503);res.end();}
   });server.requestTimeout=25000;server.headersTimeout=10000;server.timeout=30000;
-  server.on('tlsClientError',()=>{});
+  server.on('tlsClientError',()=>{tlsRejections++;});
   await new Promise(done=>server.listen(0,'127.0.0.1',done));
   const origin=`https://127.0.0.1:${server.address().port}`;
   // Secrets remain only in the child environment; no token/password file or log.
-  const output=await execute('flutter',['test','--reporter','expanded','--dart-define=SUPABASE_URL='+origin,'test/invoice_notice_app_transport_e2e_test.dart'],{
+  let output;try{output=await execute('flutter',['test','--reporter','expanded','--dart-define=SUPABASE_URL='+origin,'test/invoice_notice_app_transport_e2e_test.dart'],{
    cwd:process.cwd(),timeout:180000,maxBuffer:1024*1024,env:{...process.env,SKO_INVOICE_APP_REQUIRED:'true',SKO_INVOICE_APP_CERT:cert,
     SKO_INVOICE_APP_KEY:publicKey,SKO_INVOICE_APP_EMAIL:users.owner.email,SKO_INVOICE_APP_PASSWORD:password,
-    SKO_INVOICE_APP_NOTIFICATION:notification,SKO_INVOICE_APP_INVOICE:x.parent,SKO_INVOICE_APP_REVISION:revision}});
+    SKO_INVOICE_APP_NOTIFICATION:notification,SKO_INVOICE_APP_INVOICE:x.parent,SKO_INVOICE_APP_REVISION:revision}});}catch(error){
+   const stages=String(error.stdout??'').match(/INVOICE_APP_STAGE=[a-z_]+/g)??[];
+   console.error('invoice_sdk_fixture_progress='+JSON.stringify({stages,authRequests,opens,reads,commands,dropped,tlsRejections,timedOut:error.killed===true}));
+   const failedStage=String(error.stdout??'').match(/invoice fixture stage: ([a-z ]{1,100})/);
+   if(failedStage)console.error('invoice_sdk_fixture_stage='+failedStage[1]);
+   throw error;
+  }
   if(!output.stdout.includes('All tests passed!'))throw Error('SDK Panel proof missing');
-  check(dropped,true);check(commands,1);assert.ok(opens>=1);assert.ok(reads>=1);
+  check(dropped,true);check(commands,1);assert.ok(opens>=1);assert.ok(reads>=1);assert.ok(tlsRejections>=1);
   const after=await state(x);check(before.audit,0);check(after.audit,1);check(after.consents,1);check(after.receipts,1);check(after.approvals[0].status,'approved');
   console.log('PASS actual GoTrue -> trusted loopback TLS -> real Supabase SDK -> existing invoice factory/Panel open/saved preview -> explicit financial+seal consent -> dropped COMMIT response -> scoped readback; logout history terminal; PDF raster device adapter synthetic');
  }finally{if(server)await new Promise(done=>server.close(done));await fs.rm(directory,{recursive:true,force:true});}

@@ -32,9 +32,14 @@ void main() {
     expect(certificate, isNotNull);
     final tls = SecurityContext()..setTrustedCertificates(certificate!);
     http.Client connection() => IOClient(_NativeFixtureHttp().createHttpClient(tls));
-    final client = SupabaseClient(SupabaseBackendConfig.url, env['SKO_INVOICE_APP_KEY']!,
-      authOptions: const AuthClientOptions(autoRefreshToken: false), httpClient: connection());
-    await tester.runAsync(() => client.auth.signInWithPassword(email: env['SKO_INVOICE_APP_EMAIL']!, password: env['SKO_INVOICE_APP_PASSWORD']!));
+    late SupabaseClient client;
+    stdout.writeln('INVOICE_APP_STAGE=auth_initialization');
+    await tester.runAsync(() async {
+      client = SupabaseClient(SupabaseBackendConfig.url, env['SKO_INVOICE_APP_KEY']!,
+        authOptions: const AuthClientOptions(autoRefreshToken: false), httpClient: connection());
+      await client.auth.signInWithPassword(email: env['SKO_INVOICE_APP_EMAIL']!, password: env['SKO_INVOICE_APP_PASSWORD']!);
+    });
+    stdout.writeln('INVOICE_APP_STAGE=authenticated');
     final notification = env['SKO_INVOICE_APP_NOTIFICATION']!, invoice = env['SKO_INVOICE_APP_INVOICE']!, revision = env['SKO_INVOICE_APP_REVISION']!;
     final trace = <Map<String, dynamic>>[];
     // A trusted fixture CA is explicit. Default trust must reject this local
@@ -43,6 +48,7 @@ void main() {
       transportClientFactory: () => IOClient(_NativeFixtureHttp().createHttpClient(SecurityContext.defaultContext)))!;
     expect(await tester.runAsync(() => badTrust.tickets.open(notification, invoiceId: invoice, sourceRevision: revision)), false);
     badTrust.dispose();
+    stdout.writeln('INVOICE_APP_STAGE=bad_certificate_rejected');
     final recovery = createInvoiceNoticeCandidateController(client: client, invoiceId: invoice, sourceRevision: revision,
       enabled: true, transportClientFactory: () => _TraceClient(connection(), trace));
     expect(recovery, isNotNull);
@@ -70,7 +76,9 @@ void main() {
       while (!condition()) {
         if (elapsed.elapsed > const Duration(seconds: 25)) { throw StateError('invoice fixture stage: $stage'); }
         await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 10)));
-        await tester.pump();
+        // Native I/O progresses in runAsync; the incoming route also needs
+        // an animation frame with elapsed time to leave offstage layout.
+        await tester.pump(const Duration(milliseconds: 16));
       }
     }
     int sent() => trace.where((row) => (row['path'] as String).endsWith('/confirm')).length;
@@ -81,15 +89,18 @@ void main() {
         controller: null, recoveryController: controller, notificationId: notification, invoiceId: invoice,
         revision: revision, isApprover: true, confirmSavedApproval: () async { legacyReads++; return true; })))));
       await until(() => find.text('承認する').evaluate().isNotEmpty, 'authoritative open');
+      stdout.writeln('INVOICE_APP_STAGE=authoritative_open');
       expect(approveButton().onPressed, isNull); expect(sent(), 0);
       expect(trace.first['body'], {'notification_id': notification, 'invoice_id': invoice, 'source_revision': revision});
       FilledButton previewButton() => tester.widget<FilledButton>(find.ancestor(of: find.text('表示内容と印影を確認しました'),
         matching: find.byWidgetPredicate((widget) => widget is FilledButton)).first);
       await tester.tap(find.text('注文請書と登録印影を確認')); await tester.pump();
       await until(() => find.text('表示内容と印影を確認しました').evaluate().isNotEmpty && rasterCalls == 1, 'first preview raster requested');
+      stdout.writeln('INVOICE_APP_STAGE=first_raster_pending');
       expect(previewButton().onPressed, isNull);
       emitEnd!('fixture raster failure');
       await until(() => find.text('本文と印影を表示できません').evaluate().isNotEmpty, 'renderer failure');
+      stdout.writeln('INVOICE_APP_STAGE=raster_error_blocked');
       expect(previewButton().onPressed, isNull); expect(sent(), 0);
       await tester.pageBack(); await tester.pumpAndSettle();
       expect(approveButton().onPressed, isNull);
@@ -101,13 +112,16 @@ void main() {
       expect(previewButton().onPressed, isNull, reason: 'a page before raster completion cannot authorize consent');
       emitEnd!();
       await until(() => previewButton().onPressed != null, 'all raster pages decoded and displayed');
+      stdout.writeln('INVOICE_APP_STAGE=raster_display_complete');
       await tester.tap(find.text('表示内容と印影を確認しました')); await tester.pumpAndSettle();
       await tester.tap(find.text('請求書の最終承認と注文請書の内容を確認しました')); await tester.pump();
       expect(approveButton().onPressed, isNull); expect(sent(), 0);
       await tester.tap(find.text('会社に登録した自社の角印の使用を承認します')); await tester.pump();
       expect(approveButton().onPressed, isNotNull);
+      stdout.writeln('INVOICE_APP_STAGE=explicit_choices');
       await tester.tap(find.text('承認する')); await tester.pump();
       await until(() => controller.state == InvoiceNoticeRecoveryState.recorded, 'lost committed response then fresh receipt');
+      stdout.writeln('INVOICE_APP_STAGE=recorded');
       await tester.pump(); expect(find.text('承認済み'), findsOneWidget); expect(sent(), 1); expect(legacyReads, 0);
       final command = trace.singleWhere((row) => (row['path'] as String).endsWith('/confirm'))['body'] as Map;
       expect(command['local_document_id'], isNot(invoice)); expect(command['revision'], isA<int>());
@@ -118,6 +132,7 @@ void main() {
       await tester.runAsync(() => client.auth.signInWithPassword(email: env['SKO_INVOICE_APP_EMAIL']!, password: env['SKO_INVOICE_APP_PASSWORD']!));
       await tester.pump(); expect(controller.state, InvoiceNoticeRecoveryState.invalidated);
       expect(find.text('承認済み'), findsNothing); expect(sent(), 1);
+      stdout.writeln('INVOICE_APP_STAGE=logout_terminal');
       await tester.pumpWidget(const SizedBox.shrink());
     } finally {
       messenger.setMockMethodCallHandler(channel, null); controller.dispose();
