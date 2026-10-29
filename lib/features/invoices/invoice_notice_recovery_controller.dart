@@ -81,12 +81,19 @@ class InvoiceNoticeRecoveryController extends ChangeNotifier {
   }
 
   void _observeAuth(SupabaseClient client) {
-    final bound = _authIdentity(client.auth.currentSession);
+    final initialSession = client.auth.currentSession;
+    final bound = _authIdentity(initialSession);
     if (bound == null || bound != '${actor()}/${session()}') { invalidate(); return; }
+    var firstEvent = true;
     _authSubscription = client.auth.onAuthStateChange.listen((event) {
+      // The SDK replays its last AuthState to a new subscriber. Accept only
+      // that first exact captured Session object, never a later same-SID login.
+      final initialReplay = firstEvent && identical(event.session, initialSession);
+      firstEvent = false;
       // signedIn is a new login boundary even for actor/SID ABA. Refreshes
       // retain the operation only while the exact original identity remains.
-      if (event.event == AuthChangeEvent.signedOut || event.event == AuthChangeEvent.signedIn ||
+      if (event.event == AuthChangeEvent.signedOut ||
+          (event.event == AuthChangeEvent.signedIn && !initialReplay) ||
           _authIdentity(event.session) != bound || '${actor()}/${session()}' != bound) { invalidate(); }
     }, onError: (Object error, StackTrace trace) { invalidate(); }, onDone: invalidate);
   }

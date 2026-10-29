@@ -10,7 +10,8 @@ approval callback. The existing entry widget forwards this optional binding.
 Recovery can observe a supplied SupabaseClient directly. It captures current
 actor/SID before subscribing, validates identity in initial/refresh events,
 and terminally invalidates on signedOut, signedIn (including same-identity ABA),
-identity mismatch, stream error or stream completion. Same-SID token refresh
+identity mismatch, stream error or stream completion. The SDK initial replay is accepted only for the first event with the exact
+captured Session object; a later same-SID signedIn remains terminal. Same-SID token refresh
 retains the pending operation. Token parsing is UI invalidation only, never
 authorization; the private reader continues to enforce live session/company
 conditions. Cancellation is memory-only and does not claim server revocation.
