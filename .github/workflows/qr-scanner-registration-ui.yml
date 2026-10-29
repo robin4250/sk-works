@@ -36,6 +36,9 @@ jobs:
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.47.5'
@@ -43,5 +46,34 @@ jobs:
           cache: true
       - run: flutter pub get --enforce-lockfile
       - run: flutter analyze lib/features/qr_attendance/scanner_registration_controller.dart lib/features/qr_attendance/scanner_registration_pending.dart lib/features/qr_attendance/scanner_registration_transport.dart lib/features/qr_attendance/scanner_registration_page.dart test/scanner_registration_flow_test.dart test/scanner_registration_transport_tls_test.dart
+      - name: Reproduce retired load subscriptions against exact original controller
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_file=lib/features/qr_attendance/scanner_registration_controller.dart
+          corrected_copy=$(mktemp)
+          baseline_log=$(mktemp)
+          cp "$source_file" "$corrected_copy"
+          corrected_hash=$(sha256sum "$source_file" | cut -d ' ' -f 1)
+          restore_corrected() {
+            cp "$corrected_copy" "$source_file"
+            cmp "$corrected_copy" "$source_file"
+            test "$(sha256sum "$source_file" | cut -d ' ' -f 1)" = "$corrected_hash"
+            rm -f "$corrected_copy" "$baseline_log"
+          }
+          trap restore_corrected EXIT
+          git show d7c105d5a4d6e4636092a5fbe674a9c2cc28256b:"$source_file" > "$source_file"
+          set +e
+          flutter test test/scanner_registration_flow_test.dart --reporter expanded --name 'load retired by immediate disposal|concurrent initial loads' > "$baseline_log" 2>&1
+          baseline_status=$?
+          set -e
+          cat "$baseline_log"
+          test "$baseline_status" -ne 0
+          grep -F 'retired load must not subscribe to Auth' "$baseline_log"
+          grep -F 'superseded load must not subscribe to Auth' "$baseline_log"
+          grep -F 'Expected: <0>' "$baseline_log"
+          grep -F 'Expected: <1>' "$baseline_log"
+          restore_corrected
+          trap - EXIT
       - run: flutter test test/scanner_registration_flow_test.dart test/scanner_registration_transport_tls_test.dart
       - run: git diff --exit-code -- pubspec.yaml pubspec.lock

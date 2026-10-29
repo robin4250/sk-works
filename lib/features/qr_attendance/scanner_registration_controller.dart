@@ -31,7 +31,10 @@ class ScannerRegistrationController extends ChangeNotifier {
  Future<void> load() async {
   if(_disposed || _busy)return;
   if(!enabled){_emit(ScannerRegistrationView.disabled);return;}
-  final old=_owner;_owner=null;_epoch++;await old?.dispose();
+  final old=_owner;_owner=null;final loadingEpoch=++_epoch;await old?.dispose();
+  // Disposal or a newer load may retire this continuation while cancellation
+  // is pending (including the initial await-null microtask). Never reacquire.
+  if(_disposed || loadingEpoch!=_epoch)return;
   try {
    final owner=ScannerRegistrationSession(client);_owner=owner;
    owner.invalidated.then((_) {if(!_disposed && identical(_owner,owner)){_epoch++;_busy=false;_emit(ScannerRegistrationView.blocked);}});
