@@ -1,12 +1,15 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 // Test-only native handoff spy; no browser/provider is contacted.
 // ignore: depend_on_referenced_packages
 import 'package:url_launcher_platform_interface/url_launcher_platform_interface.dart';
 import 'package:sk_works/features/auth/existing_google_login.dart';
+import 'package:sk_works/features/auth/app_auth_mutation_gateway.dart';
 import 'app_auth_mutation_gateway_test.dart' as fixture;
 
 class BrowserSpy extends UrlLauncherPlatform {
@@ -15,6 +18,15 @@ class BrowserSpy extends UrlLauncherPlatform {
   @override Future<bool> supportsMode(PreferredLaunchMode mode) async => true;
   @override Future<bool> launchUrl(String url,LaunchOptions options) async { urls.add(Uri.parse(url)); return true; }
 }
+class MemoryPkce extends GotrueAsyncStorage {
+  final _values=<String,String>{};
+  @override Future<String?> getItem({required String key}) async => _values[key];
+  @override Future<void> setItem({required String key,required String value}) async { _values[key]=value; }
+  @override Future<void> removeItem({required String key}) async { _values.remove(key); }
+}
+SupabaseClient nativeClient(fixture.Wire w) => SupabaseClient('https://native-google-fixture.invalid','public-fixture',
+  authOptions:AuthClientOptions(autoRefreshToken:false,pkceAsyncStorage:MemoryPkce()),
+  httpClient:MockClient((request) async { w.calls.add(request); return w.respond(request); }));
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late fixture.Wire w;
@@ -58,31 +70,34 @@ void main() {
   });
   for(final failed in [false,true]) {
     test('native OAuth handoff is denied for ${failed?'failed':'pending'} logout quarantine',() async {
-      await w.seed(); final reply=Completer<http.Response>(); w.respond=(_)=>reply.future;
-      final logout=w.auth.signOut(); final rejected=failed?expectLater(logout,throwsA(isA<AuthException>())):null;
+      final c=nativeClient(w); await c.auth.setInitialSession(jsonEncode(fixture.session()));
+      final reply=Completer<http.Response>(); w.respond=(_)=>reply.future;
+      final logout=AppAuthMutationGateway.forClient(c).signOut(); final rejected=failed?expectLater(logout,throwsA(isA<AuthException>())):null;
       await w.sent(1);
       if(failed) { reply.complete(http.Response('{"message":"unavailable"}',503,headers:{'content-type':'application/json'})); await rejected; }
       final oldPlatform=UrlLauncherPlatform.instance; final spy=BrowserSpy();
       UrlLauncherPlatform.instance=spy; debugDefaultTargetPlatformOverride=TargetPlatform.iOS;
       Object? error;
-      try { try { await ExistingGoogleLogin(w.client).launch(); } catch(e) { error=e; } }
+      try { try { await ExistingGoogleLogin(c).launch(); } catch(e) { error=e; } }
       finally {
         UrlLauncherPlatform.instance=oldPlatform;
         if(!failed) { reply.complete(http.Response('',204)); await logout; }
+        await c.dispose();
       }
       expect(error,isA<StateError>()); expect(spy.urls,isEmpty);
     });
   }
   test('ordinary iOS native Google handoff retains provider redirect and account selector',() async {
+    final c=nativeClient(w);
     final oldPlatform=UrlLauncherPlatform.instance; final spy=BrowserSpy();
     UrlLauncherPlatform.instance=spy; debugDefaultTargetPlatformOverride=TargetPlatform.iOS;
     try {
-      expect(await ExistingGoogleLogin(w.client).launch(),true);
+      expect(await ExistingGoogleLogin(c).launch(),true);
       expect(spy.urls,hasLength(1));
       expect(spy.urls.single.queryParameters['provider'],'google');
       expect(spy.urls.single.queryParameters['redirect_to'],ExistingGoogleLogin.nativeRedirect);
       expect(spy.urls.single.queryParameters['prompt'],'select_account');
-      expect(w.calls,isEmpty); expect(w.client.auth.currentSession,isNull);
-    } finally { UrlLauncherPlatform.instance=oldPlatform; }
+      expect(w.calls,isEmpty); expect(c.auth.currentSession,isNull);
+    } finally { UrlLauncherPlatform.instance=oldPlatform; await c.dispose(); }
   });
 }
