@@ -11,6 +11,9 @@ export async function verifyInvoiceNoticeApp(db,c,context){
  try{
   await db.exec(`create table public.app_notifications(id uuid primary key,recipient_user_id uuid,action_key text,action_id uuid)`);
   await db.exec(await fs.readFile('docs/review/invoice-month-close/notification_delivery.sql.review-only','utf8'));
+  // Prepare the saved document before rotating the registered seal. The
+  // canonical document saver retains its 16 KiB body guard unchanged.
+  const x=await prepare(22),initialTicket=await issue(x);
   // Preserve the existing 1 MiB upload contract. Add a valid ancillary PNG
   // chunk to an existing registered image, register it through the real saver,
   // and keep its exact bytes/hash/version throughout the app flow.
@@ -26,7 +29,6 @@ export async function verifyInvoiceNoticeApp(db,c,context){
   check(png.length,limit);const sealHash=createHash('sha256').update(png).digest('hex');
   await db.query('select public.save_company_uploaded_seal($1,$2,$3,$4,$5,true)',[A,selected.name,selected.revision,png.toString('base64'),sealHash]);
   const registeredVersion=(await db.query('select version_id from private.company_seal_png_selection where company_id=$1',[A])).rows[0].version_id;
-  const x=await prepare(22),initialTicket=await issue(x);
   const notice=(await db.query('select notice_id from invoice_month_close_candidate.notice_open_tickets where id=$1',[initialTicket])).rows[0].notice_id;
   const notification=id(87022);
   await db.query("insert into public.app_notifications values($1,$2,'invoice_approval',$3)",[notification,UA,x.parent]);
@@ -76,6 +78,7 @@ export async function verifyInvoiceNoticeApp(db,c,context){
   if(!output.stdout.includes('All tests passed!'))throw Error('SDK Panel proof missing');
   check(dropped,true);check(commands,1);assert.ok(opens>=1);assert.ok(reads>=1);assert.ok(tlsRejections>=1);
   const after=await state(x);check(before.audit,0);check(after.audit,1);check(after.consents,1);check(after.receipts,1);check(after.approvals[0].status,'approved');
+  check(after.revision.body_hash,before.revision.body_hash);check(after.revision.body,before.revision.body);
   const consent=(await db.query('select seal_snapshot,seal_version_id,seal_asset_hash from trade_document_consent_private.consents where document_id=$1 and company_id=$2',[x.doc,A])).rows[0];
   const snapshot=consent.seal_snapshot;check(consent.seal_version_id,registeredVersion);check(consent.seal_asset_hash,sealHash);
   check(snapshot.png_sha256,sealHash);check(createHash('sha256').update(Buffer.from(snapshot.png_base64,'base64')).digest('hex'),sealHash);
