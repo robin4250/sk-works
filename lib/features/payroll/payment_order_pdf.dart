@@ -2,6 +2,7 @@ import 'payment_order_layout.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import '../../domain/company_seal_snapshot.dart';
+import '../../domain/partner_company_bank_account.dart';
 import '../shared/company_seal_pdf.dart';
 import '../shared/trade_document_attachment.dart';
 import '../shared/trade_document_company_name_pdf.dart';
@@ -14,6 +15,7 @@ class PaymentOrderPdf {
   if(p['kind']!='order')throw StateError('注文書の保存内容を確認できません。');
   final issuer=Map<String,dynamic>.from(p['issuer'] as Map);
   final counter=Map<String,dynamic>.from(p['counterparty'] as Map);
+  final bank=p['counterparty_bank']!=null?PartnerCompanyBankAccount.fromJson(p['counterparty_bank']):null;
   final seal=CompanySealSnapshot.fromJson(p['company_seal_snapshot']);
   final sealOn=p['company_seal_enabled']==true;
   final font=sealOn?await CompanySealPdf.loadStyleFont(seal.style):regularFont;
@@ -41,7 +43,9 @@ class PaymentOrderPdf {
     field('1. 工事名',p['work_name']),field('2. 工事場所',p['work_address']),
     field('3. 工期','${p['period_start']} から ${p['period_end']} まで'),
     field('4. 請負代金','金 ${_money(p['total_amount_yen'])}円（うち消費税等 金${_money(p['tax_amount_yen'])}円）'),
-    field('5. 支払条件',p['payment_conditions']),field('6. その他特記事項',p['notes']),
+    field('5. 支払条件',p['payment_conditions']),
+    if(bank!=null)field('受注者の振込先',bank.display),
+    field('6. その他特記事項',p['notes']),
     pw.SizedBox(height:compact?6:12),pw.Align(alignment:pw.Alignment.centerRight,child:text(p['issue_date'].toString())),
     pw.SizedBox(height:compact?8:14),
     if(compact)pw.Row(crossAxisAlignment:pw.CrossAxisAlignment.start,children:[

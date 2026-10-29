@@ -1,0 +1,117 @@
+-- REVIEW ONLY; no production authorization. Frozen source SHA256 3e963756ab0fe84ceda7674068d762288fb37f11538e61e708aa9ffd1f9fd4d5
+-- No original function/table data edits beyond the frozen reviewed module.
+begin;
+set local lock_timeout='5s';
+select pg_advisory_xact_lock(hashtextextended('sko:employee-bank-preapply-capsule-v1',0));
+do $attributes$ declare item jsonb;actual jsonb;begin
+ for item in select value from jsonb_array_elements($catalog$[{"signature":"private.reauthentication_scope(text)","definition_md5":"1495008c422fae673edd4aabbb966667","owner":"postgres","acl":"{postgres=X/postgres}","config":["search_path=\"\""],"security_definer":false,"volatility":"i","strict":false,"leakproof":false,"parallel":"u","kind":"f","returns_set":false,"return_type":"text"},{"signature":"private.reauthentication_required(text)","definition_md5":"c998ecf7fc28393495c6d755fd4df939","owner":"postgres","acl":"{postgres=X/postgres}","config":["search_path=\"\""],"security_definer":true,"volatility":"v","strict":false,"leakproof":false,"parallel":"u","kind":"f","returns_set":false,"return_type":"boolean"},{"signature":"public.issue_reauthentication_proof(uuid,uuid,text,jsonb,text)","definition_md5":"96410b3289e5e590d017db25d6389ee1","owner":"postgres","acl":"{postgres=X/postgres,service_role=X/postgres}","config":["search_path=\"\""],"security_definer":true,"volatility":"v","strict":false,"leakproof":false,"parallel":"u","kind":"f","returns_set":false,"return_type":"timestamp with time zone"},{"signature":"private.issue_reauthentication_proof(uuid,uuid,text,jsonb,text)","definition_md5":"e8d6bb6406431bea49a13efa1817fb5e","owner":"postgres","acl":"{postgres=X/postgres}","config":["search_path=\"\""],"security_definer":true,"volatility":"v","strict":false,"leakproof":false,"parallel":"u","kind":"f","returns_set":false,"return_type":"timestamp with time zone"},{"signature":"private.consume_reauthentication_proof(text,jsonb,text)","definition_md5":"4a72af5d7aaddad822d29da4c64d7a83","owner":"postgres","acl":"{postgres=X/postgres}","config":["search_path=\"\""],"security_definer":true,"volatility":"v","strict":false,"leakproof":false,"parallel":"u","kind":"f","returns_set":false,"return_type":"void"},{"signature":"private.require_reauthentication_session()","definition_md5":"165d0f26da6f6e346bb2766ae70282f7","owner":"postgres","acl":"{postgres=X/postgres}","config":["search_path=\"\""],"security_definer":true,"volatility":"v","strict":false,"leakproof":false,"parallel":"u","kind":"f","returns_set":false,"return_type":"uuid"},{"signature":"private.sync_bank_document_status()","definition_md5":"23da3259dc35ded102be9d01f88bbc64","owner":"postgres","acl":"{postgres=X/postgres}","config":["search_path=\"\""],"security_definer":true,"volatility":"v","strict":false,"leakproof":false,"parallel":"u","kind":"f","returns_set":false,"return_type":"trigger"},{"signature":"private.has_company_feature(uuid,text)","definition_md5":"e669fb9e3fe1af2b73eee1745703b272","owner":"postgres","acl":null,"config":["search_path=public, private, pg_temp"],"security_definer":true,"volatility":"s","strict":false,"leakproof":false,"parallel":"u","kind":"f","returns_set":false,"return_type":"boolean"}]$catalog$::jsonb) loop
+  select jsonb_build_object('signature',item->>'signature','definition_md5',md5(pg_get_functiondef(p.oid)),
+ 'owner',pg_get_userbyid(p.proowner),'acl',p.proacl::text,'config',p.proconfig,'security_definer',p.prosecdef,
+ 'volatility',p.provolatile::text,'strict',p.proisstrict,'leakproof',p.proleakproof,'parallel',p.proparallel::text,
+ 'kind',p.prokind::text,'returns_set',p.proretset,'return_type',format_type(p.prorettype,null))
+ from pg_proc p where p.oid=to_regprocedure(item->>'signature') into actual;
+  if actual is distinct from item then raise sqlstate '55000' using message='employee_bank_capsule_before_catalog_drift';end if;
+ end loop;
+ if not exists(select 1 from pg_trigger t where t.tgrelid='public.worker_private_bank_accounts'::regclass
+ and t.tgname='sync_bank_document_status' and t.tgenabled='O'
+ and pg_get_triggerdef(t.oid)=$trigger$CREATE TRIGGER sync_bank_document_status BEFORE INSERT OR UPDATE ON public.worker_private_bank_accounts FOR EACH ROW EXECUTE FUNCTION private.sync_bank_document_status()$trigger$) then
+ raise sqlstate '55000' using message='employee_bank_capsule_trigger_drift';end if;
+ end $attributes$;
+do $guard$ declare item record;begin
+ for item in select * from (values
+ ('private.reauthentication_scope(text)','1495008c422fae673edd4aabbb966667'),
+ ('private.reauthentication_required(text)','c998ecf7fc28393495c6d755fd4df939'),
+ ('public.issue_reauthentication_proof(uuid,uuid,text,jsonb,text)','96410b3289e5e590d017db25d6389ee1'),
+ ('private.sync_bank_document_status()','23da3259dc35ded102be9d01f88bbc64')
+ ) v(signature,definition_hash) loop
+  if to_regprocedure(item.signature) is null or md5(pg_get_functiondef(to_regprocedure(item.signature)))<>item.definition_hash then
+   raise sqlstate '55000' using message='employee_bank_original_definition_changed';end if;
+ end loop;
+end $guard$;
+do $$begin
+ if private.employee_bank_initial_enabled() or exists(select 1 from private.employee_bank_initial_context)
+  or exists(select 1 from private.reauthentication_proofs where operation='employee.bank.initial') then
+  raise sqlstate '55000' using message='employee_bank_unused_restore_requires_off_empty_context_and_no_bank_proofs';end if;
+end $$;
+CREATE OR REPLACE FUNCTION private.reauthentication_scope(p_operation text)
+ RETURNS text
+ LANGUAGE sql
+ IMMUTABLE
+ SET search_path TO ''
+AS $function$
+ select case p_operation when 'secondary_password.replace' then 'secondary_password'
+  when 'secondary_password.change' then 'secondary_password'
+  when 'master.feature.set' then 'master_feature'
+  when 'master.security_incidents.read' then 'master_security'
+  when 'attendance.manage' then 'attendance_management'
+  when 'master.security_collector.read' then 'master_security' end
+$function$
+;
+CREATE OR REPLACE FUNCTION private.reauthentication_required(p_scope text)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare required boolean;
+begin
+ select enabled into required from private.reauthentication_rollout where scope=p_scope for share;
+ if not found then raise sqlstate '42501' using message='reauthentication_unavailable'; end if;
+ return required;
+end $function$
+;
+CREATE OR REPLACE FUNCTION public.issue_reauthentication_proof(p_actor uuid, p_session uuid, p_operation text, p_target jsonb, p_proof_hash text)
+ RETURNS timestamp with time zone
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$begin
+ if coalesce(auth.role(),'')<>'service_role' or p_operation in('secondary_password.change','attendance.manage') then
+  raise sqlstate '42501' using message='reauthentication_unavailable';end if;
+ return private.issue_reauthentication_proof(p_actor,p_session,p_operation,p_target,p_proof_hash);
+end $function$
+;
+CREATE OR REPLACE FUNCTION private.sync_bank_document_status()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+begin
+  if auth.uid() is null or not exists (
+    select 1 from public.workers w where w.id = new.worker_id and w.company_id = new.company_id and w.user_id = auth.uid()
+  ) then raise exception 'own bank account required'; end if;
+  new.updated_at := now();
+  insert into public.worker_document_statuses(company_id, worker_id, requirement_id, status, original_verified, updated_by, updated_at)
+  select new.company_id, new.worker_id, dr.id, 'submitted', false, auth.uid(), now()
+  from public.document_requirements dr
+  where dr.company_id = new.company_id and dr.name = '銀行口座情報' and dr.is_active
+  on conflict (worker_id, requirement_id) do update
+  set status = 'submitted', original_verified = false, updated_by = auth.uid(), updated_at = now();
+  return new;
+end;
+$function$
+;
+drop function public.register_employee_bank_initial(uuid,uuid,jsonb,text);
+drop function public.employee_bank_initial_capability(uuid,uuid);
+drop function private.employee_bank_initial_issue_target(uuid,jsonb);
+drop function private.employee_bank_initial_scope(uuid,uuid,uuid);
+drop function private.employee_bank_initial_digest(uuid,uuid,jsonb);
+drop table private.employee_bank_initial_context;
+drop function private.employee_bank_initial_enabled();
+-- Bank rows, original statuses/attachments, proof history and payroll are retained.
+do $attributes$ declare item jsonb;actual jsonb;begin
+ for item in select value from jsonb_array_elements($catalog$[{"signature":"private.reauthentication_scope(text)","definition_md5":"920af4ed4bd039d3258b20aab89dd6b1","owner":"postgres","acl":"{postgres=X/postgres}","config":["search_path=\"\""],"security_definer":false,"volatility":"i","strict":false,"leakproof":false,"parallel":"u","kind":"f","returns_set":false,"return_type":"text"},{"signature":"private.reauthentication_required(text)","definition_md5":"e7b07f77bb4eb159ee956e231a962fd5","owner":"postgres","acl":"{postgres=X/postgres}","config":["search_path=\"\""],"security_definer":true,"volatility":"v","strict":false,"leakproof":false,"parallel":"u","kind":"f","returns_set":false,"return_type":"boolean"},{"signature":"public.issue_reauthentication_proof(uuid,uuid,text,jsonb,text)","definition_md5":"2e16168e872781301c52e331bb479819","owner":"postgres","acl":"{postgres=X/postgres,service_role=X/postgres}","config":["search_path=\"\""],"security_definer":true,"volatility":"v","strict":false,"leakproof":false,"parallel":"u","kind":"f","returns_set":false,"return_type":"timestamp with time zone"},{"signature":"private.issue_reauthentication_proof(uuid,uuid,text,jsonb,text)","definition_md5":"e8d6bb6406431bea49a13efa1817fb5e","owner":"postgres","acl":"{postgres=X/postgres}","config":["search_path=\"\""],"security_definer":true,"volatility":"v","strict":false,"leakproof":false,"parallel":"u","kind":"f","returns_set":false,"return_type":"timestamp with time zone"},{"signature":"private.consume_reauthentication_proof(text,jsonb,text)","definition_md5":"4a72af5d7aaddad822d29da4c64d7a83","owner":"postgres","acl":"{postgres=X/postgres}","config":["search_path=\"\""],"security_definer":true,"volatility":"v","strict":false,"leakproof":false,"parallel":"u","kind":"f","returns_set":false,"return_type":"void"},{"signature":"private.require_reauthentication_session()","definition_md5":"165d0f26da6f6e346bb2766ae70282f7","owner":"postgres","acl":"{postgres=X/postgres}","config":["search_path=\"\""],"security_definer":true,"volatility":"v","strict":false,"leakproof":false,"parallel":"u","kind":"f","returns_set":false,"return_type":"uuid"},{"signature":"private.sync_bank_document_status()","definition_md5":"e7c56ead3acd46dc03db7565e5dced56","owner":"postgres","acl":"{postgres=X/postgres}","config":["search_path=\"\""],"security_definer":true,"volatility":"v","strict":false,"leakproof":false,"parallel":"u","kind":"f","returns_set":false,"return_type":"trigger"},{"signature":"private.has_company_feature(uuid,text)","definition_md5":"e669fb9e3fe1af2b73eee1745703b272","owner":"postgres","acl":null,"config":["search_path=public, private, pg_temp"],"security_definer":true,"volatility":"s","strict":false,"leakproof":false,"parallel":"u","kind":"f","returns_set":false,"return_type":"boolean"}]$catalog$::jsonb) loop
+  select jsonb_build_object('signature',item->>'signature','definition_md5',md5(pg_get_functiondef(p.oid)),
+ 'owner',pg_get_userbyid(p.proowner),'acl',p.proacl::text,'config',p.proconfig,'security_definer',p.prosecdef,
+ 'volatility',p.provolatile::text,'strict',p.proisstrict,'leakproof',p.proleakproof,'parallel',p.proparallel::text,
+ 'kind',p.prokind::text,'returns_set',p.proretset,'return_type',format_type(p.prorettype,null))
+ from pg_proc p where p.oid=to_regprocedure(item->>'signature') into actual;
+  if actual is distinct from item then raise sqlstate '55000' using message='employee_bank_capsule_after_catalog_drift';end if;
+ end loop;
+ if not exists(select 1 from pg_trigger t where t.tgrelid='public.worker_private_bank_accounts'::regclass
+ and t.tgname='sync_bank_document_status' and t.tgenabled='O'
+ and pg_get_triggerdef(t.oid)=$trigger$CREATE TRIGGER sync_bank_document_status BEFORE INSERT OR UPDATE ON public.worker_private_bank_accounts FOR EACH ROW EXECUTE FUNCTION private.sync_bank_document_status()$trigger$) then
+ raise sqlstate '55000' using message='employee_bank_capsule_trigger_drift';end if;
+ end $attributes$;
+commit;

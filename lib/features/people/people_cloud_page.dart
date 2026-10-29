@@ -13,21 +13,24 @@ import 'member_permission_page.dart';
 import 'personnel_bundle_send_page.dart';
 import 'personnel_export_page.dart';
 import 'people_cloud_repository.dart';
+import 'partner_company_bank_page.dart';
 import 'people_page.dart';
 import 'phone_display.dart';
 import 'worker_document_send_page.dart';
 import 'worker_personnel_approver_settings_page.dart';
 
 class PeopleCloudPage extends StatefulWidget {
-  const PeopleCloudPage({super.key,this.companyId});
+  const PeopleCloudPage({super.key,this.companyId,this.repositoryOverride});
   final String? companyId;
+  @visibleForTesting final PeopleCloudRepository? repositoryOverride;
 
   @override
   State<PeopleCloudPage> createState() => _PeopleCloudPageState();
 }
 
 class _PeopleCloudPageState extends State<PeopleCloudPage> {
-  final _repository = PeopleCloudRepository.maybeCreate();
+  late final _repository = widget.repositoryOverride ?? PeopleCloudRepository.maybeCreate();
+  bool _openingPartnerBank = false;
   final _records = <PersonRecord>[];
   PersonnelPrivacySession? _privacy;
   String _query = '';
@@ -418,9 +421,54 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
     }
   }
 
+  Future<void> _openPartnerBank(PersonRecord record, PersonnelPrivacySession session,
+      int lease, NavigatorState rootNavigator) async {
+    if (_openingPartnerBank) return;
+    final repository = _repository;
+    final company = session.company, actor = session.actor;
+    if (repository == null || record.kind != PersonKind.partnerCompany || !record.active) return;
+    _openingPartnerBank = true;
+    void check() {
+      session.verify(lease);
+      if (!mounted || _privacy != session || session.company != company || actor == null ||
+          repository.actorId != actor || session.snapshot?.canManage != true) {
+        throw const PersonnelScopeChanged();
+      }
+    }
+    try {
+      check();
+      await session.read();
+      check();
+      final rows = await repository.loadAll(expectedCompany: company);
+      check();
+      final targets = rows.where((row) => row['id']?.toString() == record.id &&
+          row['kind'] == 'partnerCompany' && row['active'] == true).toList(growable: false);
+      if (targets.length != 1 || !rootNavigator.mounted) throw const PersonnelScopeChanged();
+      final target = PersonRecord.fromJson(targets.single);
+      await rootNavigator.push<bool>(MaterialPageRoute(builder: (_) =>
+        PersonnelPrivacyView(session: session, builder: (context, _) {
+          if (session.epoch != lease || session.revoked || !session.active ||
+              session.snapshot?.canManage != true || repository.actorId != actor) {
+            return const Center(child: Text('対象と管理権限を再確認してください。'));
+          }
+          return PartnerCompanyBankPage(privacySession: session, expectedCompany: company,
+            partnerCompanyId: target.id, partnerName: target.name);
+        })));
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('対象と管理権限を再確認してください。')));
+      }
+    } finally {
+      _openingPartnerBank = false;
+    }
+  }
+
   void _showDetails(PersonRecord record) {
     final session=_privacy;
     if(session==null)return;
+    final lease = session.epoch;
+    final rootNavigator = Navigator.of(context, rootNavigator: true);
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -463,6 +511,15 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
                 ),
                 const SizedBox(height: 8),
               ],
+              if (record.kind == PersonKind.partnerCompany && _canManagePeople)
+                OutlinedButton.icon(
+                  key: const Key('partner-company-bank-entry'),
+                  onPressed: () {
+                    Navigator.of(sheetContext).pop();
+                    _openPartnerBank(record, session, lease, rootNavigator);
+                  },
+                  icon: const Icon(Icons.account_balance_outlined),
+                  label: Text(SkoLanguageController.tr('銀行口座'))),
               if (_canManagePeople)
                 OutlinedButton.icon(
                 onPressed: () async {

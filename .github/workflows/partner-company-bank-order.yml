@@ -1,0 +1,92 @@
+name: Supplier bank and frozen order snapshot candidate
+on:
+  pull_request:
+    paths:
+      - 'lib/domain/partner_company_bank_account.dart'
+      - 'lib/features/people/partner_company_bank_*.dart'
+      - 'lib/features/payroll/payment_order_pdf.dart'
+      - 'lib/features/payroll/payment_order_layout.dart'
+      - 'lib/features/shared/trade_document_attachment.dart'
+      - 'lib/features/shared/standalone_trade_document.dart'
+      - 'lib/features/shared/standalone_trade_document_repository.dart'
+      - 'test/partner_company_bank_*'
+      - 'docs/review/partner-company-bank-order/**'
+      - '.github/workflows/partner-company-bank-order.yml'
+permissions:
+  contents: read
+jobs:
+  exact-sql:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17.6
+        env:
+          POSTGRES_PASSWORD: fixture
+          POSTGRES_DB: partner_bank_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d partner_bank_fixture"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.14.0'
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
+      - name: Isolated exact SQL with synthetic Auth and catalog
+        run: node docs/review/partner-company-bank-order/sql.test.mjs "$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
+      - name: Same exact SQL against disposable native PostgreSQL 17
+        env:
+          PARTNER_BANK_TEST_DATABASE_URL: postgres://postgres:fixture@127.0.0.1:5432/partner_bank_fixture
+        run: node docs/review/partner-company-bank-order/sql.test.mjs "$GITHUB_WORKSPACE/docs/review/partner-company-bank-order/native-db.mjs"
+      - name: Native ban, session deletion, role and partner revocation races
+        env:
+          PARTNER_BANK_TEST_DATABASE_URL: postgres://postgres:fixture@127.0.0.1:5432/partner_bank_fixture
+        run: node docs/review/partner-company-bank-order/race.test.mjs
+  client-and-pdf:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/domain/partner_company_bank_account.dart lib/features/people/partner_company_bank_repository.dart lib/features/people/partner_company_bank_page.dart lib/features/payroll/payment_order_pdf.dart lib/features/payroll/payment_order_layout.dart lib/features/shared/trade_document_attachment.dart lib/features/shared/standalone_trade_document.dart lib/features/shared/standalone_trade_document_repository.dart test/partner_company_bank_account_test.dart test/partner_company_bank_repository_test.dart test/partner_company_bank_pdf_test.dart test/partner_company_bank_standalone_test.dart
+      - name: Scoped SDK, private widget, and actual PDF rendering
+        env:
+          PARTNER_BANK_PDF_OUTPUT_DIR: build/partner-bank-proof
+        run: flutter test test/partner_company_bank_account_test.dart test/partner_company_bank_repository_test.dart test/partner_company_bank_pdf_test.dart test/payment_order_pdf_test.dart test/partner_company_bank_standalone_test.dart test/standalone_trade_document_test.dart test/standalone_trade_document_repository_test.dart
+      - run: python -m pip install PyMuPDF==1.26.6
+      - name: Verify frozen supplier bank text and single-page layout
+        run: |
+          python - <<'PY'
+          import fitz
+          from pathlib import Path
+          folder=Path('build/partner-bank-proof')
+          assert len(list(folder.glob('*.pdf')))==3
+          for name in ['bank','bank-long','legacy']:
+              with fitz.open(folder/(name+'.pdf')) as pdf:
+                  assert len(pdf)==1, (name,len(pdf))
+                  text=''.join(pdf[0].get_text().split())
+                  assert '注文書' in text and '株式会社発注' in text and '株式会社受注' in text
+                  assert '110,000' in text and '10,000' in text
+                  if name=='legacy':
+                      assert '受注者の振込先' not in text and '0000123' not in text
+                  else:
+                      assert '受注者の振込先' in text and '0000123' in text and '普通' in text
+                      if name=='bank': assert '保存済検証銀行' in text and '保存済本店' in text
+                      else: assert '銀'*100 in text and '支'*100 in text and '名'*120 in text
+                  for block in pdf[0].get_text('dict')['blocks']:
+                      if block['type']==0:
+                          x0,y0,x1,y1=block['bbox']
+                          assert x0>=35 and y0>=35 and x1<=pdf[0].rect.width-35 and y1<=pdf[0].rect.height-35,(name,block['bbox'])
+                  pdf[0].get_pixmap().save(folder/(name+'.png'))
+          print('PASS exact saved supplier bank, leading zero, legacy absence, original parties/totals and page bounds')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: supplier-bank-order-pdf-proof
+          path: build/partner-bank-proof/
+      - run: git diff --exit-code -- pubspec.yaml pubspec.lock
