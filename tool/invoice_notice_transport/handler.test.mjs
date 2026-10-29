@@ -15,3 +15,17 @@ test('cookies, malformed bearer and wrong method cannot reach Auth',async()=>{
  assert.equal((await handler(new Request('http://127.0.0.1/invoice-notice/result'))).status,404);
  assert.equal(calls,0);
 });
+
+test('Auth response is byte/media/origin/redirect bounded before any database call',async()=>{
+ const id='10000000-0000-0000-0000-000000000001';
+ const value={ticket_id:id,local_document_id:id,company_id:id,revision:1,request_id:id,expected_preview:{amount:1},expected_hash:'a'.repeat(64)};
+ let connections=0;
+ for(const kind of ['oversized','media','redirect','origin']){
+  const handler=createInvoiceNoticeTransport({enabled:true,authOrigin:'http://127.0.0.1:1',apiKey:'fixture',connect:()=>{connections++;},fetchAuth:async()=>({
+   status:200,redirected:kind==='redirect',url:kind==='origin'?'http://foreign.test/auth/v1/user':'http://127.0.0.1:1/auth/v1/user',
+   headers:new Headers({'content-type':kind==='media'?'text/html':'application/json'}),
+   body:new Response(JSON.stringify({id,metadata:kind==='oversized'?'x'.repeat(32768):''})).body})});
+  assert.equal((await handler(request(value))).status,401,kind);
+ }
+ assert.equal(connections,0);
+});

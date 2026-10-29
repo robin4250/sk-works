@@ -9,6 +9,7 @@ try{
  const manifest=JSON.parse(await fs.readFile(path.join(root,'tool/fixtures/trade_reciprocal_gate/source_manifest.json'),'utf8'));
  const exact=async p=>{const bytes=await fs.readFile(path.join(root,p));const actual=createHash('sha1').update(Buffer.concat([Buffer.from(`blob ${bytes.length}\0`),bytes])).digest('hex');if(manifest.files.find(x=>x.path===p)?.sha!==actual)throw Error('canonical invoice source differs');return bytes.toString();};
  let verify=await exact('tool/verify_trade_document_bound_seal_consent.mjs');
+ verify=replace(verify,"new URL('../supabase/migrations/20261014124714_monthly_trade_document_attachment.sql',import.meta.url)",`new URL(${JSON.stringify(url('supabase/migrations/20261014124714_monthly_trade_document_attachment.sql'))})`);
  verify=replace(verify,"'./trade_document_auth_fixture_context.mjs'",JSON.stringify(url('tool/trade_document_auth_fixture_context.mjs')));
  verify=replace(verify,"'./trade_document_invoice_confirmation_fixture.mjs'",JSON.stringify(pathToFileURL(path.join(temp,'invoice.mjs')).href));
  // Monthly hook is disabled in this dedicated invoice runner.

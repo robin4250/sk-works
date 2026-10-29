@@ -2,12 +2,21 @@
 const uuid=/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 class Denied extends Error { constructor(status){super('notice unavailable');this.status=status;} }
 const reject=status=>{throw new Denied(status);};
-async function body(request){
- if(request.headers.get('content-type')?.split(';')[0]!=='application/json')reject(400);
- const reader=request.body?.getReader();if(!reader)reject(400);
+const discard=message=>{void message.body?.cancel().catch(()=>{});};
+async function boundedJson(message,{limit,milliseconds,status,timeoutStatus=status}){
+ if(message.headers.get('content-type')?.split(';')[0]!=='application/json'){discard(message);reject(status);}
+ const reader=message.body?.getReader();if(!reader)reject(status);
+ const deadline=performance.now()+milliseconds;
+ const inTime=()=>{if(performance.now()>=deadline)reject(timeoutStatus);};
  let size=0;const chunks=[];let timer;
- try{return await Promise.race([(async()=>{while(true){const {done,value}=await reader.read();if(done)break;size+=value.byteLength;if(size>65536)reject(413);chunks.push(value);}return JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(Buffer.concat(chunks)));})(),new Promise((_,no)=>{timer=setTimeout(()=>no(new Denied(408)),10000);})]);}
- catch(error){if(error instanceof Denied)throw error;reject(400);}finally{clearTimeout(timer);await reader.cancel().catch(()=>{});}
+ try{return await Promise.race([(async()=>{
+  while(true){inTime();const {done,value}=await reader.read();inTime();if(done)break;
+   size+=value.byteLength;if(size>limit||chunks.length>=1024)reject(status===400?413:status);chunks.push(value);}
+  inTime();const text=new TextDecoder('utf-8',{fatal:true}).decode(Buffer.concat(chunks));inTime();
+  const value=JSON.parse(text);inTime();return value;
+ })(),new Promise((_,no)=>{timer=setTimeout(()=>no(new Denied(timeoutStatus)),milliseconds);})]);}
+ catch(error){if(error instanceof Denied)throw error;reject(status);}
+ finally{clearTimeout(timer);void reader.cancel().catch(()=>{});}
 }
 function scope(value,confirm){
  const keys=['ticket_id','local_document_id','company_id','revision','request_id','expected_preview','expected_hash',...(confirm?['financial_confirmed','seal_confirmed']:[])];
@@ -31,10 +40,11 @@ export function createInvoiceNoticeTransport({enabled=false,authOrigin,apiKey,co
    // Never reread caller headers or accept credentials/issuer in the JSON body.
    const authorization=request.headers.get('authorization');
    if(typeof authorization!=='string'||authorization.length>8192||!/^Bearer [A-Za-z0-9_.-]+$/.test(authorization))reject(401);
-   const token=authorization.slice(7),value=scope(await body(request),route.endsWith('/confirm'));
-   const authenticated=await fetchAuth(new URL('/auth/v1/user',origin),{method:'GET',redirect:'error',signal:AbortSignal.timeout(5000),headers:{apikey:apiKey,authorization}});
-   if(authenticated.status!==200)reject(401);
-   const user=await authenticated.json();let claims;
+   const token=authorization.slice(7),value=scope(await boundedJson(request,{limit:65536,milliseconds:10000,status:400,timeoutStatus:408}),route.endsWith('/confirm'));
+   const authUrl=new URL('/auth/v1/user',origin);
+   const authenticated=await fetchAuth(authUrl,{method:'GET',redirect:'error',signal:AbortSignal.timeout(5000),headers:{apikey:apiKey,authorization}});
+   if(authenticated.status!==200||authenticated.redirected!==false||authenticated.url!==authUrl.href){discard(authenticated);reject(401);}
+   const user=await boundedJson(authenticated,{limit:32768,milliseconds:5000,status:401});let claims;
    try{const parts=token.split('.');if(parts.length!==3)reject(401);claims=JSON.parse(Buffer.from(parts[1],'base64url').toString('utf8'));}catch{reject(401);}
    if(!uuid.test(user?.id??'')||claims.sub!==user.id||!uuid.test(claims.session_id??'')||claims.role!=='authenticated'||claims.aud!=='authenticated'||claims.iss!==new URL('/auth/v1',origin).href||!Number.isFinite(claims.exp)||claims.exp*1000<=Date.now())reject(401);
    peer=await connect();await peer.query('begin');begun=true;

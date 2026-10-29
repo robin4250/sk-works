@@ -8,7 +8,9 @@ added. The production client factory and fixed release flag remain unchanged.
 
 The handler captures one bearer header, rejects cookies and credential/actor
 body fields, and validates it with a fixed GoTrue `/auth/v1/user` request without
-redirects. Verified user/subject, issuer, role, audience, expiry and SID must
+redirects. Auth responses must come from that exact URL, be JSON, and fit
+32 KiB/1024 chunks. Request and Auth body readers enforce monotonic deadlines
+before/after reads, decoding and parsing, in addition to cancellation timers. Verified user/subject, issuer, role, audience, expiry and SID must
 match. In a transaction it sets only this verified JWT context and invokes the
 existing private.require_reauthentication_session() gate before the private
 notice command/reader. That gate retains account/anonymous/banned/deletion
@@ -18,8 +20,9 @@ it to the operation. No client SQL/function name/issuer is accepted.
 
 Only fixed confirm/result paths and exact fields are accepted. Both explicit
 financial and seal confirmations are mandatory. Requests are capped at 64 KiB,
-10 seconds for body, 5 seconds for GoTrue, 10 seconds statement and 5 seconds lock
-wait. Errors are generic and responses are noncacheable. One confirmation query
+10 seconds for body, 5 seconds for GoTrue fetch/body, 10 seconds statement and 5 seconds lock
+wait. A total request/pool-connect deadline is not implemented; future backend
+provisioning must bound the trusted connect callback. Errors are generic and responses are noncacheable. One confirmation query
 is issued; errors never retry it. A COMMIT-ACK failure stays unknown to the
 caller. Historical result lookup uses the original actor/SID and full operation.
 
