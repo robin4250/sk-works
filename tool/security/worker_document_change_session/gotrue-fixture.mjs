@@ -8,6 +8,7 @@ export async function verifyDocumentChangeSession({db,users,sessions,password,re
  let stage='setup';
  try{
   const authCatalog=async()=>(await db.query("select jsonb_agg(jsonb_build_object('name',oid::regprocedure::text,'def',pg_get_functiondef(oid),'owner',proowner,'acl',proacl) order by oid) v from pg_proc where oid in ('auth.uid()'::regprocedure,'auth.jwt()'::regprocedure)")).rows[0].v;
+  const version=Number((await db.query('show server_version_num')).rows[0].server_version_num);assert.ok(version>=170000&&version<180000,'PostgreSQL17 required');
   const authBefore=await authCatalog();
   await db.query(`create schema private;
    create table public.companies(id uuid primary key);
@@ -110,6 +111,7 @@ export async function verifyDocumentChangeSession({db,users,sessions,password,re
   // Assert real database lock overlap; Promise.all alone is not a race proof.
   let blocked=false;
   for(let attempt=0;attempt<100;attempt++){
+   await db.query('select pg_stat_clear_snapshot()');
    const count=(await db.query("select count(*)::int n from pg_stat_activity where pid<>pg_backend_pid() and wait_event_type='Lock' and query like '%worker_document_change%'")).rows[0].n;
    if(count>=2){blocked=true;break;}
    await new Promise(resolve=>setTimeout(resolve,50));
@@ -131,5 +133,5 @@ export async function verifyDocumentChangeSession({db,users,sessions,password,re
   await denied(await call('approve',{request_id:id(22)},reviewer));
   eq(await triggerCatalog(),triggersBefore);eq(await authCatalog(),authBefore);
   console.log('PASS actual GoTrue/PostgREST: OFF/unused restore, source/attribute pin, live SID revocation and explicit fresh-session resume with retained creation SID, people-feature/legacy manager RLS union, scope/new-upload/self approval/forged ticket failures, concurrent single apply/history, after-use restore refusal and original cascade preservation; production unchanged');
- }catch(error){error.code='DOCUMENT_CHANGE_'+stage.replaceAll('-','_').toUpperCase();throw error;}
+ }catch(error){console.error(JSON.stringify({synthetic_fixture_stage:stage,sqlstate:error.code??null,position:error.position??null}));error.code='DOCUMENT_CHANGE_'+stage.replaceAll('-','_').toUpperCase();throw error;}
 }
