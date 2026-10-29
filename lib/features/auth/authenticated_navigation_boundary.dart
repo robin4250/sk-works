@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../data/supabase_backend.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'apple_session_navigation_binding.dart';
 
 /// Recreate the entire Navigator after an identity transition. Removing it for
 /// one frame disposes pushed private pages before a global Navigator key is reused.
@@ -10,12 +12,12 @@ class AuthenticatedNavigationBoundary extends StatefulWidget {
   const AuthenticatedNavigationBoundary({
     super.key,
     required this.child,
-    @visibleForTesting this.initialActor,
-    @visibleForTesting this.actorChanges,
+    @visibleForTesting this.initialSession,
+    @visibleForTesting this.authChanges,
   });
   final Widget child;
-  final String? initialActor;
-  final Stream<String?>? actorChanges;
+  final Session? initialSession;
+  final Stream<AuthState>? authChanges;
 
   @override
   State<AuthenticatedNavigationBoundary> createState() =>
@@ -24,8 +26,8 @@ class AuthenticatedNavigationBoundary extends StatefulWidget {
 
 class _AuthenticatedNavigationBoundaryState
     extends State<AuthenticatedNavigationBoundary> {
-  StreamSubscription<String?>? _subscription;
-  String? _actor;
+  StreamSubscription<AuthState>? _subscription;
+  AppleSessionNavigationBinding? _binding;
   int _epoch = 0;
   bool _resetting = false;
   bool _failed = false;
@@ -33,20 +35,25 @@ class _AuthenticatedNavigationBoundaryState
   @override
   void initState() {
     super.initState();
-    if (!SupabaseBackend.isInitialized && widget.actorChanges == null) return;
-    _actor = widget.initialActor ??
-        (SupabaseBackend.isInitialized
-            ? SupabaseBackend.client.auth.currentUser?.id : null);
-    final changes = widget.actorChanges ??
-        SupabaseBackend.client.auth.onAuthStateChange
-            .map((event) => event.session?.user.id);
-    _subscription = changes.listen((actor) {
-      if (!mounted || (actor == _actor && !_failed)) return;
-      final previous = _actor;
-      _actor = actor;
-      // A first sign-in is still owned by the existing onboarding/OTP callback:
-      // its password/profile update may be in flight after the SDK signedIn event.
-      if (previous == null && actor != null && !_failed && !_resetting) return;
+    if (!SupabaseBackend.isInitialized && widget.authChanges == null) return;
+    try {
+      _binding = AppleSessionNavigationBinding.fromSession(widget.initialSession ??
+          (SupabaseBackend.isInitialized
+              ? SupabaseBackend.client.auth.currentSession : null));
+    } catch (_) { _failed = true; }
+    final changes = widget.authChanges ??
+        SupabaseBackend.client.auth.onAuthStateChange;
+    _subscription = changes.listen((event) {
+      if (!mounted) return;
+      AppleSessionNavigationBinding? binding;
+      try { binding = AppleSessionNavigationBinding.fromSession(event.session); }
+      catch (_) { _fail(); return; }
+      if (binding == _binding && !_failed) return;
+      final previous = _binding;
+      _binding = binding;
+      // Only the first valid SDK sign-in belongs to the pending OTP callback.
+      if (previous == null && binding != null &&
+          event.event == AuthChangeEvent.signedIn && !_failed && !_resetting) return;
       _reset();
     }, onError: (Object error) => _fail(), onDone: _fail);
   }

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../data/supabase_backend.dart';
 import '../attendance/checkout_report_gate.dart';
 import 'admin_initial_setup_page.dart';
+import 'apple_session_navigation_binding.dart';
 import 'admin_initial_setup_repository.dart';
 import 'employee_onboarding_pages.dart';
 import 'secure_onboarding_pages.dart';
@@ -111,6 +112,13 @@ class _SupabaseAuthGateState extends State<SupabaseAuthGate> {
 
         final state = snapshot.data ?? const _GateState.unauthenticated();
 
+        AppleSessionNavigationBinding? binding;
+        try {
+          binding = AppleSessionNavigationBinding.fromSession(
+              SupabaseBackend.client.auth.currentSession);
+        } catch (_) {
+          return _ErrorScreen(message: 'ログイン状態を確認できません。', onRetry: _reload);
+        }
         return switch (state.status) {
           _GateStatus.unauthenticated =>
             SecureAuthPage(onAuthenticated: _reload),
@@ -148,7 +156,7 @@ class _SupabaseAuthGateState extends State<SupabaseAuthGate> {
           _GateStatus.authenticated => SupabaseBackend.client.auth.currentUser == null
             ? SecureAuthPage(onAuthenticated: _reload)
             : CheckoutReportGateActivation(
-            key: ValueKey(SupabaseBackend.client.auth.currentUser?.id),
+            key: ValueKey(binding),
             actorId: SupabaseBackend.client.auth.currentUser!.id,
             onReauthenticate: _signOut,
             child: widget.homeBuilder(_signOut),
