@@ -63,7 +63,7 @@ class EmployeePortraitRepository {
   Future<void> _authorize() async {
     if(_invalid){throw const PersonnelScopeChanged();}
     final admission=await _admission;_gatewayEpoch??=admission;
-    if(admission==null || !_gateway.isExternalFlowCurrent(admission)){throw const PersonnelScopeChanged();}
+    if(_invalid || admission==null || !_gateway.isExternalFlowCurrent(admission)){throw const PersonnelScopeChanged();}
     if(_lease!=null){_live();}
     final rows=await privacySession.read(workerIds:{workerId});
     _lease??=privacySession.epoch;_live();

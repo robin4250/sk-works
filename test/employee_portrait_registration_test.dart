@@ -47,12 +47,12 @@ Future<void> drainPortraitIo(WidgetTester tester) async {
 }
 void main(){
  TestWidgetsFlutterBinding.ensureInitialized();
- late managed.Fixture f;late PersonnelPrivacySession session;late _Documents docs;late EmployeePortraitRepository repo;
+ late managed.Fixture f;late PersonnelPrivacySession session;late _Documents docs;late EmployeePortraitRepository repo;int privacyReads=0;
  setUp(() async {
-  f=managed.Fixture();
+  privacyReads=0;f=managed.Fixture();
   await HttpOverrides.runZoned(f.start,createHttpClient:(context)=>_NativeFixtureHttp().createHttpClient(context));docs=_Documents(f);
   session=PersonnelPrivacySession(actor:managed.actor,company:managed.company,currentActor:()=>f.client.auth.currentUser?.id,
-    load:() async=>PersonnelPrivacySnapshot(actor:managed.actor,company:managed.company,role:f.role,canManage:f.role!='viewer',records:[{'id':managed.worker}]));
+    load:() async {privacyReads++;return PersonnelPrivacySnapshot(actor:managed.actor,company:managed.company,role:f.role,canManage:f.role!='viewer',records:[{'id':managed.worker}]);});
   repo=EmployeePortraitRepository.forTesting(privacySession:session,workerId:managed.worker,client:f.client,documents:docs);
  });
  tearDown(() async {await repo.dispose();session.dispose();await f.close();});
@@ -122,6 +122,10 @@ void main(){
   final newer=repo.load();final newRejected=expectLater(newer,throwsA(anything));
   docs.readHold!.complete();await newRejected;await oldRejected;
   expect(f.mutations,isEmpty);
+ });
+ test('dispose during admission cannot start a new personnel read',() async {
+  final pending=repo.load();await repo.dispose();
+  await expectLater(pending,throwsA(anything));expect(privacyReads,0);expect(f.mutations,isEmpty);
  });
  test('invalid PDF, empty and oversized input cannot call Storage',() async {
   final draft=await repo.load();
