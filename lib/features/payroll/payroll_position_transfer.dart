@@ -114,7 +114,9 @@ _TransferItems? _parseItems(Object? rawItems) {
     final name = (raw['name'] as String).trim();
     final amount = _yen(raw['amount_yen']);
     if (name.isEmpty || name == '基本給' || name == '基本給の調整額' ||
-        amount == null || amount == 0 || amounts.containsKey(name)) return null;
+        amount == null || amount == 0 || amounts.containsKey(name)) {
+      return null;
+    }
     amounts[name] = amount;
     total += amount;
     if (total > 2147483647) return null;
