@@ -105,8 +105,11 @@ void main() {
       }
       expect(find.text('本文と印影を表示できません'), findsNothing, reason: 'human reading time is not raster loading time');
       expect(acknowledgement().onPressed, isNull);
-      await tester.drag(find.byType(ListView), const Offset(0, -1000)); await ioFrames();
-      await tester.drag(find.byType(ListView), const Offset(0, -1000)); await ioFrames();
+      // Image.memory scales a tall page to the viewport width. Traverse
+      // each viewport rather than assuming a fixed total document height.
+      for (var viewport = 0; viewport < 30 && acknowledgement().onPressed == null; viewport++) {
+        await tester.drag(find.byType(ListView), const Offset(0, -500)); await ioFrames(5);
+      }
       expect(acknowledgement().onPressed, isNotNull, reason: 'all rendered pages were decoded and visited');
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
       await ioFrames();
