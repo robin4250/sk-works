@@ -1,0 +1,37 @@
+name: Personnel birthday atomic capsule
+on:
+  pull_request:
+    paths:
+      - 'tool/security/personnel_birthday_atomic/**'
+      - 'docs/candidates/personnel_birthday_atomic_20261030/**'
+      - '.github/workflows/personnel-birthday-atomic.yml'
+permissions:
+  contents: read
+jobs:
+  atomic-pg17:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_personnel_fixture
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      SKO_PERSONNEL_FIXTURE_URL: postgres://postgres:fixture-only@127.0.0.1:5432/sko_personnel_fixture
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node tool/security/personnel_birthday_atomic/build.mjs
+      - run: git diff --exit-code -- docs/candidates/personnel_birthday_atomic_20261030
+      - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
+      - run: node tool/security/personnel_birthday_atomic/native.mjs "$PWD/tool/security/personnel_rls/pg_adapter.mjs"
