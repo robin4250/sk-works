@@ -139,7 +139,9 @@ void main() {
       // scheduler and widget frames until the actual list reply is rendered.
       for (var i = 0; i < 20 && find.text('保管済みの本人書類はありません。').evaluate().isEmpty; i++) {
         await tester.runAsync(() async { await Future<void>.delayed(Duration.zero); });
-        await tester.pump();
+        // A null-duration pump flushes microtasks but does not elapse the fake
+        // clock; an explicit zero also runs the scope's zero-delay timer.
+        await tester.pump(Duration.zero);
       }
       expect(find.text('保管済みの本人書類はありません。'),findsOneWidget);
       expect(find.textContaining('安全のため書類を閉じました'),findsNothing);
