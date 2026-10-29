@@ -122,10 +122,16 @@ os._exit(0)
                 status=Path(f'/proc/{pid}/stat')
                 # Killed grandchildren may await host init reaping; they must
                 # never remain executing. Only our direct child is reaped here.
+                def state():
+                    try:
+                        return status.read_text().split()[2]
+                    except FileNotFoundError:
+                        return None
                 end=time.monotonic()+2
-                while status.exists() and status.read_text().split()[2]!='Z' and time.monotonic()<end:
-                    time.sleep(.01)
-                self.assertTrue(not status.exists() or status.read_text().split()[2]=='Z')
+                observed=state()
+                while observed not in (None, 'Z') and time.monotonic()<end:
+                    time.sleep(.01);observed=state()
+                self.assertIn(observed, (None, 'Z'))
 
     def test_real_child_enforces_limits_at_parser_import(self):
         module_dir=str(Path(worker.__file__).resolve().parent)
@@ -158,7 +164,7 @@ except OSError: pass
 else: raise RuntimeError('inherited descriptor')
 print({json.dumps({'candidate_policy':worker.POLICY,'pdf_sha256':self.digest,'page_count':1,'text_sha256':'a'*64})!r})'''
             with patch.dict(os.environ, {'SKO_FIXTURE_SECRET':'fixture-secret'}):
-                self.assertEqual(self.run_fault(code)['page_count'], 1)
+                self.assertEqual(self.run_fault(code, timeout=5)['page_count'], 1)
 
     def test_admission_is_nonblocking_and_released_after_failure(self):
         self.assertTrue(worker._ADMISSION.acquire(blocking=False))
