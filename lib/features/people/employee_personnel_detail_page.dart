@@ -218,6 +218,7 @@ class EmployeePersonnelDetailPage extends StatelessWidget {
       ('血液型', record.bloodType),
       ('所属', record.department),
       ('職種', record.role),
+      ('生年月日', record.birthDate.replaceAll('-', '/')),
       ('入社日', record.hireDate.replaceAll('-', '/')),
     ];
 

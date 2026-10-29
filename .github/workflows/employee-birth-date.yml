@@ -1,0 +1,53 @@
+name: Employee birthday field
+on:
+  pull_request:
+    paths:
+      - 'lib/features/people/people_page.dart'
+      - 'lib/features/people/people_cloud_page.dart'
+      - 'lib/features/people/people_cloud_repository.dart'
+      - 'lib/features/people/employee_personnel_detail_page.dart'
+      - 'lib/features/people/employee_personnel_edit_page.dart'
+      - 'test/employee_birth_date_test.dart'
+      - 'tool/employee_personnel_birth_date_check.mjs'
+      - 'tool/staged/employee_personnel_birth_date*'
+      - 'docs/review/employee-birthdate-20261029/**'
+      - '.github/workflows/employee-birth-date.yml'
+permissions:
+  contents: read
+jobs:
+  birthday-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: dart analyze lib/features/people/people_page.dart lib/features/people/people_cloud_page.dart lib/features/people/people_cloud_repository.dart lib/features/people/employee_personnel_detail_page.dart lib/features/people/employee_personnel_edit_page.dart test/employee_birth_date_test.dart
+      - run: flutter test test/employee_birth_date_test.dart test/employee_retirement_test.dart test/personnel_privacy_session_test.dart test/employee_personnel_detail_restore_contract_test.dart
+  birthday-pg17:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_personnel_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_personnel_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      SKO_PERSONNEL_FIXTURE_URL: postgres://postgres:fixture-only@127.0.0.1:5432/sko_personnel_fixture
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
+      - run: node tool/employee_personnel_birth_date_check.mjs "$PWD/tool/security/personnel_rls/pg_adapter.mjs"

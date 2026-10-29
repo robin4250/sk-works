@@ -26,6 +26,8 @@ class _EmployeePersonnelEditPageState extends State<EmployeePersonnelEditPage> {
   late final TextEditingController _employeeNumber;
   late final TextEditingController _department;
   DateTime? _hireDate;
+  DateTime? _birthDate;
+  bool _birthDateDirty = false;
   late final TextEditingController _phone;
   late final TextEditingController _address;
   late final TextEditingController _emergencyName;
@@ -55,6 +57,7 @@ class _EmployeePersonnelEditPageState extends State<EmployeePersonnelEditPage> {
     _employeeNumber = TextEditingController(text: record.employeeNumber);
     _department = TextEditingController(text: record.department);
     _hireDate = DateTime.tryParse(record.hireDate);
+    _birthDate = DateTime.tryParse(record.birthDate);
     _phone = TextEditingController(text: record.phone);
     _address = TextEditingController(text: record.address);
     _emergencyName = TextEditingController(text: record.emergencyName);
@@ -185,6 +188,8 @@ class _EmployeePersonnelEditPageState extends State<EmployeePersonnelEditPage> {
         'employeeCategoryId': _categoryId,
         'employeeNumber': _employeeNumber.text.trim(),
         'department': _department.text.trim(),
+        'birthDateSubmitted': _birthDateDirty,
+        'birthDate': _birthDate?.toIso8601String().substring(0, 10) ?? '',
         'hireDate': _hireDate == null
             ? ''
             : _hireDate!.toIso8601String().substring(0, 10),
@@ -198,7 +203,7 @@ class _EmployeePersonnelEditPageState extends State<EmployeePersonnelEditPage> {
         'familyMembers': [
           for (final member in _familyMembers) member.toValue().toJson(),
         ],
-      });
+      }, expectedCompany: widget.privacySession?.company ?? _categoryCompany);
       if (!mounted) return;
       final pending = result['requires_approval'] == true;
       final required = (result['required_approvals'] as num?)?.toInt() ?? 1;
@@ -289,6 +294,26 @@ class _EmployeePersonnelEditPageState extends State<EmployeePersonnelEditPage> {
             else if (_categoryError != null) Text(_categoryError!),
             const SizedBox(height: 10),
           ],
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('生年月日'),
+            subtitle: Text(widget.record.birthDateContractVersion != 1
+                ? '生年月日の登録は準備中です'
+                : _birthDate?.toIso8601String().substring(0, 10).replaceAll('-', '/') ?? '未登録'),
+            trailing: _birthDate == null ? null : IconButton(
+              tooltip: '生年月日を未登録に戻す',
+              onPressed: _saving || widget.record.birthDateContractVersion != 1 ? null
+                  : () => setState(() { _birthDate = null; _birthDateDirty = true; }),
+              icon: const Icon(Icons.clear)),
+            onTap: _saving || widget.record.birthDateContractVersion != 1 ? null : () async {
+              final now = DateTime.now();
+              final selected = await showDatePicker(context: context,
+                initialDate: _birthDate ?? DateTime(now.year - 30),
+                firstDate: DateTime(1900), lastDate: DateTime(now.year, now.month, now.day));
+              if (selected != null && mounted) setState(() { _birthDate = selected; _birthDateDirty = true; });
+            },
+          ),
+          const SizedBox(height: 10),
           _field(_department, '所属'),
           const SizedBox(height: 10),
           ListTile(

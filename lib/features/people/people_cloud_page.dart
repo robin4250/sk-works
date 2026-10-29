@@ -59,7 +59,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
       else if(session?.snapshot==null){
         if(session?.active==false)_refreshContactsOnResume=true;
         final basic=_records.map((record)=>PersonRecord.fromJson({...record.toJson(),
-          'phone':'','email':'','notes':'','bloodType':'','address':'',
+          'phone':'','email':'','notes':'','birthDate':'','birthDateContractVersion':0,'bloodType':'','address':'',
           'emergencyName':'','emergencyRelation':'','emergencyPhone':'','emergencyAddress':'',
           'familyComposition':'','familyMembers':<dynamic>[],
         })).toList(growable:false);
@@ -85,7 +85,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
       session.verify(lease);
       if(!mounted||_privacy!=session)return;
       setState((){_records..clear()..addAll(rows.map((row)=>PersonRecord.fromJson({...row,
-        'bloodType':'','address':'','emergencyName':'','emergencyRelation':'',
+        'birthDate':'','birthDateContractVersion':0,'bloodType':'','address':'','emergencyName':'','emergencyRelation':'',
         'emergencyPhone':'','emergencyAddress':'','familyComposition':'','familyMembers':<dynamic>[],
       })));});
     }catch(_){/* Keep scrubbed roster; never restore a stale response. */}
@@ -122,7 +122,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
       if (actor == null || repository.actorId != actor) throw StateError('ログイン情報が変更されました。再読み込みしてください。');
       final rows = values[0] as List<Map<String, dynamic>>;
       final loaded = rows.map((row)=>PersonRecord.fromJson({...row,
-        'bloodType':'','address':'','emergencyName':'','emergencyRelation':'',
+        'birthDate':'','birthDateContractVersion':0,'bloodType':'','address':'','emergencyName':'','emergencyRelation':'',
         'emergencyPhone':'','emergencyAddress':'','familyComposition':'','familyMembers':<dynamic>[],
       })).toList();
       if (!mounted || _privacy!=privacy || privacy.revoked || !privacy.active) return;
