@@ -26,12 +26,12 @@ class _Api {
  final calls=<http.Request>[];bool available=true,foreign=false;Completer<http.Response>? held;
  Future<void> open()async{
   client=SupabaseClient('https://partner-bank-fixture.invalid','synthetic-public',authOptions:const AuthClientOptions(autoRefreshToken:false),httpClient:MockClient((request)async{
-   calls.add(request);if(request.url.path.endsWith('/logout')){return http.Response('',204);}
+   calls.add(request);if(request.url.path.endsWith('/logout')){return http.Response('',204,request:request);}
    expect(request.url.path,startsWith('/rest/v1/rpc/'));expect(request.headers.entries.where((entry)=>entry.key.toLowerCase()=='authorization').single.value,'Bearer ${session()['access_token']}');
    final body=jsonDecode(request.body) as Map;expect(body['p_company'],company);expect(body['p_partner'],partner);
    if(held!=null){return held!.future;}
    final raw=request.url.path.endsWith('save_partner_company_bank')?bank((body['p_expected_version'] as int)+1):{'available':available,'company_id':foreign?partner:company,'partner_company_id':partner,'version':0,'bank':null};
-   return http.Response(jsonEncode(raw),200,headers:{'content-type':'application/json'});
+   return http.Response(jsonEncode(raw),200,headers:{'content-type':'application/json'},request:request);
   }));await client.auth.setInitialSession(jsonEncode(session()));scope=privacy(()=>client.auth.currentUser?.id);
   repo=PartnerCompanyBankRepository(client,privacySession:scope,expectedCompany:company,partnerCompanyId:partner);
  }
@@ -70,7 +70,7 @@ void main(){
    for(var attempt=0;attempt<40&&f.calls.isEmpty;attempt++){await Future<void>.delayed(Duration.zero);}
    expect(f.calls,isNotEmpty);
    await f.client.auth.setInitialSession(jsonEncode(session(sessionId:partner)));
-   f.held!.complete(http.Response(jsonEncode({'available':true,'company_id':company,'partner_company_id':partner,'version':0,'bank':null}),200,headers:{'content-type':'application/json'}));
+   f.held!.complete(http.Response(jsonEncode({'available':true,'company_id':company,'partner_company_id':partner,'version':0,'bank':null}),200,headers:{'content-type':'application/json'},request:f.calls.last));
    await rejected;await expectLater(f.repo.load(),throwsA(anything));expect(f.calls,hasLength(1));
   }finally{await f.close();}
  });
