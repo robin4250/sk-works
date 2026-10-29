@@ -27,7 +27,21 @@ jobs:
         run: |
           cp tool/tests/qr_scanner_key_main.swift "$RUNNER_TEMP/main.swift"
           xcrun swiftc -swift-version 5 tool/ios/qr_scanner_key.swift "$RUNNER_TEMP/main.swift" -o "$RUNNER_TEMP/qr-scanner-key"
-          "$RUNNER_TEMP/qr-scanner-key"
+          "$RUNNER_TEMP/qr-scanner-key" | tee "$RUNNER_TEMP/qr-key-output.txt"
+          node --input-type=module - "$RUNNER_TEMP/qr-key-output.txt" <<'JS'
+          import {readFileSync} from 'node:fs';
+          import {createPublicKey,verify} from 'node:crypto';
+          import assert from 'node:assert/strict';
+          import {scannerRegistrationSigningBytes} from './tool/qr-attendance/qr-scanner-possession.mjs';
+          const line=readFileSync(process.argv[2],'utf8').split('\n').find(x=>x.startsWith('QR_INTEROP '));
+          const p=JSON.parse(line.slice(11)),b=Buffer.from(p.bytes,'base64'),a=JSON.parse(b);
+          const c={id:a[1],company:a[2],actor:a[3],session:a[4],device:a[5],keyHex:a[6],nonce:a[7],createdMs:a[8],expiresMs:a[9]};
+          assert.deepEqual(b,scannerRegistrationSigningBytes(c));
+          const key=createPublicKey({key:Buffer.from(p.publicKeyHex,'hex'),format:'der',type:'spki'});
+          assert.equal(verify(null,b,key,Buffer.from(p.signature,'base64')),true);
+          assert.equal(verify(null,Buffer.concat([b,Buffer.from('x')]),key,Buffer.from(p.signature,'base64')),false);
+          console.log('PASS actual randomized native CryptoKit registration signature accepted by existing Node canonical payload/verifier');
+          JS
       - run: bash -n tool/prepare_ios.sh
   flutter-key-boundary:
     runs-on: ubuntu-latest

@@ -35,7 +35,9 @@ void main() {
  setUp(() async {
   changes = StreamController<AuthState>.broadcast(); nativeCalls.clear(); requests.clear(); beforeAuth = null; authActor = actor;
   client = SupabaseClient('https://qr-key-fixture.invalid','synthetic-public',authOptions: const AuthClientOptions(autoRefreshToken:false),httpClient:MockClient((r) async {
-   requests.add(r);expect(r.method,'GET');expect(r.url.toString(),'https://qr-key-fixture.invalid/auth/v1/user');
+   requests.add(r);
+   if(r.method=='POST' && r.url.path=='/auth/v1/token')return http.Response(session(actor),200,headers:{'content-type':'application/json'});
+   expect(r.method,'GET');expect(r.url.toString(),'https://qr-key-fixture.invalid/auth/v1/user');
    expect(r.headers['Authorization'],'Bearer ${jsonDecode(session(actor))['access_token']}');
    await beforeAuth?.call();return http.Response(jsonEncode(user(authActor)),200,headers:{'content-type':'application/json'});
   }));
@@ -59,7 +61,26 @@ void main() {
   expect(key.handle,handle);expect(key.actor,actor);expect(key.publicKeyHex,publicKey);
   expect(nativeCalls.single.method,'prepare');final args=nativeCalls.single.arguments as Map;
   expect(args.keys.toSet(),{'requestId','actor','company','device'});expect(args['actor'],actor);expect(args['company'],company);expect(args['device'],device);
-  expect(jsonEncode(args),isNot(contains('access_token')));expect(requests,length:1);c.dispose();
+  expect(jsonEncode(args),isNot(contains('access_token')));expect(requests,hasLength(1));c.dispose();
+ });
+ test('actual SDK cached signedIn after password login allows prepare; fresh same-SID login invalidates',() async {
+  await client.auth.signInWithPassword(email:'synthetic-qr@example.invalid',password:'synthetic-password');
+  final c=custody(actualStream:true);final key=await c.prepare(company:company,device:device);expect(key.actor,actor);c.dispose();
+  final next=custody(actualStream:true);final before=nativeCalls.length;
+  beforeAuth=() async {await client.auth.signInWithPassword(email:'synthetic-qr@example.invalid',password:'synthetic-password');await Future<void>.delayed(Duration.zero);};
+  await expectLater(next.prepare(company:company,device:device),throwsStateError);expect(nativeCalls.length,before);next.dispose();
+ });
+ test('expired SDK session refuses before Auth lookup or native operation',() async {
+  final expired=jsonDecode(session(actor)) as Map<String,dynamic>;expired['expires_at']=1;expired['expires_in']=0;
+  final parts=(expired['access_token'] as String).split('.'),claims=jsonDecode(utf8.decode(base64Url.decode(base64Url.normalize((expired['access_token'] as String).split('.')[1])))) as Map<String,dynamic>;
+  claims['exp']=1;parts[1]=base64Url.encode(utf8.encode(jsonEncode(claims))).replaceAll('=', '');expired['access_token']=parts.join('.');
+  await client.auth.setInitialSession(jsonEncode(expired));expect(client.auth.currentSession!.isExpired,isTrue);
+  final c=custody();await expectLater(c.prepare(company:company,device:device),throwsStateError);
+  expect(requests,isEmpty);expect(nativeCalls,isEmpty);c.dispose();
+ });
+ test('already background custody refuses before Auth and native calls',() async {
+  final c=custody();c.didChangeAppLifecycleState(AppLifecycleState.paused);
+  await expectLater(c.prepare(company:company,device:device),throwsStateError);expect(requests,isEmpty);expect(nativeCalls,isEmpty);c.dispose();
  });
  test('prepared key signs only original challenge and never passes a password or private key',() async {
   final c=custody();final key=await c.prepare(company:company,device:device);final signature=await c.signRegistration(key:key,challenge:challenge());
@@ -74,6 +95,16 @@ void main() {
  test('queued A to B to A history during Auth lookup prevents native operation',() async {
   final c=custody();beforeAuth=() async {changes.add(AuthState(AuthChangeEvent.signedIn,Session.fromJson(jsonDecode(session(other)))!));changes.add(AuthState(AuthChangeEvent.signedIn,client.auth.currentSession));await Future<void>.delayed(Duration.zero);};
   await expectLater(c.prepare(company:company,device:device),throwsStateError);expect(nativeCalls,isEmpty);c.dispose();
+ });
+ test('dispose/background cancel a hanging exact Auth lookup promptly without native work',() async {
+  for(final mode in ['dispose','background']){
+   final c=custody(),entered=Completer<void>(),gate=Completer<void>();
+   beforeAuth=() {entered.complete();return gate.future;};
+   final pending=c.prepare(company:company,device:device),rejected=expectLater(pending,throwsStateError);await entered.future;
+   if(mode=='dispose'){c.dispose();}else{c.didChangeAppLifecycleState(AppLifecycleState.paused);}
+   await rejected.timeout(const Duration(seconds:1));expect(nativeCalls,isEmpty);
+   gate.complete();await Future<void>.delayed(Duration.zero);c.dispose();
+  }
  });
  test('Auth stream error/completion prevents key operations without unhandled zone errors',() async {
   for(final close in [false,true]){

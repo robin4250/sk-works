@@ -28,12 +28,13 @@ class ScannerRegistrationKeyCustody with WidgetsBindingObserver {
   final Stream<AuthState>? _authChanges;
   static final _uuid = RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$');
   static final _key = RegExp(r'^302a300506032b6570032100[0-9a-f]{64}$');
-  bool _busy = false, _disposed = false;
+  bool _busy = false, _disposed = false, _inactive = false;
   VoidCallback? _invalidate;
   static StateError _denied() => StateError('スキャナー鍵の確認を完了できません。');
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state != AppLifecycleState.resumed) _invalidate?.call();
+    _inactive = state != AppLifecycleState.resumed;
+    if (_inactive) _invalidate?.call();
   }
   void dispose() { _disposed = true; _invalidate?.call(); }
   String _requestId() {
@@ -44,9 +45,10 @@ class ScannerRegistrationKeyCustody with WidgetsBindingObserver {
   }
   Future<({Map<String, dynamic> value, String token, String actor})> _call(String method, String company, String device,
       Map<String, dynamic> Function(String actor, String sid) extras) async {
-    if (!enabled || _busy || _disposed || !_uuid.hasMatch(company) || !_uuid.hasMatch(device)) throw _denied();
+    if (!enabled || _busy || _disposed || _inactive ||
+        [AppLifecycleState.paused, AppLifecycleState.inactive, AppLifecycleState.hidden, AppLifecycleState.detached].contains(WidgetsBinding.instance.lifecycleState) || !_uuid.hasMatch(company) || !_uuid.hasMatch(device)) { throw _denied(); }
     final captured = client.auth.currentSession;
-    if (captured == null) throw _denied();
+    if (captured == null || captured.isExpired) throw _denied();
     final actor = captured.user.id, token = captured.accessToken;
     String sid;
     try {
@@ -56,33 +58,47 @@ class ScannerRegistrationKeyCustody with WidgetsBindingObserver {
     } catch (_) { throw _denied(); }
     _busy = true;
     final requestId = _requestId();
-    var invalid = false, nativeStarted = false, firstInitial = true;
+    var invalid = false, nativeStarted = false, firstEvent = true;
+    final cancelled = Completer<void>(), total = Stopwatch()..start();
+    Future<T> bounded<T>(Future<T> Function() work, Duration budget) async {
+      final stage = Stopwatch()..start();
+      final value = await Future.any<T>([
+        Future<T>.sync(work),
+        cancelled.future.then<T>((_) => throw _denied()),
+      ]).timeout(budget);
+      if (stage.elapsed >= budget || total.elapsed >= const Duration(seconds: 100)) throw _denied();
+      return value;
+    }
     void invalidate() {
       if (invalid) return;
       invalid = true;
+      if (!cancelled.isCompleted) cancelled.complete();
       if (nativeStarted) unawaited(channel.invokeMethod<void>('cancel', {'requestId': requestId}).catchError((Object _) {}));
     }
     _invalidate = invalidate;
     void live() {
       final current = client.auth.currentSession;
-      if (invalid || _disposed || current?.user.id != actor || current?.accessToken != token) throw _denied();
+      if (invalid || _disposed || _inactive || current?.isExpired != false || total.elapsed >= const Duration(seconds: 100) || current?.user.id != actor || current?.accessToken != token) throw _denied();
     }
     final subscription = (_authChanges ?? client.auth.onAuthStateChange).listen((state) {
-      if (firstInitial && state.event == AuthChangeEvent.initialSession && state.session?.user.id == actor && state.session?.accessToken == token) {
-        firstInitial = false; return;
-      }
-      firstInitial = false; invalidate();
+      // Pinned SDK ReplaySubject replays the last event, including signedIn.
+      // Only the first exact captured Session object is historical replay;
+      // a fresh same-SID login constructs another Session and invalidates.
+      final initialReplay = firstEvent && identical(state.session, captured) &&
+          [AuthChangeEvent.initialSession, AuthChangeEvent.signedIn, AuthChangeEvent.tokenRefreshed].contains(state.event);
+      firstEvent = false;
+      if (!initialReplay) invalidate();
     }, onError: (Object _) => invalidate(), onDone: invalidate);
     WidgetsBinding.instance.addObserver(this);
     try {
       // Authoritative Auth user lookup precedes any local key operation. The
       // server independently validates the SID, company, permission and QR gate.
-      final user = await client.auth.getUser(token);
+      final user = await bounded(() => client.auth.getUser(token), const Duration(seconds: 5));
       live();
       if (user.user?.id != actor || user.user?.isAnonymous != false) throw _denied();
       final args = <String, dynamic>{'requestId': requestId, 'actor': actor, 'company': company, 'device': device, ...extras(actor, sid)};
       live(); nativeStarted = true;
-      final value = await channel.invokeMapMethod<String, dynamic>(method, args).timeout(const Duration(seconds: 95));
+      final value = await bounded(() => channel.invokeMapMethod<String, dynamic>(method, args), const Duration(seconds: 95));
       live();
       if (value == null) throw _denied();
       return (value: Map<String, dynamic>.from(value), token: token, actor: actor);
@@ -99,7 +115,7 @@ class ScannerRegistrationKeyCustody with WidgetsBindingObserver {
     final expectedHandle = sha256.convert(utf8.encode('sko.qr.scanner.custody.v1\n${result.actor}\n$company\n$device')).toString();
     if (_disposed || client.auth.currentSession?.accessToken != result.token || value['handle'] != expectedHandle) throw _denied();
     if (value.length != 2 || value['handle'] is! String || !RegExp(r'^[0-9a-f]{64}$').hasMatch(value['handle'] as String) ||
-        value['publicKeyHex'] is! String || !_key.hasMatch(value['publicKeyHex'] as String)) throw _denied();
+        value['publicKeyHex'] is! String || !_key.hasMatch(value['publicKeyHex'] as String)) { throw _denied(); }
     return ScannerRegistrationKey(actor: result.actor, company: company, device: device, handle: value['handle'] as String, publicKeyHex: value['publicKeyHex'] as String);
   }
   Future<String> signRegistration({required ScannerRegistrationKey key, required Map<String, dynamic> challenge}) async {
@@ -107,14 +123,14 @@ class ScannerRegistrationKeyCustody with WidgetsBindingObserver {
     final snapshot = Map<String, dynamic>.unmodifiable(Map<String, dynamic>.from(challenge));
     final result = await _call('sign', key.company, key.device, (actor, sid) {
       if (actor != key.actor || snapshot['actor'] != actor || snapshot['session'] != sid || snapshot['company'] != key.company ||
-          snapshot['device'] != key.device || snapshot['keyHex'] != key.publicKeyHex) throw _denied();
+          snapshot['device'] != key.device || snapshot['keyHex'] != key.publicKeyHex) { throw _denied(); }
       return {'session': sid, 'handle': key.handle, 'challenge': snapshot};
     });
     final value = result.value;
     if (_disposed || client.auth.currentSession?.accessToken != result.token) throw _denied();
     final signature = value['signature'];
     if (value.length != 2 || value['handle'] != key.handle || signature is! String || !RegExp(r'^[A-Za-z0-9_-]{86}$').hasMatch(signature) ||
-        base64Url.encode(base64Url.decode(base64Url.normalize(signature))).replaceAll('=', '') != signature) throw _denied();
+        base64Url.encode(base64Url.decode(base64Url.normalize(signature))).replaceAll('=', '') != signature) { throw _denied(); }
     return signature;
   }
 }
