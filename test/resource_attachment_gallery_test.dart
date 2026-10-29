@@ -172,4 +172,16 @@ void main() {
     expect(find.text('parent'),findsOneWidget);expect(find.byType(Dialog),findsNothing);expect(tester.takeException(),isNull);
   });
 
+  testWidgets('scope loss before chooser mount leaves no blank modal', (tester) async {
+    var allowed=true;final attachment=entry('q:0','合成資格');
+    final gallery=ResourceAttachmentGallery(source:Object(),workerId:'w',companyId:'c',isCurrent:()=>allowed,entries:[attachment]);
+    await tester.pumpWidget(MaterialApp(home:Scaffold(body:Builder(builder:(context)=>TextButton(onPressed:(){
+      unawaited(showResourceAttachments(context,title:'retired chooser',attachments:[attachment],gallery:gallery,requireGalleryScope:true));
+      allowed=false;
+    },child:const Text('parent'))))));
+    await tester.tap(find.text('parent'));await tester.pumpAndSettle();
+    expect(find.byType(Dialog),findsNothing);expect(find.byType(Image),findsNothing);
+    expect(find.text('parent'),findsOneWidget);expect(tester.takeException(),isNull);
+  });
+
 }

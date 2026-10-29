@@ -370,6 +370,7 @@ class _ResourceAttachmentChooserState extends State<_ResourceAttachmentChooser> 
     super.initState(); _active = WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
     WidgetsBinding.instance.addObserver(this); widget.gallery?.signal?.addListener(_scopeChanged);
     _subscription = widget.gallery?.changes?.listen((_) => _scopeChanged(), onError: (Object error) => _retire(), onDone: _retire);
+    WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted && !_current) { widget.onRetire(); } });
   }
   void _scopeChanged() { if (!_current) { _retire(); } }
   void _retire() {
@@ -488,6 +489,7 @@ class _ResourceGalleryViewerState extends State<_ResourceGalleryViewer> with Wid
     widget.signal?.addListener(_scopeChanged);
     _subscription = widget.changes?.listen((_) { if (!widget.isCurrent()) { _retire(); } },
       onError: (Object error) => _retire(), onDone: _retire);
+    WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted && !_current) { widget.onRetire(); } });
   }
   void _scopeChanged() { if (!widget.isCurrent()) { _retire(); } }
   void _retire() {
