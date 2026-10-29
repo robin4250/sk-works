@@ -1337,7 +1337,8 @@ class _IndividualPayrollSettingsPageState
         key: _unitPanelKey,
         embedded: true,
         editorController: _unitFooter,
-        externalFooter: (title == '支給' ? _earningUnit : _deductionUnit) != PayrollItemUnit.month,
+        // The host owns actions for every unit, including loading failures.
+        externalFooter: true,
         repository: _repository.unitConditions,
         companyId: company, workerId: worker,
         section: title == '支給' ? PayrollItemSection.earning : PayrollItemSection.deduction,
