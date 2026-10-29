@@ -130,3 +130,42 @@ test('evidence lease arriving after HTTP timeout is released before any BEGIN',a
  await new Promise(resolve=>setImmediate(resolve));
  assert.deepEqual(queries,[]);assert.equal(released,1);
 });
+const lookupReceipt={version:1,issuerKeyId:'fixture',decision:'approved',requestId:ownerRequestId,actor,requesterSession:session,deviceId,
+ pendingId:'00000000-0000-0000-0000-000000000009',challengeId:'00000000-0000-0000-0000-000000000010',
+ keySha256:'a'.repeat(64),reviewNonce:'b'.repeat(64),issuedMs:1000,expiresMs:61000,signature:Buffer.alloc(64).toString('base64url')};
+const lookupBody={action:'owner-evidence-result',requestId:ownerRequestId,receipt:lookupReceipt};
+test('evidence result defaults OFF with no checkpoint or database access',async()=>{
+ const f=fixture();let checkpoints=0;
+ const r=await handleMigrationChallengeRequest(request(lookupBody),{...f,ownerEvidence:{loadAuthorityCheckpoint:()=>{checkpoints++;throw Error('unused');}}});
+ assert.equal(r.status,503);assert.equal(checkpoints,0);assert.equal(f.calls.length,0);
+});
+test('result lookup does not fetch a checkpoint or retry admission when its read fails',async()=>{
+ const f=fixture({fail:true});let checkpoints=0;
+ const r=await handleMigrationChallengeRequest(request(lookupBody),{...f,ownerEvidence:{enabled:true,loadAuthorityCheckpoint:()=>{checkpoints++;throw Error('must not fetch');}}});
+ assert.equal(r.status,409);assert.equal(checkpoints,0);assert.equal(f.calls.filter(x=>x.sql==='begin').length,1);
+ assert.ok(!f.calls.some(x=>/insert|update/i.test(x.sql)));assert.ok(!(await r.text()).includes('MUST NOT LEAK'));
+});
+test('result requires exact receipt and original authenticated actor/SID before any pool acquisition',async()=>{
+ for(const receipt of [{...lookupReceipt,actor:deviceId},{...lookupReceipt,requesterSession:deviceId},{...lookupReceipt,approved:true},
+  {...lookupReceipt,signature:lookupReceipt.signature+'='}]){
+  const f=fixture();const r=await handleMigrationChallengeRequest(request({...lookupBody,receipt}),{...f,ownerEvidence:{enabled:true}});
+  assert.equal(r.status,409);assert.equal(f.calls.length,0);
+ }
+ const f=fixture();const r=await handleMigrationChallengeRequest(request({...lookupBody,attestationSha256:'a'.repeat(64)}),{...f,ownerEvidence:{enabled:true}});
+ assert.equal(r.status,400);assert.equal(f.calls.length,0);
+});
+test('late result-lookup lease is released before BEGIN without a checkpoint adapter',async()=>{
+ let resolveLease,released=0;const queries=[];
+ const pool={connect:()=>new Promise(resolve=>{resolveLease=resolve;})};
+ const r=await handleMigrationChallengeRequest(request(lookupBody),{timeoutMs:100,authenticateBearer:async()=>({actor,session,pool}),ownerEvidence:{enabled:true}});
+ assert.equal(r.status,409);assert.equal(typeof resolveLease,'function');
+ resolveLease({query:async sql=>{queries.push(sql);return {rows:[]};},release:()=>{released++;}});
+ await new Promise(resolve=>setImmediate(resolve));assert.deepEqual(queries,[]);assert.equal(released,1);
+});
+test('synchronous authentication overrun cannot start a result lookup after its monotonic deadline',async()=>{
+ let acquired=0;const pool={connect:async()=>{acquired++;throw Error('must not acquire');}};
+ const r=await handleMigrationChallengeRequest(request(lookupBody),{timeoutMs:10,authenticateBearer:()=>{
+  const until=performance.now()+50;while(performance.now()<until){}return {actor,session,pool};
+ },ownerEvidence:{enabled:true}});
+ assert.equal(r.status,409);assert.equal(acquired,0);
+});

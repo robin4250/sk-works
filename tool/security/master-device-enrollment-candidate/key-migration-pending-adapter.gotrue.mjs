@@ -173,23 +173,37 @@ try {
   requesterSession:claims(owner.access_token).session_id,deviceId,pendingId:ownerRow.pending_id,challengeId:ownerRow.challenge_id,
   keySha256:ownerRow.key_sha256,reviewNonce:ownerRow.review_nonce,issuedMs:ownerRow.now,expiresMs:Math.min(ownerRow.expires_ms,ownerRow.now+120000)};
  const signedOwner={...unsignedOwner,signature:sign(null,ownerDecisionPayload(unsignedOwner),issuer.privateKey).toString('base64url')};
- let checkpointLoads=0;
- const httpOwner=async(token,{enabled=true,extra={}}={})=>handleMigrationChallengeRequest(new Request('https://fixture.invalid/challenge',{
+ let checkpointLoads=0,lostOwnerCommitAcks=0;
+ const httpOwner=async(token,{enabled=true,extra={},action='owner-evidence',loseCommitAck=false,checkpointUnavailable=false}={})=>handleMigrationChallengeRequest(new Request('https://fixture.invalid/challenge',{
   method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},
-  body:JSON.stringify({action:'owner-evidence',requestId:ownerRequest.id,receipt:signedOwner,...extra})}),{
-  authenticateBearer:authenticatedContext,ownerEvidence:{enabled,loadAuthorityCheckpoint:async who=>{
-   checkpointLoads++;assert.equal(typeof who.actor,'string');assert.equal(typeof who.session,'string');return ownerCheckpoint;
+  body:JSON.stringify({action,requestId:ownerRequest.id,receipt:signedOwner,...extra})}),{
+  authenticateBearer:async bearer=>{
+   const context=await authenticatedContext(bearer);if(!loseCommitAck)return context;
+   return {...context,pool:{connect:async()=>{const c=await context.pool.connect();return {release:()=>c.release(),query:async(sql,args)=>{
+    const result=await c.query(sql,args);if(sql==='commit'&&lostOwnerCommitAcks===0){lostOwnerCommitAcks++;throw Error('synthetic owner-evidence commit ACK loss');}return result;
+   }};}}};
+  },ownerEvidence:{enabled,loadAuthorityCheckpoint:async who=>{
+   checkpointLoads++;assert.equal(typeof who.actor,'string');assert.equal(typeof who.session,'string');if(checkpointUnavailable)throw Error('fixture checkpoint unavailable');return ownerCheckpoint;
   }},
  });
  const evidenceCount=async()=>Number((await db.query('select count(*) from master_device_enrollment_candidate.owner_decision_evidence')).rows[0].count);
  assert.equal((await httpOwner(owner.access_token,{enabled:false})).status,503);assert.equal(checkpointLoads,0);assert.equal(await evidenceCount(),0);
- const ownerRecorded=await httpOwner(owner.access_token);assert.equal(ownerRecorded.status,200);
- const recordedOwner=await ownerRecorded.json();assert.equal(recordedOwner.evidence.status,'evidence_recorded');assert.equal(await evidenceCount(),1);
+ phase='http-owner-evidence-lost-commit-and-exact-result';
+ const uncertainOwner=await httpOwner(owner.access_token,{loseCommitAck:true});assert.equal(uncertainOwner.status,409);assert.equal(lostOwnerCommitAcks,1);assert.equal(await evidenceCount(),1);
+ const checkpointsBeforeResult=checkpointLoads;
+ const ownerRecorded=await httpOwner(owner.access_token,{action:'owner-evidence-result',checkpointUnavailable:true});assert.equal(ownerRecorded.status,200);
+ const recordedOwner=await ownerRecorded.json();assert.equal(recordedOwner.evidenceResult.status,'evidence_recorded');assert.equal(await evidenceCount(),1);
+ assert.equal(checkpointLoads,checkpointsBeforeResult,'result lookup must not fetch a checkpoint or re-admit evidence');
  assert.equal(ownerRecorded.headers.get('cache-control'),'no-store');
  for(const extra of [{issuerMode:'fixed'},{pinnedIssuer:issuerPin},{authorityCheckpoint:ownerCheckpoint},{actor:other.user.id}]){
   const acquiredBefore=acquisitions;assert.equal((await httpOwner(owner.access_token,{extra})).status,400);assert.equal(acquisitions,acquiredBefore);
  }
- assert.deepEqual(await(await httpOwner(owner.access_token)).json(),recordedOwner);assert.equal(await evidenceCount(),1);await clean();
+ assert.deepEqual(await(await httpOwner(owner.access_token,{action:'owner-evidence-result'})).json(),recordedOwner);assert.equal(await evidenceCount(),1);await clean();
+ const changedOwnerSignature=Buffer.from(signedOwner.signature,'base64url');changedOwnerSignature[0]^=1;
+ for(const patch of [{signature:changedOwnerSignature.toString('base64url')},{requesterSession:claims(other.access_token).session_id},{reviewNonce:'0'.repeat(64)}]){
+  assert.equal((await httpOwner(owner.access_token,{action:'owner-evidence-result',extra:{receipt:{...signedOwner,...patch}}})).status,409);
+  assert.equal(await evidenceCount(),1);await clean();
+ }
  phase='tampered-token-rejected-before-pool';
  const parts=owner.access_token.split('.');
  const altered={...claims(owner.access_token),sub:other.user.id};
@@ -199,18 +213,21 @@ try {
  assert.equal(acquisitions,before);assert.equal(await count(),2);
  assert.equal((await http(forged,'read')).status,409);assert.equal(acquisitions,before);
  assert.equal((await httpOwner(forged)).status,409);assert.equal(acquisitions,before);assert.equal(await evidenceCount(),1);
+ assert.equal((await httpOwner(forged,{action:'owner-evidence-result'})).status,409);assert.equal(acquisitions,before);assert.equal(await evidenceCount(),1);
  phase='other-real-user-not-master';
  await assert.rejects(enroll(other.access_token));
  assert.equal(await count(),2);await clean();
  assert.equal((await http(other.access_token,'read')).status,409);await clean();
  assert.equal((await http(other.access_token,'status',{challengeId:original.challenge.id})).status,409);await clean();
  assert.equal((await httpOwner(other.access_token)).status,409);assert.equal(await evidenceCount(),1);await clean();
+ assert.equal((await httpOwner(other.access_token,{action:'owner-evidence-result'})).status,409);assert.equal(await evidenceCount(),1);await clean();
  phase='user-editable-metadata-not-master';
  await json(await request('/auth/v1/user',{method:'PUT',token:other.access_token,body:{data:{master:true,is_master_admin:true}}}));
  await assert.rejects(enroll(other.access_token));
  assert.equal(await count(),2);await clean();
  assert.equal((await http(other.access_token,'read')).status,409);await clean();
  assert.equal((await httpOwner(other.access_token)).status,409);assert.equal(await evidenceCount(),1);await clean();
+ assert.equal((await httpOwner(other.access_token,{action:'owner-evidence-result'})).status,409);assert.equal(await evidenceCount(),1);await clean();
  phase='verified-owner-cannot-substitute-session';
  await assert.rejects(enroll(owner.access_token,{session:claims(other.access_token).session_id}));
  assert.equal(await count(),2);await clean();
@@ -221,6 +238,7 @@ try {
  assert.equal((await http(owner.access_token,'read')).status,409);await clean();
  assert.equal((await http(owner.access_token,'status',{challengeId:original.challenge.id})).status,409);await clean();
  assert.equal((await httpOwner(owner.access_token)).status,409);assert.equal(await evidenceCount(),1);await clean();
+ assert.equal((await httpOwner(owner.access_token,{action:'owner-evidence-result'})).status,409);assert.equal(await evidenceCount(),1);await clean();
  await db.query('update auth.sessions set not_after=null where id=$1',[claims(owner.access_token).session_id]);
  phase='revoked-session-row-rejected';
  await db.query('delete from auth.sessions where id=$1',[claims(owner.access_token).session_id]);
@@ -229,6 +247,7 @@ try {
  assert.equal((await http(owner.access_token,'read')).status,409);await clean();
  assert.equal((await http(owner.access_token,'status',{challengeId:original.challenge.id})).status,409);await clean();
  assert.equal((await httpOwner(owner.access_token)).status,409);assert.equal(await evidenceCount(),1);await clean();
+ assert.equal((await httpOwner(owner.access_token,{action:'owner-evidence-result'})).status,409);assert.equal(await evidenceCount(),1);await clean();
  assert.equal(Number((await db.query('select count(*) from master_device_enrollment_candidate.key_possession_challenges')).rows[0].count),1);
  phase='preserved-existing-identifier';
  assert.equal((await db.query('select device_key from private.master_devices where id=$1',[deviceId])).rows[0].device_key,'fixture-legacy-identifier');
@@ -240,6 +259,7 @@ try {
   http_request_boundary_with_real_gotrue:true,http_password_counter_commit:true,http_original_challenge_readback:true,
   http_key_proof_submission_pending_only:true,http_consumed_result_reconciliation:true,
   http_owner_evidence_forced_stored_issuer:true,http_owner_evidence_auth_session_fail_closed:true,
+  http_owner_evidence_lost_commit_ack_reconciled_read_only:true,http_owner_evidence_result_live_actor_sid_required:true,
   owner_evidence_authority_is_synthetic_fixture:true,
   master_and_device_fixtures:true,public_endpoint:false,key_activation:false,production_changed:false}));
 } catch(error) {
