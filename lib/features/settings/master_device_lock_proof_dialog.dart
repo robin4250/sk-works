@@ -5,7 +5,9 @@ import 'package:flutter/material.dart';
 class MasterDeviceLockProofDialog extends StatefulWidget {
   const MasterDeviceLockProofDialog({super.key, required this.expectedActor,
     required this.currentActor, required this.requestProof,
-    required this.deviceName, required this.locked});
+    required this.deviceName, required this.locked, this.sessionCurrent});
+  final bool Function()? sessionCurrent;
+  bool get sessionIsCurrent => sessionCurrent?.call() ?? true;
   final String expectedActor;
   final String? Function() currentActor;
   final Future<String> Function(String password) requestProof;
@@ -37,7 +39,7 @@ class _ProofState extends State<MasterDeviceLockProofDialog> with WidgetsBinding
   }
   Future<void> _verify() async {
     if (_busy || _returned || _lifecycle != AppLifecycleState.resumed) return;
-    if (widget.currentActor() != widget.expectedActor || _password.text.isEmpty) {
+    if (!widget.sessionIsCurrent || widget.currentActor() != widget.expectedActor || _password.text.isEmpty) {
       setState(() => _error = 'ログイン状態と本パスワードを確認してください。');
       return;
     }
@@ -48,7 +50,7 @@ class _ProofState extends State<MasterDeviceLockProofDialog> with WidgetsBinding
     try {
       final proof = await widget.requestProof(password);
       if (!mounted || generation != _generation) return;
-      if (widget.currentActor() != widget.expectedActor || _lifecycle != AppLifecycleState.resumed) {
+      if (!widget.sessionIsCurrent || widget.currentActor() != widget.expectedActor || _lifecycle != AppLifecycleState.resumed) {
         setState(() => _error = 'ログイン状態が変わりました。本人確認をやり直してください。');
         return;
       }
@@ -57,7 +59,7 @@ class _ProofState extends State<MasterDeviceLockProofDialog> with WidgetsBinding
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         if (generation != _generation ||
-            widget.currentActor() != widget.expectedActor ||
+            !widget.sessionIsCurrent || widget.currentActor() != widget.expectedActor ||
             _lifecycle != AppLifecycleState.resumed ||
             ModalRoute.of(context)?.isCurrent != true) {
           // The credential response and this frame are separate async turns.

@@ -76,4 +76,63 @@ void main() {
     await t.runAsync(() => f.login('sid-b')); f.rowsWait!.complete(); await t.pumpAndSettle();
     expect(find.text('device-a'),findsNothing); await close(t,f);
   });
+  testWidgets('committed mutation followed by SID change never reloads or reports success', (t) async {
+    final f = (await t.runAsync(Fixture.create))!; await open(t,f); f.mutationWait=Completer<void>();
+    await t.tap(find.widgetWithText(OutlinedButton,'登録解除').first); await t.pumpAndSettle();
+    await t.tap(find.widgetWithText(FilledButton,'登録解除')); await t.pump();
+    final original = 'Bearer ${f.client.auth.currentSession!.accessToken}';
+    final sent = f.calls.singleWhere((r)=>r.url.path.endsWith('revoke_master_device'));
+    expect(sent.headers['Authorization'],original);
+    final count = f.calls.length;
+    await t.runAsync(() => f.login('sid-b')); f.mutationWait!.complete(); await t.pumpAndSettle();
+    expect(f.writes,1); expect(f.calls.length,count);
+    expect(find.text('端末登録を解除しました'),findsNothing); expect(find.text('device-a'),findsNothing);
+    await close(t,f);
+  });
+  testWidgets('disposed page ignores late list completion', (t) async {
+    final f = (await t.runAsync(Fixture.create))!; f.rowsWait=Completer<void>();
+    await t.pumpWidget(MaterialApp(home:MasterDeviceManagementPage(repository:MasterDeviceRepository.forTesting(f.client))));
+    await t.pump(); await t.pump(const Duration(milliseconds:10));
+    await t.pumpWidget(const SizedBox()); f.rowsWait!.complete(); await t.pumpAndSettle();
+    expect(t.takeException(),isNull); await t.runAsync(f.client.dispose);
+  });
+  test('actual SDK dispatch respects captured bearer even when SDK currently has another SID', () async {
+    final f=await Fixture.create(); addTearDown(f.client.dispose);
+    final original=f.client.auth.currentSession!;
+    final changes=StreamController<AuthState>.broadcast(); addTearDown(changes.close);
+    final binding=MasterDeviceSession(currentSession:()=>original,changes:changes.stream);
+    addTearDown(binding.close);
+    await f.login('sid-b');
+    await MasterDeviceRepository.forTesting(f.client).revoke('a',session:binding);
+    expect(f.calls.single.headers['Authorization'],'Bearer ${original.accessToken}');
+    expect(f.client.auth.currentSession!.accessToken,isNot(original.accessToken));
+  });
+  test('first exact signedIn replay allowed; later same object signedIn invalidates permanently', () async {
+    final f=await Fixture.create(); addTearDown(f.client.dispose);
+    final original=f.client.auth.currentSession!;
+    final changes=StreamController<AuthState>.broadcast(); addTearDown(changes.close);
+    final binding=MasterDeviceSession(currentSession:()=>original,changes:changes.stream);
+    addTearDown(binding.close);
+    changes.add(AuthState(AuthChangeEvent.signedIn,original)); await binding.check();
+    expect(binding.isCurrent,isTrue);
+    changes.add(AuthState(AuthChangeEvent.signedIn,original));
+    await expectLater(binding.check(),throwsStateError);
+    expect(binding.isCurrent,isFalse);
+  });
+  test('first signedIn replay must be exact Session, and token refresh retains captured bearer', () async {
+    final f=await Fixture.create(); addTearDown(f.client.dispose);
+    final original=f.client.auth.currentSession!;
+    final copy=Session.fromJson(session('sid-a'))!;
+    final changes=StreamController<AuthState>.broadcast(); addTearDown(changes.close);
+    Session current=original;
+    final binding=MasterDeviceSession(currentSession:()=>current,changes:changes.stream);
+    addTearDown(binding.close);
+    current=copy; changes.add(AuthState(AuthChangeEvent.tokenRefreshed,copy)); await binding.check();
+    expect(binding.accessToken,original.accessToken);
+    final otherChanges=StreamController<AuthState>.broadcast(); addTearDown(otherChanges.close);
+    final other=MasterDeviceSession(currentSession:()=>original,changes:otherChanges.stream); addTearDown(other.close);
+    otherChanges.add(AuthState(AuthChangeEvent.signedIn,copy));
+    await expectLater(other.check(),throwsStateError);
+  });
+
 }

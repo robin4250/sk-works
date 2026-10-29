@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../notifications/notification_bell.dart';
@@ -24,6 +26,19 @@ class _MasterDeviceManagementPageState
     extends State<MasterDeviceManagementPage> {
   late final _repository = widget.repository ?? MasterDeviceRepository.maybeCreate();
 
+  MasterDeviceSession? _session;
+  int _loadGeneration = 0;
+
+  bool get _current => mounted && _session?.isCurrent == true;
+  void _invalidate() {
+    if (!mounted) return;
+    _loadGeneration++;
+    setState(() {
+      _devices = const []; _loading = false; _busyDeviceId = null;
+      _error = 'ログイン状態が変わりました。画面を開き直してください。';
+    });
+  }
+
   List<MasterDeviceRecord> _devices = const [];
   bool _loading = true;
   String? _error;
@@ -33,7 +48,19 @@ class _MasterDeviceManagementPageState
   @override
   void initState() {
     super.initState();
+    try { _session = _repository?.beginSession(onInvalidated: _invalidate); } catch (_) {
+      _loading = false; _error = 'ログイン状態を確認してください。';
+      return;
+    }
     _load();
+  }
+
+  @override
+  void dispose() {
+    _loadGeneration++;
+    final session = _session;
+    if (session != null) unawaited(session.close());
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -46,23 +73,28 @@ class _MasterDeviceManagementPageState
       return;
     }
 
+    if (!_current) return;
+    final generation = ++_loadGeneration;
+    final session = _session!;
     setState(() {
       _loading = true;
       _error = null;
     });
 
     try {
-      if (!await repository.isMasterAdmin()) {
+      if (!await repository.isMasterAdmin(session: session)) {
         throw StateError('マスター管理者権限が必要です。');
       }
-      final devices = await repository.loadDevices();
-      if (!mounted) return;
+      await session.check();
+      final devices = await repository.loadDevices(session: session);
+      await session.check();
+      if (!_current || generation != _loadGeneration) return;
       setState(() {
         _devices = devices;
         _loading = false;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!_current || generation != _loadGeneration) return;
       setState(() {
         _loading = false;
         _error = error.toString();
@@ -92,65 +124,79 @@ class _MasterDeviceManagementPageState
   }
 
   Future<void> _setLocked(MasterDeviceRecord device, bool locked) async {
-    final repository = _repository;
-    if (repository == null || device.isRevoked || _busyDeviceId != null) return;
-    if (locked && !await _confirmLoss(device, 'ロック')) return;
-    if (!mounted) return;
-    final actor = repository.currentUserId;
-    if (actor == null) return;
+    final repository = _repository, session = _session;
+    if (repository == null || session == null || !_current || device.isRevoked || _busyDeviceId != null) return;
     setState(() => _busyDeviceId = device.id);
     try {
-      final required = await repository.lockReauthenticationRequired();
-      if (!mounted || repository.currentUserId != actor) return;
+      await session.check();
+      if (locked && !await _confirmLoss(device, 'ロック')) return;
+      await session.check();
+      if (!_current) return;
+      final required = await repository.lockReauthenticationRequired(session: session);
+      await session.check();
+      if (!_current) return;
       String? proof;
       if (required) {
         final verifier = widget.reauthentication ?? OperationReauthenticationRepository.maybeCreate();
         if (verifier == null) throw StateError('本人確認を利用できません。');
         proof = await showDialog<String>(context: context, barrierDismissible: false,
-          builder: (_) => MasterDeviceLockProofDialog(expectedActor: actor,
-            currentActor: () => repository.currentUserId, deviceName: device.deviceName, locked: locked,
-            requestProof: (password) => verifier.requestProof(password: password,
-              operation: 'master.device.lock', target: {'device_id': device.id, 'locked': locked})));
+          builder: (_) => MasterDeviceLockProofDialog(expectedActor: session.actor,
+            currentActor: () => repository.currentUserId, sessionCurrent: () => _current,
+            deviceName: device.deviceName, locked: locked,
+            requestProof: (password) async {
+              await session.check();
+              if (!_current) throw StateError('ログイン状態が変わりました。');
+              final proof = await verifier.requestProof(password: password,
+                operation: 'master.device.lock', target: {'device_id': device.id, 'locked': locked});
+              await session.check();
+              return proof;
+            }));
         if (proof == null) return;
       }
-      if (!mounted || repository.currentUserId != actor) return;
-      await repository.setLocked(deviceId: device.id, locked: locked, proof: proof);
+      await session.check();
+      if (!_current) return;
+      await repository.setLocked(deviceId: device.id, locked: locked, proof: proof, session: session);
+      await session.check();
+      if (!_current) return;
       await _load();
-      if (!mounted) return;
+      if (!_current) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(locked ? '端末をロックしました' : '端末のロックを解除しました')),
       );
     } catch (error) {
-      if (!mounted) return;
+      if (!_current) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('変更できませんでした: $error')),
       );
     } finally {
-      if (mounted) setState(() => _busyDeviceId = null);
+      if (_current) setState(() => _busyDeviceId = null);
     }
   }
 
   Future<void> _revoke(MasterDeviceRecord device) async {
-    final repository = _repository;
-    if (repository == null || device.isRevoked || _busyDeviceId != null) return;
-    if (!await _confirmLoss(device, '登録解除')) return;
-    if (!mounted) return;
-
+    final repository = _repository, session = _session;
+    if (repository == null || session == null || !_current || device.isRevoked || _busyDeviceId != null) return;
     setState(() => _busyDeviceId = device.id);
     try {
-      await repository.revoke(device.id);
+      await session.check();
+      if (!await _confirmLoss(device, '登録解除')) return;
+      await session.check();
+      if (!_current) return;
+      await repository.revoke(device.id, session: session);
+      await session.check();
+      if (!_current) return;
       await _load();
-      if (!mounted) return;
+      if (!_current) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('端末登録を解除しました')),
       );
     } catch (error) {
-      if (!mounted) return;
+      if (!_current) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('登録解除できませんでした: $error')),
       );
     } finally {
-      if (mounted) setState(() => _busyDeviceId = null);
+      if (_current) setState(() => _busyDeviceId = null);
     }
   }
 

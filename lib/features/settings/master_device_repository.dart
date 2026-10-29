@@ -1,7 +1,53 @@
+import 'dart:async';
+
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
+import '../auth/secondary_reset_session_guard.dart';
+
+/// Local lifetime only; every RPC still uses the server's existing protections.
+class MasterDeviceSession {
+  MasterDeviceSession({required this.currentSession, required Stream<AuthState> changes, this.onInvalidated}) {
+    _session = currentSession();
+    _identity = SecondaryResetSessionGuard.identityOf(_session);
+    if (_identity == null) throw StateError('ログイン状態を確認してください。');
+    var first = true;
+    _subscription = changes.listen((event) {
+      // The SDK replays its last state. Only the first exact Session object
+      // may be a signedIn replay; any subsequent login is a new lifetime.
+      final replay = first && identical(event.session, _session);
+      first = false;
+      if (event.event == AuthChangeEvent.signedOut ||
+          (event.event == AuthChangeEvent.signedIn && !replay) ||
+          SecondaryResetSessionGuard.identityOf(event.session) != _identity || !isCurrent) {
+        _invalidate();
+      }
+    }, onError: (Object _) => _invalidate(), onDone: _invalidate);
+  }
+  final Session? Function() currentSession;
+  final void Function()? onInvalidated;
+  late final Session? _session;
+  late final String? _identity;
+  StreamSubscription<AuthState>? _subscription;
+  bool _invalidated = false, _closed = false;
+  String get actor => _session!.user.id;
+  String get accessToken => _session!.accessToken;
+  bool get isCurrent => !_closed && !_invalidated &&
+    _session?.isExpired == false &&
+    SecondaryResetSessionGuard.identityOf(currentSession()) == _identity;
+  void _invalidate() {
+    if (_invalidated || _closed) return;
+    _invalidated = true; onInvalidated?.call();
+  }
+  Future<void> check() async {
+    if (!isCurrent) { _invalidate(); throw StateError('ログイン状態が変わりました。画面を開き直してください。'); }
+    await Future<void>.delayed(Duration.zero);
+    if (!isCurrent) { _invalidate(); throw StateError('ログイン状態が変わりました。画面を開き直してください。'); }
+  }
+  Future<void> close() async { _closed = true; await _subscription?.cancel(); }
+}
+
 
 class MasterDeviceRecord {
   const MasterDeviceRecord({
@@ -41,6 +87,10 @@ class MasterDeviceRepository {
 
   final SupabaseClient _client;
 
+  MasterDeviceSession beginSession({void Function()? onInvalidated}) => MasterDeviceSession(
+    currentSession: () => _client.auth.currentSession, changes: _client.auth.onAuthStateChange,
+    onInvalidated: onInvalidated);
+
   String? get currentUserId => _client.auth.currentUser?.id;
 
   static MasterDeviceRepository? maybeCreate() {
@@ -50,29 +100,39 @@ class MasterDeviceRepository {
     return MasterDeviceRepository._(client);
   }
 
-  Future<bool> isMasterAdmin({String? accessToken}) async {
+  Future<bool> isMasterAdmin({String? accessToken, MasterDeviceSession? session}) async {
     if (accessToken != null && accessToken.isEmpty) throw StateError('Missing captured session');
+    await session?.check();
+    accessToken = session?.accessToken ?? accessToken;
     final request = _client.rpc('current_master_admin_status');
     final raw = await (accessToken == null ? request : request.setHeader('Authorization', 'Bearer $accessToken'));
+    await session?.check();
     if (raw is Map) {
       return raw['is_master_admin'] == true;
     }
     return false;
   }
 
-  Future<List<MasterDeviceRecord>> loadDevices() async {
-    final rows = await _client.rpc('master_device_rows');
+  Future<List<MasterDeviceRecord>> loadDevices({MasterDeviceSession? session}) async {
+    await session?.check();
+    final request = _client.rpc('master_device_rows');
+    final rows = await (session == null ? request : request.setHeader('Authorization', 'Bearer ${session.accessToken}'));
+    await session?.check();
     return [
       for (final raw in (rows as List<dynamic>))
         _fromRow(Map<String, dynamic>.from(raw as Map)),
     ];
   }
 
-  Future<bool> lockReauthenticationRequired() async {
+  Future<bool> lockReauthenticationRequired({MasterDeviceSession? session}) async {
+    await session?.check();
     dynamic raw;
     try {
-      raw = await _client.rpc('master_device_lock_capability');
+      final request = _client.rpc('master_device_lock_capability');
+      raw = await (session == null ? request : request.setHeader('Authorization', 'Bearer ${session.accessToken}'));
+      await session?.check();
     } on PostgrestException catch (error) {
+      await session?.check();
       if (error.code == 'PGRST202') return false;
       rethrow;
     }
@@ -86,8 +146,10 @@ class MasterDeviceRepository {
     required String deviceId,
     required bool locked,
     String? proof,
+    MasterDeviceSession? session,
   }) async {
-    await _client.rpc(
+    await session?.check();
+    final request = _client.rpc(
       proof == null ? 'set_master_device_locked' : 'set_master_device_locked_with_proof',
       params: {
         'p_device_id': deviceId,
@@ -95,13 +157,18 @@ class MasterDeviceRepository {
         if (proof != null) 'p_proof': proof,
       },
     );
+    await (session == null ? request : request.setHeader('Authorization', 'Bearer ${session.accessToken}'));
+    await session?.check();
   }
 
-  Future<void> revoke(String deviceId) async {
-    await _client.rpc(
+  Future<void> revoke(String deviceId, {MasterDeviceSession? session}) async {
+    await session?.check();
+    final request = _client.rpc(
       'revoke_master_device',
       params: {'p_device_id': deviceId},
     );
+    await (session == null ? request : request.setHeader('Authorization', 'Bearer ${session.accessToken}'));
+    await session?.check();
   }
 
   Future<String?> currentStoredDeviceKey() async {
