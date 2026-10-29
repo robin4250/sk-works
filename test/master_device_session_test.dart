@@ -165,7 +165,11 @@ void main() {
     expect(proofRequest.headers['Authorization'],original);
     expect(jsonDecode(proofRequest.body),{'password':'synthetic-primary','operation':'master.device.lock','target':{'device_id':'a','locked':true}});
     await t.runAsync(() async {await f.login('sid-b'); await f.login('sid-a');});
-    f.proofWait!.complete(); await t.pumpAndSettle(); expect(f.writes,0);
+    await t.runAsync(() async {
+      f.proofWait!.complete();
+      await Future<void>.delayed(const Duration(milliseconds:50));
+    });
+    await t.pumpAndSettle(); expect(f.writes,0);
     expect(find.text('端末をロックしました'),findsNothing); await close(t,f);
   });
 
