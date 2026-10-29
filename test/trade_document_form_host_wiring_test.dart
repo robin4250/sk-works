@@ -118,7 +118,7 @@ void main(){
     final f=_Fixture();try{
       await f.mount(tester,_workspace(saved:_payload(marked:false),defaults:_payload()));
       expect(find.byType(TradeDocumentTouchEditorPage),findsNothing);
-      final button=find.widgetWithText(FilledButton,'保存して添付');await tester.ensureVisible(button);await tester.tap(button);await tester.pumpAndSettle();
+      final button=find.widgetWithText(FilledButton,'保存して添付');await tester.scrollUntilVisible(button,400,scrollable:find.descendant(of:find.byType(TradeDocumentAttachmentEditorPage),matching:find.byType(Scrollable)).first,maxScrolls:50);await tester.pumpAndSettle();await tester.tap(button);await tester.pumpAndSettle();
       final sent=f.repository!.sent!;for(final key in ['contract_terms','form_fields','counterparty_bank']){expect(sent.containsKey(key),isFalse);}
       expect(sent['issuer'],_payload(marked:false)['issuer']);expect(sent['total_amount_yen'],110000);expect(sent['tax_amount_yen'],10000);expect(f.returned,isTrue);expect(tester.takeException(),isNull);
     }finally{await f.close(tester);}
@@ -175,7 +175,7 @@ void main(){
   testWidgets('late legacy save never pops a newer sibling route',(tester)async{
     final f=_Fixture();try{
       await f.mount(tester,_workspace(saved:_payload(marked:false)));final repo=f.repository!;repo.holdSave=Completer<TradeDocumentAttachment>();
-      final button=find.widgetWithText(FilledButton,'保存して添付');await tester.ensureVisible(button);await tester.tap(button);await tester.pump();expect(repo.saves,1);
+      final button=find.widgetWithText(FilledButton,'保存して添付');await tester.scrollUntilVisible(button,400,scrollable:find.descendant(of:find.byType(TradeDocumentAttachmentEditorPage),matching:find.byType(Scrollable)).first,maxScrolls:50);await tester.pumpAndSettle();await tester.tap(button);await tester.pump();expect(repo.saves,1);
       final navigator=Navigator.of(tester.element(find.byType(TradeDocumentAttachmentEditorPage)));
       unawaited(navigator.push<void>(MaterialPageRoute(builder:(_)=>const Scaffold(body:Text('newer sibling')))));await tester.pumpAndSettle();
       repo.holdSave!.complete(TradeDocumentAttachment.fromJson({'version':8,'payload':repo.sent}));await tester.pumpAndSettle();
