@@ -65,6 +65,9 @@ Future<http.Request> waitCall(WidgetTester t, Fixture f, String suffix) async {
   for (var attempt=0;attempt<30;attempt++) {
     final matching=f.calls.where((r)=>r.url.path.endsWith(suffix));
     if (matching.isNotEmpty) return matching.single;
+    // Functions SDK JSON encoding may run on a real isolate; pumping only
+    // Flutter's fake clock cannot complete that boundary.
+    await t.runAsync(() async { await Future<void>.delayed(const Duration(milliseconds:10)); });
     await t.pump(const Duration(milliseconds:10));
   }
   throw StateError('Expected fixture request $suffix; visible: ${t.widgetList<Text>(find.byType(Text)).map((w)=>w.data).join(" | ")}');
