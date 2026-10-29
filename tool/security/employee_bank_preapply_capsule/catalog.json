@@ -1,0 +1,146 @@
+{
+  "source": "read-only production pg_proc metadata observed 2026-10-29; no business rows or credentials",
+  "functions": [
+    {
+      "signature": "private.reauthentication_scope(text)",
+      "definition_md5": "920af4ed4bd039d3258b20aab89dd6b1",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "config": [
+        "search_path=\"\""
+      ],
+      "security_definer": false,
+      "volatility": "i",
+      "strict": false,
+      "leakproof": false,
+      "parallel": "u",
+      "kind": "f",
+      "returns_set": false,
+      "return_type": "text"
+    },
+    {
+      "signature": "private.reauthentication_required(text)",
+      "definition_md5": "e7b07f77bb4eb159ee956e231a962fd5",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "config": [
+        "search_path=\"\""
+      ],
+      "security_definer": true,
+      "volatility": "v",
+      "strict": false,
+      "leakproof": false,
+      "parallel": "u",
+      "kind": "f",
+      "returns_set": false,
+      "return_type": "boolean"
+    },
+    {
+      "signature": "public.issue_reauthentication_proof(uuid,uuid,text,jsonb,text)",
+      "definition_md5": "2e16168e872781301c52e331bb479819",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "config": [
+        "search_path=\"\""
+      ],
+      "security_definer": true,
+      "volatility": "v",
+      "strict": false,
+      "leakproof": false,
+      "parallel": "u",
+      "kind": "f",
+      "returns_set": false,
+      "return_type": "timestamp with time zone"
+    },
+    {
+      "signature": "private.issue_reauthentication_proof(uuid,uuid,text,jsonb,text)",
+      "definition_md5": "e8d6bb6406431bea49a13efa1817fb5e",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "config": [
+        "search_path=\"\""
+      ],
+      "security_definer": true,
+      "volatility": "v",
+      "strict": false,
+      "leakproof": false,
+      "parallel": "u",
+      "kind": "f",
+      "returns_set": false,
+      "return_type": "timestamp with time zone"
+    },
+    {
+      "signature": "private.consume_reauthentication_proof(text,jsonb,text)",
+      "definition_md5": "4a72af5d7aaddad822d29da4c64d7a83",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "config": [
+        "search_path=\"\""
+      ],
+      "security_definer": true,
+      "volatility": "v",
+      "strict": false,
+      "leakproof": false,
+      "parallel": "u",
+      "kind": "f",
+      "returns_set": false,
+      "return_type": "void"
+    },
+    {
+      "signature": "private.require_reauthentication_session()",
+      "definition_md5": "165d0f26da6f6e346bb2766ae70282f7",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "config": [
+        "search_path=\"\""
+      ],
+      "security_definer": true,
+      "volatility": "v",
+      "strict": false,
+      "leakproof": false,
+      "parallel": "u",
+      "kind": "f",
+      "returns_set": false,
+      "return_type": "uuid"
+    },
+    {
+      "signature": "private.sync_bank_document_status()",
+      "definition_md5": "e7c56ead3acd46dc03db7565e5dced56",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "config": [
+        "search_path=\"\""
+      ],
+      "security_definer": true,
+      "volatility": "v",
+      "strict": false,
+      "leakproof": false,
+      "parallel": "u",
+      "kind": "f",
+      "returns_set": false,
+      "return_type": "trigger"
+    },
+    {
+      "signature": "private.has_company_feature(uuid,text)",
+      "definition_md5": "e669fb9e3fe1af2b73eee1745703b272",
+      "owner": "postgres",
+      "acl": null,
+      "config": [
+        "search_path=public, private, pg_temp"
+      ],
+      "security_definer": true,
+      "volatility": "s",
+      "strict": false,
+      "leakproof": false,
+      "parallel": "u",
+      "kind": "f",
+      "returns_set": false,
+      "return_type": "boolean"
+    }
+  ],
+  "bank_trigger": {
+    "name": "sync_bank_document_status",
+    "enabled": "O",
+    "definition": "CREATE TRIGGER sync_bank_document_status BEFORE INSERT OR UPDATE ON public.worker_private_bank_accounts FOR EACH ROW EXECUTE FUNCTION private.sync_bank_document_status()"
+  }
+}
