@@ -167,22 +167,25 @@ class _PhotoEditorState extends State<_PhotoEditor> {
       }
       return;
     }
+    var closing = false;
     showDialog<void>(
       context: context,
-      builder: (context) => Dialog(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Flexible(
-              child: InteractiveViewer(child: _image(photo, height: 500)),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('閉じる'),
-            ),
-          ],
-        ),
-      ),
+      // Follow the editor's navigator, including a private qualification scope.
+      useRootNavigator: false,
+      builder: (previewContext) {
+        final route = ModalRoute.of(previewContext);
+        return Dialog.fullscreen(child: Scaffold(
+          resizeToAvoidBottomInset: false,
+          appBar: AppBar(title: const Text('写真のプレビュー'), leading: IconButton(
+            tooltip: '閉じる', icon: const Icon(Icons.close), onPressed: () {
+              if (closing || route?.isCurrent != true) { return; }
+              closing = true;
+              Navigator.of(previewContext).pop();
+            })),
+          body: SafeArea(top: false, child: Center(child: InteractiveViewer(
+            child: _image(photo, height: 500)))),
+        ));
+      },
     );
   }
 

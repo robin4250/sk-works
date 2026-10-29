@@ -29,6 +29,7 @@ void main() {
       )));
       await tester.pumpAndSettle();
       if (editor) { await tester.tap(find.text('資格写真を確認')); await tester.pumpAndSettle(); }
+      await tester.ensureVisible(find.byType(Image).first); await tester.pumpAndSettle();
       await tester.tap(find.byType(Image).first); await tester.pumpAndSettle();
       expect(find.byType(InteractiveViewer), findsOneWidget);
       scope.value = false; await tester.pumpAndSettle();
@@ -50,14 +51,22 @@ void main() {
               initialPhotos: [WorkerDocumentPhoto.pending(_image, 'synthetic.png')]); editorReturns++;
           }, child: const Text('資格写真を確認'))))));
       await tester.tap(find.text('資格写真を確認')); await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byType(Image).first); await tester.pumpAndSettle();
       await tester.tap(find.byType(Image).first); await tester.pumpAndSettle();
       tester.view.physicalSize = size; tester.view.viewInsets = const FakeViewPadding(bottom: 160);
       await tester.pumpAndSettle();
       final viewer = tester.widget<InteractiveViewer>(find.byType(InteractiveViewer));
-      // Exercise the same panning/zoom region while its toolbar remains separate.
-      final gesture = await tester.startGesture(tester.getCenter(find.byType(InteractiveViewer)));
-      await gesture.moveBy(const Offset(40, 20)); await gesture.up(); await tester.pump();
+      final image = tester.renderObject<RenderBox>(find.descendant(
+        of: find.byType(InteractiveViewer), matching: find.byType(Image)).first);
+      final beforeScale = image.getTransformTo(null).getMaxScaleOnAxis();
+      final center = tester.getCenter(find.byType(InteractiveViewer));
+      final first = await tester.startGesture(center - const Offset(10, 0), pointer: 1);
+      final second = await tester.startGesture(center + const Offset(10, 0), pointer: 2);
+      await first.moveTo(center - const Offset(35, 0));
+      await second.moveTo(center + const Offset(35, 0));
+      await first.up(); await second.up(); await tester.pump();
       expect(viewer.maxScale, greaterThan(1));
+      expect(image.getTransformTo(null).getMaxScaleOnAxis(), greaterThan(beforeScale));
       final close = find.byTooltip('閉じる'); expect(close, findsOneWidget);
       final rect = tester.getRect(close);
       expect(rect.top, greaterThanOrEqualTo(44)); expect(rect.bottom, lessThanOrEqualTo(size.height - 34));
