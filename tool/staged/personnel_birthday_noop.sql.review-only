@@ -171,6 +171,6 @@ begin
     'saved_directly',false
   );
 end
-$function$
+$function$;
 
 commit;
