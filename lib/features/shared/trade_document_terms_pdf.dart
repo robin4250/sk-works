@@ -34,7 +34,16 @@ class TradeDocumentTermsPdf {
    if(lines.length>92||height-61-(lines.length-1)*leading-font.descent.abs()*size<34){throw StateError('確定条項の版面を確認できません。');}
    return pw.CustomPaint(size:PdfPoint(PdfPageFormat.a4.width,height),painter:(canvas,_) {
     canvas.drawString(font,12,TradeDocumentTermsSnapshot.title,34,height-44);
-    for(var index=0;index<lines.length;index++){canvas.drawString(font,size,lines[index],34,height-61-index*leading);}
+    for(var index=0;index<lines.length;index++){
+     // PdfGraphics' direct glyph path paints this font's ideographic-space glyph
+     // visibly. Reserve its exact advance, but paint only the non-space runs.
+     final runs=lines[index].split('　');var cursor=34.0;
+     for(var run=0;run<runs.length;run++){
+      if(runs[run].isNotEmpty)canvas.drawString(font,size,runs[run],cursor,height-61-index*leading);
+      cursor+=font.stringMetrics(runs[run]).advanceWidth*size;
+      if(run<runs.length-1)cursor+=font.stringMetrics('　').advanceWidth*size;
+     }
+    }
    });
   })));
  }

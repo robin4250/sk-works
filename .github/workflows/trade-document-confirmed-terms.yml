@@ -138,6 +138,13 @@ jobs:
                   bodylines=[line for block in modern[1].get_text('dict')['blocks'] for line in block.get('lines',[]) if line.get('spans') and all(abs(span['size']-6.5)<.05 for span in line['spans'])]
                   assert len(bodylines)==92,(kind,len(bodylines))
                   for a,b in zip(bodylines,bodylines[1:]): assert abs((b['bbox'][1]-a['bbox'][1])-8.14)<.1,(kind,a['bbox'],b['bbox'])
+                  # Ideographic indentation must be actual white space, not a
+                  # visible substitute glyph despite correct ToUnicode text.
+                  prefix=clean(articles[3][1][1][:25])
+                  indented=next(line for block in modern[1].get_text('dict')['blocks'] for line in block.get('lines',[]) if clean(''.join(span['text'] for span in line['spans'])).startswith(prefix))
+                  baseline=indented['spans'][0]['origin'][1]
+                  gap=modern[1].get_pixmap(matrix=fitz.Matrix(3,3),clip=fitz.Rect(34,baseline-6,58,baseline+.5),alpha=False)
+                  assert all(all(channel>=240 for channel in gap.samples[i:i+3]) for i in range(0,len(gap.samples),gap.n)),(kind,'visible glyph in indentation')
                   for number,(title,paragraphs) in enumerate(articles,1):
                       assert clean(f'（{title}）') in text and clean(f'第{number}条　{paragraphs[0]}') in text,(kind,number,title)
                       for paragraph in paragraphs: assert clean(paragraph) in text,(kind,number,paragraph)
