@@ -23,8 +23,13 @@ A server-configured unused fixed pin cannot recover a retired-issuer receipt or
 a stale checkpoint. Success says only `evidence_recorded`, never key activation
 or independent owner approval. Responses are no-store; errors are generic.
 
-Checkpoint/auth/body processing shares the existing deadline. A late checkpoint
-cannot start a new evidence transaction after timeout. An in-flight DB commit
+Checkpoint/auth/body processing shares an absolute monotonic deadline, with lazy
+work thunks and elapsed checks before invocation and after every awaited result.
+This also catches synchronous callbacks that overrun before a timer can fire.
+The evidence pool lease checks elapsed time again after acquisition and around
+queries; a late lease is released once before BEGIN. Rollback/release remain
+available for cleanup after expiry. A late checkpoint cannot start a new evidence
+transaction after timeout. An in-flight DB commit
 may still have an unknown outcome after the HTTP deadline; it is not cancelled
 or undone by a timeout. There is no automatic replay or fallback. A separately
 reviewed authenticated evidence-result reconciliation API remains unfinished.
@@ -40,9 +45,12 @@ old-key recovery, migration, document/signature rewrite or exemption activation.
 
 ## Verification
 
-Seven new boundary tests cover OFF/missing adapter, body-selected privileges,
-request mismatch, generic checkpoint failure, captured callback and late result.
-The eight existing HTTP tests also pass locally. The actual PGlite composition
+Nine new boundary tests cover OFF/missing adapter, body-selected privileges,
+request mismatch, generic checkpoint failure, captured callback, late result,
+synchronous checkpoint overrun and late DB acquisition. The last two failed on
+the prior timer-only implementation (expired acquisition still reached BEGIN)
+and pass after the monotonic/thunk/lease fix. The eight existing HTTP tests also
+pass locally, for 17 total. The actual PGlite composition
 now invokes this handler through real candidate pending/request/evidence code;
 it checks current issuer success, retired/stale/replaced-history rejection,
 ignored server fixed-pin fallback and verified-context mutation protection.

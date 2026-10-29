@@ -2,6 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash,generateKeyPairSync} from 'node:crypto';
 import {handleMigrationChallengeRequest} from './key-migration-challenge-http-candidate.mjs';
+import {performance} from 'node:perf_hooks';
 const actor='00000000-0000-0000-0000-000000000001',session='00000000-0000-0000-0000-000000000002',deviceId='00000000-0000-0000-0000-000000000003';
 const publicKeyPem=generateKeyPairSync('ec',{namedCurve:'prime256v1'}).publicKey.export({type:'spki',format:'pem'}).toString();
 const token='synthetic-token-not-a-real-jwt';
@@ -110,4 +111,22 @@ test('late checkpoint completion cannot start evidence recording after HTTP dead
  const r=await handleMigrationChallengeRequest(request(ownerBody),{...f,timeoutMs:10,ownerEvidence:{enabled:true,loadAuthorityCheckpoint:async({signal})=>{calls++;assert.equal(signal.aborted,false);return pending;}}});
  assert.equal(r.status,409);resolveCheckpoint({});await new Promise(resolve=>setTimeout(resolve,10));
  assert.equal(calls,1);assert.equal(f.calls.length,0);
+});
+const checkpoint={authorityId:actor,epoch:1,headSha256:'a'.repeat(64),keyId:'fixture',publicKeySha256:'b'.repeat(64),retiredKeysSha256:'c'.repeat(64)};
+test('synchronous checkpoint overrun cannot acquire the evidence pool before timer dispatch',async()=>{
+ let acquired=0;
+ const pool={connect:async()=>{acquired++;return {query:async()=>({rows:[]}),release:()=>{}};}};
+ const r=await handleMigrationChallengeRequest(request(ownerBody),{timeoutMs:10,authenticateBearer:async()=>({actor,session,pool}),
+  ownerEvidence:{enabled:true,loadAuthorityCheckpoint:()=>{const until=performance.now()+50;while(performance.now()<until){}return checkpoint;}}});
+ assert.equal(r.status,409);assert.equal(acquired,0);
+});
+test('evidence lease arriving after HTTP timeout is released before any BEGIN',async()=>{
+ let resolveLease,released=0;const queries=[];
+ const pool={connect:()=>new Promise(resolve=>{resolveLease=resolve;})};
+ const r=await handleMigrationChallengeRequest(request(ownerBody),{timeoutMs:10,authenticateBearer:async()=>({actor,session,pool}),
+  ownerEvidence:{enabled:true,loadAuthorityCheckpoint:async()=>checkpoint}});
+ assert.equal(r.status,409);assert.equal(typeof resolveLease,'function');
+ resolveLease({query:async sql=>{queries.push(sql);return {rows:[]};},release:()=>{released++;}});
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.deepEqual(queries,[]);assert.equal(released,1);
 });
