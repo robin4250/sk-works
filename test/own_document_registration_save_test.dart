@@ -236,8 +236,8 @@ void main() {
     };
     final gateway=_ChangeGateway((action,data) async {
       actions.add(action);
-      if(action=='capability')return {'version':1,'change_requests_available':true,
-        'new_upload_available':false,'max_photos':20,'self_approval_allowed':false};
+      if(action=='capability'){return {'version':1,'change_requests_available':true,
+        'new_upload_available':false,'max_photos':20,'self_approval_allowed':false};}
       if(action=='prepare'){prepared=Map<String,dynamic>.from(data);return receipt('draft');}
       if(action=='submit'){expect(data['request_id'],prepared!['request_id']);return receipt('pending');}
       throw StateError('Unexpected synthetic action');
