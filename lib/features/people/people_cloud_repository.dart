@@ -110,6 +110,7 @@ class _PersonnelPrivacyViewState extends State<PersonnelPrivacyView> {
 
 class PeopleCloudRepository {
   PeopleCloudRepository._(this._client) : _actorForTesting=null;
+  PeopleCloudRepository.forClient(this._client) : _actorForTesting=null;
   @visibleForTesting PeopleCloudRepository.forTesting(this._client,{String? Function()? actor}) : _actorForTesting=actor;
   final String? Function()? _actorForTesting;
 

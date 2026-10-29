@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'employee_personnel_edit_page.dart';
+import '../auth/secondary_protected_page.dart';
+import 'employee_retirement_page.dart';
 import 'employee_personnel_print_page.dart';
 import 'people_page.dart';
 import 'people_cloud_repository.dart';
@@ -114,6 +116,33 @@ class EmployeePersonnelDetailPage extends StatelessWidget {
     })));
   }
 
+  Future<void> _retire(BuildContext context) async {
+    final session = privacySession;
+    if (session == null || !canManage || !record.active) return;
+    try {
+      await session.read(workerIds: {record.id});
+      session.verify(session.epoch);
+      if (session.snapshot?.canManage != true || !context.mounted) return;
+      final retired = await Navigator.of(context).push<bool>(MaterialPageRoute(
+        builder: (_) => PersonnelPrivacyView(session: session, builder: (context, rows) {
+          final current = rows.where((row) => row['id'] == record.id).toList();
+          if (session.snapshot?.canManage != true || current.length != 1 ||
+              current.single['active'] != true) {
+            return const Center(child: Text('対象または管理権限を確認できません。'));
+          }
+          return SecondaryProtectedPage(title: '退職手続き',
+            child: EmployeeRetirementPage(companyId: session.company,
+              workerId: record.id, workerName: record.name));
+        }),
+      ));
+      await session.refresh();
+      if (retired == true && context.mounted) Navigator.of(context).pop();
+    } catch (_) {
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('対象と管理権限を再確認してください。')));
+    }
+  }
+
   Future<void> _callPhone(BuildContext context, String phone) async {
     final session=privacySession;
     if(session!=null){try{await session.read(workerIds:{record.id});session.verify(session.epoch);}catch(_){return;}}
@@ -203,6 +232,10 @@ class EmployeePersonnelDetailPage extends StatelessWidget {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
           children: [
+            if (canManage && record.active && privacySession != null)
+              OutlinedButton.icon(onPressed: () => _retire(context),
+                icon: const Icon(Icons.person_remove_outlined), label: const Text('退職手続き')),
+            if (!record.active) const Text('退職者'),
             _PersonnelPortrait(key: ValueKey(record.id), loader: portraitLoader),
             const SizedBox(height: 12),
             Card(

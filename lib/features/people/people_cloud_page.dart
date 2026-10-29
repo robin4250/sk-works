@@ -31,7 +31,8 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
   final _records = <PersonRecord>[];
   PersonnelPrivacySession? _privacy;
   String _query = '';
-  PersonKind? _filter;
+  PersonKind? _filter = PersonKind.employee;
+  bool _retired = false;
   bool _loading = true;
   bool _canManagePeople = false;
   bool _canViewPeople = false;
@@ -152,7 +153,9 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
   Widget build(BuildContext context) {
     final needle = _query.trim().toLowerCase();
     final filtered = _records.where((record) {
-      final matchesKind = _filter == null || record.kind == _filter;
+      final matchesKind = _retired
+          ? !record.active && record.kind != PersonKind.partnerCompany
+          : record.active && record.kind == _filter;
       final haystack = [
         record.name,
         record.companyName,
@@ -248,20 +251,16 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
                 children: [
-                  ChoiceChip(
-                    label: Text(SkoLanguageController.tr('すべて')),
-                    selected: _filter == null,
-                    onSelected: (_) => setState(() => _filter = null),
-                  ),
-                  const SizedBox(width: 8),
                   for (final kind in PersonKind.values) ...[
                     ChoiceChip(
                       label: Text(kind.label),
-                      selected: _filter == kind,
-                      onSelected: (_) => setState(() => _filter = kind),
+                      selected: !_retired && _filter == kind,
+                      onSelected: (_) => setState(() { _filter = kind; _retired = false; }),
                     ),
                     const SizedBox(width: 8),
                   ],
+                  ChoiceChip(label: const Text('退職者'), selected: _retired,
+                    onSelected: (_) => setState(() => _retired = true)),
                 ],
               ),
             ),

@@ -11,7 +11,7 @@ extension PersonKindLabel on PersonKind {
   String get label => switch (this) {
     PersonKind.employee => '社員',
     PersonKind.partnerCompany => '協力会社',
-    PersonKind.partnerWorker => '協力会社作業員',
+    PersonKind.partnerWorker => '協力会社従業員',
   };
 }
 
