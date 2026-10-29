@@ -1,0 +1,334 @@
+-- REVIEW ONLY. No production apply authorization; existing source guards are unchanged.
+-- No zero-use machine gate: restore retains columns/data/proposals and is not permission for post-use withdrawal.
+-- Frozen tool/staged/personnel_birthday_noop_restore_unused.sql.review-only SHA256 47f4042baaba85c7bb2dff20d998fec4ccd9df808c0ac9a65992b0e112cb7ff3
+-- Frozen tool/staged/employee_personnel_birth_date_restore_unused.sql.review-only SHA256 2db257e10ba1017c54b957aed16c217580f8ede1c06ff0173b6538c718a1d0e5
+begin;
+set local lock_timeout='5s';
+select pg_advisory_xact_lock(hashtextextended('sko:personnel-birthday-atomic-v1',0));
+set local lock_timeout='5s';
+do $attributes$ begin
+ if not exists(select 1 from pg_proc where oid=to_regprocedure('public.save_worker_personnel_profile(uuid,jsonb)')
+ and pg_get_userbyid(proowner)='postgres' and prosecdef and provolatile='v'
+ and not proisstrict and not proleakproof and proparallel='u' and prokind='f' and not proretset
+ and prorettype='jsonb'::regtype and proconfig=array['search_path=""']::text[]
+ and proacl::text='{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}')
+ then raise exception 'personnel_birth_noop_attributes_drift';end if;
+end $attributes$;
+do $body$ begin
+ if not exists(select 1 from pg_proc where oid=to_regprocedure('public.save_worker_personnel_profile(uuid,jsonb)') and md5(prosrc)='b6e83d8afa8ab5d4a061ed2c6df81271') then raise exception 'personnel_birth_noop_body_drift';end if;
+end $body$;
+CREATE OR REPLACE FUNCTION public.save_worker_personnel_profile(p_worker_id uuid, p_payload jsonb)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare
+  v_company uuid;
+  v_existing boolean;
+  v_request uuid;
+  v_current jsonb;
+  v_actor uuid:=auth.uid();
+  v_actor_role text;
+  v_required integer;
+begin
+  if v_actor is null then raise exception 'ログインが必要です'; end if;
+  if not private.can_edit_worker_personnel(p_worker_id) then
+    raise exception '社員個人情報を変更する権限がありません';
+  end if;
+
+  select w.company_id into v_company
+  from public.workers w
+  where w.id=p_worker_id;
+
+  if v_company is null then raise exception '社員を確認できません'; end if;
+
+  -- Reject a manual duplicate before a pending approval request is created.
+  -- The trigger/index recheck at application time covers approval-time races.
+  if p_payload ? 'employee_number' and nullif(btrim(p_payload->>'employee_number'),'') is not null then
+    if length(btrim(p_payload->>'employee_number'))>40 then
+      raise exception using errcode='22001',message='employee_number_too_long';
+    end if;
+    if exists(select 1 from public.workers w where w.company_id=v_company
+      and w.id<>p_worker_id
+      and upper(btrim(w.employee_number))=upper(btrim(p_payload->>'employee_number'))) then
+      raise exception using errcode='23505',message='employee_number_duplicate',
+        constraint='workers_company_employee_number_unique';
+    end if;
+  end if;
+
+
+  select cm.role::text into v_actor_role
+  from public.company_members cm
+  where cm.company_id=v_company
+    and cm.user_id=v_actor
+  limit 1;
+
+  if v_actor_role is null then
+    raise exception '会社への所属が必要です';
+  end if;
+
+  select exists(
+    select 1
+    from public.worker_personnel_profiles p
+    where p.worker_id=p_worker_id
+  ) into v_existing;
+
+  v_current:=private.worker_personnel_payload(p_worker_id);
+
+  if not v_existing then
+    perform private.apply_worker_personnel_payload(p_worker_id,p_payload,v_actor);
+    return jsonb_build_object(
+      'status','saved',
+      'requires_approval',false,
+      'saved_directly',true
+    );
+  end if;
+
+  if v_current=p_payload then
+    return jsonb_build_object(
+      'status','unchanged',
+      'requires_approval',false,
+      'saved_directly',false
+    );
+  end if;
+
+  if v_actor_role in ('owner','admin') then
+    perform private.apply_worker_personnel_payload(p_worker_id,p_payload,v_actor);
+
+    update public.worker_personnel_change_requests
+    set status='rejected',resolved_at=now()
+    where worker_id=p_worker_id
+      and status='pending';
+
+    return jsonb_build_object(
+      'status','saved',
+      'requires_approval',false,
+      'saved_directly',true
+    );
+  end if;
+
+  select count(*)::integer into v_required
+  from public.worker_personnel_approvers a
+  where a.company_id=v_company
+    and a.user_id<>v_actor;
+
+  if v_required<1 then
+    raise exception '社員個人情報の承認者を1〜3名で設定してください（申請者本人は承認できません）';
+  end if;
+
+  v_required:=least(v_required,3);
+
+  update public.worker_personnel_change_requests
+  set status='rejected',resolved_at=now()
+  where worker_id=p_worker_id
+    and requested_by=v_actor
+    and status='pending';
+
+  insert into public.worker_personnel_change_requests(
+    company_id,worker_id,requested_by,proposed,required_approvals
+  ) values(v_company,p_worker_id,v_actor,p_payload,v_required)
+  returning id into v_request;
+
+  insert into public.app_notifications(
+    company_id,recipient_user_id,kind,title,body,action_key,action_id
+  )
+  select v_company,a.user_id,'approval','社員個人情報の変更申請',
+    '社員個人情報の変更申請があります。登録済み承認者の承認後に反映されます。',
+    'worker_personnel_change',v_request
+  from public.worker_personnel_approvers a
+  where a.company_id=v_company
+    and a.user_id<>v_actor;
+
+  return jsonb_build_object(
+    'status','pending',
+    'requires_approval',true,
+    'request_id',v_request,
+    'required_approvals',v_required,
+    'saved_directly',false
+  );
+end
+$function$;
+
+-- birthday-atomic:after-step-1
+set local lock_timeout='5s';
+do $attributes$ begin
+ if exists(select 1 from pg_proc where oid in(
+ to_regprocedure('private.worker_personnel_payload(uuid)'),
+ to_regprocedure('private.apply_worker_personnel_payload(uuid,jsonb,uuid)'),
+ to_regprocedure('private.employee_personnel_view(uuid)'))
+ and (pg_get_userbyid(proowner)<>'postgres' or not prosecdef
+ or proconfig is distinct from array['search_path=""']::text[]
+ or provolatile<>case when proname='apply_worker_personnel_payload' then 'v'::"char" else 's'::"char" end
+ or (proname<>'employee_personnel_view' and proacl is not null)
+ or (proname='employee_personnel_view' and proacl::text is distinct from '{postgres=X/postgres,authenticated=X/postgres}')))
+ then raise exception 'personnel_birth_attributes_drift'; end if;
+end $attributes$;
+do $guard$ begin
+if not exists(select 1 from pg_proc where oid=to_regprocedure('private.worker_personnel_payload(uuid)') and md5(prosrc)='4619b54556b9262dc22b95a4a65fc59f') then raise exception 'personnel_birth_recovery_drift'; end if;
+if not exists(select 1 from pg_proc where oid=to_regprocedure('private.apply_worker_personnel_payload(uuid,jsonb,uuid)') and md5(prosrc)='03b856009e6d298cd4fb01c07cab4d63') then raise exception 'personnel_birth_recovery_drift'; end if;
+if not exists(select 1 from pg_proc where oid=to_regprocedure('private.employee_personnel_view(uuid)') and md5(prosrc)='e00c5e49011a19f84ee60a2309822997') then raise exception 'personnel_birth_recovery_drift'; end if;
+end $guard$;
+create or replace function private.worker_personnel_payload(p_worker_id uuid)
+returns jsonb
+language sql
+stable security definer
+set search_path=''
+as $$
+  select jsonb_build_object(
+    'name',coalesce(w.name,''),
+    'kind',case when w.affiliation::text='partner_company'
+      then 'partnerWorker' else 'employee' end,
+    'blood_type',coalesce(p.blood_type,''),
+    'role',coalesce(w.role,''),
+    'employee_number',coalesce(w.employee_number,''),
+    'department',coalesce(w.department,''),
+    'hire_date',coalesce(w.hire_date::text,''),
+    'phone',coalesce(w.phone,''),
+    'address',coalesce(p.address,''),
+    'emergency_name',coalesce(p.emergency_name,''),
+    'emergency_relation',coalesce(p.emergency_relation,''),
+    'emergency_phone',coalesce(p.emergency_phone,''),
+    'emergency_address',coalesce(p.emergency_address,''),
+    'family_composition',coalesce(p.family_composition,''),
+    'family_members',coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'id',fm.id,'name',fm.name,'relation',fm.relation,
+        'birth_date',fm.birth_date,'is_dependent',fm.is_dependent
+      ) order by fm.birth_date nulls last,fm.name)
+      from public.worker_family_members fm
+      where fm.worker_id=w.id and fm.company_id=w.company_id
+    ),'[]'::jsonb)
+  )
+  from public.workers w
+  left join public.worker_personnel_profiles p on p.worker_id=w.id
+  where w.id=p_worker_id
+  limit 1
+$$;
+create or replace function private.apply_worker_personnel_payload(
+  p_worker_id uuid,p_payload jsonb,p_actor uuid
+)
+returns void
+language plpgsql
+security definer
+set search_path=''
+as $$
+declare
+  v_company uuid;
+  v_family jsonb;
+  v_member jsonb;
+  v_birth date;
+  v_name text;
+  v_relation text;
+begin
+  select w.company_id into v_company
+  from public.workers w where w.id=p_worker_id for update;
+  if v_company is null then raise exception '社員を確認できません'; end if;
+
+  update public.workers
+  set name=coalesce(nullif(trim(p_payload->>'name'),''),name),
+      role=nullif(trim(coalesce(p_payload->>'role','')),''),
+      phone=nullif(trim(coalesce(p_payload->>'phone','')),''),
+      employee_number=case when p_payload ? 'employee_number' then p_payload->>'employee_number' else employee_number end,
+      department=case when p_payload ? 'department' then nullif(btrim(p_payload->>'department'),'') else department end,
+      hire_date=case when p_payload ? 'hire_date' then nullif(p_payload->>'hire_date','')::date else hire_date end,
+      updated_at=now()
+  where id=p_worker_id;
+
+  insert into public.worker_personnel_profiles(
+    worker_id,company_id,blood_type,address,
+    emergency_name,emergency_relation,emergency_phone,emergency_address,
+    family_composition,created_by,updated_by,updated_at
+  )
+  values(
+    p_worker_id,v_company,
+    nullif(trim(coalesce(p_payload->>'blood_type','')),''),
+    nullif(trim(coalesce(p_payload->>'address','')),''),
+    nullif(trim(coalesce(p_payload->>'emergency_name','')),''),
+    nullif(trim(coalesce(p_payload->>'emergency_relation','')),''),
+    nullif(trim(coalesce(p_payload->>'emergency_phone','')),''),
+    nullif(trim(coalesce(p_payload->>'emergency_address','')),''),
+    nullif(trim(coalesce(p_payload->>'family_composition','')),''),
+    p_actor,p_actor,now()
+  )
+  on conflict(worker_id) do update
+  set blood_type=excluded.blood_type,address=excluded.address,
+      emergency_name=excluded.emergency_name,
+      emergency_relation=excluded.emergency_relation,
+      emergency_phone=excluded.emergency_phone,
+      emergency_address=excluded.emergency_address,
+      family_composition=excluded.family_composition,
+      updated_by=excluded.updated_by,updated_at=now();
+
+  v_family:=coalesce(p_payload->'family_members','[]'::jsonb);
+  if jsonb_typeof(v_family)<>'array' then
+    raise exception '家族構成データを確認してください';
+  end if;
+
+  delete from public.worker_family_members
+  where worker_id=p_worker_id and company_id=v_company;
+
+  for v_member in select value from jsonb_array_elements(v_family)
+  loop
+    v_name:=trim(coalesce(v_member->>'name',''));
+    v_relation:=trim(coalesce(v_member->>'relation',''));
+    if v_name='' or v_relation='' then
+      raise exception '家族の氏名と続柄を入力してください';
+    end if;
+    begin
+      v_birth:=nullif(v_member->>'birth_date','')::date;
+    exception when others then
+      raise exception '家族の誕生日を確認してください';
+    end;
+
+    insert into public.worker_family_members(
+      company_id,worker_id,name,relation,birth_date,is_dependent,
+      created_by,updated_by
+    )
+    values(
+      v_company,p_worker_id,v_name,v_relation,v_birth,
+      coalesce((v_member->>'is_dependent')::boolean,false),
+      p_actor,p_actor
+    );
+  end loop;
+end
+$$;
+create or replace function private.employee_personnel_view(p_company uuid)
+returns jsonb language plpgsql stable security definer set search_path='' as $$
+begin
+ if not private.personnel_view_allowed(p_company) then
+ raise exception '社員情報の閲覧権限がありません' using errcode='42501'; end if;
+ return jsonb_build_object('company_id',p_company,'records',coalesce((
+ select jsonb_agg(jsonb_build_object(
+ 'id',w.id,'name',w.name,'kind',case when w.affiliation::text='partner_company' then 'partnerWorker' else 'employee' end,
+ 'role',coalesce(w.role,''),'phone',coalesce(w.phone,''),'employeeNumber',coalesce(w.employee_number,''),
+ 'department',coalesce(w.department,''),'hireDate',coalesce(w.hire_date::text,''),'active',w.status::text='active',
+ 'bloodType',coalesce(p.blood_type,''),'address',coalesce(p.address,''),
+ 'emergencyName',coalesce(p.emergency_name,''),'emergencyRelation',coalesce(p.emergency_relation,''),
+ 'emergencyPhone',coalesce(p.emergency_phone,''),'emergencyAddress',coalesce(p.emergency_address,''),
+ 'familyComposition',coalesce(p.family_composition,''),
+ 'familyMembers',coalesce((select jsonb_agg(jsonb_build_object('id',f.id,'name',f.name,'relation',f.relation,
+ 'birth_date',f.birth_date,'is_dependent',f.is_dependent) order by f.birth_date nulls last,f.name)
+ from public.worker_family_members f where f.company_id=w.company_id and f.worker_id=w.id),'[]'::jsonb),
+ 'createdAt',w.created_at,'updatedAt',greatest(w.updated_at,coalesce(p.updated_at,w.updated_at))
+ ) order by w.name) from public.workers w
+ left join public.worker_personnel_profiles p on p.company_id=w.company_id and p.worker_id=w.id
+ where w.company_id=p_company and w.status::text='active'),'[]'::jsonb));
+end $$;
+-- birthday-atomic:before-final-guard
+do $atomic_final$ declare item jsonb;begin
+ for item in select value from jsonb_array_elements($catalog$[{"signature":"private.worker_personnel_payload(uuid)","return_type":"jsonb","volatility":"s","acl":null,"body_md5":"bed654f3bbad4e8e432db77520681330"},{"signature":"private.apply_worker_personnel_payload(uuid,jsonb,uuid)","return_type":"void","volatility":"v","acl":null,"body_md5":"445ae541afb2fcb376d49dde1388a84f"},{"signature":"private.employee_personnel_view(uuid)","return_type":"jsonb","volatility":"s","acl":"{postgres=X/postgres,authenticated=X/postgres}","body_md5":"ec7a06349ecc5d2420e89ecedf54f6e7"},{"signature":"public.save_worker_personnel_profile(uuid,jsonb)","return_type":"jsonb","volatility":"v","acl":"{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}","body_md5":"c11956bf0845ab725312928c2422a7ab"}]$catalog$::jsonb) loop
+  if not exists(select 1 from pg_proc p where p.oid=to_regprocedure(item->>'signature')
+   and md5(p.prosrc)=item->>'body_md5' and pg_get_userbyid(p.proowner)='postgres'
+   and p.proacl::text is not distinct from item->>'acl'
+   and p.proconfig=array['search_path=""']::text[] and p.prosecdef
+   and p.provolatile::text=item->>'volatility' and not p.proisstrict and not p.proleakproof
+   and p.proparallel='u' and p.prokind='f' and not p.proretset
+   and format_type(p.prorettype,null)=item->>'return_type') then
+   raise sqlstate '55000' using message='personnel_birthday_atomic_final_catalog_drift';end if;
+ end loop;
+ if not exists(select 1 from information_schema.columns where table_schema='public'
+  and table_name='worker_personnel_profiles' and column_name='birth_date' and data_type='date' and is_nullable='YES') then
+  raise sqlstate '55000' using message='personnel_birthday_atomic_column_contract';end if;
+ end $atomic_final$;
+commit;
