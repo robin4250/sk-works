@@ -60,6 +60,14 @@ Future<void> open(WidgetTester t, Fixture f) async {
 Future<void> close(WidgetTester t, Fixture f) async {
   await t.pumpWidget(const SizedBox()); await t.pump(); await t.runAsync(f.client.dispose);
 }
+Future<http.Request> waitCall(WidgetTester t, Fixture f, String suffix) async {
+  for (var attempt=0;attempt<30;attempt++) {
+    final matching=f.calls.where((r)=>r.url.path.endsWith(suffix));
+    if (matching.isNotEmpty) return matching.single;
+    await t.pump(const Duration(milliseconds:10));
+  }
+  throw StateError('Expected fixture request $suffix');
+}
 void main() {
   testWidgets('actual SDK same UID SID A to B to A during revoke confirmation never mutates', (t) async {
     final f = (await t.runAsync(Fixture.create))!; await open(t,f);
@@ -88,7 +96,7 @@ void main() {
     await t.tap(find.widgetWithText(OutlinedButton,'登録解除').first); await t.pumpAndSettle();
     await t.tap(find.widgetWithText(FilledButton,'登録解除')); await t.pump();
     final original = 'Bearer ${f.client.auth.currentSession!.accessToken}';
-    final sent = f.calls.singleWhere((r)=>r.url.path.endsWith('revoke_master_device'));
+    final sent = await waitCall(t,f,'revoke_master_device');
     expect(sent.headers['Authorization'],original);
     final count = f.calls.length;
     await t.runAsync(() => f.login('sid-b')); f.mutationWait!.complete(); await t.pumpAndSettle();
@@ -149,7 +157,7 @@ void main() {
     final original='Bearer ${f.client.auth.currentSession!.accessToken}';
     await t.enterText(find.byKey(const Key('master-device-lock-password')),'synthetic-primary');
     await t.tap(find.text('本人確認して変更')); await t.pump();
-    final proofRequest=f.calls.singleWhere((r)=>r.url.path.endsWith('reauthenticate-operation'));
+    final proofRequest=await waitCall(t,f,'reauthenticate-operation');
     expect(proofRequest.headers['Authorization'],original);
     expect(jsonDecode(proofRequest.body),{'password':'synthetic-primary','operation':'master.device.lock','target':{'device_id':'a','locked':true}});
     await t.runAsync(() async {await f.login('sid-b'); await f.login('sid-a');});
