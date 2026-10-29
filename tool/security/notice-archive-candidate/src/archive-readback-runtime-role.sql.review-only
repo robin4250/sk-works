@@ -18,7 +18,7 @@ create function archive_readback_private.authorize_observation(p_authority uuid,
 returns jsonb language plpgsql security definer set search_path='' as $$
 declare actor uuid;sid uuid;r archive_readback_private.authority_records%rowtype;d jsonb;b jsonb;
 begin
- sid:=private.require_reauthentication_session();actor:=auth.uid();
+ actor:=auth.uid();
  select * into strict r from archive_readback_private.authority_records
  where object_id=p_descriptor->>'object_id' for share;
  d:=jsonb_build_object('status','stored_unattested','schema',1,'company_id',r.company_id,
@@ -26,6 +26,8 @@ begin
  'payload_sha256',r.payload_sha256,'byte_length',r.byte_length,'object_id',r.object_id);
  if r.authority_id is distinct from p_authority or r.owner_id is distinct from actor or p_descriptor is distinct from d
  then raise exception 'archive_runtime_target_denied';end if;
+ -- Preserve the prior target -> reauthentication -> management lock order.
+ sid:=private.require_reauthentication_session();
  b:=security_management_issuer_private.binding(actor,sid,r.company_id,r.deployment_id,true);
  if b is null then raise exception 'archive_runtime_binding_required';end if;
  -- Do not expose credential fingerprint, manager JWK or other guard internals.
