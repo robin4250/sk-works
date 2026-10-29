@@ -3,6 +3,8 @@
 // signer, active key or master_devices mutation exists here. Cancellation remains
 // terminal and may follow recording: future activation MUST recheck it atomically.
 import {ownerDecisionPayload,verifyOwnerDecisionAttestation} from './owner-decision-attestation.mjs';
+import {captureOwnerIssuerCheckpoint} from './owner-issuer-continuity.mjs';
+import {ownerIssuerPinWithinTransaction} from './owner-issuer-store.mjs';
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 function scalarSnapshot(value){
  if(!value||typeof value!=='object'||![Object.prototype,null].includes(Object.getPrototypeOf(value)))throw Error('plain scalar evidence required');
@@ -17,10 +19,21 @@ export async function recordIndependentOwnerDecisionEvidence({pool,actor,session
  // a later caller mutation choose the request, signer, decision or signature.
  const signed=scalarSnapshot(receipt);
  const pin=Object.freeze({purpose:pinnedIssuer?.purpose,keyId:pinnedIssuer?.keyId,publicKeyJwk:scalarSnapshot(pinnedIssuer?.publicKeyJwk)});
+ return recordWithIssuer({pool,actor,session,requestId},signed,async()=>pin);
+}
+// New entry is default-OFF. The checkpoint comes from independently authenticated
+// server configuration, not a request body. Existing fixed-pin callers are unchanged.
+export async function recordOwnerDecisionUsingStoredIssuer({enabled=false,pool,actor,session,requestId,receipt,authorityCheckpoint}){
+ if(enabled!==true)throw Error('stored issuer evidence is disabled');
+ const signed=scalarSnapshot(receipt),checkpoint=captureOwnerIssuerCheckpoint(authorityCheckpoint);
+ return recordWithIssuer({pool,actor,session,requestId},signed,c=>ownerIssuerPinWithinTransaction(c,checkpoint));
+}
+async function recordWithIssuer({pool,actor,session,requestId},signed,resolveIssuer){
  if(!pool||typeof pool.connect!=='function'||![actor,session,requestId].every(x=>typeof x==='string'&&uuid.test(x)))throw Error('invalid evidence scope');
  const c=await pool.connect();
  try{
   await c.query('begin');await c.query("set local lock_timeout='1s'");await c.query("set local statement_timeout='5s'");
+  const pin=await resolveIssuer(c);
   const identity=await c.query('select auth.uid() as actor,private.require_reauthentication_session() as session,public.is_current_user_master_admin() as master');
   if(identity.rows.length!==1||identity.rows[0].actor!==actor||identity.rows[0].session!==session||identity.rows[0].master!==true)throw Error('eligible owner session required');
   const initial=await c.query(`select device_id,challenge_id,pending_id,key_sha256 from master_device_enrollment_candidate.owner_approval_requests

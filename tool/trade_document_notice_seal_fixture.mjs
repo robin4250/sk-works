@@ -57,6 +57,7 @@ export async function verifyNoticeSeal(db,c){
  const x=await prepare(21),p=await preview(x),before=await state(x),ticket=await issue(x);
  const call=(t,financial=true,seal=true)=>q('select trade_document_consent_private.confirm_invoice_from_notice($1,$2,$3,1,$4::jsonb,$5,$6,$7) v',[t,x.local,A,JSON.stringify(p),id(29000),financial,seal]);
  const used=t=>q('select consumed_at is not null v from invoice_month_close_candidate.notice_open_tickets where id=$1',[t]);
+ const scoped=(t=ticket,expected=p,request=id(29000))=>q('select trade_document_consent_private.read_invoice_notice_result_scoped($1,$2,$3,1,$4::jsonb,$5) v',[t,x.local,A,JSON.stringify(expected),request]);
  const read=(t=ticket,expected=p,request=id(29000))=>q('select trade_document_consent_private.read_invoice_notice_result($1,$2,$3,1,$4::jsonb,$5) v',[t,x.local,A,JSON.stringify(expected),request]);
  await deny(()=>read(),/disabled/);
  await deny(()=>call(ticket),/disabled/);check(await used(ticket),false);check(await state(x),before);
@@ -85,13 +86,17 @@ export async function verifyNoticeSeal(db,c){
  const result=await call(ticket);check(result.financial_approved,true);check(result.seal_consent_recorded,true);check(await used(ticket),true);
  check(await read(),{found:true,status:'recorded',result});
  check(await read(ticket,p,id(29001)),{found:false});
+ check(await scoped(ticket,p,id(29001)),{found:false});
+ const storedScope=await q(`select jsonb_build_object('ticket_id',ticket_id,'local_document_id',local_document_id,'company_id',company_id,'revision',document_revision,'request_id',request_id,'expected_hash',expected_hash,'actor_id',actor_id,'session_id',session_id) v from trade_document_consent_private.notice_confirmation_results where ticket_id=$1`,[ticket]);
+ check(await scoped(),{found:true,status:'recorded',result,scope:storedScope});
  await deny(()=>read(ticket,{...p,epoch:'wrong'}),/unavailable/);
+ await deny(()=>scoped(ticket,{...p,epoch:'wrong'}),/unavailable/);
  await db.query("select set_config('test.notice_sid',$1,false)",[id(9002)]);
- await deny(()=>read(),/unavailable/);
+ await deny(()=>read(),/unavailable/);await deny(()=>scoped(),/unavailable/);
  await db.query("select set_config('test.notice_sid',$1,false)",[sid]);
- await actor(c.UB);await deny(()=>read(),/permission/);await actor(UA);
+ await actor(c.UB);await deny(()=>read(),/permission/);await deny(()=>scoped(),/permission/);await actor(UA);
  for(const flag of ['test.invoice_view','test.invoice_manage']){
-  await db.query("select set_config($1,'false',false)",[flag]);await deny(()=>read(),/unavailable/);
+  await db.query("select set_config($1,'false',false)",[flag]);await deny(()=>read(),/unavailable/);await deny(()=>scoped(),/unavailable/);
   await db.query("select set_config($1,'true',false)",[flag]);
  }
  await deny(()=>db.query('update trade_document_consent_private.notice_confirmation_results set result=result where ticket_id=$1',[ticket]),/immutable/);
@@ -102,8 +107,9 @@ export async function verifyNoticeSeal(db,c){
  const after=await state(x);check(after.audit,1);check(after.consents,1);check(after.receipts,1);
  check(await q('select count(*)::int v from invoice_month_close_candidate.approval_permits'),0);
  await deny(()=>call(ticket),/unavailable/);check(await state(x),after);
- await db.exec('set role authenticated');await deny(()=>call(ticket),/permission denied/);await deny(()=>read(),/permission denied/);await db.exec('reset role');
+ await db.exec('set role authenticated');await deny(()=>call(ticket),/permission denied/);await deny(()=>read(),/permission denied/);await deny(()=>scoped(),/permission denied/);await db.exec('reset role');
  for(const role of ['anon','authenticated','service_role']){
+  check(await q("select has_function_privilege($1,'trade_document_consent_private.read_invoice_notice_result_scoped(uuid,uuid,uuid,integer,jsonb,uuid)','EXECUTE') v",[role]),false);
   check(await q("select has_table_privilege($1,'trade_document_consent_private.notice_confirmation_results','SELECT') v",[role]),false);
   check(await q("select has_function_privilege($1,'trade_document_consent_private.read_invoice_notice_result(uuid,uuid,uuid,integer,jsonb,uuid)','EXECUTE') v",[role]),false);
  }

@@ -1,5 +1,49 @@
 # Independent notice archive — isolated proof of concept
 
+## Authenticated HTTPS readback client (2026-10-29, OFF)
+
+`archive-readback-https-candidate.mjs` connects the existing fresh-challenge
+receipt verifier to native Node HTTPS IO. Endpoint, authority, public receipt
+key, bearer and optional public CA certificate are trusted construction-time
+configuration, copied before asynchronous work. A read call cannot supply a
+URL, key, headers, shared agent or TLS override. It makes one POST to that exact
+configured endpoint, verifies the certificate/hostname with TLS 1.3 minimum,
+never follows Location/redirects, and then uses the existing canonical receipt
+verifier to bind the signed response to the captured expected byte descriptor.
+The result remains `readback_verified_unattested` / `archive_bytes_observed`.
+
+Request JSON is capped at 2 KiB, response bytes at 4 KiB and response headers at
+8 KiB. Wrong content type, compression, duplicate sensitive headers, absent
+no-store policy, malformed/truncated JSON and non-200 status fail closed.
+The total deadline includes connection/response IO; caller AbortSignal and
+either transport/verifier timeout destroy only the request owned by that
+operation. There is no retry or shared-agent destruction. A bounded local
+admission count rejects excess calls before creating a socket. Errors omit
+credentials, response content, configured URL and external failure details.
+
+Ten new tests use actual loopback HTTPS sockets and temporary certificates,
+the real byte store and existing Ed25519 observation attestor. They cover CA/
+hostname/TLS-version rejection, exact POST/authentication, redirect bearer
+non-forwarding, header/declared/stream byte limits, response schema/metadata,
+fresh-challenge cached-receipt refusal, mutable configuration/input, independent
+request cancellation/admission, deadline and generic authentication failures.
+The size tests pause JS deadlines so a missing size cap cannot pass by merely
+waiting for timeout. The deadline test advances its JS timer only after the
+real TLS server confirms the stalled-body stage, rather than assuming a fast
+handshake. Socket close and surviving concurrent operation are checked directly.
+These 10 tests plus existing receipt/byte tests pass 32 cases locally; the
+dedicated CI result must be checked independently.
+
+This is an outbound client candidate, **not a deployed authority, independent
+custody, WORM, retention guarantee or protected checkpoint**. The test host,
+bearer, receipt keys and CA are synthetic and same-host. Real endpoint/certificate
+and bearer provisioning/rotation, company/caller authorization, trusted signer
+and byte-store ownership, operator-independent checkpoints/backups, health/
+access-log policy and actual disaster recovery remain unresolved. Local abort
+does not prove remote signing was cancelled or that an OS DNS resolver stopped.
+No real host, credential, production data or notification was used. No source
+pin is released, original deleted, capacity recovered, or feature enabled.
+
 ## Signed full-byte readback observation (2026-10-28, OFF)
 
 `archive-readback-receipt-candidate.mjs` connects the byte store's actual restore

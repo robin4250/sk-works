@@ -2,6 +2,9 @@
 // The application receives a failed COMMIT future, not a successful ACK that the
 // test later discards. No public API, hosted endpoint or real Auth claim here.
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import os from 'node:os';
 import {createNoticeCommitAckProxy} from './trade_document_notice_commit_ack_proxy.mjs';
 
 export async function verifyNoticeCommitAckLoss(db,c){
@@ -39,6 +42,16 @@ export async function verifyNoticeCommitAckLoss(db,c){
   await c.deny(()=>read(recovered,committed.args),/notice_result_unavailable/);
   await setActor(recovered);
   check(await read(recovered,committed.args),{found:true,status:'recorded',result:provisional});
+  const scoped=(await recovered.query('select trade_document_consent_private.read_invoice_notice_result_scoped($1,$2,$3,1,$4::jsonb,$5) v',committed.args)).rows[0].v;
+  const stored=(await db.query(`select jsonb_build_object('ticket_id',ticket_id,'local_document_id',local_document_id,'company_id',company_id,'revision',document_revision,'request_id',request_id,'expected_hash',expected_hash,'actor_id',actor_id,'session_id',session_id) v from trade_document_consent_private.notice_confirmation_results where ticket_id=$1`,[committed.args[0]])).rows[0].v;
+  check(scoped,{found:true,status:'recorded',result:provisional,scope:stored});
+  const exportFile=process.env.SKO_NOTICE_CLIENT_RECEIPT_FIXTURE;
+  if(exportFile){
+   const destination=path.resolve(exportFile),temporaryRoot=path.resolve(process.env.RUNNER_TEMP||os.tmpdir());
+   if(process.env.CI!=='true'||!destination.startsWith(temporaryRoot+path.sep))throw Error('receipt export requires CI temporary path');
+   await fs.writeFile(destination,JSON.stringify({receipt:scoped,expected_preview:JSON.parse(committed.args[3])}),{flag:'wx',mode:0o600});
+   console.log('PASS actual committed scoped receipt exported for same-job Dart contract verification (synthetic data only)');
+  }
   check(await results(committed.args),1);
   const after=await state(committed.x);check(after.audit,1);check(after.consents,1);check(after.receipts,1);
   check(after.approvals[0].status,'approved');check(after.parent.invoice_seal_frozen,true);

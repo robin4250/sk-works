@@ -3,6 +3,8 @@ on:
   pull_request:
     paths:
       - 'tool/security/master-device-enrollment-candidate/owner-issuer-continuity*'
+      - 'tool/security/master-device-enrollment-candidate/owner-issuer-store*'
+      - 'tool/security/master-device-enrollment-candidate/owner-decision-evidence.mjs'
       - '.github/workflows/master-owner-issuer-continuity.yml'
 permissions:
   contents: read
@@ -18,3 +20,40 @@ jobs:
         with:
           node-version: '24'
       - run: node --test tool/security/master-device-enrollment-candidate/owner-issuer-continuity.test.mjs tool/security/master-device-enrollment-candidate/owner-decision-attestation.test.mjs
+  issuer-store-pglite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
+      - run: node tool/security/master-device-enrollment-candidate/owner-issuer-store.pglite.mjs
+  issuer-store-native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:17.6
+        env:
+          POSTGRES_PASSWORD: synthetic-issuer-fixture
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: synthetic-issuer-fixture
+      PGDATABASE: postgres
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
+      - run: node tool/security/master-device-enrollment-candidate/owner-issuer-store.native.mjs

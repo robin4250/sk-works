@@ -35,7 +35,12 @@ jobs:
         with:
           flutter-version: '3.47.5'
           channel: stable
-      - run: python3 -m pip install --disable-pip-version-check 'PyMuPDF==1.26.6'
+      - name: Prepare isolated observer Python
+        run: |
+          python3 -m venv "$RUNNER_TEMP/sko-vault-observer-python"
+          "$RUNNER_TEMP/sko-vault-observer-python/bin/python" -m pip install --disable-pip-version-check 'PyMuPDF==1.26.6'
+          "$RUNNER_TEMP/sko-vault-observer-python/bin/python" -I -c 'import pymupdf; assert pymupdf.VersionBind == "1.26.6"'
+          echo "$RUNNER_TEMP/sko-vault-observer-python/bin" >> "$GITHUB_PATH"
       - run: python3 -m unittest discover -s docs/review/personal-vault25-content -p '*_test.py' -v
       - run: flutter pub get --enforce-lockfile
       - run: flutter analyze test/personal_vault_content_evidence_test.dart lib/features/personal_vault test/own_payroll_archive_pdf_test.dart test/personal_vault_page_test.dart test/personal_vault_repository_test.dart test/personal_vault_pdf_download_test.dart test/personal_vault_pdf_download_io_test.dart

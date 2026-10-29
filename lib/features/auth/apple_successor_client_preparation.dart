@@ -4,7 +4,10 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:http/http.dart' as http;
 import 'apple_successor_https_delivery.dart';
+
+part 'apple_owned_session_coordinator.dart';
 
 /// Default-OFF, memory-only verification before any application-session adoption.
 /// The received refresh credential stays inside an isolated SDK client. This

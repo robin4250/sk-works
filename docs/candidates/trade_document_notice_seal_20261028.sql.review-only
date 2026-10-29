@@ -91,3 +91,23 @@ begin
  return jsonb_build_object('found',true,'status','recorded','result',r.result);
 end $$;
 revoke all on function trade_document_consent_private.read_invoice_notice_result(uuid,uuid,uuid,integer,jsonb,uuid) from public,anon,authenticated,service_role;
+
+-- Private client contract adapter. The old reader retains every rollout,
+-- actor/company/feature/live-SID/expected-preview check. Scope is taken only
+-- from its immutable stored row, never reconstructed from caller parameters.
+create function trade_document_consent_private.read_invoice_notice_result_scoped(
+ p_ticket uuid,p_local uuid,p_company uuid,p_revision integer,p_expected jsonb,p_request uuid)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare checked jsonb;r trade_document_consent_private.notice_confirmation_results%rowtype;
+begin
+ checked:=trade_document_consent_private.read_invoice_notice_result(p_ticket,p_local,p_company,p_revision,p_expected,p_request);
+ if checked->'found' is distinct from 'true'::jsonb then return checked;end if;
+ select * into strict r from trade_document_consent_private.notice_confirmation_results
+ where ticket_id=p_ticket and company_id=p_company and local_document_id=p_local
+ and document_revision=p_revision and request_id=p_request;
+ return checked||jsonb_build_object('scope',jsonb_build_object(
+  'ticket_id',r.ticket_id,'local_document_id',r.local_document_id,
+  'company_id',r.company_id,'revision',r.document_revision,'request_id',r.request_id,
+  'expected_hash',r.expected_hash,'actor_id',r.actor_id,'session_id',r.session_id));
+end $$;
+revoke all on function trade_document_consent_private.read_invoice_notice_result_scoped(uuid,uuid,uuid,integer,jsonb,uuid) from public,anon,authenticated,service_role;
