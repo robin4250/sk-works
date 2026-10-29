@@ -1,5 +1,39 @@
 # Independent notice archive — isolated proof of concept
 
+## Disposable real GoTrue / Native PostgreSQL server proof (2026-10-29)
+
+`tests/archive-readback-server-real-auth.mjs` is a dedicated CI harness using a
+fresh CLI-owned Supabase stack, real GoTrue-issued JWTs and actual auth tables,
+Native PostgreSQL 17, the unchanged server/client, and the same existing guard
+and private registry SQL. It refuses hosted Supabase environment credentials,
+checks an empty owned stack and fixed loopback API/DB endpoints, and removes
+only that generated stack. Tokens, service credentials and TLS/private keys are
+kept inside temporary fixture state and omitted from output. No success Auth
+response is mocked: the fixed test-origin bridge forwards the exact bearer to
+the real disposable `/auth/v1/user` endpoint and returns its actual response.
+That HTTP loopback bridge is a fixture, not production hosted TLS verification.
+
+The new job targets forged-token rejection before pool acquisition, own/foreign/
+unregistered objects, real user_metadata lacking Master authority, and true
+independent-connection role/session revocations blocked by the server's shared
+row locks until its read transaction completes. It checks actual backend PID
+exit after client disconnect, transaction-local claim cleanup, a deliberately
+discarded response after read commit, and cancelled queued pool acquisition
+whose late lease is destroyed before BEGIN. An actual `pg_sleep` diagnostic
+under the server's existing statement bound tests pending-query termination.
+It does not equate `release(true)` with synchronous server cancellation: native
+backend exit is observed separately and may depend on the statement timeout.
+Unexpected idle-pool errors fail the job without printing private error detail.
+
+This closes only the actual execution gap when the **new head's CI result is
+verified**. Local syntax validation alone is not a GoTrue/Native pass. Registry
+records, company/Master association and credentials are synthetic administrator
+fixture seeds, not authenticated source-owner enrollment. Production least-
+privilege pool/certificate/catalog compatibility, trusted registry population,
+Native operational policies, independent custody/WORM/retention and activation
+remain incomplete. Original byte objects and the immutable registry are retained;
+no source references are released or real notification/data/deployment changed.
+
 ## OFF readback server and required descriptor registry (2026-10-29)
 
 `archive-readback-server-candidate.mjs` composes the existing exact-bearer
