@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/widgets.dart';
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'scanner_registration_key.dart';
@@ -69,7 +68,7 @@ class ScannerRegistrationTransport {
   ScannerRegistrationTransport.forTesting({required this.origin,required this.client,this.enabled=false}) : _ownsClient=false { _validateOrigin(); }
   void _validateOrigin() {
     if(origin.scheme!='https' || origin.host.isEmpty || origin.userInfo.isNotEmpty ||
-        !['','/'].contains(origin.path) || origin.hasQuery || origin.hasFragment) throw ArgumentError('trusted scanner HTTPS origin required');
+        !['','/'].contains(origin.path) || origin.hasQuery || origin.hasFragment) { throw ArgumentError('trusted scanner HTTPS origin required'); }
   }
   final Uri origin;
   final http.Client client;

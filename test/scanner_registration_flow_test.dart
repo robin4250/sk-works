@@ -31,7 +31,7 @@ class _Wire extends http.BaseClient {
   final result=await dispatch(body);return http.StreamedResponse(Stream.value(utf8.encode(jsonEncode(result))),200,headers:{'content-type':'application/json; charset=utf-8'});
  }
 }
-class Fixture {
+class _Fixture {
  static const keyChannel=MethodChannel('com.skworks.sko/qr_scanner_key'),journalChannel=MethodChannel('com.skworks.sko/qr_scanner_pending');
  late SupabaseClient client;late ScannerRegistrationController controller;late _Wire wire;
  Map<String,dynamic>? stored,serverChallenge;bool keyExists=false,proofAccepted=false,registered=false;
@@ -99,7 +99,7 @@ class Fixture {
 }
 void main(){
  TestWidgetsFlutterBinding.ensureInitialized();
- late Fixture f;setUp(() async {f=Fixture();await f.open();});tearDown(() async {await f.close();});
+ late _Fixture f;setUp(() async {f=_Fixture();await f.open();});tearDown(() async {await f.close();});
  test('actual controller/native-bridge/HTTP contract orders durable ACK before each write',() async {
   await f.passwordStage();await f.controller.submitPassword('synthetic-secondary-password');expect(f.controller.view,ScannerRegistrationView.confirmed);
   for(final pair in [['challenge_sent','challenge'],['proof_sent','proof'],['completion_sent','complete']]){expect(f.order.indexOf('journal:${pair[0]}:ack'),lessThan(f.order.indexOf('http:${pair[1]}')));}
@@ -120,7 +120,7 @@ void main(){
  });
  test('unacknowledged/corrupt durable stage prevents HTTP write and unknown missing result prevents retry',() async {
   for(final corrupt in [false,true]){
-   if(f.stored!=null){await f.close();f=Fixture();await f.open();}
+   if(f.stored!=null){await f.close();f=_Fixture();await f.open();}
    await f.controller.load();await f.controller.createExplicitNewLogicalDevice();await f.controller.prepareKey();
    if(corrupt){f.corruptJournalAck='challenge_sent';}else{f.loseJournalAck='challenge_sent';}
    await f.controller.startChallenge();expect(f.operations,isEmpty);await f.controller.reconcile();expect(f.operations.where((v)=>v=='challenge'),isEmpty);expect(f.controller.view,ScannerRegistrationView.uncertain);
