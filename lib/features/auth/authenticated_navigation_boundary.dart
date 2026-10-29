@@ -56,7 +56,9 @@ class _AuthenticatedNavigationBoundaryState
       _binding = binding;
       // Only the first valid SDK sign-in belongs to the pending OTP callback.
       if (previous == null && binding != null &&
-          event.event == AuthChangeEvent.signedIn && !_failed && !_resetting) return;
+          event.event == AuthChangeEvent.signedIn && !_failed && !_resetting) {
+        return;
+      }
       _reset();
     }, onError: (Object error) => _fail(), onDone: _fail);
   }

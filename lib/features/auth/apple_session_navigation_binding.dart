@@ -17,7 +17,9 @@ class AppleSessionNavigationBinding {
       final claims = jsonDecode(utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))));
       if (claims is! Map || claims['sub'] != session.user.id ||
           !_uuid.hasMatch(session.user.id) || claims['session_id'] is! String ||
-          !_uuid.hasMatch(claims['session_id'] as String)) throw const FormatException();
+          !_uuid.hasMatch(claims['session_id'] as String)) {
+        throw const FormatException();
+      }
       return AppleSessionNavigationBinding._(session.user.id, (claims['session_id'] as String).toLowerCase());
     } catch (_) { throw const FormatException('Invalid navigation session binding'); }
   }
