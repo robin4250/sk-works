@@ -1,0 +1,9 @@
+# Warning-only successor to the connected fixture
+
+A saved daily transfer configuration can remain enabled when pay type changes to monthly/hourly. Daily transfer is intentionally inapplicable to those statements. A known valid non-daily snapshot now keeps its original base/allowance/overtime amounts and its normal saved-unit explanation without the false transfer-error warning.
+
+The renderer suppresses a warning only for the version-1 four-field snapshot, enabled true, a known monthly/hourly pay type and a nonempty valid item list. A shared private item parser enforces the same name, reserved-name, duplicate-name, positive integer yen and aggregate bounds for daily attribution and non-daily validity. Daily still requires exact original allowance amounts and recorded day evidence. Unknown versions/pay types, malformed requested snapshots and inconsistent daily evidence still warn. No rate or monetary transfer is calculated for non-daily statements.
+
+The connected Native PG fixture SQL and UI-equivalent JSON are unchanged from PR1562. It still proves actual saved daily/monthly data, finalized snapshot preservation and invalid amount refusal through actual PDFs. New unit matrix tests reject malformed snapshots, and a mandatory-font dedicated actual-PDF matrix covers valid monthly/hourly, unknown pay type, bad version, missing items, negative amount, duplicate/reserved names and inconsistent daily amount. It checks original detail, gross/deductions/net, base, allowances and overtime are preserved. Dedicated tests stay outside standard test discovery; no skip can fake evidence in the explicit CI job.
+
+This change does not modify UI, existing calculation SQL/function bodies, database rows, settings or snapshot storage. No production DML, person-specific activation or original-data mutation occurs. All test identities and amounts are fictional.
