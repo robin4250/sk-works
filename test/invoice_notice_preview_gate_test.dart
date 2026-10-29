@@ -33,8 +33,10 @@ void main() {
       await tester.tap(find.text('注文請書と登録印影を確認'));
       for (var frame = 0; frame < 5 && info == 0; frame++) { await tester.pump(); }
       expect(info, 1); expect(rasters, 0);
-      final acknowledgement = tester.widget<FilledButton>(find.ancestor(of: find.text('表示内容と印影を確認しました'),
-        matching: find.byWidgetPredicate((widget) => widget is FilledButton)).first);
+      // The incoming route is in its initial offstage measurement while the
+      // capability future is deliberately held; inspect its built control.
+      final acknowledgement = tester.widget<FilledButton>(find.ancestor(of: find.text('表示内容と印影を確認しました', skipOffstage: false),
+        matching: find.byWidgetPredicate((widget) => widget is FilledButton, skipOffstage: false)).first);
       expect(acknowledgement.onPressed, isNull);
       recovery.invalidate();
       capabilities.complete({'canRaster': true});
