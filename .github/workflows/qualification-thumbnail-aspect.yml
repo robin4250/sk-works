@@ -1,0 +1,23 @@
+name: Qualification thumbnail aspect
+on:
+  pull_request:
+    paths:
+      - 'lib/features/shared/resource_registration_card.dart'
+      - 'test/qualification_thumbnail_aspect_test.dart'
+      - '.github/workflows/qualification-thumbnail-aspect.yml'
+permissions:
+  contents: read
+jobs:
+  thumbnail-aspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/shared/resource_registration_card.dart test/qualification_thumbnail_aspect_test.dart
+      - run: flutter test --reporter expanded test/qualification_thumbnail_aspect_test.dart test/resource_registration_card_test.dart test/qualification_image_preview_navigation_test.dart
