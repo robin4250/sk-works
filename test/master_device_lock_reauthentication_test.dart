@@ -161,7 +161,11 @@ void main() {
     devices.currentActor = '10000000-0000-0000-0000-000000000002';
     proofs.pending!.complete('synthetic-single-use-proof');await tester.pumpAndSettle();expect(devices.changes, 0);
     await tester.tap(find.text('キャンセル'));await tester.pumpAndSettle();
-    devices.currentActor = actor;proofs.pending = Completer<String>();await lock(tester);
+    // A session boundary is terminal for the management page. Reopen a fresh
+    // page before testing the separate background interruption.
+    devices.currentActor = actor;proofs.pending = Completer<String>();
+    await tester.pumpWidget(const SizedBox());await tester.pump();
+    await _open(tester, devices, proofs);await lock(tester);
     await tester.enterText(find.byKey(const Key('master-device-lock-password')), 'synthetic-primary');
     await tester.tap(find.text('本人確認して変更'));await tester.pump();
     for (final state in [AppLifecycleState.inactive, AppLifecycleState.hidden, AppLifecycleState.paused,

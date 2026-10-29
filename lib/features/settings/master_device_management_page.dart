@@ -103,7 +103,7 @@ class _MasterDeviceManagementPageState
   }
 
   Future<bool> _confirmLoss(MasterDeviceRecord device, String operation) async {
-    if (_confirmingLoss) return false;
+    if (!mounted || !_current || _confirmingLoss) return false;
     _confirmingLoss = true;
     try {
     if (removesLastUsableMasterDevice(_devices, device)) {
