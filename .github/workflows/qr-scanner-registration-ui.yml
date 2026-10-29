@@ -1,0 +1,47 @@
+name: QR scanner registration UI OFF composition
+on:
+  pull_request:
+    paths:
+      - 'lib/features/qr_attendance/scanner_registration_*.dart'
+      - 'test/scanner_registration_flow_test.dart'
+      - 'test/scanner_registration_transport_tls_test.dart'
+      - 'tool/ios/qr_scanner_registration_journal.swift'
+      - 'tool/tests/qr_scanner_journal_main.swift'
+      - 'tool/prepare_ios.sh'
+      - 'docs/review/qr-scanner-registration-ui/**'
+      - '.github/workflows/qr-scanner-registration-ui.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-journal:
+    runs-on: macos-26-intel
+    timeout-minutes: 10
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Typecheck actual iOS journal and custody APIs
+        run: xcrun swiftc -typecheck -swift-version 5 -sdk "$(xcrun --sdk iphoneos --show-sdk-path)" -target arm64-apple-ios15.5 tool/ios/qr_scanner_key.swift tool/ios/qr_scanner_registration_journal.swift
+      - name: Execute actual native state policy and protected Keychain query
+        run: |
+          cp tool/tests/qr_scanner_journal_main.swift "$RUNNER_TEMP/main.swift"
+          xcrun swiftc -swift-version 5 tool/ios/qr_scanner_key.swift tool/ios/qr_scanner_registration_journal.swift "$RUNNER_TEMP/main.swift" -o "$RUNNER_TEMP/qr-scanner-journal"
+          "$RUNNER_TEMP/qr-scanner-journal"
+      - run: bash -n tool/prepare_ios.sh
+  flutter-registration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/qr_attendance/scanner_registration_controller.dart lib/features/qr_attendance/scanner_registration_pending.dart lib/features/qr_attendance/scanner_registration_transport.dart lib/features/qr_attendance/scanner_registration_page.dart test/scanner_registration_flow_test.dart test/scanner_registration_transport_tls_test.dart
+      - run: flutter test test/scanner_registration_flow_test.dart test/scanner_registration_transport_tls_test.dart
+      - run: git diff --exit-code -- pubspec.yaml pubspec.lock
