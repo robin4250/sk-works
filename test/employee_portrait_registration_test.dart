@@ -141,8 +141,8 @@ void main(){
   expect(f.mutations,isEmpty);
  });
  test('dispose during admission cannot start a new personnel read',() async {
-  final pending=repo.load();await repo.dispose();
-  await expectLater(pending,throwsA(anything));expect(privacyReads,0);expect(f.mutations,isEmpty);
+  final pending=repo.load();final rejected=expectLater(pending,throwsA(isA<PersonnelScopeChanged>()));
+  await repo.dispose();await rejected;expect(privacyReads,0);expect(f.mutations,isEmpty);
  });
  test('invalid PDF, empty and oversized input cannot call Storage',() async {
   final draft=await repo.load();
