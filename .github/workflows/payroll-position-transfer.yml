@@ -4,7 +4,12 @@ on:
     paths:
       - 'lib/features/payroll/payroll_position_transfer.dart'
       - 'lib/features/payroll/payroll_pdf_service.dart'
-      - 'test/payroll_position_transfer_test.dart'
+      - 'test/payroll_position_transfer*.dart'
+      - 'test/fixtures/payroll_transfer/**'
+      - 'tool/tests/payroll_position_transfer_connected_test.dart'
+      - 'docs/review/payroll-position-transfer/sql/**'
+      - 'lib/features/payroll/individual_payroll_settings_page.dart'
+      - 'lib/features/payroll/individual_payroll_settings_repository.dart'
       - '.github/workflows/payroll-position-transfer.yml'
 permissions:
   contents: read
@@ -51,3 +56,48 @@ jobs:
         env:
           PGPASSWORD: synthetic_only
         run: psql -h localhost -U postgres -d postgres -f docs/review/payroll-position-transfer/sql/synthetic-test.sql
+
+  connected-saved-sql-pdf:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17.6
+        env:
+          POSTGRES_PASSWORD: synthetic_only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      SKO_PDF_FONT_PATH: build/pdf-fixtures/NotoSansJP-Regular.ttf
+      SKO_PDF_OUTPUT_DIR: build/pdf-fixtures
+      SKO_TRANSFER_CONNECTED_JSON: build/pdf-fixtures/payroll_transfer_connected.json
+      PGPASSWORD: synthetic_only
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: |
+          flutter pub get --enforce-lockfile
+          python3 -m pip install PyMuPDF==1.26.6 fonttools==4.61.1
+          python3 tool/prepare_pdf_fixture_font.py
+      - name: Persist UI-equivalent payload through actual review-only sync functions
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$CI" = true
+          ui_payload=$(cat test/fixtures/payroll_transfer/ui-save-equivalent.json)
+          psql -X -qAt --set=ON_ERROR_STOP=1 --set=ui_payload="$ui_payload" -h 127.0.0.1 -U postgres -d postgres -f docs/review/payroll-position-transfer/sql/connected-fixture.sql > "$SKO_TRANSFER_CONNECTED_JSON"
+          python3 -c 'import json,os; json.load(open(os.environ["SKO_TRANSFER_CONNECTED_JSON"]))'
+      - run: flutter analyze tool/tests/payroll_position_transfer_connected_test.dart
+      - run: flutter test --reporter expanded tool/tests/payroll_position_transfer_connected_test.dart
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: payroll-position-transfer-connected-evidence
+          path: build/pdf-fixtures/payroll*connected*
+          if-no-files-found: error

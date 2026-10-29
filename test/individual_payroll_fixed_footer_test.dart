@@ -15,12 +15,16 @@ class _Units extends PayrollUnitConditionsRepository {
   final saved = <List<PayrollUnitItemDraft>>[];
   Completer<void>? pending;
   bool failLoad = false;
+  bool includeMonthlyItems = true;
+  final loadedWorkers = <String>[];
   @override Future<bool> available() async => true;
   @override Future<PayrollUnitConditions> load(String company, String worker, String month) async {
+    loadedWorkers.add(worker);
     if (failLoad) throw StateError('synthetic unavailable');
     return PayrollUnitConditions(version: 1, month: month, canEdit: edit, items: [
         for (final section in PayrollItemSection.values)
           for (final unit in PayrollItemUnit.values)
+            if (includeMonthlyItems || unit != PayrollItemUnit.month)
             PayrollUnitItemDraft(id: '${section.name}-${unit.name}', section: section,
                 unit: unit, name: '${section.name}-${unit.name}', rate: '100',
                 quantity: unit == PayrollItemUnit.hour ? '2' : '',
@@ -48,7 +52,8 @@ class _Repository extends IndividualPayrollSettingsRepository {
   @override PayrollUnitConditionsRepository get unitConditions => units;
   @override Future<IndividualPayrollWorkspace> loadWorkspace() async => IndividualPayrollWorkspace(
       companyId: 'company-a', canView: true, canEdit: edit, isAdmin: edit,
-      workers: const [IndividualPayrollWorker(id: 'worker-a', name: '社員A')]);
+      workers: const [IndividualPayrollWorker(id: 'worker-a', name: '社員A'),
+        IndividualPayrollWorker(id: 'worker-b', name: '社員B')]);
   @override Future<bool> supportsPaidLeaveWages() async => false;
   @override Future<ResidentTaxCapability> residentTaxCapability() async => ResidentTaxCapability.legacy;
   @override Future<IndividualPayrollSetting> loadSetting(String workerId) async =>
@@ -159,6 +164,62 @@ void main() {
     expect(controller.canRegister, false);
     expect(repository.saved, isEmpty);
     expect(find.textContaining('単位別設定を取得できません'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final failed in [false, true]) {
+    for (final monthlyItems in [false, true]) {
+      testWidgets('one host footer on monthly view failed=$failed items=$monthlyItems', (tester) async {
+        final repository = _Repository(client);
+        repository.units.failLoad = failed;
+        repository.units.includeMonthlyItems = monthlyItems;
+        await open(tester, repository, PayrollItemSection.earning, PayrollItemUnit.month);
+        expect(find.text('追加'), findsOneWidget);
+        expect(find.text('登録'), findsOneWidget);
+        expect(tester.widget<OutlinedButton>(find.descendant(of: footer,
+            matching: find.byType(OutlinedButton))).onPressed, isNotNull);
+        if (failed) {
+          expect(find.textContaining('単位別設定を取得できません'), findsOneWidget);
+          for (final label in ['日単位', '時間単位']) {
+            await tester.ensureVisible(find.text(label));
+            await tester.tap(find.text(label)); await tester.pumpAndSettle();
+            expect(find.text('追加'), findsOneWidget);
+            expect(find.text('登録'), findsOneWidget);
+            expect(tester.widget<OutlinedButton>(find.descendant(of: footer,
+                matching: find.byType(OutlinedButton))).onPressed, isNull);
+            expect(tester.widget<FilledButton>(find.descendant(of: footer,
+                matching: find.byType(FilledButton))).onPressed, isNotNull,
+                reason: 'registered worker allowance rows retain their existing save path');
+          }
+        }
+        expect(repository.units.saved, isEmpty);
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+  testWidgets('same session worker switch retains single host footer and recovers failed units', (tester) async {
+    final repository = _Repository(client);
+    await open(tester, repository, PayrollItemSection.earning, PayrollItemUnit.month);
+    repository.units.failLoad = true;
+    final dropdown = find.byType(DropdownButtonFormField<String>);
+    await tester.ensureVisible(dropdown);
+    await tester.tap(dropdown); await tester.pumpAndSettle();
+    await tester.tap(find.text('社員B').last); await tester.pumpAndSettle();
+    expect(repository.units.loadedWorkers.last, 'worker-b');
+    expect(find.text('追加'), findsOneWidget);
+    expect(find.text('登録'), findsOneWidget);
+    expect(find.textContaining('単位別設定を取得できません'), findsOneWidget);
+    repository.units.failLoad = false;
+    final retry = find.text('再読み込み');
+    await tester.ensureVisible(retry); await tester.tap(retry); await tester.pumpAndSettle();
+    expect(repository.units.loadedWorkers.last, 'worker-b');
+    await tester.ensureVisible(find.text('日単位'));
+    await tester.tap(find.text('日単位')); await tester.pumpAndSettle();
+    expect(tester.widget<OutlinedButton>(find.descendant(of: footer,
+        matching: find.byType(OutlinedButton))).onPressed, isNotNull);
+    expect(find.text('追加'), findsOneWidget);
+    expect(find.text('登録'), findsOneWidget);
+    expect(repository.units.saved, isEmpty);
     expect(tester.takeException(), isNull);
   });
 

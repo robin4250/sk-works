@@ -13,10 +13,23 @@ void main() {
       expect(initial({'month':pair.key})['issue_date'],pair.value);
     }
   });
-  test('acceptance defaults order date but never invents acceptance issue date', () {
+  test('acceptance defaults to prior month end and order date to fifteenth', () {
     final value=initial({'month':'2026-10'},kind:'invoice');
     expect(value['order_date'],'2026-09-15');
-    expect(value.containsKey('issue_date'),isFalse);
+    expect(value['issue_date'],'2026-09-30');
+  });
+  test('monthly acceptance calendar boundaries preserve explicit and saved dates', () {
+    for (final pair in {'2026-01':'2025-12-31','2024-03':'2024-02-29',
+      '2026-03':'2026-02-28','2026-05':'2026-04-30'}.entries) {
+      final source = {'issue_date':'2026-10-31'};
+      expect(initial({'month':pair.key}, defaults:source, kind:'invoice')['issue_date'],pair.value);
+      expect(source, {'issue_date':'2026-10-31'});
+    }
+    for (final date in ['', '2026-10-07']) {
+      final saved = {'month':'2026-10','issue_date':date};
+      expect(initial(saved,saved:true,kind:'invoice'),saved);
+    }
+    expect(initial({'month':'2026-10','issue_date':'2026-10-07'},kind:'invoice')['issue_date'],'2026-10-07');
   });
   test('explicit source dates and subjects are preserved ahead of generated dates', () {
     final defaults={'issue_date':'2026-10-15','work_name':'既存工事名',

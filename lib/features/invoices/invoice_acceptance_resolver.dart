@@ -64,10 +64,8 @@ class InvoiceAcceptanceResolver {
       payload['company_seal_snapshot'] = _parentSealPayload(parentSealSnapshot);
       payload['company_seal_enabled'] = parentSealEnabled;
     }
-    payload['issue_date'] =
-        '${issueDate.year.toString().padLeft(4, '0')}-'
-        '${issueDate.month.toString().padLeft(2, '0')}-'
-        '${issueDate.day.toString().padLeft(2, '0')}';
+    // Unsaved source defaults contain the parent invoice's date.
+    payload.remove('issue_date');
     final result = r18InitialValues(
       payload: payload,
       sourceDefaults: defaults,

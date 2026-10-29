@@ -41,7 +41,7 @@ void main() {
         onMissingLockedAcceptance: () { reported++; })!;
       expect(reported, 0);
       expect(result.payload['order_date'], '2025-12-15');
-      expect(result.payload['issue_date'], '2026-02-05');
+      expect(result.payload['issue_date'], '2025-12-31');
       expect(result.payload['acceptance_text'], '2025-12-15の注文を承諾');
       expect(result.payload['issuer'], {'name': '受注会社'});
       expect(result.payload['total_amount_yen'], 110000);
@@ -49,6 +49,20 @@ void main() {
       expect(data['attachment'], isNull);
     },
   );
+  test('target month determines acceptance date independently of invoice issue date', () {
+    for (final pair in {'2026-10':'2026-09-30','2026-01':'2025-12-31',
+      '2024-03':'2024-02-29','2026-03':'2026-02-28'}.entries) {
+      final data = workspace();
+      final defaults = data['defaults'] as Map;
+      defaults['month'] = pair.key;
+      defaults['issue_date'] = '2026-10-31';
+      final result = InvoiceAcceptanceResolver.resolve(data, issueDate: DateTime(2026,10,31))!;
+      expect(result.payload['issue_date'], pair.value);
+      expect(defaults['issue_date'], '2026-10-31');
+      data['attachment'] = {'version':9,'payload':{...result.payload,'issue_date':'2026-10-07'}};
+      expect(InvoiceAcceptanceResolver.resolve(data,issueDate:date)!.payload['issue_date'],'2026-10-07');
+    }
+  });
   test('saved appendix wins over current template and issue date', () {
     final data = workspace();
     final saved = InvoiceAcceptanceResolver.resolve(data, issueDate: date)!;
@@ -71,7 +85,7 @@ void main() {
       parentSealSnapshot: parent, parentSealEnabled: true,
       onMissingLockedAcceptance: () { reported++; })!;
     expect(reported, 0);
-    expect(result.payload['issue_date'], '2026-02-05');
+    expect(result.payload['issue_date'], '2025-12-31');
     expect(result.payload['company_seal_snapshot'], {
       'version': 1, 'style': 'legacy', 'name': '親請求書の固定印',
     });
