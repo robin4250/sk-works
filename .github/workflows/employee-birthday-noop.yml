@@ -1,0 +1,33 @@
+name: Employee birthday no-op compatibility
+on:
+  pull_request:
+    paths:
+      - 'tool/employee_birthday_noop_check.mjs'
+      - 'tool/staged/personnel_birthday_noop*'
+      - '.github/workflows/employee-birthday-noop.yml'
+permissions:
+  contents: read
+jobs:
+  noop-pg17:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_personnel_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_personnel_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      SKO_PERSONNEL_FIXTURE_URL: postgres://postgres:fixture-only@127.0.0.1:5432/sko_personnel_fixture
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
+      - run: node tool/employee_birthday_noop_check.mjs "$PWD/tool/security/personnel_rls/pg_adapter.mjs"
