@@ -107,7 +107,7 @@ void main() {
       stdout.writeln('INVOICE_APP_STAGE=failed_preview_closed');
       expect(approveButton().onPressed, isNull);
       await tester.tap(find.text('注文請書と登録印影を確認')); await tester.pump();
-      await until(() => rasterCalls == 2, 'second preview raster requested');
+      await until(() => rasterCalls == 2 && find.text('表示内容と印影を確認しました').evaluate().isNotEmpty, 'second preview raster requested and route visible');
       stdout.writeln('INVOICE_APP_STAGE=second_raster_pending');
       expect(previewButton().onPressed, isNull);
       emitPage!();
