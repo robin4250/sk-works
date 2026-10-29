@@ -1,0 +1,25 @@
+name: Trade document touch input
+on:
+  pull_request:
+    paths:
+      - 'lib/features/shared/trade_document_touch_editor_page.dart'
+      - 'lib/domain/trade_document_form_draft.dart'
+      - 'test/trade_document_touch_editor_test.dart'
+      - '.github/workflows/trade-document-touch-editor.yml'
+permissions:
+  contents: read
+jobs:
+  touch-input:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/shared/trade_document_touch_editor_page.dart test/trade_document_touch_editor_test.dart
+      - run: flutter test test/trade_document_touch_editor_test.dart
+      - run: git diff --exit-code -- pubspec.yaml pubspec.lock
