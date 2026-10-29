@@ -4,6 +4,7 @@ on:
     paths:
       - 'tool/employee_birthday_noop_check.mjs'
       - 'tool/staged/personnel_birthday_noop*'
+      - 'docs/review/personnel-birthday-noop/**'
       - '.github/workflows/employee-birthday-noop.yml'
 permissions:
   contents: read

@@ -15,12 +15,21 @@ await db.exec(fs.readFileSync(path.join(root,'supabase/migrations/20261016120458
 await db.exec("update worker_family_members set relation='child',birth_date='2020-01-01'");
 await db.exec(fs.readFileSync(path.join(root,'tool/staged/employee_personnel_birth_date.sql.review-only'),'utf8'));
 const patchFile=path.join(root,'tool/staged/personnel_birthday_noop.sql.review-only');
+const beforeNoop=await capsule();
 if(fs.existsSync(patchFile))await db.exec(fs.readFileSync(patchFile,'utf8'));
 let checks=0;
 const equal=(a,b,label)=>{assert.deepEqual(a,b,label);checks++;};
 async function current(){await db.exec('reset role');return (await db.query('select private.worker_personnel_payload($1) value',[W])).rows[0].value;}
 async function clientPayload(){const value=await current();delete value.birth_date_contract_version;return value;}
 async function save(key,payload,target=W){await actor(actors[key]);return (await db.query('select public.save_worker_personnel_profile($1,$2::jsonb) value',[target,JSON.stringify(payload)])).rows[0].value;}
+if(fs.existsSync(patchFile)){
+ const afterNoop=await capsule();
+ equal(afterNoop.rows,beforeNoop.rows,'candidate changes no business/protected rows');
+ equal(afterNoop.policies,beforeNoop.policies,'candidate keeps every policy');
+ equal(afterNoop.acl,beforeNoop.acl,'candidate keeps grants and table metadata');
+ const metadata=functions=>functions.map(value=>value.proname==='save_worker_personnel_profile'?{...value,definition:null}:value);
+ equal(metadata(afterNoop.functions),metadata(beforeNoop.functions),'only fourth-function body changes, attributes preserved');
+}
 await db.exec('begin');
 let value=await clientPayload();value.birth_date='1980-02-29';await save('owner',value);
 const baseline=await current();const same=await clientPayload();
@@ -62,6 +71,14 @@ for(const key of ['viewer','managerOff','outsider','deleted']){
 }
 await db.exec('begin');const data=await clientPayload();await assert.rejects(save('owner',data,WF));checks++;
 await db.exec('rollback;reset role');
+if(fs.existsSync(patchFile)){
+ const stored=await clientPayload();stored.birth_date='1980-02-29';await save('owner',stored);await db.exec('reset role');
+ const beforeRestore=await capsule();
+ await db.exec(fs.readFileSync(path.join(root,'tool/staged/personnel_birthday_noop_restore_unused.sql.review-only'),'utf8'));
+ const restored=await capsule();
+ equal(restored.rows,beforeRestore.rows,'unused recovery retains all dates/proposals/rows');
+ equal(restored.functions,beforeNoop.functions,'unused recovery restores exact original routine metadata');
+}
 console.log('PASS '+checks+' new employee birthday no-op/marker/omission/clear/approval/invalid/authorization checks (synthetic PG17 claims)');
 await db.close();
 `;
