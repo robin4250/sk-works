@@ -62,7 +62,7 @@ Future<void> close(WidgetTester t, Fixture f) async {
   await t.pumpWidget(const SizedBox()); await t.pump(); await t.runAsync(f.client.dispose);
 }
 Future<http.Request> waitCall(WidgetTester t, Fixture f, String suffix) async {
-  for (var attempt=0;attempt<30;attempt++) {
+  for (var attempt=0;attempt<500;attempt++) {
     final matching=f.calls.where((r)=>r.url.path.endsWith(suffix));
     if (matching.isNotEmpty) return matching.single;
     // Functions SDK JSON encoding may run on a real isolate; pumping only
@@ -165,10 +165,12 @@ void main() {
     expect(proofRequest.headers['Authorization'],original);
     expect(jsonDecode(proofRequest.body),{'password':'synthetic-primary','operation':'master.device.lock','target':{'device_id':'a','locked':true}});
     await t.runAsync(() async {await f.login('sid-b'); await f.login('sid-a');});
-    await t.runAsync(() async {
-      f.proofWait!.complete();
-      await Future<void>.delayed(const Duration(milliseconds:50));
-    });
+    f.proofWait!.complete();
+    for (var attempt=0;attempt<500 && find.byType(LinearProgressIndicator).evaluate().isNotEmpty;attempt++) {
+      await t.runAsync(() async {await Future<void>.delayed(const Duration(milliseconds:10));});
+      await t.pump(const Duration(milliseconds:10));
+    }
+    expect(find.byType(LinearProgressIndicator),findsNothing);
     await t.pumpAndSettle(); expect(f.writes,0);
     expect(find.text('端末をロックしました'),findsNothing); await close(t,f);
   });
