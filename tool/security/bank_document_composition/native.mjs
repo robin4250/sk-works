@@ -39,6 +39,9 @@ try{
  await db.query(business);
  await db.query(await read('tool/security/employee_bank_initial/baseline-functions.sql'));
  await db.query(await read('tool/security/worker_document_change_session/baseline.sql'));
+ // The bank synthetic setup had granted authenticated before the saved account baseline.
+ // Reproduce the read-only current catalog's exact ACL order, not a weaker installer check.
+ await db.query('revoke all on function private.account_access_allowed() from public,anon,authenticated,service_role;grant execute on function private.account_access_allowed() to anon,authenticated,service_role');
  for(const file of ['20260918133000_add_worker_document_checklist.sql','20260918144500_add_worker_document_status_history.sql','20260919023500_harden_worker_document_rls.sql','20261003121632_allow_self_document_registration.sql','20261010222524_worker_document_multiple_photos.sql'])await db.query(await read('supabase/migrations/'+file));
  await db.query(`create policy "people feature fixture" on public.worker_document_statuses for all to authenticated
  using(private.has_company_feature(company_id,'can_manage_people')) with check(private.has_company_feature(company_id,'can_manage_people')
