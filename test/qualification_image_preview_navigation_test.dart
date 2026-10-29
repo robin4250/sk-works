@@ -11,13 +11,22 @@ void main() {
   for (final editor in [true, false]) {
     testWidgets('${editor ? 'qualification editor' : 'saved qualification card'} preview retires with its private navigator', (tester) async {
       final scope = ValueNotifier(true); addTearDown(scope.dispose);
-      await tester.pumpWidget(MaterialApp(home: Scaffold(body: ValueListenableBuilder<bool>(valueListenable: scope,
-        builder: (_, active, __) => active ? Navigator(onGenerateRoute: (_) => MaterialPageRoute<void>(builder: (context) => Scaffold(
-          body: editor ? TextButton(onPressed: () => editWorkerDocumentPhotos(context, paths: const [],
-            useRootNavigator: false, signedUrl: (_) async => throw StateError('unexpected download'),
-            initialPhotos: [WorkerDocumentPhoto.pending(_image, 'synthetic.png')]), child: const Text('資格写真を確認'))
-            : ResourceAttachmentThumbnail(attachment: ResourceAttachment(label: '表面', path: 'synthetic-retained', loadBytes: () async => _image)),
-        )))) : const Text('private scope removed')))));
+      await tester.pumpWidget(MaterialApp(home: Scaffold(
+        body: ValueListenableBuilder<bool>(valueListenable: scope,
+          builder: (_, active, __) {
+            if (!active) { return const Text('private scope removed'); }
+            return Navigator(onGenerateRoute: (_) => MaterialPageRoute<void>(
+              builder: (context) => Scaffold(body: editor
+                ? TextButton(onPressed: () => editWorkerDocumentPhotos(context,
+                    paths: const [], useRootNavigator: false,
+                    signedUrl: (_) async => throw StateError('unexpected download'),
+                    initialPhotos: [WorkerDocumentPhoto.pending(_image, 'synthetic.png')]),
+                    child: const Text('資格写真を確認'))
+                : ResourceAttachmentThumbnail(attachment: ResourceAttachment(
+                    label: '表面', path: 'synthetic-retained', loadBytes: () async => _image))),
+            ));
+          }),
+      )));
       await tester.pumpAndSettle();
       if (editor) { await tester.tap(find.text('資格写真を確認')); await tester.pumpAndSettle(); }
       await tester.tap(find.byType(Image).first); await tester.pumpAndSettle();
