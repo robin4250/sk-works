@@ -1,0 +1,34 @@
+name: Formal typed input server guard candidate
+on:
+  pull_request:
+    paths:
+      - 'docs/review/trade-document-form-input/**'
+      - 'tool/trade_document_form_server_fixture.mjs'
+      - '.github/workflows/trade-document-form-server-guard.yml'
+permissions:
+  contents: read
+jobs:
+  server-guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix: {runtime: [pglite, postgres], predecessor: [core, bank]}
+    services:
+      database:
+        image: postgres:17.6
+        env: {POSTGRES_USER: postgres, POSTGRES_PASSWORD: fixture-only, POSTGRES_DB: partner_bank_fixture}
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22.14.0'}
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
+      - if: matrix.runtime == 'pglite'
+        run: node tool/trade_document_form_server_fixture.mjs "$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js" "${{ matrix.predecessor }}"
+      - if: matrix.runtime == 'postgres'
+        run: node tool/trade_document_form_server_fixture.mjs "$GITHUB_WORKSPACE/docs/review/partner-company-bank-order/native-db.mjs" "${{ matrix.predecessor }}"
+        env: {PARTNER_BANK_TEST_DATABASE_URL: 'postgres://postgres:fixture-only@127.0.0.1:5432/partner_bank_fixture'}
+      - run: git diff --exit-code -- pubspec.yaml pubspec.lock tool/security/fixture_dependencies/package-lock.json
