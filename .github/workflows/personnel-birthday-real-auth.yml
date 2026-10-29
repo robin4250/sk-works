@@ -1,0 +1,26 @@
+name: Personnel birthday real authentication
+on:
+  pull_request:
+    paths:
+      - 'tool/security/personnel_birthday_real_auth/**'
+      - 'docs/review/personnel-birthday-real-auth/**'
+      - '.github/workflows/personnel-birthday-real-auth.yml'
+permissions:
+  contents: read
+jobs:
+  real-auth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      SKO_PERSONNEL_BIRTHDAY_REAL_AUTH: contract-v1
+      SKO_PERSONNEL_BIRTHDAY_PG_MODULE: /tmp/personnel-birthday-pg/node_modules/pg/lib/index.js
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --prefix /tmp/personnel-birthday-pg --no-save --ignore-scripts --no-audit --no-fund pg@8.16.3
+      - run: node tool/security/personnel_birthday_real_auth/runner.mjs --check-generated
+      - run: node tool/security/personnel_birthday_real_auth/runner.mjs
