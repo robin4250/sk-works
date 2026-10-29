@@ -1,6 +1,6 @@
 // CI-only disposable GoTrue + Native PG + actual TLS/server/client composition.
 // Registry/Master/company association is synthetic; source-owner registration,
-// independent custody, production least-privilege pool and deployment are absent.
+// independent custody and production least-privilege deployment are absent.
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';import path from 'node:path';
 import {execFile} from 'node:child_process';import {promisify} from 'node:util';
@@ -50,6 +50,7 @@ try{
  for(const f of JSON.parse(await fs.readFile(new URL('../../free-worker-candidate/issuer/current-core-fixtures.json',import.meta.url),'utf8')))await db.query(f.definition);
  await db.query(await fs.readFile(new URL('../../free-worker-candidate/issuer/management-issuer.sql.review-only',import.meta.url),'utf8'));
  await db.query(await fs.readFile(new URL('../src/archive-readback-registry.sql.review-only',import.meta.url),'utf8'));
+ await db.query(await fs.readFile(new URL('../src/archive-readback-runtime-role.sql.review-only',import.meta.url),'utf8'));
  const login=async email=>{
   const link=await json(await authRequest('/auth/v1/admin/generate_link',{admin:true,body:{type:'magiclink',email}}));
   return json(await authRequest('/auth/v1/verify',{body:{type:'magiclink',token_hash:link.hashed_token}}));
@@ -69,13 +70,38 @@ try{
  const tlsKey=path.join(workdir,'tls.key'),tlsCert=path.join(workdir,'tls.crt');
  await run('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-days','1','-keyout',tlsKey,'-out',tlsCert,'-subj','/CN=localhost','-addext','subjectAltName=IP:127.0.0.1']);
  const tls={key:await fs.readFile(tlsKey),cert:await fs.readFile(tlsCert)};
- pool=new pg.Pool({connectionString:database.href,max:1});
+ // Disposable CI ONLY: enable the otherwise NOLOGIN candidate with a fresh
+ // password. Neither installer nor server provisions a production LOGIN.
+ phase='dedicated-runtime-login';const runtimePassword=randomBytes(32).toString('hex');
+ const alter=(await db.query("select format('alter role archive_readback_runtime login password %L',$1::text) statement",[runtimePassword])).rows[0].statement;
+ await db.query(alter);const runtimeDatabase=new URL(database);runtimeDatabase.username='archive_readback_runtime';runtimeDatabase.password=runtimePassword;
+ const restricted=new pg.Client({connectionString:runtimeDatabase.href});await restricted.connect();
+ try{
+  const role=(await restricted.query('select current_user u,session_user s')).rows[0];assert.deepEqual(role,{u:'archive_readback_runtime',s:'archive_readback_runtime'});
+  assert.deepEqual((await db.query("select rolsuper,rolcreatedb,rolcreaterole,rolinherit,rolreplication,rolbypassrls from pg_roles where rolname='archive_readback_runtime'")).rows[0],
+   {rolsuper:false,rolcreatedb:false,rolcreaterole:false,rolinherit:false,rolreplication:false,rolbypassrls:false});
+  for(const sql of [
+   'select * from archive_readback_private.authority_records',
+   'update archive_readback_private.authority_records set revision=3',
+   'delete from archive_readback_private.authority_records',
+   'truncate archive_readback_private.authority_records',
+   'select * from auth.users','select * from auth.sessions','select * from public.user_secondary_credentials',
+   'select * from private.master_admins','select * from security_management_issuer_private.deployments',
+   'select private.require_reauthentication_session()',
+   'create table archive_readback_private.forbidden(id integer)',
+   'set role postgres','set role service_role',
+  ])await assert.rejects(restricted.query(sql),e=>e.code==='42501');
+  await assert.rejects(restricted.query('select archive_readback_private.authorize_observation($1,$2::jsonb)',[authority,JSON.stringify(own)]));
+  // Client roles cannot execute the definer boundary either.
+  for(const role of ['anon','authenticated','service_role'])assert.equal((await db.query("select has_function_privilege($1,'archive_readback_private.authorize_observation(uuid,jsonb)','execute') allowed",[role])).rows[0].allowed,false);
+ }finally{await restricted.end();}
+ pool=new pg.Pool({connectionString:runtimeDatabase.href,max:1});
  pool.on('error',()=>{poolErrors++;process.exitCode=1;}); // unexpected idle errors fail CI without private details
  const releases=[],queries=[];let acquired=0,restored=0,signed=0,authVerified=0;
  let dbDelay=false;const slowQueryEntered=deferred();
  const tracked={async connect(){const c=await pool.connect();acquired++;return {query:async(text,args)=>{
   queries.push({pid:c.processID,text});
-  if(dbDelay&&text.startsWith('select * from archive_readback_private.authority_records')){slowQueryEntered.resolve(c.processID);await c.query('select pg_sleep(30)');}
+  if(dbDelay&&text.startsWith('select archive_readback_private.authorize_observation')){slowQueryEntered.resolve(c.processID);await c.query('select pg_sleep(30)');}
   return c.query(text,args);
  },release(destroy=false){releases.push({pid:c.processID,destroy});c.release(destroy);}};}};
  // Test-only fixed-origin bridge. Actual /user goes to real disposable GoTrue;
@@ -94,7 +120,7 @@ try{
   return {server:s,endpoint,client:(bearer=owner.access_token)=>createArchiveReadbackHTTPSVerifierCandidate({enabled:true,endpoint,bearer,ca:tls.cert,authorityId:authority,key,timeoutMs:15000})};
  }
  const normal=await server();
- const clean=async()=>{await until(async()=>pool.waitingCount===0&&pool.idleCount===pool.totalCount);const c=await pool.connect();try{assert.deepEqual((await c.query("select auth.uid() as actor,nullif(current_setting('request.jwt.claims',true),'') as jwt")).rows[0],{actor:null,jwt:null});}finally{c.release();}};
+ const clean=async()=>{await until(async()=>pool.waitingCount===0&&pool.idleCount===pool.totalCount);const c=await pool.connect();try{assert.deepEqual((await c.query("select nullif(current_setting('request.jwt.claims',true),'') as jwt")).rows[0],{jwt:null});}finally{c.release();}};
  const backendGone=pid=>until(async()=>!(await db.query('select exists(select 1 from pg_stat_activity where pid=$1) present',[pid])).rows[0].present);
  const newAdmin=async()=>{const c=new pg.Client({connectionString:database.href});await c.connect();extraClients.push(c);return c;};
  phase='real-auth-native-success';assert.equal((await normal.client().verify(own)).status,'readback_verified_unattested');assert.equal(restored,1);assert.equal(signed,1);assert.ok(authVerified>0);await clean();
@@ -170,7 +196,7 @@ try{
   lost_response_after_read_commit_preserves_original:true,pool_waiter_cancel_late_lease_destroyed_before_begin:true,
   actual_native_query_statement_bound_and_backend_exit:true,transaction_claim_cleanup:true,
   registry_master_company_associations_are_synthetic:true,source_owner_registration:false,
-  production_pool_least_privilege:false,independent_custody:false,source_release:false,deployed:false,production_changed:false}));
+  disposable_native_restricted_login_pool:true,production_pool_least_privilege:false,independent_custody:false,source_release:false,deployed:false,production_changed:false}));
 }catch(error){
  console.error(JSON.stringify({result:'FAIL real GoTrue Native PG archive readback server',phase,
   kind:error?.code==='ERR_ASSERTION'?'assertion':/^[0-9A-Z]{5}$/.test(error?.code??'')?'postgres':'other',

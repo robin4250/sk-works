@@ -78,9 +78,11 @@ print(re.sub(r'\s+','',unicodedata.normalize('NFKC',p.get_text())))
       if (monthly || invalid) {
         expect(text, contains('役職手当'));
         expect(text, contains('勤務手当'));
-        // Reproduces the existing monthly stale-enabled warning; no product fix
-        // in this fixture PR. Invalid daily transfer must also visibly refuse.
-        expect(text, contains('振替の設定・支給額を確認してください'));
+        // Known monthly snapshots remain inapplicable without an error;
+        // inconsistent daily transfer must still visibly refuse attribution.
+        expect(text, monthly
+          ? isNot(contains('振替の設定・支給額を確認してください'))
+          : contains('振替の設定・支給額を確認してください'));
         expect(text, isNot(contains('基本給の調整額')));
       } else {
         expect(text, contains('11,000円×20日'));

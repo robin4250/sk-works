@@ -6,7 +6,7 @@ on:
       - 'lib/features/payroll/payroll_pdf_service.dart'
       - 'test/payroll_position_transfer*.dart'
       - 'test/fixtures/payroll_transfer/**'
-      - 'tool/tests/payroll_position_transfer_connected_test.dart'
+      - 'tool/tests/payroll_position_transfer*_test.dart'
       - 'docs/review/payroll-position-transfer/sql/**'
       - 'lib/features/payroll/individual_payroll_settings_page.dart'
       - 'lib/features/payroll/individual_payroll_settings_repository.dart'
@@ -31,8 +31,8 @@ jobs:
           flutter pub get --enforce-lockfile
           python3 -m pip install PyMuPDF==1.26.6 fonttools==4.61.1
           python3 tool/prepare_pdf_fixture_font.py
-      - run: flutter analyze lib/features/payroll/payroll_position_transfer.dart lib/features/payroll/payroll_pdf_service.dart test/payroll_position_transfer_test.dart test/payroll_position_transfer_pdf_test.dart
-      - run: flutter test --reporter expanded test/payroll_position_transfer_test.dart test/payroll_position_transfer_pdf_test.dart test/payroll_recorded_unit_evidence_test.dart
+      - run: flutter analyze lib/features/payroll/payroll_position_transfer.dart lib/features/payroll/payroll_pdf_service.dart test/payroll_position_transfer_test.dart test/payroll_position_transfer_non_daily_test.dart test/payroll_position_transfer_pdf_test.dart
+      - run: flutter test --reporter expanded test/payroll_position_transfer_test.dart test/payroll_position_transfer_non_daily_test.dart test/payroll_position_transfer_pdf_test.dart test/payroll_recorded_unit_evidence_test.dart
       - if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -93,11 +93,13 @@ jobs:
           ui_payload=$(cat test/fixtures/payroll_transfer/ui-save-equivalent.json)
           psql -X -qAt --set=ON_ERROR_STOP=1 --set=ui_payload="$ui_payload" -h 127.0.0.1 -U postgres -d postgres -f docs/review/payroll-position-transfer/sql/connected-fixture.sql > "$SKO_TRANSFER_CONNECTED_JSON"
           python3 -c 'import json,os; json.load(open(os.environ["SKO_TRANSFER_CONNECTED_JSON"]))'
-      - run: flutter analyze tool/tests/payroll_position_transfer_connected_test.dart
-      - run: flutter test --reporter expanded tool/tests/payroll_position_transfer_connected_test.dart
+      - run: flutter analyze tool/tests/payroll_position_transfer_connected_test.dart tool/tests/payroll_position_transfer_non_daily_pdf_test.dart
+      - run: flutter test --reporter expanded tool/tests/payroll_position_transfer_connected_test.dart tool/tests/payroll_position_transfer_non_daily_pdf_test.dart
       - if: always()
         uses: actions/upload-artifact@v4
         with:
           name: payroll-position-transfer-connected-evidence
-          path: build/pdf-fixtures/payroll*connected*
+          path: |
+            build/pdf-fixtures/payroll*connected*
+            build/pdf-fixtures/payroll_position_transfer_non_daily*
           if-no-files-found: error

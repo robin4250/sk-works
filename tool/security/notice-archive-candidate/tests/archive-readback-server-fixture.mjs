@@ -33,6 +33,7 @@ export async function serverFixture(t){
  for(const f of JSON.parse(await fs.readFile(new URL('../../free-worker-candidate/issuer/current-core-fixtures.json',import.meta.url),'utf8')))await db.exec(f.definition);
  await db.exec(await fs.readFile(new URL('../../free-worker-candidate/issuer/management-issuer.sql.review-only',import.meta.url),'utf8'));
  await db.exec(await fs.readFile(new URL('../src/archive-readback-registry.sql.review-only',import.meta.url),'utf8'));
+ await db.exec(await fs.readFile(new URL('../src/archive-readback-runtime-role.sql.review-only',import.meta.url),'utf8'));
  const actor=id(1),sid=id(2),company=id(3),other=id(4),otherSid=id(5),foreignCompany=id(6),authority=id(7);
  await db.query('insert into auth.users(id)values($1),($2)',[actor,other]);
  await db.query('insert into auth.sessions values($1,$2,null),($3,$4,null)',[sid,actor,otherSid,other]);

@@ -12,7 +12,7 @@ test('OFF TLS server composes existing caller/session/company guard with immutab
   const result=await s.client().verify(f.own);assert.equal(result.status,'readback_verified_unattested');assert.deepEqual(result.receipt.payload.descriptor,f.own);
   assert.deepEqual(f.counts(),{acquisitions:1,restores:1,signatures:1});
   assert.equal(f.authCalls[0].url,'https://auth-fixture.invalid/auth/v1/user');assert.equal(f.authCalls[0].headers.apikey,'fixture-public-key');
-  assert.equal(f.queries.filter(q=>q.includes('security_management_issuer_private.binding')).length,2);
+  assert.equal(f.queries.filter(q=>q.includes('archive_readback_private.authorize_observation')).length,2);
   assert.deepEqual(await f.clean(),{actor:null,jwt:null});assert.equal(f.releases.at(-1),false);
  });
  await t.test('cross-company, changed descriptor and stored-but-unregistered bytes refuse before restore/sign',async()=>{
@@ -53,6 +53,17 @@ test('OFF TLS server composes existing caller/session/company guard with immutab
   for(const q of ["update archive_readback_private.authority_records set revision=3","delete from archive_readback_private.authority_records","truncate archive_readback_private.authority_records"])await assert.rejects(f.db.query(q),e=>e.code==='55000');
   for(const role of ['anon','authenticated','service_role']){await f.db.exec(`begin;set local role ${role}`);await assert.rejects(f.db.query('select * from archive_readback_private.authority_records'),e=>e.code==='42501');await f.db.exec('rollback');}
  });
+ await t.test('runtime role can use only narrow helper and cannot acquire raw source or guard privileges',async()=>{
+  await f.db.exec('begin;set local role archive_readback_runtime');
+  await assert.rejects(f.db.query('select * from archive_readback_private.authority_records'),e=>e.code==='42501');await f.db.exec('rollback');
+  for(const role of ['anon','authenticated','service_role'])assert.equal((await f.db.query("select has_function_privilege($1,'archive_readback_private.authorize_observation(uuid,jsonb)','execute') allowed",[role])).rows[0].allowed,false);
+  await f.db.exec('begin');
+  await f.db.query("select set_config('request.jwt.claims',$1,true)",[JSON.stringify({sub:f.actor,session_id:f.sid,role:'authenticated',is_anonymous:false})]);
+  await f.db.exec('set local role archive_readback_runtime');
+  const result=(await f.db.query('select archive_readback_private.authorize_observation($1,$2::jsonb) as observation',[f.authority,JSON.stringify(f.own)])).rows[0].observation;
+  assert.deepEqual(Object.keys(result).sort(),['descriptor','guard_token']);assert.deepEqual(result.descriptor,f.own);assert.match(result.guard_token,/^[a-f0-9]{64}$/);
+  await f.db.exec('rollback');
+ });
  await t.test('session expiry after restore/sign is rechecked before commit and receipt delivery',async()=>{
   const before=f.counts(),changing=await f.start({store:{async restore(d){const bytes=await f.store.restore(d);await f.db.query("update auth.sessions set not_after=clock_timestamp()-interval '1 second'where id=$1",[f.sid]);return bytes;}}});
   await assert.rejects(changing.client().verify(f.own));assert.equal(f.counts().signatures,before.signatures+1);
@@ -68,7 +79,7 @@ test('OFF TLS server composes existing caller/session/company guard with immutab
    return f.signBytes(bytes); // Valid signature must still be rejected as late.
   }});
   const queries=f.queries.length;await assert.rejects(busy.client().verify(f.own));assert.equal(signs,1);
-  assert.equal(f.queries.slice(queries).filter(q=>q.includes('security_management_issuer_private.binding')).length,1);
+  assert.equal(f.queries.slice(queries).filter(q=>q.includes('archive_readback_private.authorize_observation')).length,1);
   assert.equal(f.queries.slice(queries).includes('commit'),false);sub.mock.restoreAll();sub.mock.timers.reset();
   await f.clean();assert.equal(f.releases.at(-1),true);
  });

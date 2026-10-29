@@ -90,7 +90,9 @@ class PayrollPdfService {
     final transferRequested = detail['position_transfer_snapshot'] is Map &&
         (detail['position_transfer_snapshot'] as Map)['enabled'] == true;
     final displayDetail = transfer == null ? <String, dynamic>{
-      ...detail, if (transferRequested) '_position_transfer_invalid': true,
+      ...detail,
+      if (transferRequested && !validNonDailyPayrollPositionTransferSnapshot(detail))
+        '_position_transfer_invalid': true,
     } : <String, dynamic>{
       ...detail,
       '_position_transfer_rate': transfer.rate,

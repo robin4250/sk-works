@@ -349,6 +349,7 @@ import UserNotifications
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
+  private var skoQRRegistrationJournalChannel: SKOQRRegistrationJournalChannel?
   private var skoQRScannerKeyChannel: SKOQRScannerKeyChannel?
   private var skoAppleCredentialChannel: SKOAppleCredentialChannel?
   private var skoMapChannel: FlutterMethodChannel?
@@ -530,6 +531,9 @@ import UserNotifications
     }
     if let registrar = self.registrar(forPlugin: "SkoQRScannerKey") {
       skoQRScannerKeyChannel = SKOQRScannerKeyChannel(messenger: registrar.messenger())
+    }
+    if let registrar = self.registrar(forPlugin: "SkoQRRegistrationJournal") {
+      skoQRRegistrationJournalChannel = SKOQRRegistrationJournalChannel(messenger: registrar.messenger())
     }
     return launched
   }
@@ -876,6 +880,7 @@ cat tool/ios/apple_credential_state.swift >> ios/Runner/AppDelegate.swift
 cat tool/ios/apple_credential.swift >> ios/Runner/AppDelegate.swift
 # Scanner custody remains OFF; no registration route or feature is enabled.
 cat tool/ios/qr_scanner_key.swift >> ios/Runner/AppDelegate.swift
+cat tool/ios/qr_scanner_registration_journal.swift >> ios/Runner/AppDelegate.swift
 # Keep the native reminder implementation versioned and last, including reused projects.
 cat tool/ios/checkout_reminders.swift >> ios/Runner/AppDelegate.swift
 
