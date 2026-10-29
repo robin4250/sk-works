@@ -39,7 +39,7 @@ jobs:
           import fitz
           folder = Path('build/invoice-automatic-proof')
           expected = {'invoice-base': 1, 'invoice-locked-off': 1,
-                      'invoice-unlocked-auto': 2, 'invoice-locked-auto': 2,
+                      'invoice-unlocked-auto': 3, 'invoice-locked-auto': 2,
                       'invoice-locked-saved': 2}
           assert {p.stem for p in folder.glob('*.pdf')} == set(expected)
           with fitz.open(folder/'invoice-base.pdf') as base:
@@ -51,9 +51,11 @@ jobs:
                   assert pdf[0].get_pixmap().samples == original, name
                   assert pdf[0].get_text() == original_text, name
                   assert '110,000' in original_text and '100,000' in original_text and '10,000' in original_text
-                  if pages == 2:
+                  if name=='invoice-unlocked-auto':
+                      assert '工事請負契約条項' in ''.join(pdf[2].get_text().split()),name
+                  if pages >= 2:
                       text = ''.join(pdf[1].get_text().split())
-                      assert '注文請書' in text and '株式会社受注' in text and '株式会社発注' in text, (name, text)
+                      assert ('請書' if name=='invoice-unlocked-auto' else '注文請書') in text and '株式会社受注' in text and '株式会社発注' in text, (name, text)
                       assert '後から変更した現在印' not in text, name
                       if name == 'invoice-locked-saved':
                           assert '2026年10月20日' in text and '2026年10月15日' in text, text
@@ -61,7 +63,7 @@ jobs:
                           assert '2026年9月30日' in text and '2026-09-15' in text, text
                   for index, page in enumerate(pdf):
                       page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5)).save(folder/(name+f'-{index+1}.png'))
-          print('PASS: locked/normal 2 pages, saved original, auto OFF, and identical parent page pixels/text')
+          print('PASS: legacy locked 2 pages/new normal 3 pages, saved original, auto OFF, and identical parent page pixels/text')
           PY
       - uses: actions/upload-artifact@v4
         with: {name: invoice-automatic-acceptance-proof, path: build/invoice-automatic-proof/}

@@ -39,21 +39,23 @@ jobs:
           assert len(paths) == 4, paths
           for path in paths:
               with fitz.open(path) as doc:
-                  expected = 2 if path.stem.startswith('invoice-with-') else 1
+                  expected = 3 if 'automatic' in path.stem else 2 if path.stem.startswith('invoice-with-') else 1
                   assert len(doc) == expected, (path, len(doc))
-                  page = doc[-1]
+                  page = doc[1] if path.stem.startswith('invoice-with-') else doc[0]
+                  if 'automatic' in path.stem:
+                      assert '工事請負契約条項' in ''.join(doc[2].get_text().split()),path
                   text = ''.join(page.get_text().split())
                   order_date = '2026-09-15' if 'automatic' in path.stem else '2026年10月15日'
                   acceptance_date = '2026年9月30日' if 'automatic' in path.stem else '2026年10月16日'
-                  assert '注文請書' in text and order_date in text and acceptance_date in text, (path, text)
+                  assert ('請書' if 'automatic' in path.stem else '注文請書') in text and order_date in text and acceptance_date in text, (path, text)
                   assert '株式会社発注' in text and '株式会社受注' in text
-                  assert '9876543210987' in text and '御中' in text
+                  assert '9876543210987' in text and ('殿' if 'automatic' in path.stem else '御中') in text
                   assert '2026-10月分' in text and '代表者名' in text
                   if path.stem.endswith('-long'):
                       assert '備考条件確認済み。' * 60 in text
                       assert '追加条件を確認します。' * 30 in text
                       assert '代表' * 40 in text
-                  if expected == 2:
+                  if expected >= 2:
                       first = ''.join(doc[0].get_text().split())
                       assert '請求書' in first and '注文請書' not in first
                       assert '110,000' in first and '100,000' in first and '10,000' in first, first
@@ -89,10 +91,15 @@ jobs:
                          and samples[y*image.stride+x*image.n+2] < 110]
                   assert red, (path, 'issuer seal missing')
                   seal = (min(x for x,y in red), min(y for x,y in red), max(x for x,y in red), max(y for x,y in red))
-                  assert min(seal[2],issuer[2]) > max(seal[0],issuer[0]) and min(seal[3],issuer[3]) > max(seal[1],issuer[1]), (path, seal, issuer)
-                  assert abs((seal[0]+seal[2])/2-issuer[2]) <= 4, (path, 'seal not centered at name end', seal, issuer)
-                  assert abs((seal[1]+seal[3]-issuer[1]-issuer[3])/2) <= 6, (path, seal, issuer)
-                  assert seal[0] >= 48-1 and seal[2] <= page.rect.width-48+1, (path, 'seal outside party column', seal)
+                  if 'automatic' in path.stem:
+                      assert seal[0]>=34-1 and seal[2]<=page.rect.width-34+1 and seal[3]<174,(path,'new form issuer seal outside header',seal)
+                      assert min(seal[2],issuer[2])>max(seal[0],issuer[0]) and min(seal[3],issuer[3])>max(seal[1],issuer[1]),(path,'new form seal must overlap name end',seal,issuer)
+                      assert abs((seal[0]+seal[2])/2-issuer[2])<=4 and abs((seal[1]+seal[3]-issuer[1]-issuer[3])/2)<=6,(path,'new form name anchor',seal,issuer)
+                  else:
+                      assert min(seal[2],issuer[2]) > max(seal[0],issuer[0]) and min(seal[3],issuer[3]) > max(seal[1],issuer[1]), (path, seal, issuer)
+                      assert abs((seal[0]+seal[2])/2-issuer[2]) <= 4, (path, 'seal not centered at name end', seal, issuer)
+                      assert abs((seal[1]+seal[3]-issuer[1]-issuer[3])/2) <= 6, (path, seal, issuer)
+                      assert seal[0] >= 48-1 and seal[2] <= page.rect.width-48+1, (path, 'seal outside party column', seal)
                   for span in spans:
                       if '代表代表' in span['text']:
                           box = span['bbox']

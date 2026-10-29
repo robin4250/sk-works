@@ -38,6 +38,7 @@ try {
  await identity();const baseline=await workspace();
  await db.exec('reset role');await db.exec(await read('docs/review/partner-company-bank-order/bank.sql.review-only'));
  await db.exec(await read('docs/review/partner-company-bank-order/order-snapshot.sql.review-only'));
+ if(process.env.SKO_CONFIRMED_TERMS_HOOK==='content-v1')await db.exec(await read('docs/review/trade-document-terms/save-guard.sql.review-only'));
  await identity();assert.deepEqual(await workspace(),baseline);assert.equal((await readBank()).available,false);await assert.rejects(saveBank(0),/not released/);passed+=3;
  await db.exec('reset role;update private.partner_company_bank_rollout set enabled=true;');await identity();
  const first=await saveBank(0);assert.equal(first.account_number,'0000123');assert.equal(first.bank_version,1);assert.deepEqual(await saveBank(0),first);passed+=3;
@@ -65,6 +66,9 @@ try {
  const edited=await saveOrder({...saved.payload,notes:'明示した下書き編集',counterparty_bank:first},1);assert.equal(edited.payload.counterparty_bank.account_number,'0000456');passed++;
  await identity(manager,otherSession);assert.equal((await readBank()).bank.account_number,'0000789');await assert.rejects(saveOrder(edited.payload,2),/管理者/);passed+=2;
  await saveBank(4,{...bank,branch_name:'管理者支店'},foreign);passed++;
+ if(process.env.SKO_CONFIRMED_TERMS_HOOK==='content-v1'){
+  await (await import('../../../tool/trade_document_terms_save_fixture.mjs')).verifyTermsSave(db,{id:n=>`10000000-0000-4000-8000-${String(n).padStart(12,'0')}`,company,partner,actor:()=>identity(),expectedDelegate:'b7711fe5caf45cf8afabc39856a86a0e'});
+ }
  await db.exec('reset role');await db.query("update payment_certificates set status='approved',finalized_at=clock_timestamp() where id=$1",[document]);await db.query("update partner_companies set status='inactive' where id=$1",[partner]);await identity();
  assert.deepEqual((await workspace()).attachment.payload,edited.payload);assert.equal((await workspace(locked)).defaults.counterparty_bank,undefined);await assert.rejects(saveBank(5,bank,viewer));passed+=3;
  await db.exec('reset role');const immutable=(await db.query('select count(*)::int n from private.partner_company_bank_versions')).rows[0].n;

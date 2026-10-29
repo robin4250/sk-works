@@ -1,4 +1,13 @@
+import '../../domain/trade_document_terms_snapshot.dart';
 import 'dart:async';
+import 'dart:typed_data';
+import 'package:flutter/scheduler.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../domain/trade_document_form_draft.dart';
+import '../../domain/trade_document_editor_payload.dart';
+import 'trade_document_form_session.dart';
+import 'trade_document_form_renderer.dart';
+import 'trade_document_touch_editor_page.dart';
 import 'package:flutter/material.dart';
 import '../../data/supabase_backend.dart';
 import 'trade_document_attachment_repository.dart';
@@ -8,13 +17,20 @@ import 'r33_input.dart';
 /// One explicit monthly save; never writes or approves the source financial document.
 class TradeDocumentAttachmentEditorPage extends StatefulWidget {
   const TradeDocumentAttachmentEditorPage({super.key,required this.subjectKind,
-    required this.subjectId,required this.sourceRevision,this.initialInput});
+    required this.subjectId,required this.sourceRevision,this.initialInput,this.clientOverride,this.repositoryFactory});
   final String subjectKind,subjectId,sourceRevision;
   final R33Input? initialInput;
+  final SupabaseClient? clientOverride;
+  final TradeDocumentAttachmentRepository Function(SupabaseClient,TradeDocumentFormSession)? repositoryFactory;
   @override State<TradeDocumentAttachmentEditorPage> createState()=>_EditorState();
 }
 class _EditorState extends State<TradeDocumentAttachmentEditorPage> {
-  final _repo=TradeDocumentAttachmentRepository.maybeCreate();
+  TradeDocumentAttachmentRepository? _repo;
+  TradeDocumentFormSession? _scope;
+  late final String _entryTarget;
+  bool _typedLaunched=false,_saveUncertain=false;
+  bool get _typed=>_payload.containsKey('contract_terms');
+  String get _target=>'${widget.subjectKind}/${widget.subjectId}/${widget.sourceRevision}';
   final _fields=<String,TextEditingController>{};
   Map<String,dynamic>? _workspace;
   Map<String,dynamic> _payload={};
@@ -22,26 +38,42 @@ class _EditorState extends State<TradeDocumentAttachmentEditorPage> {
   bool _saving=false;
   int _version=0;
   String? _actor;
-  StreamSubscription<dynamic>? _subscription;
-  bool get _sameActor=>_actor!=null&&SupabaseBackend.isInitialized&&SupabaseBackend.client.auth.currentUser?.id==_actor;
   bool _revoked=false;
-  bool get _canEdit=>!_revoked&&_sameActor&&(_workspace?['can_manage']==true)&&
+  bool get _canEdit=>!_revoked&&!_saveUncertain&&(_scope?.isCurrent??false)&&(_workspace?['can_manage']==true)&&
     !(_version>0&&_workspace?['source_locked']==true)&&_workspace?['source_blocked']!=true;
   bool get _order=>widget.subjectKind=='payment_certificate';
-  @override void initState(){super.initState();
-    _actor=SupabaseBackend.isInitialized?SupabaseBackend.client.auth.currentUser?.id:null;
-    if(SupabaseBackend.isInitialized) {
-      _subscription=SupabaseBackend.client.auth.onAuthStateChange.listen((_) {
-      if(!_sameActor&&!_revoked&&mounted) setState(() {_revoked=true;_payload={};_error='ログイン情報が変わりました。開き直してください。';});
-    },onError:(_){if(mounted)setState(()=>_revoked=true);});
-    }
-    _load();
+  @override void initState(){super.initState();_entryTarget=_target;
+    try {
+      final client=widget.clientOverride??(SupabaseBackend.isInitialized?SupabaseBackend.client:null);
+      if(client==null)throw StateError('ログインが必要です。');
+      _actor=client.auth.currentUser?.id;
+      final scope=TradeDocumentFormSession(client,target:_entryTarget,currentTarget:()=>_target);
+      _scope=scope;scope.addListener(_scopeChanged);
+      _repo=widget.repositoryFactory?.call(client,scope)??TradeDocumentAttachmentRepository(client,session:scope);
+      if(!_repo!.isBoundTo(scope))throw StateError('書類操作の接続を確認できません。');
+      _load();
+    }catch(error){_error=error.toString();_retire();}
   }
+  void _requireScope(){
+    if(!mounted||_revoked||_target!=_entryTarget)throw StateError('書類を開き直してください。');
+    _scope!.requireScope();
+  }
+  void _scopeChanged(){if(!(_scope?.isCurrent??false))_retire();}
+  void _retire(){
+    if(_revoked)return;_revoked=true;_payload={};_workspace=null;
+    for(final controller in _fields.values){controller.clear();}
+    if(!mounted)return;
+    if(SchedulerBinding.instance.schedulerPhase==SchedulerPhase.persistentCallbacks){
+      WidgetsBinding.instance.addPostFrameCallback((_){if(mounted)setState((){});});
+    }else{setState((){});}
+  }
+  @override void didUpdateWidget(covariant TradeDocumentAttachmentEditorPage old){super.didUpdateWidget(old);if(_target!=_entryTarget)_retire();}
   Future<void> _load() async {
     try {
       if(_repo==null) throw StateError('ログインが必要です。');
-      final data=await _repo.loadWorkspace(subjectKind:widget.subjectKind,subjectId:widget.subjectId,sourceRevision:widget.sourceRevision);
-      if(!mounted||!_sameActor||_revoked)return;
+      await _scope!.ready();_requireScope();
+      final data=await _repo!.loadWorkspace(subjectKind:widget.subjectKind,subjectId:widget.subjectId,sourceRevision:widget.sourceRevision);
+      _requireScope();
       final saved=data['attachment'];
       _payload=Map<String,dynamic>.from(saved is Map&&data['source_changed']!=true?saved['payload'] as Map:data['defaults'] as Map);
       _version=saved is Map?saved['version'] as int:0;
@@ -64,6 +96,8 @@ class _EditorState extends State<TradeDocumentAttachmentEditorPage> {
       _payload = r18InitialValues(payload: _payload,
         sourceDefaults: Map<String, dynamic>.from(data['defaults'] as Map),
         hasSavedAttachment: saved is Map, subjectKind: widget.subjectKind);
+      if(saved is! Map && data['source_locked']==false) _payload=TradeDocumentTermsSnapshot.initialize(_payload);
+      _payload = preserveSavedTradeDocumentFields(payload:_payload,workspace:data,subjectKind:widget.subjectKind,subjectId:widget.subjectId);
       _payload = widget.initialInput?.apply(payload: _payload, workspace: data,
         actor: _actor, subjectKind: widget.subjectKind, subject: widget.subjectId,
         revision: widget.sourceRevision) ?? _payload;
@@ -76,37 +110,66 @@ class _EditorState extends State<TradeDocumentAttachmentEditorPage> {
           _fields['$party.$key']=TextEditingController(text:values[key]?.toString()??'');
         }
       }
-      setState(()=>_workspace=data);
+      _requireScope();setState(()=>_workspace=data);
+      if(_typed&&_canEdit){WidgetsBinding.instance.addPostFrameCallback((_){if(mounted&&!_revoked)unawaited(_openTyped());});}
     } catch(e){if(mounted)setState(()=>_error=e.toString());}
   }
-  @override void dispose(){_subscription?.cancel();for(final c in _fields.values){c.dispose();}super.dispose();}
+  @override void dispose(){_scope?.removeListener(_scopeChanged);_scope?.dispose();for(final c in _fields.values){c.dispose();}super.dispose();}
+  Future<Uint8List> _preview(Map<String,dynamic> payload)async{
+    _requireScope();final bytes=await TradeDocumentFormRenderer.canonical(payload);_requireScope();return bytes;
+  }
+  Future<void> _saveTyped(Map<String,dynamic> payload)async{
+    _requireScope();if(!_canEdit||_saving)throw StateError('保存状態を確認してください。');
+    _saving=true;
+    try{
+      final saved=await _repo!.save(subjectKind:widget.subjectKind,subjectId:widget.subjectId,
+        sourceRevision:widget.sourceRevision,expectedVersion:_version,payload:payload);
+      _requireScope();_payload=saved.payload;_version=saved.version;
+    }catch(_){_saveUncertain=true;rethrow;}finally{_saving=false;}
+  }
+  Future<void> _openTyped()async{
+    if(_typedLaunched||!_canEdit)return;
+    try{
+      _requireScope();final draft=TradeDocumentFormDraft.fromPayload(_payload,allowAmountEditing:false);
+      _typedLaunched=true;
+      final saved=await Navigator.of(context).push<bool>(MaterialPageRoute(builder:(_)=>TradeDocumentTouchEditorPage(
+        initial:draft,requireScope:_requireScope,scopeChanges:_scope,canEdit:true,buildPreview:_preview,onSave:_saveTyped)));
+      if(!mounted)return;_requireScope();
+      if(saved==true&&ModalRoute.of(context)?.isCurrent==true){Navigator.of(context).pop(true);}
+    }catch(error){if(mounted&&!_revoked)setState(()=>_error=error.toString());}
+    finally{_typedLaunched=false;if(mounted&&!_revoked)setState((){});}
+  }
   Widget _input(String key,String label,{int max=240,int lines=1,bool readOnly=false})=>Padding(
     padding:const EdgeInsets.only(bottom:12),child:TextField(controller:_fields[key],
       enabled:_canEdit,readOnly:readOnly,maxLength:max,maxLines:lines,
       decoration:InputDecoration(labelText:label,border:const OutlineInputBorder(),counterText:'')));
   Future<void> _save() async {
-    if(!_canEdit||_saving)return;
+    if(!_canEdit||_saving||_saveUncertain)return;
+    _requireScope();
     setState(()=>_saving=true);
     try {
       final value=Map<String,dynamic>.from(_payload);
       for(final entry in _fields.entries){
-        if(entry.key.contains('.'))continue;
-        value[entry.key]=entry.key.endsWith('_yen')?int.tryParse(entry.value.text):entry.value.text.trim();
-      }
-      for(final party in ['issuer','counterparty']){
-        value[party]={for(final key in ['name','address','corporate_number','representative_name'])key:_fields['$party.$key']!.text.trim()};
+        if(entry.key.contains('.')||entry.key.endsWith('_yen'))continue;
+        if(!_payload.containsKey(entry.key)&&entry.value.text.trim().isEmpty)continue;
+        value[entry.key]=entry.value.text.trim();
       }
       if(!_order){value['acceptance_text']=(value['acceptance_text'] as String).replaceAll('{order_date}',value['order_date'].toString());}
-      await _repo!.save(subjectKind:widget.subjectKind,subjectId:widget.subjectId,
+      final saved=await _repo!.save(subjectKind:widget.subjectKind,subjectId:widget.subjectId,
         sourceRevision:widget.sourceRevision,expectedVersion:_version,payload:value);
-      if(!mounted||!_sameActor||_revoked)return;
-      Navigator.of(context).pop(true);
-    }catch(e){if(mounted)setState(()=>_error=e.toString());}
+      if(!mounted)return;
+      _requireScope();_payload=saved.payload;_version=saved.version;
+      if(ModalRoute.of(context)?.isCurrent==true)Navigator.of(context).pop(true);
+    }catch(e){_saveUncertain=true;if(mounted&&!_revoked)setState(()=>_error='保存結果を確認できません。元の画面で登録状態を確認してください。');}
     finally{if(mounted)setState(()=>_saving=false);}
   }
   @override Widget build(BuildContext context)=>Scaffold(
     appBar:AppBar(title:Text(_order?'月次 注文書':'月次 注文請書')),
-    body:_workspace==null?Center(child:Text(_error??'読み込み中…')):_revoked?const Center(child:Text('開き直してください。')):
+    body:_revoked?Center(child:Text(_error??'開き直してください。')):_workspace==null?Center(child:Text(_error??'読み込み中…')):_typed?Center(child:Column(mainAxisSize:MainAxisSize.min,children:[
+      Text(_saveUncertain?'保存結果を元の画面で確認してください。':_error??'保存した書類を確認します。'),
+      if(_canEdit)FilledButton(onPressed:_typedLaunched?null:_openTyped,child:const Text('入力画面を開く')),
+      if(!_canEdit)const Text('閲覧のみ（内容は変更できません）'),
+    ])):
     ListView(padding:const EdgeInsets.all(16),children:[
       Text('対象月：${_payload['month']}  ／ ${_version==0?'未添付':'保存済み 第$_version版'}',style:Theme.of(context).textTheme.titleMedium),
       const SizedBox(height:8),
@@ -122,7 +185,7 @@ class _EditorState extends State<TradeDocumentAttachmentEditorPage> {
         _input('work_name','工事名'),_input('work_address','工事場所'),
         _input('period_start','工期開始（YYYY-MM-DD）',max:10),_input('period_end','工期終了（YYYY-MM-DD）',max:10),
         _input('total_amount_yen','当月の請負代金（税込・円）',max:10,readOnly:true),
-        _input('tax_amount_yen','うち消費税等（円・要確認）',max:10),
+        _input('tax_amount_yen','うち消費税等（円・要確認）',max:10,readOnly:true),
         _input('payment_conditions','支払条件（期限も入力）',max:400,lines:4),
       ]else ...[
         _input('work_name','工事名（請求書の件名）'),
@@ -135,10 +198,10 @@ class _EditorState extends State<TradeDocumentAttachmentEditorPage> {
       const Text('特記事項は実際の合意内容に合わせて編集できます。'),
       for(final party in ['issuer','counterparty'])...[
         const SizedBox(height:16),Text(party=='issuer'?(_order?'甲・発注者（自社）':'乙・受注者（自社）'):(_order?'乙・受注者（下請け会社）':'甲・発注者（請求先）'),style:Theme.of(context).textTheme.titleMedium),
-        _input('$party.name','社名',max:120,readOnly:party=='issuer'),
-        if(_order||party=='issuer')...[_input('$party.address','住所（任意）',max:240,lines:2),
-        _input('$party.corporate_number','法人番号（任意・13桁）',max:13),
-        _input('$party.representative_name','代表者名（任意）',max:80)],
+        _input('$party.name','社名',max:120,readOnly:true),
+        if(_order||party=='issuer')...[_input('$party.address','住所（任意）',max:240,lines:2,readOnly:true),
+        _input('$party.corporate_number','法人番号（任意・13桁）',max:13,readOnly:true),
+        _input('$party.representative_name','代表者名（任意）',max:80,readOnly:true)],
       ],
       const Text('角印は会社で設定済みの印影・表示設定を保存します。'),
       if(_error!=null)Text(_error!,style:TextStyle(color:Theme.of(context).colorScheme.error)),

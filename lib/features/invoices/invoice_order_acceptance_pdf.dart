@@ -3,6 +3,9 @@ import 'package:pdf/widgets.dart' as pw;
 
 import '../../domain/company_seal_snapshot.dart';
 import '../shared/company_seal_pdf.dart';
+import '../shared/trade_document_terms_pdf.dart';
+import '../shared/trade_document_form_pdf.dart';
+import '../../domain/trade_document_terms_snapshot.dart';
 import '../shared/trade_document_attachment.dart';
 import '../shared/trade_document_company_name_pdf.dart';
 
@@ -20,6 +23,11 @@ class InvoiceOrderAcceptancePdf {
     final payload = attachment.payload;
     if (payload['kind'] != 'acceptance') {
       throw StateError('請求書の添付書類が注文請書ではありません。');
+    }
+    if(payload.containsKey('contract_terms')){
+     TradeDocumentTermsSnapshot.fromJson(payload['contract_terms']);
+     await TradeDocumentFormPdf.append(document,payload,regularFont:regularFont,boldFont:boldFont);
+     TradeDocumentTermsPdf.append(document,payload,regularFont:regularFont,boldFont:boldFont);return;
     }
     final issuer = Map<String, dynamic>.from(payload['issuer'] as Map);
     final customer = Map<String, dynamic>.from(payload['counterparty'] as Map);
@@ -95,6 +103,7 @@ class InvoiceOrderAcceptancePdf {
         ],
       ),
     ));
+    TradeDocumentTermsPdf.append(document,payload,regularFont:regularFont,boldFont:boldFont);
   }
 
   static pw.Widget _field(String label, Object? value, {bool compact = false}) => pw.Padding(

@@ -1,4 +1,5 @@
 import 'trade_document_attachment.dart';
+import '../../domain/trade_document_terms_snapshot.dart';
 import '../../domain/partner_company_bank_account.dart';
 
 /// Builds only an ephemeral PDF payload; never a financial/source record.
@@ -28,7 +29,7 @@ TradeDocumentAttachment standaloneTradeDocument({required Map<String, dynamic> c
   for (final party in ['issuer', 'counterparty']) {
     final original = Map<String, dynamic>.from(context[party] as Map);
     if ((original['name'] as String? ?? '').trim().isEmpty) throw StateError('会社名を登録してください。');
-    final values = <String, dynamic>{'name': original['name']};
+    final values = <String, dynamic>{'name': original['name'],if(original['phone'] is String)'phone':original['phone']};
     for (final key in ['address', 'corporate_number', 'representative_name']) {
       final value = fields['$party.$key']?.trim() ?? original[key]?.toString().trim() ?? '';
       if (value.runes.length > (key == 'address' ? 240 : key == 'representative_name' ? 80 : 13) ||
@@ -64,5 +65,5 @@ TradeDocumentAttachment standaloneTradeDocument({required Map<String, dynamic> c
     }
     if ((payload['tax_amount_yen'] as int) > (payload['total_amount_yen'] as int)) throw StateError('消費税額が請負代金を超えています。');
   }
-  return TradeDocumentAttachment.fromJson({'version': 1, 'payload': payload});
+  return TradeDocumentAttachment.fromJson({'version': 1, 'payload': TradeDocumentTermsSnapshot.initialize(payload)});
 }

@@ -1,3 +1,9 @@
+import '../../data/supabase_backend.dart';
+import '../shared/trade_document_form_session.dart';
+import '../shared/trade_document_form_renderer.dart';
+import '../shared/trade_document_output_page.dart';
+import '../shared/trade_document_attachment_repository.dart';
+import 'payment_order_resolver.dart';
 import '../shared/trade_document_confirmation_dialog.dart';
 import '../shared/trade_document_adjustment_model.dart';
 import '../shared/trade_document_adjustment_page.dart';
@@ -294,6 +300,24 @@ class PaymentCertificatePreviewPage extends StatefulWidget {
 class _PaymentCertificatePreviewPageState
     extends State<PaymentCertificatePreviewPage> {
   final _pdfBytes = PdfBytesCache();
+  TradeDocumentFormSession? _formScope;
+  String get _formTarget=>'${widget.record.id}/${widget.record.revision}';
+  @override void initState(){super.initState();try{if(SupabaseBackend.isInitialized)_formScope=TradeDocumentFormSession(SupabaseBackend.client,target:_formTarget,currentTarget:()=>_formTarget);}catch(_){}}
+  Future<void> _readyForm()async{if(_formScope==null)throw StateError('支払証明書を開き直してください。');await _formScope!.ready();_formScope!.requireScope();}
+  @override void dispose(){_formScope?.dispose();super.dispose();}
+  Future<void> _formOutput()async{
+    if(_sharing)return;setState(()=>_sharing=true);
+    try{await _readyForm();final record=widget.record;
+      final repo=TradeDocumentAttachmentRepository(SupabaseBackend.client,session:_formScope);
+      final workspace=await repo.loadWorkspace(subjectKind:'payment_certificate',subjectId:record.id,sourceRevision:record.revision.toString());
+      _formScope!.requireScope();final attachment=PaymentOrderResolver.resolve(workspace);
+      if(attachment==null)throw StateError('注文書は作成されていません。');
+      final bytes=await TradeDocumentFormRenderer.canonical(attachment.payload);_formScope!.requireScope();
+      if(!mounted)return;await Navigator.of(context).push<void>(MaterialPageRoute(builder:(_)=>TradeDocumentOutputPage(payload:attachment.payload,canonicalBytes:bytes,requireScope:_formScope!.requireScope,scopeChanges:_formScope)));
+    }catch(error){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(error.toString())));}
+    finally{if(mounted)setState(()=>_sharing=false);}
+  }
+
   bool _sharing = false;
 
   Future<Uint8List> _buildPreviewPdf(PdfPageFormat _) =>
@@ -348,12 +372,15 @@ class _PaymentCertificatePreviewPageState
       body: Column(children: [
           if(!record.isPreview&&!record.isAgreementSnapshot&&RegExp(r'^[0-9a-fA-F-]{36}$').hasMatch(record.id))
             TextButton(onPressed:()async{
-              final saved=await Navigator.of(context).push<bool>(MaterialPageRoute(builder:(_)=>TradeDocumentAttachmentEditorPage(
+              try{await _readyForm();
+              if(!context.mounted)return;final saved=await Navigator.of(context).push<bool>(MaterialPageRoute(builder:(_)=>TradeDocumentAttachmentEditorPage(
                 subjectKind:'payment_certificate',subjectId:record.id,sourceRevision:record.revision.toString())));
-              if(saved==true&&mounted)setState(()=>_pdfBytes.invalidate());
-            },child:const Text('この注文書を確認・編集')),
+              _formScope!.requireScope();if(saved==true&&context.mounted)setState(()=>_pdfBytes.invalidate());
+              }catch(error){if(context.mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(error.toString())));}
+            },child:const Text('注文書の入力・設定')),
           if (!record.isPreview && !record.isAgreementSnapshot && RegExp(r'^[0-9a-fA-F-]{36}$').hasMatch(record.id))
             Wrap(children: [
+              TextButton(onPressed:_sharing?null:_formOutput,child:const Text('注文書を保存・印刷')),
               TradeConfirmationAction(kind: 'payment_certificate', parentId: record.id,
                 sourceRevision: record.revision.toString(), label: '注文書の内容確認・角印'),
               TradeConfirmationAction(kind: 'payment_certificate', parentId: record.id,
