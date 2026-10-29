@@ -216,10 +216,17 @@ class _ResourceAttachmentThumbnailState extends State<ResourceAttachmentThumbnai
       if (!mounted || content != _original || path != widget.attachment.path) return;
       final pdf = _isPdf(bytes);
       Future<Uint8List> buildPreviewPdf(PdfPageFormat _) async => bytes;
-      await showDialog<void>(context: context, builder: (context) => Dialog.fullscreen(
+      var closing = false;
+      await showDialog<void>(context: context, useRootNavigator: false, builder: (previewContext) {
+        final route = ModalRoute.of(previewContext);
+        return Dialog.fullscreen(
         child: Scaffold(
+          resizeToAvoidBottomInset: false,
           appBar: AppBar(title: Text(widget.attachment.label), leading: IconButton(
-            tooltip: SkoLanguageController.tr('閉じる'), icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context))),
+            tooltip: SkoLanguageController.tr('閉じる'), icon: const Icon(Icons.close), onPressed: () {
+              if (closing || route?.isCurrent != true) { return; }
+              closing = true; Navigator.of(previewContext).pop();
+            })),
           body: pdf ? PdfPreview.builder(build: buildPreviewPdf,
             pagesBuilder: (_, pages) => PdfPinchPages(pages: pages), useActions: true,
             canDebug: false, canChangeOrientation: false, canChangePageFormat: false,
@@ -229,7 +236,8 @@ class _ResourceAttachmentThumbnailState extends State<ResourceAttachmentThumbnai
                 child: Image.memory(bytes, fit: BoxFit.contain,
                   errorBuilder: (_, __, ___) => Text(SkoLanguageController.tr('画像を表示できませんでした。'))))),
         ),
-      ));
+      );
+      });
     } catch (_) {
       if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(SkoLanguageController.tr('添付を表示できませんでした。')),
@@ -273,7 +281,7 @@ class _ResourceAttachmentThumbnailState extends State<ResourceAttachmentThumbnai
 
 Future<void> showResourceAttachments(BuildContext context, {
   required String title, required List<ResourceAttachment> attachments,
-}) => showDialog<void>(context: context, builder: (context) => Dialog(
+}) => showDialog<void>(context: context, useRootNavigator: false, builder: (context) => Dialog(
   child: Padding(padding: const EdgeInsets.all(16), child: Column(
     mainAxisSize: MainAxisSize.min, children: [
       Text(title, style: Theme.of(context).textTheme.titleMedium),
