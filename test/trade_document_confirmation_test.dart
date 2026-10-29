@@ -142,6 +142,7 @@ void main() {
   });
   for (final mode in ['cap_absent', 'not_integrated', 'transport', 'unknown_pending']) {
     testWidgets('existing approval fallback is limited to known unavailable or non-integrated scope: $mode', (tester) async {
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       final repository = FakeRepository()..capability = mode != 'cap_absent' && mode != 'unknown_pending';
       addTearDown(repository.changes.close);
       if (mode == 'transport') repository.capabilityError = StateError('transport');
