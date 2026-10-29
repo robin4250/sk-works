@@ -60,3 +60,16 @@ jobs:
         env:
           SKO_EMPLOYEE_BANK_REAL_AUTH: contract-v1
           SKO_EMPLOYEE_BANK_PG_MODULE: /tmp/employee-bank-deps/node_modules/pg/lib/index.js
+  client:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze lib/features/people/employee_bank_account_repository.dart lib/features/people/employee_bank_account_section.dart test/employee_bank_account_repository_test.dart test/employee_bank_account_section_test.dart
+      - run: flutter test test/employee_bank_account_repository_test.dart test/employee_bank_account_section_test.dart
