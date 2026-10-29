@@ -36,7 +36,7 @@ class Fixture {
           case 'employee_bank_initial_capability':
             if(f.missing){status=404;value={'code':'PGRST202','message':'Could not find public.employee_bank_initial_capability'};}
             else if(f.denied){status=403;value={'code':'42501','message':'Synthetic permission denied'};}
-            else value={'protocol':'sko-employee-bank-initial-v1','enabled':f.enabled,'registered':f.registered,...f.metadata,if(f.wrongScope)'worker_id':actor};
+            else {value={'protocol':'sko-employee-bank-initial-v1','enabled':f.enabled,'registered':f.registered,...f.metadata,if(f.wrongScope)'worker_id':actor};}
           case 'reauthenticate-operation':
             final body=jsonDecode(r.body) as Map;await f.afterProof?.call();
             value={'protocol':'sko-reauthentication-v1','operation':body['operation'],'target':body['target'],'proof':'a'*64,'expiresAt':DateTime.now().add(const Duration(seconds:90)).toUtc().toIso8601String()};

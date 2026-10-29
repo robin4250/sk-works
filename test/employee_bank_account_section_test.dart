@@ -33,7 +33,7 @@ class Gateway extends ChangeNotifier implements EmployeeBankAccountGateway {
 }
 Future<void> open(WidgetTester t,Gateway gateway,{String selected=worker}) async {
   await t.pumpWidget(MaterialApp(home:Scaffold(body:ListView(children:[EmployeeBankAccountSection(
-    companyId:company,workerId:selected,employeeName:'合成社員',gateway:gateway)])))));
+    companyId:company,workerId:selected,employeeName:'合成社員',gateway:gateway)]))));
   await t.pumpAndSettle();
 }
 Future<void> form(WidgetTester t) async {
