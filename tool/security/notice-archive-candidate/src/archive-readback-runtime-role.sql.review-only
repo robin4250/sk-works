@@ -1,0 +1,37 @@
+-- REVIEW ONLY / OFF. No production role provisioning or source registration.
+-- Install only as the existing protected registry/guard owner. Never app roles.
+-- The backend verifies exact GoTrue bearer before setting claims; this role can
+-- set JWT GUCs itself. This is NOT independent database JWT authentication.
+begin;
+set local search_path='';
+do $$begin
+ if current_user in ('anon','authenticated','service_role','archive_readback_runtime')
+ or not exists(select 1 from pg_catalog.pg_class c join pg_catalog.pg_namespace n on n.oid=c.relnamespace
+ where n.nspname='archive_readback_private' and c.relname='authority_records' and c.relowner=current_user::regrole)
+ or (select proowner from pg_catalog.pg_proc where oid='private.require_reauthentication_session()'::regprocedure)<>current_user::regrole
+ or (select proowner from pg_catalog.pg_proc where oid='security_management_issuer_private.binding(uuid,uuid,uuid,text,boolean)'::regprocedure)<>current_user::regrole
+ then raise exception 'archive_runtime_protected_owner_required';end if;
+end$$;
+-- NOLOGIN until separately reviewed deployment; no membership in existing roles.
+create role archive_readback_runtime nologin nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls;
+create function archive_readback_private.authorize_observation(p_authority uuid,p_descriptor jsonb)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare actor uuid;sid uuid;r archive_readback_private.authority_records%rowtype;d jsonb;b jsonb;
+begin
+ sid:=private.require_reauthentication_session();actor:=auth.uid();
+ select * into strict r from archive_readback_private.authority_records
+ where object_id=p_descriptor->>'object_id' for share;
+ d:=jsonb_build_object('status','stored_unattested','schema',1,'company_id',r.company_id,
+ 'event_id',r.event_id,'revision',r.revision,'snapshot_sha256',r.snapshot_sha256,
+ 'payload_sha256',r.payload_sha256,'byte_length',r.byte_length,'object_id',r.object_id);
+ if r.authority_id is distinct from p_authority or r.owner_id is distinct from actor or p_descriptor is distinct from d
+ then raise exception 'archive_runtime_target_denied';end if;
+ b:=security_management_issuer_private.binding(actor,sid,r.company_id,r.deployment_id,true);
+ if b is null then raise exception 'archive_runtime_binding_required';end if;
+ -- Do not expose credential fingerprint, manager JWK or other guard internals.
+ return jsonb_build_object('descriptor',d,'guard_token',encode(sha256(convert_to(b::text,'UTF8')),'hex'));
+end$$;
+revoke all on function archive_readback_private.authorize_observation(uuid,jsonb) from public,anon,authenticated,service_role;
+grant usage on schema archive_readback_private to archive_readback_runtime;
+grant execute on function archive_readback_private.authorize_observation(uuid,jsonb) to archive_readback_runtime;
+commit;
