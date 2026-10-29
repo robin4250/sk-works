@@ -104,7 +104,7 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
     if (_revoked || _repository == null) {
       throw StateError('会社詳細から開き直してください。');
     }
-    _repository.verify();
+    _repository!.verify();
   }
 
   void _invalidate() {

@@ -8,6 +8,7 @@ import 'trade_document_confirmation_controller.dart';
 import 'trade_document_confirmation_model.dart';
 import 'trade_document_confirmation_pending_store.dart';
 import 'trade_document_confirmation_repository.dart';
+import 'trade_document_output_page.dart';
 
 enum TradeConfirmationFlowOutcome { legacy, confirmed, cancelled }
 
@@ -82,6 +83,8 @@ class _TradeDocumentConfirmationPageState extends State<TradeDocumentConfirmatio
   String? _error;
   TradeConfirmationPreview? _preview;
   Uint8List? _bytes;
+  Map<String,dynamic>? _outputPayload;
+  final _outputChanges=ValueNotifier<int>(0);
   String tr(String text) => SkoLanguageController.tr(text);
   bool _current(int generation) => mounted && _active && !_revoked && generation == _generation &&
     widget.repository.actorId == _actor && widget.repository.sessionKey == _token;
@@ -103,6 +106,7 @@ class _TradeDocumentConfirmationPageState extends State<TradeDocumentConfirmatio
     _generation++;
     setState(() { _revoked = true; _bytes = null; _preview = null;
       _error = 'ログイン情報が変わりました。書類を開き直してください。'; });
+    _outputChanges.value++;
   }
   @override void didChangeAppLifecycleState(AppLifecycleState state) {
     _visibility = state;
@@ -111,6 +115,7 @@ class _TradeDocumentConfirmationPageState extends State<TradeDocumentConfirmatio
     if (!_active) {
       _generation++;
       if (mounted) setState(() { _bytes = null; _preview = null; _content = false; _seal = false; });
+      _outputChanges.value++;
     } else if (!_revoked) {
       if (_busy) { _reload = true; }
       else { unawaited(_load()); }
@@ -159,7 +164,7 @@ class _TradeDocumentConfirmationPageState extends State<TradeDocumentConfirmatio
         if (!mounted || !_current(generation)) return;
         final bytes = await TradeConfirmationPdf.approved(evidence, scope, _actor!);
         if (!mounted || !_current(generation)) return;
-        setState(() { _bytes = bytes; _approved = true; }); return;
+        setState(() { _bytes = bytes; _outputPayload=TradeConfirmationPdf.approvedAttachment(evidence,scope,_actor!).payload; _approved = true; }); return;
       }
       final workspace = await widget.repository.workspace(widget.kind, widget.parentId, widget.sourceRevision);
       if (!mounted || !_current(generation)) return;
@@ -174,7 +179,7 @@ class _TradeDocumentConfirmationPageState extends State<TradeDocumentConfirmatio
           if (!mounted || !_current(generation)) return;
           final bytes = await TradeConfirmationPdf.approved(evidence, scope, _actor!);
           if (!mounted || !_current(generation)) return;
-          setState(() { _bytes = bytes; _approved = true; });
+          setState(() { _bytes = bytes; _outputPayload=TradeConfirmationPdf.approvedAttachment(evidence,scope,_actor!).payload; _approved = true; });
         } else { setState(() => _error = _reason(workspace.unavailableReason)); }
         return;
       }
@@ -231,7 +236,7 @@ class _TradeDocumentConfirmationPageState extends State<TradeDocumentConfirmatio
       if (!mounted || !_current(generation)) return;
       final bytes = await TradeConfirmationPdf.approved(raw, scope, _actor!, archive: true);
       if (!mounted || !_current(generation)) return;
-      setState(() { _bytes = bytes; _approved = true; _archived = true; _error = null; });
+      setState(() { _bytes = bytes;_outputPayload=TradeConfirmationPdf.approvedAttachment(raw,scope,_actor!,archive:true).payload; _approved = true; _archived = true; _error = null; });
     } catch (_) {
       if (_current(generation)) setState(() => _error = '過去の承認済み書類を取得できません。');
     } finally { _finish(); }
@@ -256,7 +261,15 @@ class _TradeDocumentConfirmationPageState extends State<TradeDocumentConfirmatio
       if (mounted && !_revoked) setState(() => _error = '印刷・共有を完了できません。書類を再読み込みしてください。');
     } finally { _printing = false; _finish(); }
   }
-  @override void dispose() { _generation++; WidgetsBinding.instance.removeObserver(this); _subscription?.cancel(); super.dispose(); }
+  @override void dispose() { _revoked=true;_outputChanges.value++;_outputChanges.dispose();_generation++; WidgetsBinding.instance.removeObserver(this); _subscription?.cancel(); super.dispose(); }
+  Future<void> _formats()async {
+    final bytes=_bytes,payload=_outputPayload;
+    if(_busy||!_active||!_approved||bytes==null||payload==null||_revoked)return;
+    setState((){_busy=true;_printing=true;});
+    try{_verifyPrint(bytes);await Navigator.of(context).push<void>(MaterialPageRoute(builder:(_)=>TradeDocumentOutputPage(payload:payload,canonicalBytes:bytes,scopeChanges:_outputChanges,requireScope:()=>_verifyPrint(bytes))));}
+    catch(_){if(mounted&&!_revoked)setState(()=>_error='書類を開き直してください。');}
+    finally{_printing=false;_finish();}
+  }
   @override Widget build(BuildContext context) {
     SkoLanguageController.watch(context);
     final enabled = !_busy && _active && !_revoked;
@@ -273,6 +286,7 @@ class _TradeDocumentConfirmationPageState extends State<TradeDocumentConfirmatio
           canChangePageFormat: false, canChangeOrientation: false, allowPrinting: false,
           allowSharing: false, pdfFileName: widget.kind == 'invoice' ? '注文請書.pdf' : '注文書.pdf'))
         else const Spacer(),
+        if(_approved&&_outputPayload!=null)TextButton(onPressed:enabled?_formats:null,child:Text(tr('形式を選んで保存・印刷'))),
         if (_approved) SafeArea(top: false, child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
           OutlinedButton(onPressed: enabled ? () => _print() : null, child: Text(tr('印刷'))),
           TextButton(onPressed: enabled ? () => _print(share: true) : null, child: Text(tr('共有'))),
@@ -405,6 +419,8 @@ class TradeApprovedDocumentPage extends StatefulWidget {
 }
 class _TradeApprovedDocumentPageState extends State<TradeApprovedDocumentPage> with WidgetsBindingObserver {
   Uint8List? _bytes;
+  Map<String,dynamic>? _outputPayload;
+  final _outputChanges=ValueNotifier<int>(0);
   late final String? _actor, _token;
   StreamSubscription<String?>? _subscription;
   bool _busy = false, _revoked = false, _printing = false;
@@ -426,6 +442,7 @@ class _TradeApprovedDocumentPageState extends State<TradeApprovedDocumentPage> w
   }
   void _revoke() {
     if (mounted) setState(() { _revoked = true; _bytes = null; _error = '書類の閲覧状態が変わりました。開き直してください。'; });
+    _outputChanges.value++;
   }
   @override void didChangeAppLifecycleState(AppLifecycleState state) {
     _visibility = state;
@@ -437,7 +454,7 @@ class _TradeApprovedDocumentPageState extends State<TradeApprovedDocumentPage> w
     try {
       _verify(); final raw = await widget.repository.render(widget.scope, archive: widget.archive); _verify();
       final bytes = await TradeConfirmationPdf.approved(raw, widget.scope, _actor!, archive: widget.archive); _verify();
-      setState(() => _bytes = bytes);
+      setState(() {_bytes = bytes;_outputPayload=TradeConfirmationPdf.approvedAttachment(raw,widget.scope,_actor!,archive:widget.archive).payload;});
     } catch (_) {
       if (mounted && !_revoked) setState(() => _error = '承認済み書類を取得できません。現在の承認状態を確認してください。');
     } finally { if (mounted) setState(() => _busy = false); }
@@ -455,7 +472,14 @@ class _TradeApprovedDocumentPageState extends State<TradeApprovedDocumentPage> w
     } catch (_) { if (mounted && !_revoked) setState(() => _error = '印刷・共有を完了できません。書類を再読み込みしてください。'); }
     finally { _printing = false; if (mounted) setState(() => _busy = false); }
   }
-  @override void dispose() { _subscription?.cancel(); WidgetsBinding.instance.removeObserver(this); super.dispose(); }
+  Future<void> _formats()async{
+    final bytes=_bytes,payload=_outputPayload;if(_busy||_revoked||bytes==null||payload==null||_visibility!=AppLifecycleState.resumed)return;
+    setState((){_busy=true;_printing=true;});
+    try{_verify();await Navigator.of(context).push<void>(MaterialPageRoute(builder:(_)=>TradeDocumentOutputPage(payload:payload,canonicalBytes:bytes,scopeChanges:_outputChanges,requireScope:(){_verify();if(!identical(bytes,_bytes))throw StateError('書類を開き直してください。');})));}
+    catch(_){if(mounted&&!_revoked)setState(()=>_error='書類を開き直してください。');}
+    finally{_printing=false;if(mounted)setState(()=>_busy=false);}
+  }
+  @override void dispose() { _revoked=true;_outputChanges.value++;_outputChanges.dispose();_subscription?.cancel(); WidgetsBinding.instance.removeObserver(this); super.dispose(); }
   @override Widget build(BuildContext context) {
     SkoLanguageController.watch(context);
     final enabled = !_busy && !_revoked && _visibility == AppLifecycleState.resumed;
@@ -466,6 +490,7 @@ class _TradeApprovedDocumentPageState extends State<TradeApprovedDocumentPage> w
       if (_bytes != null) Expanded(child: PdfPreview(build: (_) async => _bytes ?? (throw StateError('書類を開き直してください。')),
         canChangePageFormat: false, canChangeOrientation: false, allowPrinting: false, allowSharing: false))
       else const Spacer(),
+      if(_outputPayload!=null)TextButton(onPressed:enabled?_formats:null,child:Text(tr('形式を選んで保存・印刷'))),
       SafeArea(top: false, child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
         OutlinedButton(onPressed: enabled && _bytes != null ? () => _print() : null, child: Text(tr('印刷'))),
         TextButton(onPressed: enabled && _bytes != null ? () => _print(share: true) : null, child: Text(tr('共有'))),

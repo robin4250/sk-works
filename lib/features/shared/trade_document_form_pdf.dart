@@ -112,7 +112,7 @@ class TradeDocumentFormPdf {
    if(fields!=null){
     final payment=(fields['payments'] as Map)[['advance','partial','completion'][i]] as Map;
     if(payment['choice']!='unspecified'){
-     final center=a+(choice-a)*(payment['choice']=='yes'?.28:.75);
+     final center=a+(choice-a)*(payment['choice']=='yes' ? 0.28 : 0.75);
      parts.add(pw.Positioned(left:center-7,top:height-(high+low)/2-7,child:pw.Container(width:14,height:14,decoration:pw.BoxDecoration(shape:pw.BoxShape.circle,border:pw.Border.all(width:.6)))));
     }
     date(payment['date'],when+3,low+2,high-2);

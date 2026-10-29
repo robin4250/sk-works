@@ -26,7 +26,7 @@ Map<String,dynamic> preserveSavedTradeDocumentFields({required Map<String,dynami
   }
  }
  for(final key in ['contract_terms','counterparty_bank','form_fields']){
-  if(saved.containsKey(key))result[key]=jsonDecode(jsonEncode(saved[key]));else result.remove(key);
+  if(saved.containsKey(key)){result[key]=jsonDecode(jsonEncode(saved[key]));}else{result.remove(key);}
  }
  return result;
 }
