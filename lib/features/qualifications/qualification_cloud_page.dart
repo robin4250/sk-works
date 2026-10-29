@@ -31,6 +31,8 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
   List<Map<String, dynamic>> _masters = [];
   List<Map<String, dynamic>> _workers = [];
   List<Map<String, dynamic>> _qualifications = [];
+  bool Function()? _galleryLease;
+  int _galleryGeneration = 0;
   bool _loading = true;
   bool _registrationDialogOpen = false;
   bool _canManageMaster = false;
@@ -59,6 +61,7 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
   }
 
   Future<void> _load() async {
+    final galleryGeneration = ++_galleryGeneration;
     final repository = _repository;
     if (repository == null) {
       if (!mounted) return;
@@ -70,6 +73,9 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
     }
 
     try {
+      bool Function()? galleryLease;
+      try { galleryLease = await repository.captureAttachmentReadScope(); } catch (_) { galleryLease = null; }
+
       final values = await Future.wait([
         repository.loadAll(),
         repository.canManageMaster(),
@@ -79,6 +85,7 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
       final data = values[0] as Map<String, dynamic>;
       if (!mounted) return;
       setState(() {
+        _galleryLease = galleryGeneration == _galleryGeneration ? galleryLease : null;
         _masters = List<Map<String, dynamic>>.from(data['masters'] as List);
         _workers = List<Map<String, dynamic>>.from(data['workers'] as List);
         _qualifications = List<Map<String, dynamic>>.from(data['qualifications'] as List);
@@ -95,6 +102,36 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
         _error = error.toString();
       });
     }
+  }
+
+  ResourceAttachmentGallery? _galleryForWorker(String workerId) {
+    final repository = _certificateRepository, rows = _qualifications;
+    final lease = _galleryLease, galleryGeneration = _galleryGeneration;
+    final workers = _workers.where((row) => row['id'] == workerId).toList();
+    final company = workers.length == 1 ? workers.single['company_id']?.toString() : null;
+    final actor = repository?.currentUserId, selection = _selectedWorkerId;
+    if (repository == null || lease == null || !lease() || actor == null || company == null || company.isEmpty) { return null; }
+    bool current() => mounted && !_loading && galleryGeneration == _galleryGeneration && lease() && identical(rows, _qualifications) &&
+      _selectedWorkerId == selection && repository.currentUserId == actor &&
+      _workers.any((row) => row['id'] == workerId && row['company_id'] == company);
+    if (rows.any((row) => row['worker_id'] == workerId && row['company_id'] != company && row['_unregistered'] != true)) { return null; }
+    final titles = {for (final row in _masters) row['id']: row['name']?.toString() ?? '資格'};
+    final entries = <ResourceAttachment>[];
+    for (final row in rows.where((row) => row['worker_id'] == workerId && row['company_id'] == company && row['_unregistered'] != true)) {
+      final id = row['id']?.toString(); if (id == null || id.isEmpty) { continue; }
+      final paths = [row['attachment_path'], row['attachment_back_path'], ...?row['attachment_extra_paths'] as List?];
+      for (var i = 0; i < paths.length; i++) {
+        final path = paths[i]; if (path is! String || path.trim().isEmpty) { continue; }
+        Future<String> signed(String value) async {
+          if (!current()) { throw StateError('Attachment scope changed'); }
+          final url = await repository.createSignedUrl(value);
+          if (!current()) { throw StateError('Attachment scope changed'); } return url;
+        }
+        entries.add(signedResourceAttachment(label: i == 0 ? '表面' : i == 1 ? '裏面' : '追加写真 ${i - 1}', path: path,
+          signedUrl: signed, previewKey: 'qualification:$id:$i', recordTitle: titles[row['qualification_master_id']] ?? '資格'));
+      }
+    }
+    return ResourceAttachmentGallery(source: rows, workerId: workerId, companyId: company, isCurrent: current, changes: _repository!.attachmentAuthChanges, entries: entries);
   }
 
   @override
@@ -291,9 +328,9 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
                                   return url;
                                 }
                                 final attachments = [
-                                  signedResourceAttachment(label: '表面', path: row['attachment_path']?.toString(),
+                                  signedResourceAttachment(label: '表面', previewKey: 'qualification:${row['id']}:0', recordTitle: master?['name']?.toString() ?? '資格', path: row['attachment_path']?.toString(),
                                     signedUrl: signedUrl, known: unregistered || row.containsKey('attachment_path')),
-                                  signedResourceAttachment(label: '裏面', path: row['attachment_back_path']?.toString(),
+                                  signedResourceAttachment(label: '裏面', previewKey: 'qualification:${row['id']}:1', recordTitle: master?['name']?.toString() ?? '資格', path: row['attachment_back_path']?.toString(),
                                     signedUrl: signedUrl, known: unregistered || row.containsKey('attachment_back_path')),
                                 ];
                                 return ResourceRegistrationCard(
@@ -302,7 +339,7 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
                                   registered: !unregistered,
                                   registeredActionLabel: '詳細を確認',
                                   dateLabel: '${(row['issued_at']?.toString() ?? '').isEmpty ? '取得日 未設定' : '取得日 ${row['issued_at']}'}　区分 ${(master?['category']?.toString().trim().isNotEmpty ?? false) ? master!['category'] : '未設定'}',
-                                  detailLabel: worker?['name']?.toString() ?? '', attachments: attachments,
+                                  detailLabel: worker?['name']?.toString() ?? '', attachments: attachments, gallery: _galleryForWorker(row['worker_id'].toString()), requireGalleryScope: true,
                                   onAction: unregistered ? _canManageWorkerQualifications
                                     ? () => _addQualification(initialMasterId: row['qualification_master_id']?.toString()) : null
                                     : () => _showDetails(row, master, worker, status),

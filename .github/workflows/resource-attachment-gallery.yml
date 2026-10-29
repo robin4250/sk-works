@@ -1,0 +1,29 @@
+name: Resource attachment gallery
+on:
+  pull_request:
+    paths:
+      - 'lib/features/shared/resource_registration_card.dart'
+      - 'lib/features/people/own_document_registration_page.dart'
+      - 'lib/features/people/worker_document_page.dart'
+      - 'lib/features/people/worker_document_repository.dart'
+      - 'lib/features/qualifications/own_qualification_registration_page.dart'
+      - 'lib/features/qualifications/qualification_cloud_page.dart'
+      - 'lib/features/qualifications/qualification_cloud_repository.dart'
+      - 'test/resource_attachment_gallery*'
+      - '.github/workflows/resource-attachment-gallery.yml'
+permissions:
+  contents: read
+jobs:
+  gallery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/shared/resource_registration_card.dart lib/features/people/own_document_registration_page.dart lib/features/people/worker_document_page.dart lib/features/people/worker_document_repository.dart lib/features/qualifications/own_qualification_registration_page.dart lib/features/qualifications/qualification_cloud_page.dart lib/features/qualifications/qualification_cloud_repository.dart test/resource_attachment_gallery_test.dart
+      - run: flutter test --reporter expanded test/resource_attachment_gallery_test.dart test/resource_registration_card_test.dart test/qualification_thumbnail_aspect_test.dart test/qualification_image_preview_navigation_test.dart test/own_registered_qualifications_test.dart test/own_document_registration_save_test.dart

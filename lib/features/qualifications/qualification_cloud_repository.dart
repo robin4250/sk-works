@@ -1,11 +1,24 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
+import '../auth/app_auth_mutation_gateway.dart';
 
 class QualificationCloudRepository {
   QualificationCloudRepository._(this._client);
 
   final SupabaseClient _client;
+
+  Stream<AuthState> get attachmentAuthChanges => _client.auth.onAuthStateChange;
+  Future<bool Function()> captureAttachmentReadScope() async {
+    final session = _client.auth.currentSession;
+    final actor = _client.auth.currentUser?.id;
+    final gateway = AppAuthMutationGateway.forClient(_client);
+    final epoch = await gateway.externalFlowAdmission();
+    if (session == null || actor == null || session.isExpired || epoch == null ||
+        !identical(session, _client.auth.currentSession)) { throw StateError('Attachment session changed'); }
+    return () => !session.isExpired && identical(session, _client.auth.currentSession) &&
+      _client.auth.currentUser?.id == actor && gateway.isExternalFlowCurrent(epoch);
+  }
 
   static QualificationCloudRepository? maybeCreate() {
     if (!SupabaseBackend.isInitialized) return null;
@@ -91,7 +104,7 @@ class QualificationCloudRepository {
 
     var workersQuery = _client
         .from('workers')
-        .select('id, name, affiliation, status')
+        .select('id, company_id, name, affiliation, status')
         .eq('company_id', companyId);
     if (!canManage && ownWorkerId != null && ownWorkerId.isNotEmpty) {
       workersQuery = workersQuery.eq('id', ownWorkerId);
@@ -99,7 +112,7 @@ class QualificationCloudRepository {
     final workers = await workersQuery.order('name');
 
     const baseFields =
-      'id, worker_id, qualification_master_id, certificate_number, issued_at, expires_at, issuer, attachment_path, notes, created_at, updated_at';
+      'id, company_id, worker_id, qualification_master_id, certificate_number, issued_at, expires_at, issuer, attachment_path, notes, created_at, updated_at';
     final optionalFields = <String>{'attachment_back_path', 'attachment_extra_paths'};
     late List<Map<String, dynamic>> qualifications;
     for (;;) {
@@ -227,7 +240,7 @@ class QualificationCloudRepository {
     String? qualificationId,
   }) async {
     const baseFields =
-        'id, worker_id, qualification_master_id, certificate_number, issued_at, expires_at, issuer, attachment_path, notes, created_at, updated_at';
+        'id, company_id, worker_id, qualification_master_id, certificate_number, issued_at, expires_at, issuer, attachment_path, notes, created_at, updated_at';
     final optionalFields = <String>[
       'attachment_back_path',
       'attachment_extra_paths',
@@ -292,7 +305,7 @@ class QualificationCloudRepository {
     );
 
     return {
-      'worker': {'id': worker.workerId, 'name': worker.workerName},
+      'worker': {'id': worker.workerId, 'company_id': companyId, 'name': worker.workerName},
       'masters': masters,
       'qualifications': List<Map<String, dynamic>>.from(qualifications),
     };
@@ -332,7 +345,7 @@ class QualificationCloudRepository {
           'notes': _nullable(notes),
         })
         .select(
-          'id, worker_id, qualification_master_id, certificate_number, issued_at, expires_at, issuer, attachment_path, notes, created_at, updated_at',
+          'id, company_id, worker_id, qualification_master_id, certificate_number, issued_at, expires_at, issuer, attachment_path, notes, created_at, updated_at',
         )
         .single();
     return Map<String, dynamic>.from(inserted);
@@ -364,7 +377,7 @@ class QualificationCloudRepository {
           'attachment_path': _nullable(attachmentPath),
         })
         .select(
-          'id, worker_id, qualification_master_id, certificate_number, issued_at, expires_at, issuer, attachment_path, notes, created_at, updated_at',
+          'id, company_id, worker_id, qualification_master_id, certificate_number, issued_at, expires_at, issuer, attachment_path, notes, created_at, updated_at',
         )
         .single();
     return Map<String, dynamic>.from(inserted);

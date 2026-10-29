@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -14,9 +15,10 @@ class ResourceAttachment {
     this.path,
     this.loadBytes,
     this.known = true,
-    this.validateAccess,
+    this.validateAccess, this.previewKey, this.recordTitle,
   });
   final String label;
+  final String? previewKey, recordTitle;
   final String? path;
   final Future<Uint8List> Function()? loadBytes;
   final bool known;
@@ -28,9 +30,9 @@ ResourceAttachment signedResourceAttachment({
   required String label,
   required String? path,
   required Future<String> Function(String) signedUrl,
-  bool known = true,
+  bool known = true, String? previewKey, String? recordTitle,
 }) => ResourceAttachment(
-  label: label,
+  label: label, previewKey: previewKey, recordTitle: recordTitle,
   path: path,
   known: known,
   validateAccess: path?.trim().isNotEmpty != true ? null : () async { await signedUrl(path!); },
@@ -54,6 +56,26 @@ ResourceAttachment signedResourceAttachment({
   },
 );
 
+/// A fixed, already-authorized worker/company response, never a gallery query.
+class ResourceAttachmentGallery {
+  ResourceAttachmentGallery({required this.source, required this.workerId,
+    required this.companyId, required this.isCurrent, this.changes, required Iterable<ResourceAttachment> entries})
+      : entries = List.unmodifiable(entries.where((entry) => entry.registered && entry.loadBytes != null)) {
+    final keys = this.entries.map((entry) => entry.previewKey).toList();
+    if (workerId.isEmpty || companyId.isEmpty || keys.any((key) => key == null || key.isEmpty) ||
+        keys.toSet().length != keys.length || this.entries.any((entry) => entry.recordTitle?.trim().isNotEmpty != true)) {
+      throw ArgumentError('Invalid saved attachment gallery scope');
+    }
+  }
+  final Stream<Object?>? changes;
+  final Object source;
+  final String workerId, companyId;
+  final bool Function() isCurrent;
+  final List<ResourceAttachment> entries;
+  int indexOf(ResourceAttachment entry) => entries.indexWhere((saved) =>
+    saved.previewKey == entry.previewKey && saved.path == entry.path);
+}
+
 class ResourceRegistrationCard extends StatelessWidget {
   const ResourceRegistrationCard({
     super.key,
@@ -67,9 +89,11 @@ class ResourceRegistrationCard extends StatelessWidget {
     this.registeredActionLabel = '確認・編集',
     this.detailLabel = '',
     this.onOpenDetail,
-    this.rasterizeFirstPage,
+    this.rasterizeFirstPage, this.gallery, this.requireGalleryScope = false,
   });
   static const cardHeight = 204.0;
+  final ResourceAttachmentGallery? gallery;
+  final bool requireGalleryScope;
   final String title, dateLabel, detailLabel;
   final IconData icon;
   final bool registered;
@@ -133,7 +157,7 @@ class ResourceRegistrationCard extends StatelessWidget {
                 : Row(children: [
                     for (final attachment in attachments.take(2)) ...[
                       ResourceAttachmentThumbnail(key: ValueKey('${attachment.label}:${attachment.path ?? ''}'),
-                        attachment: attachment, rasterizeFirstPage: rasterizeFirstPage),
+                        attachment: attachment, rasterizeFirstPage: rasterizeFirstPage, gallery: gallery, recordTitle: title, requireGalleryScope: requireGalleryScope),
                       const SizedBox(width: 6),
                     ],
                   ])),
@@ -161,14 +185,24 @@ bool _isPdf(Uint8List bytes) => bytes.length >= 5 &&
   bytes[0] == 37 && bytes[1] == 80 && bytes[2] == 68 && bytes[3] == 70 && bytes[4] == 45;
 
 class ResourceAttachmentThumbnail extends StatefulWidget {
-  const ResourceAttachmentThumbnail({super.key, required this.attachment, this.rasterizeFirstPage});
+  const ResourceAttachmentThumbnail({super.key, required this.attachment, this.rasterizeFirstPage, this.gallery, this.recordTitle, this.requireGalleryScope = false});
   final ResourceAttachment attachment;
+  final ResourceAttachmentGallery? gallery;
+  final String? recordTitle;
+  final bool requireGalleryScope;
   final Future<Uint8List> Function(Uint8List)? rasterizeFirstPage;
   @override
   State<ResourceAttachmentThumbnail> createState() => _ResourceAttachmentThumbnailState();
 }
 
 class _ResourceAttachmentThumbnailState extends State<ResourceAttachmentThumbnail> {
+  Route<void>? _previewRoute;
+  bool _opening = false;
+  void _retirePreview() {
+    final route = _previewRoute; _previewRoute = null;
+    if (route != null) { WidgetsBinding.instance.addPostFrameCallback((_) { if (route.isActive) { route.navigator?.removeRoute(route); } }); }
+  }
+  @override void dispose() { _retirePreview(); super.dispose(); }
   Future<(Uint8List, Uint8List?, bool)>? _content;
   Future<Uint8List>? _original;
   @override
@@ -176,6 +210,10 @@ class _ResourceAttachmentThumbnailState extends State<ResourceAttachmentThumbnai
   @override
   void didUpdateWidget(covariant ResourceAttachmentThumbnail oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.gallery?.source, widget.gallery?.source) ||
+        oldWidget.gallery?.workerId != widget.gallery?.workerId ||
+        oldWidget.gallery?.companyId != widget.gallery?.companyId ||
+        widget.gallery?.isCurrent() == false) { _retirePreview(); }
     if (oldWidget.attachment.path != widget.attachment.path ||
         oldWidget.attachment.known != widget.attachment.known) {
       _content = _load();
@@ -207,37 +245,32 @@ class _ResourceAttachmentThumbnailState extends State<ResourceAttachmentThumbnai
   }
 
   Future<void> _open() async {
-    if (_content == null) return;
+    if (_content == null || _opening) return;
+    _opening = true;
     final content = _original;
     final path = widget.attachment.path;
     try {
+      if (widget.requireGalleryScope && widget.gallery == null) { throw StateError('Attachment scope unavailable'); }
       final bytes = await content!;
       await widget.attachment.validateAccess?.call();
       if (!mounted || content != _original || path != widget.attachment.path) return;
-      final pdf = _isPdf(bytes);
-      Future<Uint8List> buildPreviewPdf(PdfPageFormat _) async => bytes;
+      final gallery = widget.gallery;
+      final entries = gallery?.entries ?? [widget.attachment];
+      final index = gallery?.indexOf(widget.attachment) ?? 0;
+      bool current() => mounted && content == _original && path == widget.attachment.path &&
+        (gallery == null || identical(gallery.source, widget.gallery?.source) && gallery.isCurrent());
+      if (!current() || index < 0 || index >= entries.length) { return; }
       var closing = false;
-      await showDialog<void>(context: context, useRootNavigator: false, builder: (previewContext) {
-        final route = ModalRoute.of(previewContext);
-        return Dialog.fullscreen(
-        child: Scaffold(
-          resizeToAvoidBottomInset: false,
-          appBar: AppBar(title: Text(widget.attachment.label), leading: IconButton(
-            tooltip: SkoLanguageController.tr('閉じる'), icon: const Icon(Icons.close), onPressed: () {
-              if (closing || route?.isCurrent != true) { return; }
-              closing = true; Navigator.of(previewContext).pop();
-            })),
-          body: pdf ? PdfPreview.builder(build: buildPreviewPdf,
-            pagesBuilder: (_, pages) => PdfPinchPages(pages: pages), useActions: true,
-            canDebug: false, canChangeOrientation: false, canChangePageFormat: false,
-            allowPrinting: true, allowSharing: false, dynamicLayout: false,
-            onError: (_, __) => Center(child: Text(SkoLanguageController.tr('PDFを表示できませんでした。'))))
-            : Center(child: InteractiveViewer(minScale: .5, maxScale: 5,
-                child: Image.memory(bytes, fit: BoxFit.contain,
-                  errorBuilder: (_, __, ___) => Text(SkoLanguageController.tr('画像を表示できませんでした。'))))),
-        ),
-      );
-      });
+      late final DialogRoute<void> route;
+      route = DialogRoute<void>(context: context, builder: (previewContext) =>
+        _ResourceGalleryViewer(entries: entries, initialIndex: index, initialBytes: bytes,
+          defaultTitle: widget.recordTitle, isCurrent: current, changes: gallery?.changes, onClose: () {
+            if (closing || !route.isCurrent) { return; }
+            closing = true; Navigator.of(previewContext).pop();
+          }));
+      _previewRoute = route;
+      await Navigator.of(context).push(route);
+      if (identical(_previewRoute, route)) { _previewRoute = null; }
     } catch (_) {
       if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(SkoLanguageController.tr('添付を表示できませんでした。')),
@@ -247,7 +280,7 @@ class _ResourceAttachmentThumbnailState extends State<ResourceAttachmentThumbnai
             setState(() { _content = reloaded; });
           }
         }))); }
-    }
+    } finally { _opening = false; }
   }
 
   @override
@@ -360,3 +393,92 @@ List<String> resourceQualificationMetadata(Map<String, dynamic> row) => [
   if ((row['issuer']?.toString() ?? '').isNotEmpty) '発行元: ${row['issuer']}',
   if ((row['certificate_number']?.toString() ?? '').isNotEmpty) '証明書 ${row['certificate_number']}',
 ];
+
+
+class _ResourceGalleryViewer extends StatefulWidget {
+  const _ResourceGalleryViewer({required this.entries, required this.initialIndex,
+    required this.initialBytes, required this.isCurrent, required this.onClose, this.defaultTitle, this.changes});
+  final Stream<Object?>? changes;
+  final List<ResourceAttachment> entries;
+  final int initialIndex;
+  final Uint8List initialBytes;
+  final String? defaultTitle;
+  final bool Function() isCurrent;
+  final VoidCallback onClose;
+  @override State<_ResourceGalleryViewer> createState() => _ResourceGalleryViewerState();
+}
+class _ResourceGalleryViewerState extends State<_ResourceGalleryViewer> with WidgetsBindingObserver {
+  late final PageController _controller = PageController(initialPage: widget.initialIndex);
+  late int _index = widget.initialIndex;
+  bool _active = true;
+  StreamSubscription<Object?>? _subscription;
+  bool get _current => mounted && _active && widget.isCurrent();
+  @override void initState() {
+    super.initState(); WidgetsBinding.instance.addObserver(this);
+    _subscription = widget.changes?.listen((_) { if (!widget.isCurrent()) { _retire(); } },
+      onError: (Object error) => _retire(), onDone: _retire);
+  }
+  void _retire() {
+    if (!_active || !mounted) { return; }
+    _active = false; setState(() {}); widget.onClose();
+  }
+  @override void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) { _retire(); }
+  }
+  @override void dispose() { _active = false; final subscription = _subscription; _subscription = null; if (subscription != null) { unawaited(subscription.cancel()); } WidgetsBinding.instance.removeObserver(this); _controller.dispose(); super.dispose(); }
+  @override Widget build(BuildContext context) {
+    final entry = widget.entries[_index];
+    return Dialog.fullscreen(child: Scaffold(resizeToAvoidBottomInset: false,
+      appBar: AppBar(leading: IconButton(tooltip: SkoLanguageController.tr('閉じる'),
+        icon: const Icon(Icons.close), onPressed: widget.onClose),
+        title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(entry.recordTitle ?? widget.defaultTitle ?? entry.label, maxLines: 1, overflow: TextOverflow.ellipsis),
+          Text(entry.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
+        ]), actions: [Center(child: Padding(padding: const EdgeInsets.only(right: 12), child: Text('${_index + 1}/${widget.entries.length}')))]),
+      body: !_current ? const SizedBox.shrink() : PageView.builder(controller: _controller,
+        itemCount: widget.entries.length, onPageChanged: (value) {
+          if (!_current) { widget.onClose(); return; }
+          setState(() => _index = value);
+        }, itemBuilder: (_, index) => _ResourceGalleryPage(key: ValueKey(widget.entries[index].previewKey ?? index),
+          attachment: widget.entries[index], isCurrent: () => _current,
+          initialBytes: index == widget.initialIndex ? widget.initialBytes : null)),
+    ));
+  }
+}
+class _ResourceGalleryPage extends StatefulWidget {
+  const _ResourceGalleryPage({super.key, required this.attachment, required this.isCurrent, this.initialBytes});
+  final ResourceAttachment attachment;
+  final bool Function() isCurrent;
+  final Uint8List? initialBytes;
+  @override State<_ResourceGalleryPage> createState() => _ResourceGalleryPageState();
+}
+class _ResourceGalleryPageState extends State<_ResourceGalleryPage> {
+  late final Future<Uint8List> _bytes = _load();
+  Future<Uint8List> _load() async {
+    if (!widget.isCurrent()) { throw StateError('Attachment scope changed'); }
+    await widget.attachment.validateAccess?.call();
+    if (!mounted || !widget.isCurrent()) { throw StateError('Attachment scope changed'); }
+    final bytes = widget.initialBytes ?? await widget.attachment.loadBytes!();
+    await widget.attachment.validateAccess?.call();
+    if (!mounted || !widget.isCurrent() || bytes.isEmpty) { throw StateError('Attachment scope changed'); }
+    return bytes;
+  }
+  @override Widget build(BuildContext context) => FutureBuilder<Uint8List>(future: _bytes, builder: (context, snapshot) {
+    if (!widget.isCurrent()) { return const SizedBox.shrink(); }
+    if (snapshot.hasError) { return Center(child: Text(SkoLanguageController.tr('添付を表示できませんでした。'))); }
+    final bytes = snapshot.data;
+    if (bytes == null) { return const Center(child: CircularProgressIndicator()); }
+    if (_isPdf(bytes)) {
+      return PdfPreview.builder(build: (_) async {
+        if (!widget.isCurrent()) { throw StateError('Attachment scope changed'); }
+        return bytes;
+      }, pagesBuilder: (_, pages) => PdfPinchPages(pages: pages), useActions: true,
+        canDebug: false, canChangeOrientation: false, canChangePageFormat: false,
+        allowPrinting: true, allowSharing: false, dynamicLayout: false,
+        onError: (_, __) => Center(child: Text(SkoLanguageController.tr('PDFを表示できませんでした。'))));
+    }
+    return Center(child: InteractiveViewer(minScale: .5, maxScale: 5,
+      child: Image.memory(bytes, fit: BoxFit.contain,
+        errorBuilder: (_, __, ___) => Text(SkoLanguageController.tr('画像を表示できませんでした。')))));
+  });
+}

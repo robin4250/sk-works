@@ -45,6 +45,8 @@ class _OwnQualificationRegistrationPageState
   List<Map<String, dynamic>> _masters = const [];
   List<Map<String, dynamic>> _qualifications = const [];
   String _query = '';
+  bool Function()? _galleryLease;
+  int _galleryGeneration = 0;
   bool _loading = true;
   bool _registrationDialogOpen = false;
   String? _error;
@@ -62,6 +64,7 @@ class _OwnQualificationRegistrationPageState
   }
 
   Future<void> _load() async {
+    final galleryGeneration = ++_galleryGeneration;
     final generation = ++_loadGeneration;
     final repository = _repository;
     if (repository == null) {
@@ -78,6 +81,9 @@ class _OwnQualificationRegistrationPageState
     });
     final actor = repository.currentUserId;
     try {
+      bool Function()? galleryLease;
+      try { galleryLease = await repository.captureAttachmentReadScope(); } catch (_) { galleryLease = null; }
+
       final data = await repository.loadOwnQualificationWorkspace();
       if (!mounted ||
           generation != _loadGeneration ||
@@ -86,6 +92,7 @@ class _OwnQualificationRegistrationPageState
         return;
       }
       setState(() {
+        _galleryLease = galleryGeneration == _galleryGeneration ? galleryLease : null;
         _worker = Map<String, dynamic>.from(data['worker'] as Map);
         _masters = List<Map<String, dynamic>>.from(data['masters'] as List);
         _qualifications = List<Map<String, dynamic>>.from(
@@ -525,6 +532,34 @@ class _OwnQualificationRegistrationPageState
     }
   }
 
+  ResourceAttachmentGallery? _gallery() {
+    final repository = _repository, rows = _qualifications;
+    final lease = _galleryLease, galleryGeneration = _galleryGeneration;
+    final actor = repository?.currentUserId, worker = _worker?['id']?.toString(), company = _worker?['company_id']?.toString();
+    final generation = _loadGeneration;
+    if (repository == null || lease == null || !lease() || actor == null || worker == null || company == null || company.isEmpty) { return null; }
+    bool current() => mounted && !_loading && galleryGeneration == _galleryGeneration && lease() && generation == _loadGeneration &&
+      identical(rows, _qualifications) && _worker?['id'] == worker && _worker?['company_id'] == company && repository.currentUserId == actor;
+    if (rows.any((row) => row['worker_id'] == worker && row['company_id'] != company && row['_unregistered'] != true)) { return null; }
+    final titles = {for (final row in _masters) row['id']: row['name']?.toString() ?? '資格'};
+    final entries = <ResourceAttachment>[];
+    for (final row in rows.where((row) => row['worker_id'] == worker && row['company_id'] == company && row['_unregistered'] != true)) {
+      final id = row['id']?.toString(); if (id == null || id.isEmpty) { continue; }
+      final paths = [row['attachment_path'], row['attachment_back_path'], ...?row['attachment_extra_paths'] as List?];
+      for (var i = 0; i < paths.length; i++) {
+        final path = paths[i]; if (path is! String || path.trim().isEmpty) { continue; }
+        Future<String> signed(String value) async {
+          if (!current()) { throw StateError('Attachment scope changed'); }
+          final url = await repository.createOwnQualificationPhotoUrl(qualificationId: id, storagePath: value);
+          if (!current()) { throw StateError('Attachment scope changed'); } return url;
+        }
+        entries.add(signedResourceAttachment(label: i == 0 ? '表面' : i == 1 ? '裏面' : '追加写真 ${i - 1}', path: path,
+          signedUrl: signed, previewKey: 'qualification:$id:$i', recordTitle: titles[row['qualification_master_id']] ?? '資格'));
+      }
+    }
+    return ResourceAttachmentGallery(source: rows, workerId: worker, companyId: company, isCurrent: current, changes: repository.attachmentAuthChanges, entries: entries);
+  }
+
   Future<void> _previewPhotos(Map<String, dynamic> row, String title) async {
     final repository = _repository;
     if (repository == null) return;
@@ -777,10 +812,10 @@ class _OwnQualificationRegistrationPageState
                                 return url;
                               }
                               final attachments = [
-                                signedResourceAttachment(label: '表面',
+                                signedResourceAttachment(label: '表面', previewKey: 'qualification:${row['id']}:0', recordTitle: title,
                                   path: row['attachment_path']?.toString(), signedUrl: signedUrl,
                                   known: unregistered || row.containsKey('attachment_path')),
-                                signedResourceAttachment(label: '裏面',
+                                signedResourceAttachment(label: '裏面', previewKey: 'qualification:${row['id']}:1', recordTitle: title,
                                   path: row['attachment_back_path']?.toString(), signedUrl: signedUrl,
                                   known: unregistered || row.containsKey('attachment_back_path')),
                               ];
@@ -799,7 +834,7 @@ class _OwnQualificationRegistrationPageState
                                 detailLabel: [...resourceQualificationMetadata(row),
                                   if (_photoStatus(row['id'].toString()) != null) _photoStatus(row['id'].toString())!,
                                   if (photos.length > 2) '添付 ${photos.length}件（詳細で確認）'].join(' / '),
-                                attachments: attachments,
+                                attachments: attachments, gallery: _gallery(), requireGalleryScope: true,
                                 onAction: unregistered
                                   ? () => _addQualification(initialMasterId: row['qualification_master_id']?.toString())
                                   : canEdit ? () => _editPhotos(row) : () => _previewPhotos(row, title),
