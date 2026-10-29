@@ -52,7 +52,14 @@ begin
  source:=private.trade_document_source(p_kind,p_subject,p_source_revision);
  select * into saved from private.trade_document_attachments where subject_kind=p_kind and subject_id=p_subject;
  if found then bank:=saved.payload->'counterparty_bank';
- elsif source->>'source_locked'='false' then bank:=source->'defaults'->'counterparty_bank';end if;
+ elsif source->>'source_locked'='false' then
+  bank:=source->'defaults'->'counterparty_bank';
+  -- First save must match the authority snapshot actually shown to the user.
+  -- A newer master (including absence -> first registration) requires reload;
+  -- never silently replace a preview's account or version during save.
+  if nullif(p_payload->'counterparty_bank','null'::jsonb) is distinct from nullif(bank,'null'::jsonb) then
+   raise exception 'Supplier bank snapshot changed; reload the order' using errcode='40001';end if;
+ end if;
  -- Arbitrary client bank values cannot be signed into a saved order. Existing
  -- saved snapshots stay exactly their own version, even after master changes.
  p_payload:=p_payload-'counterparty_bank';

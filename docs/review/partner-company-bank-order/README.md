@@ -26,8 +26,9 @@ The renamed save delegate is owner-only to prevent a direct authenticated bypass
 the canonical save RPC retains its original authenticated ACL and guards.
 
 Only a new unsaved, unlocked monthly order obtains the current supplier-bank
-snapshot. Client-supplied bank fields are replaced by the authoritative snapshot
-on first save. Existing saved snapshots (including absence), finalized/missing
+snapshot. The first save requires the previewed bank snapshot (including absence and
+version) to equal the current authority; changed master data or forged values
+raise a conflict and require explicit reload. The saved value is authoritative. Existing saved snapshots (including absence), finalized/missing
 historical appendices, source_changed checks, originals, signatures and source
 revisions stay under their original rules. Later master updates never rewrite a
 saved PDF/appendix. Rendering reads only the supplied frozen payload and makes no
