@@ -136,7 +136,7 @@ jobs:
                   text=clean(modern[1].get_text())
                   assert '[工事請負契約条項]' in text
                   for number,(title,paragraphs) in enumerate(articles,1):
-                      assert clean(f'第{number}条　{title}') in text,(kind,number,title)
+                      assert clean(f'（{title}）') in text and clean(f'第{number}条　{paragraphs[0]}') in text,(kind,number,title)
                       for paragraph in paragraphs: assert clean(paragraph) in text,(kind,number,paragraph)
                   for index,page in enumerate(modern):
                       assert abs(page.rect.width-595.276)<1 and abs(page.rect.height-841.89)<1
