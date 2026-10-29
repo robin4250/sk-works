@@ -21,8 +21,8 @@ The existing panel removes stale receipts and result-check actions on this
 invalidation. Background, target/revision replacement and disposal invalidate
 the whole recovery controller, not only its ticket. Generation checks reject
 late command/readback replies. Auth subscriptions cancel at invalidation/dispose.
-Seven additional tests use the real Supabase SDK with synthetic auth HTTP
-responses to cover logout/login ABA, same-SID refresh, different SID, existing
+Eight additional tests use the real Supabase SDK with synthetic auth HTTP
+responses to cover initial replay versus immediate same-SID login, logout/login ABA, same-SID refresh, different SID, existing
 panel success/read-only retry, pending read logout and background.
 
 Release remains fixed false. The production factory is still disconnected from

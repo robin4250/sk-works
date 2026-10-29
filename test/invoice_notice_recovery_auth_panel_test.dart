@@ -15,6 +15,7 @@ final hash = List.filled(64, 'a').join();
 void main() {
   late SupabaseClient client;
   late InvoiceNoticeRecoveryController recovery;
+  late InvoiceNoticeRecoveryController Function() createRecovery;
   var sid = id, sent = 0, reads = 0, legacyReads = 0;
   Object? response;
   Future<Object?> Function()? delayed;
@@ -41,7 +42,7 @@ void main() {
     response = {'found': true, 'status': 'recorded', 'scope': {
       ...(operation.parameters..remove('expected_preview')), 'actor_id': id, 'session_id': id},
       'result': {'financial_approved': true, 'seal_consent_recorded': true}};
-    recovery = InvoiceNoticeRecoveryController(authClient: client,
+    createRecovery = () => InvoiceNoticeRecoveryController(authClient: client,
       actor: () => client.auth.currentUser?.id, session: () => client.auth.currentSession == null ? null : sid,
       openTicket: (_) async => {'notification_id': id, 'invoice_id': id, 'ticket_id': id,
         'status': 'ready', 'source_revision': revision,
@@ -49,12 +50,23 @@ void main() {
       operationForTicket: (_) => operation,
       confirm: (_) async { sent++; throw StateError('response lost'); },
       readResult: (_) { reads++; return delayed?.call() ?? Future.value(response); });
+    recovery = createRecovery();
   });
   tearDown(() async { recovery.dispose(); await client.dispose(); });
   Widget panel() => MaterialApp(home: Scaffold(body: InvoiceNoticeApprovalPanel(
     controller: null, recoveryController: recovery, notificationId: id, invoiceId: id,
     revision: revision, isApprover: true, confirmSavedApproval: () async { legacyReads++; return true; })));
 
+  test('immediate fresh same-SID login after constructor is never mistaken for replay', () async {
+    recovery.dispose();
+    recovery = createRecovery();
+    // No delay/pump between subscription and the next real SDK login.
+    await login();
+    await Future<void>.delayed(Duration.zero);
+    expect(recovery.state, InvoiceNoticeRecoveryState.invalidated);
+    expect(await recovery.tickets.open(id, invoiceId: id), false);
+    expect(sent, 0); expect(reads, 0);
+  });
   test('real SDK logout history terminally invalidates even same identity returns', () async {
     await recovery.tickets.open(id, invoiceId: id);
     await recovery.tickets.approve();
