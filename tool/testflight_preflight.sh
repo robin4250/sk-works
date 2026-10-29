@@ -20,8 +20,8 @@ if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   branch="$(git branch --show-current 2>/dev/null || true)"
   head="$(git rev-parse --short HEAD 2>/dev/null || true)"
   [[ "$branch" == "main" ]] && ok "main @ $head" || fail "TestFlight候補はmainから作成してください: ${branch:-detached}"
-  if git fetch --quiet origin main 2>/dev/null; then
-    if [[ "$(git rev-parse HEAD)" == "$(git rev-parse origin/main)" ]]; then
+  if git fetch --quiet --no-tags origin refs/heads/main 2>/dev/null; then
+    if [[ "$(git rev-parse HEAD)" == "$(git rev-parse FETCH_HEAD)" ]]; then
       ok "origin/main と一致"
     else
       fail "ローカルmainがorigin/mainと一致していません"

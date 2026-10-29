@@ -10,7 +10,8 @@ void main() {
     final preflight = File('tool/testflight_preflight.sh').readAsStringSync();
 
     expect(script, contains(r'[[ "$branch" != "main" ]]'));
-    expect(script, contains('git rev-parse origin/main'));
+    expect(script, contains('git fetch --quiet --no-tags origin refs/heads/main'));
+    expect(script, contains('git rev-parse FETCH_HEAD'));
     expect(script, contains('bash tool/prepare_ios.sh'));
     expect(script, contains('bash tool/testflight_preflight.sh'));
     expect(script, contains('flutter build ipa'));
@@ -29,7 +30,8 @@ void main() {
     expect(upload, contains('.private_keys'));
     expect(upload, contains('xcrun altool'));
     expect(upload, contains('--upload-app'));
-    expect(upload, contains('git rev-parse origin/main'));
+    expect(upload, contains('git fetch --quiet --no-tags origin refs/heads/main'));
+    expect(upload, contains('git rev-parse FETCH_HEAD'));
     expect(finish, contains('bash tool/testflight_candidate.sh'));
     expect(finish, contains('bash tool/testflight_upload.sh'));
     expect(finish, contains('Runner.xcarchive'));

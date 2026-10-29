@@ -31,3 +31,27 @@ Releaseをビルドする。Bundle IDが `com.skworks.skWorks` と一致する�
 鮮度チェックは `git fetch origin main` の取得結果 `FETCH_HEAD` とHEADを比較する。
 狭いremote fetch設定では `origin/main` が更新されないことがあるため、
 古いremote tracking SHAを最新mainの判定に使わない。
+
+## 直接入口とツールチェーンの停止条件
+
+ユーザー環境のXcode 27.1は未実測です。現行の厳密な27.0固定は変更して
+いません。27.1では生成・ビルド・導入の前に停止します。Flutterは3.47.5を
+要求します。バージョン差を環境変数で「検証済み」として回避できません。
+
+`run_ios_device.sh`の直接入口も、生成前にMac・バージョン・cleanなmain・
+新しく取得したmainとの完全一致を検査します。署名Releaseビルド後、導入の
+直前にも開始時SHA・clean・main・最新mainを再照合します。ネットワーク取得
+失敗も停止します。自動更新・reset・変更破棄は行いません。
+
+ソースバックアップは上記の標準コマンドと`device_day.sh`の既存処理を使い、
+直接runner内では同じ段階の大きなbundleを重複作成しません。直接runnerを
+単独実行する場合も、先に`pre_install_source_backup.sh`を成功させてください。
+そのbundleは保存済みGitソース用です。ignoredの接続設定・生成した署名設定・
+iPhone内データ・Keychain・本番DBを保存するものではありません。
+
+この検査はソース状態の照合であり、生成バイナリの完全なprovenanceでは
+ありません。同時に他のプロセスでソースを書き換えないでください。Release
+署名・Team/profile/entitlementsと既存アプリの適合、上書き後のデータとKeychain
+保持、実インストール、ケーブルなし起動の証拠は実Mac/iPhoneで別途必要です。
+`device_day_preflight.sh`は生成設定・接続確認・unsignedビルドも行うため、
+read-onlyな診断コマンドとして実行しないでください。
