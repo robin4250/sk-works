@@ -14,6 +14,11 @@ import 'package:sk_works/features/shared/company_seal_pdf.dart';
 import 'package:sk_works/features/shared/trade_document_output_page.dart';
 import 'trade_document_confirmed_output_session_test.dart' show ConfirmedOutputFixture,confirmedOutputScope;
 
+class _InitialLifecycleBinding extends AutomatedTestWidgetsFlutterBinding{
+  bool unknown=false;
+  @override AppLifecycleState? get lifecycleState=>unknown?null:super.lifecycleState;
+}
+
 class _HostFixture extends ConfirmedOutputFixture{
   VoidCallback? beforeRepository;
   @override Future<SupabaseTradeConfirmationRepository> start()async{
@@ -56,8 +61,44 @@ Future<void> _close(WidgetTester tester,ConfirmedOutputFixture f,_NativePrinting
   await tester.pumpWidget(const SizedBox.shrink());await tester.runAsync(()=>f.close().timeout(const Duration(seconds:8)));
 }
 void main(){
-  TestWidgetsFlutterBinding.ensureInitialized();late PrintingPlatform original;
+  final binding=_InitialLifecycleBinding();late PrintingPlatform original;
   setUp((){original=PrintingPlatform.instance;});tearDown((){PrintingPlatform.instance=original;});
+  for(final initial in ['inactive','paused','detached','unknown']){
+    testWidgets('approved viewer mounted $initial never dispatches render or reveals bytes after resume',(tester)async{
+      final f=ConfirmedOutputFixture(),printing=_NativePrinting();PrintingPlatform.instance=printing;
+      try{
+        binding.unknown=false;binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+        final repository=(await tester.runAsync(f.start))!;
+        expect(await tester.runAsync(repository.available),isTrue);
+        if(initial=='unknown'){binding.unknown=true;}else{
+          binding.handleAppLifecycleStateChanged(initial=='inactive'?AppLifecycleState.inactive:initial=='paused'?AppLifecycleState.paused:AppLifecycleState.detached);
+        }
+        await tester.pumpWidget(MaterialApp(home:TradeApprovedDocumentPage(repository:repository,scope:confirmedOutputScope(f.wire.envelope))));
+        await tester.runAsync(()=>Future<void>.delayed(Duration.zero));await tester.pump();
+        expect(f.wire.rpcs,hasLength(1),reason:'Only the foreground capability RPC is permitted');
+        expect(find.byType(PdfPreview),findsNothing);expect(printing.calls,0);
+        binding.unknown=false;binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);await tester.pumpAndSettle();
+        expect(f.wire.rpcs,hasLength(1));expect(find.byType(PdfPreview),findsNothing);
+        expect(tester.takeException(),isNull);
+      }finally{binding.unknown=false;await _close(tester,f,printing);}
+    });
+  }
+  for(final initial in ['inactive','unknown']){
+    testWidgets('issued confirmation mounted $initial never starts a workspace request',(tester)async{
+      final f=ConfirmedOutputFixture(),printing=_NativePrinting();PrintingPlatform.instance=printing;
+      try{
+        binding.unknown=false;binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+        final repository=(await tester.runAsync(f.start))!;
+        if(initial=='unknown'){binding.unknown=true;}else{binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);}
+        await tester.pumpWidget(MaterialApp(home:TradeDocumentConfirmationPage(repository:repository,kind:'invoice',
+          parentId:'30000000-0000-4000-8000-000000000001',sourceRevision:'2026-10-22T00:00:00Z')));
+        await tester.runAsync(()=>Future<void>.delayed(Duration.zero));await tester.pump();
+        expect(f.wire.rpcs,isEmpty);expect(find.byType(PdfPreview),findsNothing);
+        binding.unknown=false;binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);await tester.pumpAndSettle();
+        expect(f.wire.rpcs,isEmpty);expect(find.byType(PdfPreview),findsNothing);expect(tester.takeException(),isNull);
+      }finally{binding.unknown=false;await _close(tester,f,printing);}
+    });
+  }
   testWidgets('confirmed format route is not a native print lease: plain inactive masks both actual parent and child',(tester)async{
     final f=ConfirmedOutputFixture(),printing=_NativePrinting();PrintingPlatform.instance=printing;
     try{

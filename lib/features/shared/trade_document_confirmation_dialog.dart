@@ -79,7 +79,7 @@ class _TradeDocumentConfirmationPageState extends State<TradeDocumentConfirmatio
   bool _printing = false;
   Map<String, dynamic>? _archiveScope;
   bool _archived = false;
-  AppLifecycleState _visibility = AppLifecycleState.resumed;
+  AppLifecycleState? _visibility;
   int _generation = 0;
   String? _error;
   TradeConfirmationPreview? _preview;
@@ -101,9 +101,9 @@ class _TradeDocumentConfirmationPageState extends State<TradeDocumentConfirmatio
       if (token != _token || widget.repository.actorId != _actor) _revoke();
     }, onError: (Object _) => _revoke());
     WidgetsBinding.instance.addObserver(this);
-    _visibility = WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed;
+    _visibility = WidgetsBinding.instance.lifecycleState;
     _active = _visibility == AppLifecycleState.resumed;
-    if (_active) unawaited(_load());
+    if (_active) { unawaited(_load()); } else { _revoke(); }
   }
   @override void didUpdateWidget(covariant TradeDocumentConfirmationPage old){super.didUpdateWidget(old);if(old.kind!=widget.kind||old.parentId!=widget.parentId||old.sourceRevision!=widget.sourceRevision||!identical(old.repository,widget.repository)){final repository=old.repository;if(repository is SupabaseTradeConfirmationRepository)repository.outputAdmissionChanges.removeListener(_admissionChanged);_revoke();}}
   void _admissionChanged(){final repository=widget.repository;if(repository is SupabaseTradeConfirmationRepository){try{repository.requireOutputAdmission();}catch(_){_revoke();}}}
@@ -466,12 +466,12 @@ class _TradeApprovedDocumentPageState extends State<TradeApprovedDocumentPage> w
   late final String? _actor, _token;
   StreamSubscription<String?>? _subscription;
   bool _busy = false, _revoked = false, _printing = false;
-  AppLifecycleState _visibility = AppLifecycleState.resumed;
+  AppLifecycleState? _visibility;
   String? _error;
   String tr(String value) => SkoLanguageController.tr(value);
   void _verify() {
     if (!mounted || _revoked || widget.repository.actorId != _actor || widget.repository.sessionKey != _token ||
-        !const {AppLifecycleState.resumed, AppLifecycleState.inactive}.contains(_visibility)) {
+        (_visibility != AppLifecycleState.resumed && !(_printing && _visibility == AppLifecycleState.inactive))) {
       throw StateError('書類の閲覧状態が変わりました。開き直してください。');
     }
   }
@@ -481,7 +481,9 @@ class _TradeApprovedDocumentPageState extends State<TradeApprovedDocumentPage> w
     _subscription = widget.repository.sessionChanges.listen((token) {
       if (token != _token || widget.repository.actorId != _actor) _revoke();
     }, onError: (Object _) => _revoke());
-    WidgetsBinding.instance.addObserver(this); unawaited(_load());
+    WidgetsBinding.instance.addObserver(this);
+    _visibility = WidgetsBinding.instance.lifecycleState;
+    if (_visibility == AppLifecycleState.resumed) { unawaited(_load()); } else { _revoke(); }
   }
   @override void didUpdateWidget(covariant TradeApprovedDocumentPage old){super.didUpdateWidget(old);if(old.archive!=widget.archive||!identical(old.repository,widget.repository)||old.scope.toString()!=widget.scope.toString()){final repository=old.repository;if(repository is SupabaseTradeConfirmationRepository)repository.outputAdmissionChanges.removeListener(_admissionChanged);_revoke();}}
   void _admissionChanged(){final repository=widget.repository;if(repository is SupabaseTradeConfirmationRepository){try{repository.requireOutputAdmission();}catch(_){_revoke();}}}
