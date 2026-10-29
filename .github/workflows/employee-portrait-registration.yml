@@ -1,0 +1,25 @@
+name: Employee portrait registration composition
+on:
+  pull_request:
+    paths:
+      - 'lib/features/people/employee_portrait_*.dart'
+      - 'lib/features/people/worker_document_repository.dart'
+      - 'test/employee_portrait_registration_test.dart'
+      - 'docs/review/employee-portrait-registration/**'
+      - '.github/workflows/employee-portrait-registration.yml'
+permissions:
+  contents: read
+jobs:
+  portrait:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/people/employee_portrait_repository.dart lib/features/people/employee_portrait_registration_page.dart lib/features/people/worker_document_repository.dart test/employee_portrait_registration_test.dart
+      - run: flutter test test/employee_portrait_registration_test.dart test/worker_document_managed_save_http_test.dart
+      - run: git diff --exit-code -- pubspec.yaml pubspec.lock

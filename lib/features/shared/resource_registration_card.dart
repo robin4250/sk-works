@@ -267,7 +267,7 @@ class _ResourceAttachmentThumbnailState extends State<ResourceAttachmentThumbnai
                   style: const TextStyle(fontSize: 10), textAlign: TextAlign.center)); }
                 if (snapshot.data!.$2 == null) return const Icon(Icons.picture_as_pdf_outlined, size: 24);
                 return ClipRRect(borderRadius: BorderRadius.circular(5), child: Image.memory(
-                  snapshot.data!.$2!, cacheWidth: 120, cacheHeight: 160, fit: BoxFit.contain,
+                  snapshot.data!.$2!, cacheWidth: 120, fit: BoxFit.contain,
                   errorBuilder: (_, __, ___) => Center(child: Text(SkoLanguageController.tr('読込不可'), style: const TextStyle(fontSize: 10)))));
               }),
         ),

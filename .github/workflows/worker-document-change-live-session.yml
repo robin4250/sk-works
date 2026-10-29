@@ -1,0 +1,27 @@
+name: Worker document change live session successor
+on:
+  pull_request:
+    paths:
+      - 'tool/security/worker_document_change_session/**'
+      - 'docs/candidates/worker_document_change_session_20261029/**'
+      - '.github/workflows/worker-document-change-live-session.yml'
+permissions:
+  contents: read
+jobs:
+  actual-auth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      SKO_DOCUMENT_CHANGE_REAL_AUTH: contract-v1
+      SKO_DOCUMENT_CHANGE_PG_MODULE: /tmp/document-change-pg/node_modules/pg/lib/index.js
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node tool/security/worker_document_change_session/build.mjs
+      - run: git diff --exit-code -- docs/candidates/worker_document_change_session_20261029/install.sql.review-only
+      - run: npm install --prefix /tmp/document-change-pg --no-save --ignore-scripts --no-audit --no-fund pg@8.16.3
+      - run: node tool/security/worker_document_change_session/gotrue.mjs

@@ -5,6 +5,7 @@ import 'package:sk_works/features/people/worker_document_exemption.dart';
 import 'package:sk_works/features/people/worker_document_page.dart';
 import 'package:sk_works/features/people/worker_document_repository.dart';
 import 'package:sk_works/features/tutorial/tutorial_evidence_repository.dart';
+import 'package:sk_works/features/shared/resource_registration_card.dart';
 
 class _Repository extends WorkerDocumentRepository {
   _Repository(super.client) : super.forTesting();
@@ -95,6 +96,11 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, '免除を保存'));
     await tester.pumpAndSettle();
     expect(repo.writes, 1); expect(find.text('提出免除'), findsOneWidget);
+    expect(find.textContaining('未確認'), findsNothing);
+    final exemptCard = tester.widget<ResourceRegistrationCard>(find.byKey(
+      const ValueKey('managed-document:admin:worker:requirement')));
+    expect(exemptCard.detailLabel, isNot(contains('提出済み')));
+    expect(exemptCard.detailLabel, contains('本人の事情を確認'));
     expect(repo.status, retained);
     await tester.ensureVisible(find.text('免除を解除'));
     await tester.pumpAndSettle();

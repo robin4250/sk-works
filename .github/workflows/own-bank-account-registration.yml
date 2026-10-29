@@ -1,0 +1,48 @@
+name: Own bank account registration
+on:
+  pull_request:
+    paths:
+      - 'lib/features/people/own_bank_account_*'
+      - 'lib/features/people/own_document_registration_page.dart'
+      - 'test/own_bank_account_*'
+      - 'tool/security/own_bank_account_*'
+      - '.github/workflows/own-bank-account-registration.yml'
+permissions:
+  contents: read
+jobs:
+  client:
+    timeout-minutes: 8
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze lib/features/people/own_bank_account_repository.dart lib/features/people/own_bank_account_page.dart lib/features/people/own_document_registration_page.dart test/own_bank_account_repository_test.dart test/own_bank_account_page_test.dart test/own_bank_account_entry_test.dart
+      - run: flutter test test/own_bank_account_entry_test.dart test/own_bank_account_repository_test.dart test/own_bank_account_page_test.dart test/own_document_registration_save_test.dart test/own_required_document_status_test.dart
+  postgres:
+    timeout-minutes: 6
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: synthetic_bank_fixture_only
+          POSTGRES_DB: sko_own_bank_fixture
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --prefix /tmp/bank-fixture-deps --no-audit --no-fund pg@8.16.3
+      - run: node tool/security/own_bank_account_postgres.mjs /tmp/bank-fixture-deps/node_modules/pg/lib/index.js
+        env:
+          SKO_BANK_FIXTURE_URL: postgres://postgres:synthetic_bank_fixture_only@127.0.0.1:5432/sko_own_bank_fixture

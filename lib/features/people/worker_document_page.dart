@@ -336,11 +336,12 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                                 icon: Icons.description_outlined, registered: exempt || status != null,
                                 statusLabel: exempt ? '提出免除' : status == null ? '未登録' : '登録済み',
                                 dateLabel: dates.isEmpty ? '' : dates.first,
-                                detailLabel: [if (exempt) '免除理由：${exemption!['reason']}', resourceDocumentReviewLabel(effective),
+                                detailLabel: [if (exempt) '免除理由：${exemption!['reason']}',
+                                  if (!exempt) resourceDocumentReviewLabel(effective),
                                   workerDocumentScopeLabel(requirement['scope']),
                                   requirement['is_required'] == true ? '必須' : '任意',
                                   if ((status?['expires_at']?.toString() ?? '').isNotEmpty) '期限 ${status?['expires_at']}',
-                                  if (_expiryHint(requirement, _parseDocumentDate(status?['expires_at']), today) != null)
+                                  if (!exempt && _expiryHint(requirement, _parseDocumentDate(status?['expires_at']), today) != null)
                                     _expiryHint(requirement, _parseDocumentDate(status?['expires_at']), today)!,
                                   if (status?['original_verified'] == true) '原本確認済み',
                                   for (final date in DataDateLabels.labels(createdAt: requirement['created_at'],
