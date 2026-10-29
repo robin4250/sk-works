@@ -38,7 +38,7 @@ void main() {
    requests.add(r);
    if(r.method=='POST' && r.url.path=='/auth/v1/token')return http.Response(session(actor),200,headers:{'content-type':'application/json'});
    expect(r.method,'GET');expect(r.url.toString(),'https://qr-key-fixture.invalid/auth/v1/user');
-   expect(r.headers['Authorization'],'Bearer ${jsonDecode(session(actor))['access_token']}');
+   expect(r.headers.entries.where((e)=>e.key.toLowerCase()=='authorization').single.value,'Bearer ${jsonDecode(session(actor))['access_token']}');
    await beforeAuth?.call();return http.Response(jsonEncode(user(authActor)),200,headers:{'content-type':'application/json'});
   }));
   await client.auth.setInitialSession(session(actor));
@@ -52,6 +52,10 @@ void main() {
   TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel,null);
  });
  ScannerRegistrationKeyCustody custody({bool enabled=true, bool actualStream=false}) => ScannerRegistrationKeyCustody(client,enabled:enabled,channel:channel,authChanges:actualStream?null:changes.stream);
+ test('fixture composes actual SDK exact bearer getUser without custody error masking',() async {
+  final response=await client.auth.getUser(client.auth.currentSession!.accessToken);expect(response.user!.id,actor);expect(response.user!.isAnonymous,isFalse);
+  expect(requests,hasLength(1));expect(nativeCalls,isEmpty);
+ });
  test('default OFF does not call Auth or native key storage',() async {
   final c=ScannerRegistrationKeyCustody(client,channel:channel);await expectLater(c.prepare(company:company,device:device),throwsStateError);
   expect(requests,isEmpty);expect(nativeCalls,isEmpty);c.dispose();
