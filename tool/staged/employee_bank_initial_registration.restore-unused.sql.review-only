@@ -1,0 +1,87 @@
+-- REVIEW ONLY. No production apply/GRANT/activation authorization. Default OFF.
+-- Exact original-definition guard: inspect/review again if any prerequisite drifts.
+begin;
+do $guard$ declare item record;begin
+ for item in select * from (values
+ ('private.reauthentication_scope(text)','1495008c422fae673edd4aabbb966667'),
+ ('private.reauthentication_required(text)','c998ecf7fc28393495c6d755fd4df939'),
+ ('public.issue_reauthentication_proof(uuid,uuid,text,jsonb,text)','96410b3289e5e590d017db25d6389ee1'),
+ ('private.sync_bank_document_status()','23da3259dc35ded102be9d01f88bbc64')
+ ) v(signature,definition_hash) loop
+  if to_regprocedure(item.signature) is null or md5(pg_get_functiondef(to_regprocedure(item.signature)))<>item.definition_hash then
+   raise sqlstate '55000' using message='employee_bank_original_definition_changed';end if;
+ end loop;
+end $guard$;
+do $$begin
+ if private.employee_bank_initial_enabled() or exists(select 1 from private.employee_bank_initial_context)
+  or exists(select 1 from private.reauthentication_proofs where operation='employee.bank.initial') then
+  raise sqlstate '55000' using message='employee_bank_unused_restore_requires_off_empty_context_and_no_bank_proofs';end if;
+end $$;
+CREATE OR REPLACE FUNCTION private.reauthentication_scope(p_operation text)
+ RETURNS text
+ LANGUAGE sql
+ IMMUTABLE
+ SET search_path TO ''
+AS $function$
+ select case p_operation when 'secondary_password.replace' then 'secondary_password'
+  when 'secondary_password.change' then 'secondary_password'
+  when 'master.feature.set' then 'master_feature'
+  when 'master.security_incidents.read' then 'master_security'
+  when 'attendance.manage' then 'attendance_management'
+  when 'master.security_collector.read' then 'master_security' end
+$function$
+;
+CREATE OR REPLACE FUNCTION private.reauthentication_required(p_scope text)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare required boolean;
+begin
+ select enabled into required from private.reauthentication_rollout where scope=p_scope for share;
+ if not found then raise sqlstate '42501' using message='reauthentication_unavailable'; end if;
+ return required;
+end $function$
+;
+CREATE OR REPLACE FUNCTION public.issue_reauthentication_proof(p_actor uuid, p_session uuid, p_operation text, p_target jsonb, p_proof_hash text)
+ RETURNS timestamp with time zone
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$begin
+ if coalesce(auth.role(),'')<>'service_role' or p_operation in('secondary_password.change','attendance.manage') then
+  raise sqlstate '42501' using message='reauthentication_unavailable';end if;
+ return private.issue_reauthentication_proof(p_actor,p_session,p_operation,p_target,p_proof_hash);
+end $function$
+;
+CREATE OR REPLACE FUNCTION private.sync_bank_document_status()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+begin
+  if auth.uid() is null or not exists (
+    select 1 from public.workers w where w.id = new.worker_id and w.company_id = new.company_id and w.user_id = auth.uid()
+  ) then raise exception 'own bank account required'; end if;
+  new.updated_at := now();
+  insert into public.worker_document_statuses(company_id, worker_id, requirement_id, status, original_verified, updated_by, updated_at)
+  select new.company_id, new.worker_id, dr.id, 'submitted', false, auth.uid(), now()
+  from public.document_requirements dr
+  where dr.company_id = new.company_id and dr.name = '銀行口座情報' and dr.is_active
+  on conflict (worker_id, requirement_id) do update
+  set status = 'submitted', original_verified = false, updated_by = auth.uid(), updated_at = now();
+  return new;
+end;
+$function$
+;
+drop function public.register_employee_bank_initial(uuid,uuid,jsonb,text);
+drop function public.employee_bank_initial_capability(uuid,uuid);
+drop function private.employee_bank_initial_issue_target(uuid,jsonb);
+drop function private.employee_bank_initial_scope(uuid,uuid,uuid);
+drop function private.employee_bank_initial_digest(uuid,uuid,jsonb);
+drop table private.employee_bank_initial_context;
+drop function private.employee_bank_initial_enabled();
+-- Bank rows, original statuses/attachments, proof history and payroll are retained.
+commit;

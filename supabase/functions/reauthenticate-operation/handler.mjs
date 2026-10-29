@@ -7,6 +7,7 @@ const scopes = new Map([
  ['master.security_incidents.read', 'master_security'],
  ['master.security_collector.read', 'master_security'],
  ['master.device.lock', 'master_device_lock'],
+ ['employee.bank.initial', 'employee_bank_registration'],
 ]);
 const featureKeys = new Set(['vehicle_management','route_assignment','traffic_nearest_station','traffic_train_transfer','traffic_bus_stop','company_seal_image_tools']);
 const reply = (status, data) => new Response(JSON.stringify(data), {
@@ -78,6 +79,7 @@ export function createReauthenticationHandler({baseUrl,publicKey,serviceKey,fetc
   if(!payload||typeof payload!=='object'||Array.isArray(payload)||Object.keys(payload).sort().join(',')!=='operation,password,target'||!scopes.has(payload.operation)||typeof payload.password!=='string'||payload.password.length===0||payload.password.length>1024)return reply(400,{error:'invalid_request'});
   const target=payload.target;
   if(!target||typeof target!=='object'||Array.isArray(target))return reply(400,{error:'invalid_request'});
+  if(payload.operation==='employee.bank.initial'&&(Object.keys(target).sort().join(',')!=='company_id,input_sha256,worker_id'||!uuid.test(target.company_id??'')||target.company_id!==target.company_id.toLowerCase()||!uuid.test(target.worker_id??'')||target.worker_id!==target.worker_id.toLowerCase()||!/^[0-9a-f]{64}$/.test(target.input_sha256??'')))return reply(400,{error:'invalid_request'});
   if(payload.operation==='attendance.manage'&&(Object.keys(target).sort().join(',')!=='action,company_id,items_sha256'||!uuid.test(target.company_id??'')||!['upsert','delete'].includes(target.action)||!/^[0-9a-f]{64}$/.test(target.items_sha256??'')))return reply(400,{error:'invalid_request'});
   if(['secondary_password.replace','secondary_password.change'].includes(payload.operation)&&(Object.keys(target).join(',')!=='user_id'||target.user_id!==user.id))return reply(400,{error:'invalid_request'});
   if(payload.operation==='master.feature.set'&&(Object.keys(target).sort().join(',')!=='enabled,feature_key'||!featureKeys.has(target.feature_key)||typeof target.enabled!=='boolean'))return reply(400,{error:'invalid_request'});
@@ -86,10 +88,14 @@ export function createReauthenticationHandler({baseUrl,publicKey,serviceKey,fetc
   if(payload.operation==='master.security_collector.read'&&(Object.keys(target).join(',')!=='scope'||target.scope!=='decoy_collector'))return reply(400,{error:'invalid_request'});
   try {
    const deviceOperation=payload.operation==='master.device.lock';
-   const capabilities=await request(deviceOperation?'/rest/v1/rpc/master_device_lock_capability':'/rest/v1/rpc/reauthentication_capabilities',{method:'POST',headers:{apikey:publicKey,Authorization:authorization,'Content-Type':'application/json'},body:'{}'});
+   const bankOperation=payload.operation==='employee.bank.initial';
+   const capabilityPath=bankOperation?'/rest/v1/rpc/employee_bank_initial_capability':deviceOperation?'/rest/v1/rpc/master_device_lock_capability':'/rest/v1/rpc/reauthentication_capabilities';
+   const capabilities=await request(capabilityPath,{method:'POST',headers:{apikey:publicKey,Authorization:authorization,'Content-Type':'application/json'},
+    body:bankOperation?JSON.stringify({p_company_id:target.company_id,p_worker_id:target.worker_id}):'{}'});
    if(!capabilities.ok)return reply(503,{error:'reauthentication_unavailable'});
    const value=await capabilities.json();
-   if(deviceOperation ? (value?.protocol!=='sko-master-device-lock-v1'||value.enabled!==true)
+   if(bankOperation ? (value?.protocol!=='sko-employee-bank-initial-v1'||value.enabled!==true||value.company_id!==target.company_id||value.worker_id!==target.worker_id||value.registered!==false)
+     : deviceOperation ? (value?.protocol!=='sko-master-device-lock-v1'||value.enabled!==true)
      : (value?.protocol!=='sko-reauthentication-v1'||value[scopes.get(payload.operation)]!==true))return reply(403,{error:'reauthentication_disabled'});
   }catch{return reply(503,{error:'reauthentication_unavailable'});}
   if(payload.operation==='attendance.manage'||payload.operation==='secondary_password.change') {

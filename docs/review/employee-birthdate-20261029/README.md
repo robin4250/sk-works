@@ -1,0 +1,9 @@
+# Employee birthday field candidate
+
+Successor to retirement PR1577. Reuses PR1519 (`e7cee2b6`) birthday storage/payload/apply implementation and its `birth_date_contract_version=1` contract. PR1519 is unmerged. Its profile UI and payroll/insurance reader are deliberately outside this increment.
+
+Current catalog inspected read-only: worker_personnel_profiles has no birth_date. Payload/apply body hashes match PR1519 prerequisites; scoped personnel view matches the existing repository migration. No production DML/DDL was run. On this older contract the new employee birthday input is visible but disabled as preparation pending. Other fields continue using their existing save/approval route. A submitted birthday requires a fresh exact-company/worker server contract and live session before the canonical save; an uninstalled server cannot silently claim birthday saved.
+
+The review-only SQL adds a nullable profile date, reuses the existing canonical payload/apply helpers and extends the existing authorized scoped view. Date validation is 1900 through today. Omitted birthday preserves prior data; explicit empty clears it. Family birthdays remain separate. Existing owner/admin direct-save and configured approval paths are unchanged. No payroll/tax/insurance rows or historical effective conditions are modified.
+
+The unused recovery candidate restores the three original repository helper bodies only after matching candidate hashes. It intentionally retains the new column and its data. These candidates are not deployment authorization. Function ACL/owner/config review, protected original metadata checkpoint, real signed-user authentication/approval evidence, deployment and iPhone verification remain separate stages. Isolated PostgreSQL authorization tests use synthetic role/claim fixtures, not real GoTrue or production accounts.

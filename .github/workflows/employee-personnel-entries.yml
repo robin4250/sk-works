@@ -1,0 +1,26 @@
+name: Employee personnel entry connections
+on:
+  pull_request:
+    paths:
+      - 'lib/features/people/employee_personnel_detail_page.dart'
+      - 'lib/features/people/employee_bank_account_section.dart'
+      - 'lib/features/people/employee_portrait_registration_page.dart'
+      - 'test/employee_personnel_entries_test.dart'
+      - '.github/workflows/employee-personnel-entries.yml'
+permissions:
+  contents: read
+jobs:
+  entry-connections:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/people/employee_personnel_detail_page.dart test/employee_personnel_entries_test.dart
+      - run: flutter test test/employee_personnel_entries_test.dart
+      - run: git diff --exit-code -- pubspec.yaml pubspec.lock

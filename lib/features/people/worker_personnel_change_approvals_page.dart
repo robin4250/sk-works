@@ -225,6 +225,8 @@ class _WorkerPersonnelChangeApprovalsPageState
                       childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                       children: [
                         _line('名前', proposed['name']),
+                        if (proposed.containsKey('birth_date'))
+                          _line('生年月日', proposed['birth_date']),
                         _line('血液型', proposed['blood_type']),
                         _line('社員番号', proposed['employee_number']),
                         _line('所属', proposed['department']),
