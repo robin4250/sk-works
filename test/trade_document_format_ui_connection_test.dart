@@ -27,9 +27,10 @@ Map<String,dynamic> _payload(String kind)=>TradeDocumentFormDraft.fromPayload(Tr
   'issuer':{'name':'Synthetic issuer'},'counterparty':{'name':'Synthetic partner'},
   'company_seal_enabled':false,'company_seal_snapshot':{'version':1,'style':'legacy','name':'Synthetic issuer'},
 }),allowAmountEditing:false).payload;
+Directory? _temporaryOutputDirectory;
 void _write(String name,Uint8List bytes){
-  final folder=Platform.environment['TRADE_FORMAT_UI_OUTPUT_DIR'];
-  if(folder==null)throw StateError('Dedicated PDF evidence directory is required');
+  final folder=Platform.environment['TRADE_FORMAT_UI_OUTPUT_DIR']??
+    (_temporaryOutputDirectory??=Directory.systemTemp.createTempSync('trade-format-ui-proof-')).path;
   Directory(folder).createSync(recursive:true);File('$folder/$name.pdf').writeAsBytesSync(bytes);
 }
 Future<void> _drainRender(WidgetTester tester)async{
@@ -44,6 +45,10 @@ Future<void> _drainRender(WidgetTester tester)async{
 }
 void main(){
   TestWidgetsFlutterBinding.ensureInitialized();
+  tearDownAll((){
+    final temporaryOutputDirectory=_temporaryOutputDirectory;
+    if(temporaryOutputDirectory!=null)temporaryOutputDirectory.deleteSync(recursive:true);
+  });
   testWidgets('actual dropdown taps send A3 then duplex then original A4 to asynchronous form-only rendering',(tester)async{
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     const channel=MethodChannel('net.nfet.printing');
