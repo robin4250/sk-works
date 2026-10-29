@@ -25,8 +25,10 @@ void main() {
     w = fixture.Wire(); await w.seed(); role = 'admin'; active = true; writes = [];
     w.respond = (request) async {
       if (request.url.path.endsWith('/company_members')) return fixture.Wire.json([{'company_id': company, 'role': role}]);
-      if (request.url.path.endsWith('/rpc/employee_personnel_view')) return fixture.Wire.json({
-        'company_id': company, 'records': [{'id': worker, 'kind': 'employee', 'name': 'Fixture', 'active': true}]});
+      if (request.url.path.endsWith('/rpc/employee_personnel_view')) {
+        return fixture.Wire.json({
+          'company_id': company, 'records': [{'id': worker, 'kind': 'employee', 'name': 'Fixture', 'active': true}]});
+      }
       if (request.url.path.endsWith('/workers')) {
         if (request.method == 'PATCH') { writes.add(request); active = false; }
         return fixture.Wire.json([{'id': worker, 'company_id': company, 'status': active ? 'active' : 'inactive'}]);

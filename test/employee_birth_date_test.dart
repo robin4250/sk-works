@@ -5,6 +5,7 @@ import 'package:sk_works/features/people/people_page.dart';
 import 'package:sk_works/features/people/people_cloud_repository.dart';
 import 'package:sk_works/features/people/employee_personnel_edit_page.dart';
 import 'package:sk_works/features/people/employee_personnel_detail_page.dart';
+import 'package:sk_works/features/people/worker_personnel_change_approvals_page.dart';
 import 'app_auth_mutation_gateway_test.dart' as fixture;
 const company='60000000-0000-0000-0000-000000000010';
 const worker='60000000-0000-0000-0000-000000000020';
@@ -37,6 +38,17 @@ void main(){
    record:PersonRecord(id:worker,kind:PersonKind.employee,name:'Fixture',birthDate:'1980-02-29'),
    allEmployees:[],companyName:'Fixture',canManage:false,canViewFamily:false)));
   expect(find.text('生年月日'),findsOneWidget);expect(find.text('1980/02/29'),findsOneWidget);
+  await t.pumpWidget(const SizedBox.shrink());
+ });
+ testWidgets('approval review labels worker birthday and hides contract marker',(t)async{
+  await t.pumpWidget(MaterialApp(home:WorkerPersonnelChangeApprovalsPage(loadRequests:()async=>[
+   {'id':'request-fixture','worker_name':'Fixture','proposed':{'name':'Fixture',
+    'birth_date':'1980-02-29','birth_date_contract_version':1}}
+  ])));
+  await t.pumpAndSettle();
+  await t.tap(find.byType(ExpansionTile));await t.pumpAndSettle();
+  expect(find.text('生年月日'),findsOneWidget);expect(find.text('1980-02-29'),findsOneWidget);
+  expect(find.textContaining('birth_date_contract_version'),findsNothing);
   await t.pumpWidget(const SizedBox.shrink());
  });
  for(final supported in [false,true])test('fresh server contract '+supported.toString()+' controls canonical birthday submission',()async{

@@ -38,8 +38,10 @@ class _EmployeeRetirementPageState extends State<EmployeeRetirementPage> {
         workerId: widget.workerId, verifyContext: verifyContext);
       if (mounted) Navigator.of(context).pop(true);
     } catch (_) {
-      if (mounted) setState(() => _error =
-        '退職処理を確認できません。一覧を再読み込みして状態を確認してください。再実行は自動で行いません。');
+      if (mounted) {
+        setState(() => _error =
+          '退職処理を確認できません。一覧を再読み込みして状態を確認してください。再実行は自動で行いません。');
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
