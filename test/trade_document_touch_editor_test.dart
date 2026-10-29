@@ -86,6 +86,13 @@ void main(){
   await t.tap(target('work_name'));await t.pumpAndSettle();
   expect(input('base.work_name'),findsOneWidget);expect(input('base.work_address'),findsNothing);
  });
+ testWidgets('acceptance prose tap cannot hit the registered company header',(t)async{
+  final value=body()..['kind']='acceptance'..['acceptance_text']='ご注文をお請けします。';
+  await mount(t,payload:value);
+  await t.tap(target('intro'));await t.pumpAndSettle();
+  expect(input('base.acceptance_text'),findsOneWidget);
+  expect(find.byKey(const Key('trade-touch-company-close')),findsNothing);
+ });
  testWidgets('pan does not open input',(t)async{
   await mount(t);
   final x=viewer(t).transformationController!.value.storage[12];
