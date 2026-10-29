@@ -1,0 +1,45 @@
+name: QR scanner native key custody OFF
+on:
+  pull_request:
+    paths:
+      - 'tool/ios/qr_scanner_key.swift'
+      - 'tool/tests/qr_scanner_key_main.swift'
+      - 'tool/prepare_ios.sh'
+      - 'lib/features/qr_attendance/scanner_registration_key.dart'
+      - 'test/scanner_registration_key_test.dart'
+      - '.github/workflows/qr-scanner-native-key.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-key:
+    runs-on: macos-26-intel
+    timeout-minutes: 10
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Typecheck actual supported iOS key custody API
+        run: xcrun swiftc -typecheck -swift-version 5 -sdk "$(xcrun --sdk iphoneos --show-sdk-path)" -target arm64-apple-ios15.5 tool/ios/qr_scanner_key.swift
+      - name: Actual CryptoKit and protected Keychain fail-closed tests
+        run: |
+          cp tool/tests/qr_scanner_key_main.swift "$RUNNER_TEMP/main.swift"
+          xcrun swiftc -swift-version 5 tool/ios/qr_scanner_key.swift "$RUNNER_TEMP/main.swift" -o "$RUNNER_TEMP/qr-scanner-key"
+          "$RUNNER_TEMP/qr-scanner-key"
+      - run: bash -n tool/prepare_ios.sh
+  flutter-key-boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/qr_attendance/scanner_registration_key.dart test/scanner_registration_key_test.dart
+      - run: flutter test test/scanner_registration_key_test.dart
+      - run: git diff --exit-code -- pubspec.yaml pubspec.lock
