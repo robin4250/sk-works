@@ -32,7 +32,8 @@ class _PersonalVaultScreenState extends State<PersonalVaultScreen>
     void retire() { if (generation == _authGeneration) { _retire(); } }
     _repository = PersonalVaultRepository(widget.client);
     final session = widget.client.auth.currentSession;
-    _retired = session == null || session.isExpired;
+    _retired = session == null || session.isExpired ||
+        WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed;
     _auth = widget.client.auth.onAuthStateChange.listen((event) {
       if (event.event == AuthChangeEvent.signedOut ||
           event.session?.user.id != session?.user.id ||
@@ -82,8 +83,12 @@ class _PersonalVaultScreenState extends State<PersonalVaultScreen>
                   allowPrinting: false, allowSharing: false)))));
         case PersonalVaultAction.save:
           final bytes = await lease.readBytes();
-          // No await between the final session check and the native handoff.
-          // A share/print operation already handed to the OS cannot be recalled.
+          if (!mounted || _retired || !identical(lifetime, _lifetime)) {
+            lease.invalidate();
+          }
+          lease.checkCurrent();
+          // Recheck immediately before invoking the plugin. Its internal/OS
+          // handoff is not atomic with Auth; accepted bytes cannot be recalled.
           await Printing.sharePdf(bytes: bytes, filename: 'SKO-personal-record.pdf');
         case PersonalVaultAction.print:
           await Printing.layoutPdf(onLayout: (_) => lease.readBytes());

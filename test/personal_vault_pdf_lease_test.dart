@@ -57,6 +57,7 @@ void main() {
       bytes[0] = 0;
       expect(await lease.readBytes(),pdf,reason:'caller cannot mutate held snapshot');
     });
+    expect(saved.checkCurrent,throwsStateError);
     await expectLater(saved.readBytes(),throwsStateError);
   });
   test('actual SDK logout after download rejects delayed layout and ends never-settling platform future', () async {
@@ -130,12 +131,28 @@ void main() {
   });
   testWidgets('background retires existing candidate screen rather than retaining list state', (tester) async {
     try {
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       await tester.pumpWidget(MaterialApp(home:PersonalVaultScreen(client:f.client)));
       await tester.pumpAndSettle();
+      expect(find.textContaining('安全のため書類を閉じました'),findsNothing);
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       await tester.pumpAndSettle();
       expect(find.textContaining('安全のため書類を閉じました'),findsOneWidget);
     } finally { await tester.pumpWidget(const SizedBox.shrink()); }
+  });
+  testWidgets('screen created while paused refuses access even after resume', (tester) async {
+    try {
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pumpWidget(MaterialApp(home:PersonalVaultScreen(client:f.client)));
+      tester.binding.scheduleForcedFrame();
+      await tester.pump();
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+      expect(find.textContaining('安全のため書類を閉じました'),findsOneWidget);
+    } finally {
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpWidget(const SizedBox.shrink());
+    }
   });
 }

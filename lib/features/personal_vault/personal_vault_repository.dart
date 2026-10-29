@@ -142,8 +142,14 @@ class PersonalVaultPdfLease {
     if (_closed || bytes == null) { throw StateError('本人書類の表示を終了しました。'); }
     final copy = Uint8List.fromList(bytes);
     await _scope.check();
-    if (_closed) { throw StateError('本人書類の表示を終了しました。'); }
+    checkCurrent();
     return copy;
+  }
+  /// Final synchronous guard before invoking a plugin. This cannot make the
+  /// plugin/OS handoff atomic with SDK changes occurring inside that plugin.
+  void checkCurrent() {
+    _scope.checkCurrent();
+    if (_closed || _bytes == null) { throw StateError('本人書類の表示を終了しました。'); }
   }
   void invalidate() { _close(); _scope.invalidate(); }
   void _close() { _closed = true; _bytes = null; }
@@ -174,6 +180,9 @@ class _VaultReadSession {
     // Drain already queued Auth history before accepting a response, including
     // A -> B -> A where currentSession already looks unchanged.
     await Future<void>.delayed(Duration.zero);
+    checkCurrent();
+  }
+  void checkCurrent() {
     final current = client.auth.currentSession;
     if (invalid || current == null || current.isExpired ||
         current.user.id != actor || current.accessToken != token) {
