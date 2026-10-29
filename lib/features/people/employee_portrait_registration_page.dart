@@ -17,6 +17,7 @@ class EmployeePortraitRegistrationPage extends StatefulWidget {
   @override State<EmployeePortraitRegistrationPage> createState()=>_EmployeePortraitRegistrationPageState();
 }
 class _EmployeePortraitRegistrationPageState extends State<EmployeePortraitRegistrationPage> {
+  final _privateNavigator=GlobalKey<NavigatorState>();
   EmployeePortraitRepository? _repository;
   EmployeePortraitDraft? _draft;
   WorkerDocumentPhoto? _photo;
@@ -52,12 +53,12 @@ class _EmployeePortraitRegistrationPageState extends State<EmployeePortraitRegis
     }catch(error){if(_live(generation)){setState(()=>_error=_message(error));}}
     finally{if(_live(generation)){setState(()=>_busy=false);}}
   }
-  Future<void> _pick() async {
+  Future<void> _pick(BuildContext innerContext) async {
     if(_busy || _revoked || _draft==null){return;}
     final generation=_generation;setState(()=>_busy=true);
     try{
-      final values=await (widget.photoPicker?.call(context)??editWorkerDocumentPhotos(context,
-        paths:const [],signedUrl:(_)=>Future<String>.error(StateError('保存済み写真は変更しません。')),
+      final values=await (widget.photoPicker?.call(innerContext)??editWorkerDocumentPhotos(innerContext,
+        paths:const [],useRootNavigator:false,signedUrl:(_)=>Future<String>.error(StateError('保存済み写真は変更しません。')),
         uploadNotice:'顔写真画像を1枚選択してください。元の写真は保持します。'));
       if(!_live(generation) || values==null){return;}
       if(values.length!=1 || values.single.path!=null || values.single.bytes==null ||
@@ -80,8 +81,16 @@ class _EmployeePortraitRegistrationPageState extends State<EmployeePortraitRegis
     finally{if(_live(generation)){setState(()=>_busy=false);}}
   }
   @override void dispose(){_generation++;_photo=null;widget.privacySession.removeListener(_scopeChanged);unawaited(_repository?.dispose()??Future<void>.value());super.dispose();}
-  @override Widget build(BuildContext context)=>Scaffold(
-    appBar:AppBar(title:const Text('社員の顔写真')),
+  @override Widget build(BuildContext context) {
+    if(_revoked){return Scaffold(appBar:AppBar(title:const Text('社員の顔写真')),
+      body:const Center(child:Text('社員情報を表示できません。画面を閉じて再確認してください。')));}
+    // Destroy this private Navigator (including its dialogs) on scope loss.
+    // Dialog operations receive the Builder context below this Navigator.
+    return Navigator(key:_privateNavigator,pages:[MaterialPage<void>(
+      key:const ValueKey('employee-portrait-private-root'),child:Builder(builder:_content))],onDidRemovePage:(_){});
+  }
+  Widget _content(BuildContext innerContext)=>Scaffold(
+    appBar:AppBar(title:const Text('社員の顔写真'),leading:BackButton(onPressed:()=>Navigator.of(context).pop(false))),
     body:ListView(padding:const EdgeInsets.all(16),children:[
       Text(widget.companyName),const SizedBox(height:12),
       const Text('選択した社員の顔写真を登録します。以前の写真は削除せず保持します。登録後、原本確認は別途必要です。'),
@@ -91,7 +100,7 @@ class _EmployeePortraitRegistrationPageState extends State<EmployeePortraitRegis
       if(_draft!=null)Text('必要書類：${_draft!.requirement['name']}'),
       if(_photo?.bytes!=null)Image.memory(_photo!.bytes!,height:200,fit:BoxFit.contain,errorBuilder:(_,_,_)=>const Text('選択した写真を表示できません。')),
       const SizedBox(height:16),
-      OutlinedButton.icon(key:const Key('employee-portrait-pick'),onPressed:_busy||_revoked||_draft==null?null:_pick,icon:const Icon(Icons.add_a_photo_outlined),label:const Text('顔写真を選択')),
+      OutlinedButton.icon(key:const Key('employee-portrait-pick'),onPressed:_busy||_revoked||_draft==null?null:()=>_pick(innerContext),icon:const Icon(Icons.add_a_photo_outlined),label:const Text('顔写真を選択')),
       FilledButton(key:const Key('employee-portrait-save'),onPressed:_busy||_revoked||_draft==null||_photo==null?null:_save,child:const Text('この社員の顔写真を保存')),
       TextButton(onPressed:_busy?null:()=>Navigator.of(context).pop(false),child:const Text('キャンセル')),
     ]),

@@ -46,3 +46,12 @@ captures the existing read-only AppAuthMutationGateway admission. Logout intent
 or failure blocks work while the SDK token can still be present. No shared Auth
 code is edited. Dedicated regressions hold the logout persistence intent and an
 old read across a background/foreground epoch change, requiring zero writes.
+
+The registration page owns a private Navigator. Photo-editor dialogs use its
+inner Builder context with useRootNavigator:false. On background or revocation,
+the private Navigator is destroyed and is not restored on resume, so selected
+images and editor routes cannot remain over a masked personnel page. Save/cancel
+return true/false through the page's outer route, not by popping its private
+initial route. The shared editor thumbnail preview's nearest-Navigator fix is
+provided by the separate preview source 8f21 and must be included by the leaf
+composition; this candidate does not rewrite that owner's file.

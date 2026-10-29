@@ -9,6 +9,7 @@ import 'package:sk_works/features/people/employee_portrait_registration_page.dar
 import 'package:sk_works/features/people/people_cloud_repository.dart';
 import 'package:sk_works/features/people/worker_document_repository.dart';
 import 'package:sk_works/features/people/worker_document_photos.dart';
+import 'package:sk_works/features/people/worker_document_photo_editor.dart';
 import 'worker_document_managed_save_http_test.dart' as managed;
 import 'package:sk_works/features/auth/app_auth_mutation_gateway.dart';
 import 'package:sk_works/features/auth/app_auth_logout_persistence.dart';
@@ -165,6 +166,40 @@ void main(){
    await tester.pumpWidget(const SizedBox());
   }
  },timeout:const Timeout(Duration(seconds:30)));
+ for(final revoke in [false,true]){
+  testWidgets('actual private photo editor disappears on ${revoke?'revocation':'background'} without upload or resurrection',(tester) async {
+   try {
+    await tester.pumpWidget(MaterialApp(home:EmployeePortraitRegistrationPage(privacySession:session,workerId:managed.worker,companyName:'テスト会社',repositoryOverride:repo,
+      photoPicker:(innerContext)=>editWorkerDocumentPhotos(innerContext,paths:const [],useRootNavigator:false,initialPhotos:[photo()],signedUrl:(_)=>throw StateError('not a saved fixture')))));
+    await drainPortraitIo(tester);
+    await tester.tap(find.byKey(const Key('employee-portrait-pick')));await tester.pump();await tester.pump(const Duration(milliseconds:250));
+    expect(find.byType(AlertDialog),findsOneWidget);expect(find.byType(Image),findsOneWidget);
+    if(revoke){session.revoke();}else{session.didChangeAppLifecycleState(AppLifecycleState.paused);}
+    await tester.pump();await tester.pump(const Duration(milliseconds:250));
+    expect(find.byType(AlertDialog),findsNothing);expect(find.byType(Image),findsNothing);expect(find.text('写真を確定'),findsNothing);
+    if(!revoke){session.didChangeAppLifecycleState(AppLifecycleState.resumed);await tester.runAsync(session.refresh);await tester.pump();}
+    expect(find.byType(Image),findsNothing);expect(find.text('写真を確定'),findsNothing);expect(f.mutations,isEmpty);
+   } finally {await cleanupPortraitIo(tester,closeFixture);await tester.pumpWidget(const SizedBox());}
+  },timeout:const Timeout(Duration(seconds:30)));
+ }
+ for(final save in [false,true]){
+  testWidgets('private Navigator returns ${save?'saved true':'cancel false'} to the outer route',(tester) async {
+   bool? result;
+   try {
+    await tester.pumpWidget(MaterialApp(home:Builder(builder:(outerContext)=>FilledButton(onPressed:() async {
+      result=await Navigator.of(outerContext).push<bool>(MaterialPageRoute(builder:(_)=>EmployeePortraitRegistrationPage(
+        privacySession:session,workerId:managed.worker,companyName:'テスト会社',repositoryOverride:repo,photoPicker:(_)async=>[photo()])));
+    },child:const Text('外側の社員画面')))));
+    await tester.tap(find.text('外側の社員画面'));await tester.pump();await drainPortraitIo(tester);
+    if(save){
+      await tester.tap(find.byKey(const Key('employee-portrait-pick')));await tester.pump();await drainPortraitIo(tester);
+      await tester.tap(find.byKey(const Key('employee-portrait-save')));await tester.pump();await drainPortraitIo(tester);
+    }else{await tester.tap(find.text('キャンセル'));await tester.pumpAndSettle();}
+    expect(result,save);expect(find.text('外側の社員画面'),findsOneWidget);expect(find.byKey(const Key('employee-portrait-save')),findsNothing);
+    expect(f.saved!=null,save);
+   } finally {await cleanupPortraitIo(tester,closeFixture);await tester.pumpWidget(const SizedBox());}
+  },timeout:const Timeout(Duration(seconds:30)));
+ }
  testWidgets('missing face requirement offers existing explicit settings entry without creating rows',(tester) async {
   docs.missing=true;
   try {
