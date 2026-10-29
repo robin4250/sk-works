@@ -5,7 +5,7 @@ import 'package:sk_works/features/people/worker_document_photo_editor.dart';
 import 'package:sk_works/features/people/worker_document_photos.dart';
 import 'package:sk_works/features/shared/resource_registration_card.dart';
 
-final _image = base64Decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=');
+final _image = base64Decode('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGOQi1rwH4QZYAwARXwIXR74X/8AAAAASUVORK5CYII=');
 
 void main() {
   for (final editor in [true, false]) {
