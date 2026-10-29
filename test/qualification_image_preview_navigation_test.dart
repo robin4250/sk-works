@@ -10,6 +10,8 @@ final _image = base64Decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0l
 void main() {
   for (final editor in [true, false]) {
     testWidgets('${editor ? 'qualification editor' : 'saved qualification card'} preview retires with its private navigator', (tester) async {
+      tester.view.physicalSize = const Size(428, 900); tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize); addTearDown(tester.view.resetDevicePixelRatio);
       final scope = ValueNotifier(true); addTearDown(scope.dispose);
       await tester.pumpWidget(MaterialApp(home: Scaffold(
         body: ValueListenableBuilder<bool>(valueListenable: scope,
@@ -67,11 +69,11 @@ void main() {
       await first.up(); await second.up(); await tester.pump();
       expect(viewer.maxScale, greaterThan(1));
       expect(image.getTransformTo(null).getMaxScaleOnAxis(), greaterThan(beforeScale));
-      final close = find.byTooltip('閉じる'); expect(close, findsOneWidget);
+      final close = find.byWidgetPredicate((widget) => widget is IconButton && widget.tooltip == '閉じる'); expect(close, findsOneWidget);
       final rect = tester.getRect(close);
       expect(rect.top, greaterThanOrEqualTo(44)); expect(rect.bottom, lessThanOrEqualTo(size.height - 34));
       final action = tester.widget<IconButton>(close).onPressed!;
-      action(); action(); // A retained repeated callback must never pop the editor behind this preview.
+      await tester.tap(close); action(); // A retained repeated callback must never pop the editor behind this preview.
       await tester.pumpAndSettle();
       expect(find.byType(InteractiveViewer), findsNothing); expect(find.text('登録写真 1枚'), findsOneWidget);
       expect(editorReturns, 0); expect(tester.takeException(), isNull);
