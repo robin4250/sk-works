@@ -1,0 +1,192 @@
+name: Confirmed terms snapshot and two-page contract candidate
+on:
+  pull_request:
+    paths:
+      - 'lib/domain/trade_document_terms_*.dart'
+      - 'lib/features/shared/trade_document_terms_pdf.dart'
+      - 'lib/features/shared/trade_document_form_*.dart'
+      - 'lib/features/shared/trade_document_attachment*.dart'
+      - 'lib/features/shared/standalone_trade_document.dart'
+      - 'lib/features/payroll/payment_order_*.dart'
+      - 'lib/features/invoices/invoice*acceptance*.dart'
+      - 'docs/fixtures/trade-document-terms/**'
+      - 'docs/review/trade-document-confirmed-terms.md'
+      - 'docs/review/trade-document-terms/**'
+      - 'docs/fixtures/trade-document-design/**'
+      - 'tool/trade_document_terms_save_fixture.mjs'
+      - 'docs/review/partner-company-bank-order/sql.test.mjs'
+      - 'test/trade_document_terms_snapshot_test.dart'
+      - 'test/trade_document_generator_routing_test.dart'
+      - 'tool/verify_trade_document_bound_seal_consent.mjs'
+      - 'tool/trade_document_monthly_review_fixture.mjs'
+      - 'tool/trade_document_confirmation_api_fixture.mjs'
+      - '.github/workflows/trade-document-confirmed-terms.yml'
+permissions:
+  contents: read
+jobs:
+  approved-body:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix: {runtime: [pglite, postgres]}
+    services:
+      database:
+        image: postgres:17.6
+        env: {POSTGRES_USER: postgres, POSTGRES_PASSWORD: fixture-only, POSTGRES_DB: sko_document_consent_fixture}
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      SKO_CONFIRMED_TERMS_HOOK: content-v1
+      SKO_MONTHLY_PAYMENT_REVIEW_HOOK: contract-v1
+      SKO_TRADE_DOCUMENT_API_REVIEW_HOOK: contract-v1
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22.14.0'}
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
+      - if: matrix.runtime == 'pglite'
+        run: node tool/verify_trade_document_bound_seal_consent.mjs "$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
+      - if: matrix.runtime == 'postgres'
+        run: node tool/verify_trade_document_bound_seal_consent.mjs "$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js" postgres
+        env:
+          SKO_CONSENT_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_document_consent_fixture
+  bank-before-terms:
+    runs-on: ubuntu-latest
+    services:
+      database:
+        image: postgres:17.6
+        env: {POSTGRES_USER: postgres, POSTGRES_PASSWORD: fixture-only, POSTGRES_DB: partner_bank_fixture}
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      SKO_CONFIRMED_TERMS_HOOK: content-v1
+      PARTNER_BANK_TEST_DATABASE_URL: postgres://postgres:fixture-only@127.0.0.1:5432/partner_bank_fixture
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22.14.0'}
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
+      - run: node docs/review/partner-company-bank-order/sql.test.mjs "$GITHUB_WORKSPACE/docs/review/partner-company-bank-order/native-db.mjs"
+  two-page-pdfs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: '3.47.5', channel: stable, cache: true}
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/domain/trade_document_terms_snapshot.dart lib/domain/trade_document_terms_source.dart lib/features/shared/trade_document_terms_pdf.dart lib/features/shared/trade_document_form_pdf.dart lib/features/shared/trade_document_form_geometry.dart lib/features/shared/trade_document_attachment.dart lib/features/shared/trade_document_attachment_editor_page.dart lib/features/shared/standalone_trade_document.dart lib/features/payroll/payment_order_pdf.dart lib/features/payroll/payment_order_resolver.dart lib/features/invoices/invoice_order_acceptance_pdf.dart lib/features/invoices/invoice_acceptance_resolver.dart test/trade_document_terms_snapshot_test.dart test/trade_document_generator_routing_test.dart
+      - name: Render exact pre-change legacy source, then restore corrected blobs
+        shell: bash
+        run: |
+          set -euo pipefail
+          baseline_saved=$(mktemp -d)
+          paths=(lib/features/payroll/payment_order_pdf.dart lib/features/invoices/invoice_order_acceptance_pdf.dart)
+          sha256sum "${paths[@]}" > "$baseline_saved/corrected.sha256"
+          for path in "${paths[@]}"; do cp "$path" "$baseline_saved/$(basename "$path")"; done
+          restore() {
+            for path in "${paths[@]}"; do cp "$baseline_saved/$(basename "$path")" "$path"; done
+            sha256sum -c "$baseline_saved/corrected.sha256"
+          }
+          trap restore EXIT
+          for path in "${paths[@]}"; do git show "4a01fa45bda899c751f5da448df8689e641b58ca:$path" > "$path"; done
+          TRADE_TERMS_PDF_OUTPUT_DIR=build/trade-terms-baseline flutter test test/trade_document_terms_snapshot_test.dart --plain-name 'actual PDFs render the adopted front and exact terms while legacy stays historical'
+          restore
+          trap - EXIT
+      - run: flutter test test/trade_document_terms_snapshot_test.dart test/trade_document_generator_routing_test.dart test/payment_order_pdf_test.dart test/invoice_order_acceptance_pdf_test.dart test/standalone_trade_document_test.dart test/r18_defaults_test.dart test/r18_editor_defaults_contract_test.dart test/r33_input_test.dart test/partner_company_bank_standalone_test.dart
+        env: {TRADE_TERMS_PDF_OUTPUT_DIR: build/trade-terms-proof}
+      - run: python -m pip install PyMuPDF==1.26.6
+      - name: Exact confirmed legal text, A4 margins, legacy identity, and two-page document
+        run: |
+          python - <<'PY'
+          import hashlib,json,fitz
+          from pathlib import Path
+          raw=Path('docs/fixtures/trade-document-terms/user-confirmed-20261029-v1.json').read_bytes()
+          assert hashlib.sha256(raw).hexdigest()=='3acf9090f2c027840bba43351f4d9e173759baa8b7c0340c05db9e28731f0d1f'
+          articles=json.loads(raw); assert len(articles)==22
+          geometry=json.loads(Path('docs/fixtures/trade-document-design/original-design-20261029.json').read_text())
+          folder=Path('build/trade-terms-proof')
+          assert len(list(folder.glob('*.pdf')))==12
+          clean=lambda value: ''.join(value.split())
+          for kind in ['order','acceptance']:
+              with fitz.open(folder/f'{kind}-legacy.pdf') as legacy,fitz.open(folder/f'{kind}-terms.pdf') as modern:
+                  assert len(legacy)==1 and len(modern)==2,(kind,len(legacy),len(modern))
+                  with fitz.open(Path('build/trade-terms-baseline')/f'{kind}-legacy.pdf') as baseline:
+                      assert legacy[0].get_text()==baseline[0].get_text(),kind
+                      assert legacy[0].get_pixmap().samples==baseline[0].get_pixmap().samples,kind
+                  front=modern[0];front_text=clean(front.get_text());g=geometry[kind]
+                  assert clean('注文書' if kind=='order' else '請書') in front_text
+                  for expected in ['株式会社自社','株式会社相手','検証工事','東京都1-2-3']:
+                      assert clean(expected) in front_text,(kind,expected)
+                  if kind=='order':assert '110,000' in front_text and '10,000' in front_text
+                  for expected in ['支払方法','前金払','部分払','完成払','有・無','数量','単位','単価','金額','備考']:
+                      assert clean(expected) in front_text,(kind,expected)
+                  rectangles=[item[1] for draw in front.get_drawings() for item in draw['items'] if item[0]=='re']
+                  for i,y in enumerate(g['ys']):
+                      if i in [4,5]:continue
+                      assert any(abs(r.x0-34)<1 and abs(r.x1-(front.rect.width-34))<1 and abs(r.y0-(front.rect.height-y))<1 for r in rectangles),(kind,'row',i,y)
+                  for x in g['grid_columns'][1:-1]:
+                      assert any(abs(r.x0-x)<1 and abs(r.y0-(front.rect.height-g['ys'][10]))<1 and abs(r.y1-(front.rect.height-g['ys'][20]))<1 for r in rectangles),(kind,'gridcol',x)
+                  assert g['data_rows']==9
+                  assert '協力会社名（仮）' not in front_text and 'すみだ建設株式会社' not in front_text
+                  spans=[span for block in modern[1].get_text('dict')['blocks'] for line in block.get('lines',[]) for span in line.get('spans',[])]
+                  # Separate text operators on one physical baseline may become
+                  # multiple logical MuPDF lines. Verify the actual paper order.
+                  groups={}
+                  for span in spans: groups.setdefault(round(span['origin'][1],2),[]).append(span)
+                  text=clean(''.join(span['text'] for y in sorted(groups) for span in sorted(groups[y],key=lambda s:s['bbox'][0])))
+                  expected='[ 工事請負契約条項 ]'+''.join('（'+title+'）'+''.join(('第'+str(number)+'条　' if i==0 else '　　　　')+paragraph for i,paragraph in enumerate(paragraphs)) for number,(title,paragraphs) in enumerate(articles,1))
+                  assert text==clean(expected),(kind,'legal paper stream differs')
+                  baselines=sorted({round(span['origin'][1],2) for span in spans if abs(span['size']-6.5)<.05})
+                  assert len(baselines)==92,(kind,len(baselines))
+                  for a,b in zip(baselines,baselines[1:]): assert abs((b-a)-8.14)<.1,(kind,a,b)
+                  # Ideographic indentation must be actual white space, not a
+                  # visible substitute glyph despite correct ToUnicode text.
+                  prefix=clean(articles[3][1][1][:25])
+                  indented=next(line for block in modern[1].get_text('dict')['blocks'] for line in block.get('lines',[]) if clean(''.join(span['text'] for span in line['spans'])).startswith(prefix))
+                  baseline=indented['spans'][0]['origin'][1]
+                  gap=modern[1].get_pixmap(matrix=fitz.Matrix(3,3),clip=fitz.Rect(34,baseline-6,58,baseline+.5),alpha=False)
+                  assert all(all(channel>=240 for channel in gap.samples[i:i+3]) for i in range(0,len(gap.samples),gap.n)),(kind,'visible glyph in indentation')
+                  for number,(title,paragraphs) in enumerate(articles,1):
+                      assert clean(f'（{title}）') in text and clean(f'第{number}条　{paragraphs[0]}') in text,(kind,number,title)
+                      for paragraph in paragraphs: assert clean(paragraph) in text,(kind,number,paragraph)
+                  for index,page in enumerate(modern):
+                      assert abs(page.rect.width-595.276)<1 and abs(page.rect.height-841.89)<1
+                      for block in page.get_text('dict')['blocks']:
+                          if block['type']==0:
+                              x0,y0,x1,y1=block['bbox']
+                              assert x0>=33 and y0>=24 and x1<=page.rect.width-33 and y1<=page.rect.height-33,(kind,index,block['bbox'])
+                      page.get_pixmap(matrix=fitz.Matrix(1.5,1.5)).save(folder/f'{kind}-terms-{index+1}.png')
+          for kind in ['order','acceptance']:
+              with fitz.open(folder/f'{kind}-unregistered.pdf') as unsigned:
+                  assert len(unsigned)==2 and '角印：無印' in unsigned[0].get_text()
+                  image=unsigned[0].get_pixmap(alpha=False);samples=image.samples
+                  assert not any(samples[i]>170 and samples[i+1]<110 and samples[i+2]<110 for i in range(0,len(samples),image.n)),kind
+          for case in json.loads((folder/'seals.json').read_text()):
+              with fitz.open(folder/case['file']) as pdf:
+                  assert len(pdf)==2
+                  page=pdf[0];chars=[c for b in page.get_text('rawdict')['blocks'] for l in b.get('lines',[]) for s in l.get('spans',[]) if s.get('color',0)==0 for c in s['chars'] if not c['c'].isspace()]
+                  name=case['name'];visible=''.join(c['c'] for c in chars);start=visible.find(name);assert start>=0,case
+                  boxes=[c['bbox'] for c in chars[start:start+len(name)]];bound=(min(b[0] for b in boxes),min(b[1] for b in boxes),max(b[2] for b in boxes),max(b[3] for b in boxes))
+                  image=page.get_pixmap(matrix=fitz.Matrix(2,2),alpha=False);samples=image.samples
+                  red=[(x/2,y/2) for y in range(image.height) for x in range(image.width) if samples[y*image.stride+x*image.n]>170 and samples[y*image.stride+x*image.n+1]<110 and samples[y*image.stride+x*image.n+2]<110]
+                  assert red,case
+                  seal=(min(x for x,y in red),min(y for x,y in red),max(x for x,y in red),max(y for x,y in red))
+                  assert abs((seal[0]+seal[2])/2-bound[2])<=4 and abs((seal[1]+seal[3]-bound[1]-bound[3])/2)<=6,(case,seal,bound)
+                  assert min(seal[2],bound[2])>max(seal[0],bound[0]) and min(seal[3],bound[3])>max(seal[1],bound[1]),(case,seal,bound)
+                  g=geometry[case['kind']];scale=g['width']/(1217 if case['kind']=='order' else 1183)
+                  hy=lambda px:g['top']+((532 if case['kind']=='order' else 499)-px)*(scale if case['kind']=='order' else .35)
+                  bottom=hy(435 if case['kind']=='order' else 411)
+                  assert seal[1]>=page.rect.height-(bottom+23)-1 and seal[3]<=page.rect.height-bottom+1,(case,'seal outside own name row',seal,bottom)
+                  assert seal[0]>=34 and seal[2]<=page.rect.width-34,(case,seal)
+                  page.get_pixmap(matrix=fitz.Matrix(1.5,1.5)).save(folder/(case['file']+'.png'))
+          print('PASS exact 22 confirmed articles, two A4 portrait pages with margins, adopted 9-row geometry and unchanged legacy pixels/text')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: confirmed-contract-terms-proof, path: build/trade-terms-proof/}
+      - run: git diff --exit-code -- pubspec.yaml pubspec.lock

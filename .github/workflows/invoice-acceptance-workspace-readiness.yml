@@ -38,9 +38,9 @@ jobs:
           for name in ['invoice-with-acceptance', 'invoice-with-automatic-acceptance']:
               path=root / (name+'.pdf')
               with fitz.open(path) as doc:
-                  assert len(doc)==2,(name,len(doc))
+                  assert len(doc)==(3 if 'automatic' in name else 2),(name,len(doc))
                   assert '請求書' in ''.join(doc[0].get_text().split()),name
-                  assert '注文請書' in ''.join(doc[1].get_text().split()),name
+                  assert ('請書' if 'automatic' in name else '注文請書') in ''.join(doc[1].get_text().split()),name
                   for index,page in enumerate(doc):
                       page.get_pixmap(matrix=fitz.Matrix(1.5,1.5)).save(root / f'{name}-{index+1}.png')
           PY

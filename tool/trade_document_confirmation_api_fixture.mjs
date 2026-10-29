@@ -35,6 +35,7 @@ export async function verifyConfirmationApi(db,c){
  check(await workspace('payment_certificate',monthly.parent,'1'),w);
  check(w.document_id===w.local_document_id,false);check(w.document_id===monthly.parent,false);
  const p=await preview(w);check(Object.keys(p.expected_command).length,12);check(p.display_preview.body_hash,p.expected_command.body_hash);
+ if(c.confirmedTerms)check(p.display_preview.body.contract_terms,c.confirmedTerms);
  check(p.display_preview.body.kind,'order');check(p.display_preview.body.issuer_company_id,A);
  check((await receipt(p,id(8101))).found,false);
  const deniedBefore=await protectedState();await deny(()=>confirm(p,id(8101),true,false),/confirmation and issuer seal/);check(await protectedState(),deniedBefore);
@@ -43,7 +44,7 @@ export async function verifyConfirmationApi(db,c){
  check(await q('select to_jsonb(p) v from payment_certificates p where id=$1',[monthly.parent]),originalMonthly);
  check(await confirm(p,id(8101)),approved);check((await receipt(p,id(8101))).result,approved);
  await deny(()=>confirm({...p,expected_command:{...p.expected_command,preview_hash:'f'.repeat(64)}},id(8101)),/payload changed/);
- const issued=await render(w);check(issued.side,'issued');check(issued.evidence.seals.length,1);
+ const issued=await render(w);if(c.confirmedTerms)check(issued.evidence.body.contract_terms,c.confirmedTerms);check(issued.side,'issued');check(issued.evidence.seals.length,1);
  check((await resolve('payment_certificate',monthly.parent)).phase,'approved');
  const reverseTrade=id(8200);await db.query("insert into trade_companies(id,company_id,linked_company_id,trade_role,link_status) values($1,$2,$3,'customer','linked')",[reverseTrade,B,A]);
  await asActor(UB);
@@ -81,6 +82,7 @@ export async function verifyConfirmationApi(db,c){
  const invSource=await q('select updated_at::text v from invoices where id=$1',[inv]);
  const iwSource=await q("select public.trade_document_attachment_workspace('invoice',$1,$2) v",[inv,invSource]);
  const payload={...iwSource.defaults,company_seal_enabled:false,company_seal_snapshot:null,issue_date:'2026-10-22',order_date:'2026-10-21',work_name:'公開承認合成工事',work_address:'東京都',acceptance_text:'上記注文内容を承諾します。',intro_text:'合成請負',payment_conditions:'翌月末',notes:''};
+ if(c.confirmedTerms)payload.contract_terms=c.confirmedTerms;
  await q("select public.save_trade_document_attachment('invoice',$1,$2,0,$3::jsonb) v",[inv,invSource,JSON.stringify(payload)]);
  // Ordinary assigned member approval remains on the existing path, with no
  // evidence preparation or permission-error fallback. Final stamp authority
@@ -102,7 +104,7 @@ export async function verifyConfirmationApi(db,c){
  const invAfter=await q('select to_jsonb(i) v from invoices i where id=$1',[inv]);check(invAfter.grand_total,invBefore.grand_total);check(invAfter.tax,invBefore.tax);check(invAfter.invoice_seal_frozen,true);
  check(await q("select count(*)::int v from invoice_approval_audit where invoice_id=$1",[inv]),2);
  check(await confirm(ip,id(8105)),invoiceResult);check((await resolve('invoice',inv)).phase,'approved');
- const invoiceRender=await render(iw);check(invoiceRender.evidence.body.kind,'acceptance');
+ const invoiceRender=await render(iw);if(c.confirmedTerms)check(invoiceRender.evidence.body.contract_terms,c.confirmedTerms);check(invoiceRender.evidence.body.kind,'acceptance');
  await asActor(UB);
  const invoiceReceivedWorkspace=await api('select public.received_trade_document_confirmation_workspace($1,$2,$3) v',[reverseTrade,iw.document_id,iw.document_revision]);
  const invoiceReceivedRender=await render(invoiceReceivedWorkspace);

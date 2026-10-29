@@ -41,16 +41,17 @@ jobs:
           import fitz
           from pathlib import Path
           root=Path('build/trade-document-settings-proof')
-          for kind,title in [('order','注文書'),('acceptance','注文請書')]:
+          for kind,title in [('order','注文書'),('acceptance','請書')]:
               with fitz.open(root/f'standalone-{kind}.pdf') as doc:
-                  assert len(doc)==1,(kind,len(doc))
+                  assert len(doc)==2,(kind,len(doc))
+                  assert '工事請負契約条項' in ''.join(doc[1].get_text().split()),kind
                   text=''.join(doc[0].get_text().split())
                   for expected in [title,'登録した工事初期文','登録した工事場所','株式会社自社','株式会社登録相手']:
                       assert expected in text,(kind,expected)
           for name in ['invoice-with-acceptance','invoice-with-automatic-acceptance']:
               with fitz.open(root/f'{name}.pdf') as doc:
-                  assert len(doc)==2,(name,len(doc))
-                  assert '注文請書' in ''.join(doc[1].get_text().split()),name
+                  assert len(doc)==(3 if 'automatic' in name else 2),(name,len(doc))
+                  assert ('請書' if 'automatic' in name else '注文請書') in ''.join(doc[1].get_text().split()),name
           for path in root.glob('*.pdf'):
               with fitz.open(path) as doc:
                   for i,page in enumerate(doc):
