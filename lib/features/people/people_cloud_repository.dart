@@ -3,6 +3,7 @@ import 'package:flutter/widgets.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
+import '../auth/app_auth_mutation_gateway.dart';
 
 class PersonnelScopeChanged implements Exception {
   const PersonnelScopeChanged();
@@ -201,6 +202,7 @@ class PeopleCloudRepository {
     if (raw is! Map || raw['company_id'] != member.companyId || raw['records'] is! List) {
       throw StateError('社員情報の取得結果を確認できません');
     }
+    final birthSupported = raw['birth_date_contract_version'] == 1;
     final active=(raw['records'] as List).whereType<Map>().where((row)=>row['active']==true)
       .map((row)=>Map<String,dynamic>.from(row)).toList(growable:false);
     var records=active;
@@ -214,7 +216,7 @@ class PeopleCloudRepository {
         final defaultCompany=(await membership()).companyId;
         if(defaultCompany==member.companyId){
           final profiles=await _client.from('worker_personnel_profiles')
-            .select('worker_id,blood_type,address,emergency_name,emergency_relation,emergency_phone,emergency_address,family_composition')
+            .select('worker_id,blood_type,address,emergency_name,emergency_relation,emergency_phone,emergency_address,family_composition${birthSupported ? ',birth_date' : ''}')
             .eq('company_id',member.companyId).inFilter('worker_id',ids);
           final families=await _client.from('worker_family_members')
             .select('id,worker_id,name,relation,birth_date,is_dependent')
@@ -223,7 +225,7 @@ class PeopleCloudRepository {
           if(!checked.canManage||checked.role!=member.role||(await membership()).companyId!=defaultCompany)throw const PersonnelScopeChanged();
           records=[...checked.records,for(final row in basic){
             ...row,
-            ..._inactivePrivateFields(profiles.where((p)=>p['worker_id']==row['id']).toList(growable:false)),
+            ..._inactivePrivateFields(profiles.where((p)=>p['worker_id']==row['id']).toList(growable:false), birthSupported: birthSupported),
             'familyMembers':families.where((f)=>f['worker_id']==row['id']).map((f)=>Map<String,dynamic>.from(f)).toList(growable:false),
           }];
         } else {
@@ -237,9 +239,10 @@ class PeopleCloudRepository {
     return PersonnelPrivacySnapshot(actor:actor,company:member.companyId,role:member.role,canManage:manage,records:records);
   }
 
-  static Map<String,dynamic> _inactivePrivateFields(List<Map<String,dynamic>> profiles){
+  static Map<String,dynamic> _inactivePrivateFields(List<Map<String,dynamic>> profiles, {bool birthSupported = false}){
     final p=profiles.isEmpty?const <String,dynamic>{}:profiles.single;
-    return {'bloodType':p['blood_type']??'','address':p['address']??'',
+    return {'birthDate':p['birth_date'] ?? '', 'birthDateContractVersion':birthSupported ? 1 : 0,
+      'bloodType':p['blood_type']??'','address':p['address']??'',
       'emergencyName':p['emergency_name']??'','emergencyRelation':p['emergency_relation']??'',
       'emergencyPhone':p['emergency_phone']??'','emergencyAddress':p['emergency_address']??'',
       'familyComposition':p['family_composition']??''};
@@ -347,6 +350,8 @@ class PeopleCloudRepository {
             'employeeNumber':
                 personnel['employeeNumber'] ?? dates['employee_number'] ?? '',
             'department': personnel['department'] ?? dates['department'] ?? '',
+            'birthDate': personnel['birthDate'] ?? personnel['birth_date'] ?? '',
+            'birthDateContractVersion': personnel['birthDateContractVersion'] ?? personnel['birth_date_contract_version'] ?? 0,
             'hireDate': personnel['hireDate'] ?? dates['hire_date'] ?? '',
             'notes': value['notes'] ?? '',
             'active': value['active'] == true,
@@ -501,18 +506,40 @@ class PeopleCloudRepository {
   }
 
   Future<Map<String, dynamic>> savePersonnelProfile(
-    Map<String, dynamic> record,
+    Map<String, dynamic> record, {String? expectedCompany}
   ) async {
     validatePersonnelMetadata(record);
     final id = record['id']?.toString() ?? '';
     if (id.isEmpty) throw StateError('社員情報を確認できません。');
-    final raw = await _client.rpc(
+    final birthSubmitted = record['birthDateSubmitted'] == true;
+    final owner = birthSubmitted ? AppAuthMutationGateway.forClient(_client) : null;
+    final epoch = await owner?.externalFlowAdmission();
+    final token = _client.auth.currentSession?.accessToken;
+    void checkBirthSession() {
+      if (birthSubmitted && (epoch == null || token == null ||
+          owner?.isExternalFlowCurrent(epoch) != true || _client.auth.currentSession?.accessToken != token)) {
+        throw const PersonnelScopeChanged();
+      }
+    }
+    checkBirthSession();
+    if (birthSubmitted) {
+      if (expectedCompany == null) throw StateError('会社を確認してください。');
+      final current = await readPersonnel(expectedCompany: expectedCompany);
+      checkBirthSession();
+      final targets = current.records.where((row) => row['id'] == id).toList();
+      if (targets.length != 1 || (targets.single['birthDateContractVersion'] ??
+          targets.single['birth_date_contract_version']) != 1) {
+        throw StateError('生年月日の登録は準備中です。保存は行いません。');
+      }
+    }
+    final request = _client.rpc(
       'save_worker_personnel_profile',
       params: {
         'p_worker_id': id,
         'p_payload': {
           'name': record['name']?.toString() ?? '',
           'kind': record['kind']?.toString() ?? 'employee',
+          if (birthSubmitted) 'birth_date': record['birthDate']?.toString().trim().isEmpty != false ? null : record['birthDate'].toString().trim(),
           'blood_type': record['bloodType']?.toString() ?? '',
           'role': record['role']?.toString() ?? '',
           'employee_number': record['employeeNumber']?.toString() ?? '',
@@ -533,6 +560,8 @@ class PeopleCloudRepository {
         },
       },
     );
+    final raw = birthSubmitted ? await request.setHeader('Authorization', 'Bearer $token') : await request;
+    checkBirthSession();
     return raw is Map
         ? Map<String, dynamic>.from(raw)
         : const <String, dynamic>{};
@@ -587,6 +616,16 @@ class PeopleCloudRepository {
     final number = record['employeeNumber']?.toString().trim() ?? '';
     if (number.length > 40 || number.contains(RegExp(r'[\r\n]'))) {
       throw StateError('社員番号は改行なしの40文字以内で入力してください。');
+    }
+    if (record['birthDateSubmitted'] == true) {
+      final birth = record['birthDate']?.toString().trim() ?? '';
+      final parsed = DateTime.tryParse(birth);
+      final now = DateTime.now();
+      if (birth.isNotEmpty && (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(birth) || parsed == null ||
+          parsed.toIso8601String().substring(0, 10) != birth || parsed.isBefore(DateTime(1900)) ||
+          parsed.isAfter(DateTime(now.year, now.month, now.day)))) {
+        throw StateError('生年月日を正しい日付で入力してください。');
+      }
     }
     final date = record['hireDate']?.toString().trim() ?? '';
     if (date.isNotEmpty) {
