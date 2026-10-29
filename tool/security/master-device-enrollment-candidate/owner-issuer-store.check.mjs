@@ -11,6 +11,7 @@ import {pendingDeviceKeyMigration} from './key-migration-proposal.mjs';
 import {migrationPossessionPayload} from './key-migration-possession.mjs';
 import {storeProvenPendingDeviceKey} from './key-migration-proven-adapter.mjs';
 import {requestIndependentOwnerApproval} from './key-migration-owner-request.mjs';
+import {handleMigrationChallengeRequest} from './key-migration-challenge-http-candidate.mjs';
 const id=n=>`00000000-0000-0000-0000-${String(n).padStart(12,'0')}`;
 const actor=id(1),session=id(2),deviceId=id(3);
 const pair=()=>{const k=generateKeyPairSync('ed25519');return {...k,jwk:k.publicKey.export({format:'jwk'})};};
@@ -59,11 +60,30 @@ export async function checkOwnerIssuerStore({pool,nativeConcurrency=false,pglite
   const receipt={...unsigned,signature:sign(null,ownerDecisionPayload(unsigned),key.privateKey).toString('base64url')};
   return {enabled:true,pool:poolOverride,actor,session,requestId,receipt,authorityCheckpoint:external};
  }
+ async function httpEvidence(args,{enabled=true,external=args.authorityCheckpoint,extra={},mutateContext=false,fixedPin}={}){
+  const token='synthetic-owner-evidence-auth-token',context={actor,session,pool:args.pool};let checkpointCalls=0;
+  const response=await handleMigrationChallengeRequest(new Request('https://fixture.invalid/master/migration',{
+   method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},
+   body:JSON.stringify({action:'owner-evidence',requestId:args.requestId,receipt:args.receipt,...extra})}),{
+   authenticateBearer:async bearer=>{assert.equal(bearer,token);return context;},
+   ownerEvidence:{enabled,pinnedIssuer:fixedPin,loadAuthorityCheckpoint:async who=>{
+    checkpointCalls++;assert.equal(who.actor,actor);assert.equal(who.session,session);assert.ok(Object.isFrozen(who));
+    if(mutateContext){context.actor=id(999);context.session=id(998);}return external;
+   }},
+  });
+  return {response,checkpointCalls};
+ }
  let calls=0;const forbiddenPool={connect:async()=>{calls++;throw Error('OFF must not acquire');}};
  await assert.rejects(commitOwnerIssuerTransition({pool:forbiddenPool}));
  await assert.rejects(recordOwnerDecisionUsingStoredIssuer({pool:forbiddenPool}));assert.equal(calls,0);
  const f=await seed(),r=await rotation(f),firstRequest=await request(),oldReceipt=await evidence(firstRequest,f.old,f.pin.keyId,f.external);
- assert.equal((await recordOwnerDecisionUsingStoredIssuer(oldReceipt)).status,'evidence_recorded');
+ const off=await httpEvidence(oldReceipt,{enabled:false});assert.equal(off.response.status,503);assert.equal(off.checkpointCalls,0);
+ const admitted=await httpEvidence(oldReceipt,{mutateContext:true});assert.equal(admitted.response.status,200);
+ assert.equal((await admitted.response.json()).evidence.status,'evidence_recorded');
+ assert.equal(admitted.response.headers.get('cache-control'),'no-store');
+ for(const extra of [{issuerMode:'fixed'},{authorityCheckpoint:f.external},{pinnedIssuer:{keyId:'issuer_old',publicKeyJwk:f.old.jwk}}]){
+  const spoofed=await httpEvidence(oldReceipt,{extra});assert.equal(spoofed.response.status,400);assert.equal(spoofed.checkpointCalls,0);
+ }
  assert.equal((await commitOwnerIssuerTransition(r.args)).status,'transition_committed');
  assert.deepEqual((await head(f.pin.authorityId)).pin,r.prepared.next);assert.equal(await count(f.pin.authorityId),1);
  const saved=(await pool.query('select * from master_device_enrollment_candidate.owner_issuer_transitions where authority_id=$1',[f.pin.authorityId])).rows[0];
@@ -75,14 +95,16 @@ export async function checkOwnerIssuerStore({pool,nativeConcurrency=false,pglite
  await assert.rejects(commitOwnerIssuerTransition((await rotation(f,pair(),'fork')).args),'stale sibling fork cannot overwrite');
  assert.equal(await count(f.pin.authorityId),1);
  const externalNext=checkpoint(r.prepared.next),secondRequest=await request();
- await assert.rejects(recordOwnerDecisionUsingStoredIssuer(await evidence(secondRequest,f.old,'issuer_old',externalNext)),'retired issuer cannot admit a new receipt');
- await assert.rejects(recordOwnerDecisionUsingStoredIssuer(await evidence(secondRequest,f.next,'issuer_new',f.external)),'stale checkpoint cannot select a retired pin');
- assert.equal((await recordOwnerDecisionUsingStoredIssuer(await evidence(secondRequest,f.next,'issuer_new',externalNext))).status,'evidence_recorded');
+ assert.equal((await httpEvidence(oldReceipt,{external:externalNext,fixedPin:{purpose:f.pin.purpose,keyId:f.pin.keyId,publicKeyJwk:f.old.jwk}})).response.status,409,'handler cannot fall back to a configured fixed pin after rotation');
+ assert.equal((await httpEvidence(await evidence(secondRequest,f.old,'issuer_old',externalNext))).response.status,409,'retired issuer cannot admit a new receipt');
+ assert.equal((await httpEvidence(await evidence(secondRequest,f.next,'issuer_new',f.external))).response.status,409,'stale checkpoint cannot select a retired pin');
+ const current=await httpEvidence(await evidence(secondRequest,f.next,'issuer_new',externalNext));assert.equal(current.response.status,200);
+ assert.equal((await current.response.json()).evidence.status,'evidence_recorded');
  // The actual consumer must validate stored retired history, not just current
  // key/head metadata, against the independently supplied checkpoint.
  const corrupted={...r.prepared.next,retiredKeys:[{epoch:1,keyId:'fake_retired',publicKeyJwk:pair().jwk}]};
  await pool.query('update master_device_enrollment_candidate.owner_issuer_heads set pin=$2::jsonb where authority_id=$1',[f.pin.authorityId,JSON.stringify(corrupted)]);
- await assert.rejects(recordOwnerDecisionUsingStoredIssuer(await evidence(secondRequest,f.next,'issuer_new',externalNext)));
+ assert.equal((await httpEvidence(await evidence(secondRequest,f.next,'issuer_new',externalNext))).response.status,409);
  await pool.query('update master_device_enrollment_candidate.owner_issuer_heads set pin=$2::jsonb where authority_id=$1',[f.pin.authorityId,JSON.stringify(r.prepared.next)]);
  const oldEvidence=(await pool.query('select attestation_payload,attestation_signature from master_device_enrollment_candidate.owner_decision_evidence where request_id=$1',[firstRequest])).rows[0];
  assert.equal(verify(null,Buffer.from(oldEvidence.attestation_payload),f.old.publicKey,Buffer.from(oldEvidence.attestation_signature)),true,'historical original remains verifiable');
@@ -139,6 +161,6 @@ export async function checkOwnerIssuerStore({pool,nativeConcurrency=false,pglite
  assert.equal((await pool.query('select device_key from private.master_devices where id=$1',[deviceId])).rows[0].device_key,'legacy-original');
  assert.equal(Number((await pool.query('select count(*) as n from private.master_devices')).rows[0].n),1);
  assert.equal(Number((await pool.query("select count(*) as n from master_device_enrollment_candidate.pending_key_migrations where status<>'pending'")).rows[0].n),0);
- console.log('Issuer persistence: OFF, exact checkpoint, atomic signed-history/CAS, replay/fork refusal, rollback, snapshots, append-only/ACL, current-issuer receipt composition and unchanged devices passed. Synthetic authority/Auth fixtures only.');
+ console.log('Issuer persistence: OFF, exact checkpoint, atomic signed-history/CAS, replay/fork refusal, rollback, snapshots, append-only/ACL, actual HTTP-to-current-issuer receipt composition/no fixed-pin fallback and unchanged devices passed. Synthetic authority/Auth fixtures only.');
  if(nativeConcurrency)console.log('Native separate-connection forks/duplicate transitions and receipt-vs-rotation lock ordering passed.');
 }

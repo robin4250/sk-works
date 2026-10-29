@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../international/language_controller.dart';
 import 'invoice_notice_approval_panel.dart';
 import 'invoice_notice_ticket_controller.dart';
+import 'invoice_notice_recovery_controller.dart';
 
 /// Fixed OFF in production until the notification flow is independently ready.
 /// It is not controlled by remote config, endpoint failure or a build define.
@@ -15,10 +16,11 @@ class InvoiceApprovalEntryActions extends StatelessWidget {
     required this.fromNotification, required this.busy,
     required this.onLegacyApprove, required this.controller,
     required this.notificationId, required this.invoiceId,
-    required this.revision, required this.confirmSavedApproval});
+    required this.revision, required this.confirmSavedApproval, this.recoveryController});
   final bool notificationOnly, canApprove, isPendingApprover, fromNotification, busy;
   final VoidCallback? onLegacyApprove;
   final InvoiceNoticeTicketController? controller;
+  final InvoiceNoticeRecoveryController? recoveryController;
   final String notificationId, invoiceId, revision;
   final Future<bool> Function() confirmSavedApproval;
 
@@ -38,7 +40,7 @@ class InvoiceApprovalEntryActions extends StatelessWidget {
     if (!fromNotification) {
       return const Text('承認は通知から請求書を開いて行います。');
     }
-    return InvoiceNoticeApprovalPanel(controller: controller,
+    return InvoiceNoticeApprovalPanel(controller: controller, recoveryController: recoveryController,
       notificationId: notificationId, invoiceId: invoiceId, revision: revision,
       isApprover: canApprove, confirmSavedApproval: confirmSavedApproval);
   }

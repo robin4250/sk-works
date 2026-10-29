@@ -12,6 +12,7 @@ function options(overrides={}){
  const calls={auth:0,pool:0,admission:[],sql:[]};
  const pool={connect:async()=>{calls.pool++;return {query:async(sql)=>{calls.sql.push(sql);
   if(sql.includes('auth.uid()'))return {rows:[{actor:id(5),session:id(6)}]};
+  if(sql.includes('read_own_registration_proof_issuance'))return {rows:[{status:'committed_unrecoverable'}]};
   if(sql.includes('read_own_scanner_key_registration'))return {rows:[{receipt:null}]};
   return {rows:[]};},release(){}};}};
  const config={enabled:true,projectOrigin:origin,expectedIssuer:claims.iss,publicKey:'synthetic-public',pool,
@@ -106,4 +107,17 @@ test('expired synchronous pool acquisition releases lease before any SQL despite
   return {query:async sql=>{queries++;return {rows:[sql.includes('auth.uid()')?{actor:id(5),session:id(6)}:{receipt:null}]};},release(){releases++;}};
  }}}),f=await createScannerTlsFixture(o.make);t.after(f.close);
  const result=await f.call(payload,{token});assert.equal(result.status,503);assert.equal(queries,0);assert.equal(releases,1);
+});
+
+test('proof_result composes read-only exact challenge status and forbids caller credentials/principal/expiry',async t=>{
+ const o=options(),f=await createScannerTlsFixture(o.make);t.after(f.close);
+ const input={schema:1,requestId:id(1),operation:'proof_result',challengeId:id(2)};
+ const result=await f.call(input,{token});assert.equal(result.status,200);
+ assert.deepEqual(result.json,{schema:1,requestId:id(1),operation:'proof_result',issuance:{status:'committed_unrecoverable'}});
+ assert.equal(o.calls.sql.some(sql=>/issue_registration_proof\(|complete_own|consume_/.test(sql)),false);
+ const poolBefore=o.calls.pool;
+ for(const extra of [{actor:id(99)},{session:id(99)},{password:'synthetic-secret'},{proof:'ab'.repeat(32)},{expiresAt:'2099-01-01'}]){
+  const denied=await f.call({...input,...extra},{token});assert.equal(denied.status,400);assert.equal(denied.text.includes('synthetic-secret'),false);
+ }
+ assert.equal(o.calls.pool,poolBefore);
 });

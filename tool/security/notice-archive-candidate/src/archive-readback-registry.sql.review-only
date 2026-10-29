@@ -1,0 +1,31 @@
+-- REVIEW ONLY. No production migration, client grant, seed or registration API.
+-- Authenticated source-owner provenance for inserting records is NOT implemented.
+-- An empty registry blocks every server readback request.
+begin;
+set local search_path='';
+do $$begin
+ if to_regprocedure('private.require_reauthentication_session()') is null
+ or to_regprocedure('security_management_issuer_private.binding(uuid,uuid,uuid,text,boolean)') is null then
+  raise exception 'archive_readback_existing_guard_required';end if;
+end$$;
+create schema archive_readback_private;
+revoke all on schema archive_readback_private from public,anon,authenticated,service_role;
+create table archive_readback_private.authority_records(
+ object_id text primary key check(object_id~'^[a-f0-9]{64}$'),
+ authority_id uuid not null,company_id uuid not null,owner_id uuid not null,
+ deployment_id text not null check(deployment_id~'^[A-Za-z0-9_-]{1,64}$'),
+ event_id uuid not null,revision bigint not null check(revision>=1 and revision<=9007199254740991),
+ snapshot_sha256 text not null check(snapshot_sha256~'^[a-f0-9]{64}$'),
+ payload_sha256 text not null check(payload_sha256~'^[a-f0-9]{64}$'),
+ byte_length integer not null check(byte_length between 1 and 65536)
+);
+alter table archive_readback_private.authority_records enable row level security;
+revoke all on archive_readback_private.authority_records from public,anon,authenticated,service_role;
+create function archive_readback_private.reject_rewrite()returns trigger language plpgsql set search_path='' as $$
+begin raise sqlstate '55000' using message='archive_readback_record_immutable';end$$;
+revoke all on function archive_readback_private.reject_rewrite() from public,anon,authenticated,service_role;
+create trigger archive_readback_record_immutable before update or delete on archive_readback_private.authority_records
+for each row execute function archive_readback_private.reject_rewrite();
+create trigger archive_readback_record_no_truncate before truncate on archive_readback_private.authority_records
+for each statement execute function archive_readback_private.reject_rewrite();
+commit;

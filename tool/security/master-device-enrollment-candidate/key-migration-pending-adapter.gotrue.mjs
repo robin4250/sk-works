@@ -68,6 +68,8 @@ try {
  const {storePendingDeviceKey}=await import('./key-migration-pending-adapter.mjs');
  const {handleMigrationChallengeRequest}=await import('./key-migration-challenge-http-candidate.mjs');
  await db.query(await fs.readFile(path.join(root,'tool/security/master-device-enrollment-candidate/key-migration-challenges.sql.review-only'),'utf8'));
+ await db.query(await fs.readFile(path.join(root,'tool/security/master-device-enrollment-candidate/key-migration-owner-request.sql.review-only'),'utf8'));
+ await db.query(await fs.readFile(path.join(root,'tool/security/master-device-enrollment-candidate/owner-issuer-store.sql.review-only'),'utf8'));
  const makeUser=async()=>{
   const email='master-pending-'+randomUUID()+'@example.invalid';
   const seed=await json(await request('/auth/v1/admin/users',{admin:true,body:{email,email_confirm:true}}));
@@ -151,6 +153,43 @@ try {
  const submissionStatus=await http(owner.access_token,'status',{challengeId:original.challenge.id});assert.equal(submissionStatus.status,200);
  assert.deepEqual(await submissionStatus.json(),pendingReceipt);
  assert.equal(await count(),2);await clean();
+ phase='http-owner-evidence-forced-stored-issuer';
+ const {requestIndependentOwnerApproval}=await import('./key-migration-owner-request.mjs');
+ const {ownerDecisionPayload}=await import('./owner-decision-attestation.mjs');
+ const ownerRequest=await requestIndependentOwnerApproval({...await authenticatedContext(owner.access_token),deviceId,publicKeyPem:key,
+  challengeId:original.challenge.id,pendingId:pendingReceipt.submission.id});
+ const authorityId=randomUUID(),issuer=generateKeyPairSync('ed25519');
+ const issuerPin={purpose:'sko-master-independent-owner-decision-v1',authorityId,epoch:1,keyId:'synthetic-independent-issuer',
+  publicKeyJwk:issuer.publicKey.export({format:'jwk'}),headSha256:'a'.repeat(64),retiredKeys:[]};
+ // Explicit synthetic authority bootstrap/checkpoint. Real GoTrue proves only
+ // bearer/session validation, NOT this independent human-verification issuer.
+ const ownerCheckpoint={authorityId,epoch:1,headSha256:issuerPin.headSha256,keyId:issuerPin.keyId,
+  publicKeySha256:createHash('sha256').update(issuer.publicKey.export({type:'spki',format:'der'})).digest('hex'),
+  retiredKeysSha256:digest(['sko-master-owner-issuer-retired-keys-v1',authorityId,[]])};
+ await db.query('insert into master_device_enrollment_candidate.owner_issuer_heads(authority_id,epoch,pin) values($1,1,$2::jsonb)',[authorityId,JSON.stringify(issuerPin)]);
+ const ownerRow=(await db.query(`select *,floor(extract(epoch from clock_timestamp())*1000)::float8 as now
+  from master_device_enrollment_candidate.owner_approval_requests where id=$1`,[ownerRequest.id])).rows[0];
+ const unsignedOwner={version:1,issuerKeyId:issuerPin.keyId,decision:'approved',requestId:ownerRequest.id,actor:owner.user.id,
+  requesterSession:claims(owner.access_token).session_id,deviceId,pendingId:ownerRow.pending_id,challengeId:ownerRow.challenge_id,
+  keySha256:ownerRow.key_sha256,reviewNonce:ownerRow.review_nonce,issuedMs:ownerRow.now,expiresMs:Math.min(ownerRow.expires_ms,ownerRow.now+120000)};
+ const signedOwner={...unsignedOwner,signature:sign(null,ownerDecisionPayload(unsignedOwner),issuer.privateKey).toString('base64url')};
+ let checkpointLoads=0;
+ const httpOwner=async(token,{enabled=true,extra={}}={})=>handleMigrationChallengeRequest(new Request('https://fixture.invalid/challenge',{
+  method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},
+  body:JSON.stringify({action:'owner-evidence',requestId:ownerRequest.id,receipt:signedOwner,...extra})}),{
+  authenticateBearer:authenticatedContext,ownerEvidence:{enabled,loadAuthorityCheckpoint:async who=>{
+   checkpointLoads++;assert.equal(typeof who.actor,'string');assert.equal(typeof who.session,'string');return ownerCheckpoint;
+  }},
+ });
+ const evidenceCount=async()=>Number((await db.query('select count(*) from master_device_enrollment_candidate.owner_decision_evidence')).rows[0].count);
+ assert.equal((await httpOwner(owner.access_token,{enabled:false})).status,503);assert.equal(checkpointLoads,0);assert.equal(await evidenceCount(),0);
+ const ownerRecorded=await httpOwner(owner.access_token);assert.equal(ownerRecorded.status,200);
+ const recordedOwner=await ownerRecorded.json();assert.equal(recordedOwner.evidence.status,'evidence_recorded');assert.equal(await evidenceCount(),1);
+ assert.equal(ownerRecorded.headers.get('cache-control'),'no-store');
+ for(const extra of [{issuerMode:'fixed'},{pinnedIssuer:issuerPin},{authorityCheckpoint:ownerCheckpoint},{actor:other.user.id}]){
+  const acquiredBefore=acquisitions;assert.equal((await httpOwner(owner.access_token,{extra})).status,400);assert.equal(acquisitions,acquiredBefore);
+ }
+ assert.deepEqual(await(await httpOwner(owner.access_token)).json(),recordedOwner);assert.equal(await evidenceCount(),1);await clean();
  phase='tampered-token-rejected-before-pool';
  const parts=owner.access_token.split('.');
  const altered={...claims(owner.access_token),sub:other.user.id};
@@ -159,16 +198,19 @@ try {
  await assert.rejects(enroll(forged));
  assert.equal(acquisitions,before);assert.equal(await count(),2);
  assert.equal((await http(forged,'read')).status,409);assert.equal(acquisitions,before);
+ assert.equal((await httpOwner(forged)).status,409);assert.equal(acquisitions,before);assert.equal(await evidenceCount(),1);
  phase='other-real-user-not-master';
  await assert.rejects(enroll(other.access_token));
  assert.equal(await count(),2);await clean();
  assert.equal((await http(other.access_token,'read')).status,409);await clean();
  assert.equal((await http(other.access_token,'status',{challengeId:original.challenge.id})).status,409);await clean();
+ assert.equal((await httpOwner(other.access_token)).status,409);assert.equal(await evidenceCount(),1);await clean();
  phase='user-editable-metadata-not-master';
  await json(await request('/auth/v1/user',{method:'PUT',token:other.access_token,body:{data:{master:true,is_master_admin:true}}}));
  await assert.rejects(enroll(other.access_token));
  assert.equal(await count(),2);await clean();
  assert.equal((await http(other.access_token,'read')).status,409);await clean();
+ assert.equal((await httpOwner(other.access_token)).status,409);assert.equal(await evidenceCount(),1);await clean();
  phase='verified-owner-cannot-substitute-session';
  await assert.rejects(enroll(owner.access_token,{session:claims(other.access_token).session_id}));
  assert.equal(await count(),2);await clean();
@@ -178,6 +220,7 @@ try {
  assert.equal(await count(),2);await clean();
  assert.equal((await http(owner.access_token,'read')).status,409);await clean();
  assert.equal((await http(owner.access_token,'status',{challengeId:original.challenge.id})).status,409);await clean();
+ assert.equal((await httpOwner(owner.access_token)).status,409);assert.equal(await evidenceCount(),1);await clean();
  await db.query('update auth.sessions set not_after=null where id=$1',[claims(owner.access_token).session_id]);
  phase='revoked-session-row-rejected';
  await db.query('delete from auth.sessions where id=$1',[claims(owner.access_token).session_id]);
@@ -185,6 +228,7 @@ try {
  assert.equal(await count(),2);await clean();
  assert.equal((await http(owner.access_token,'read')).status,409);await clean();
  assert.equal((await http(owner.access_token,'status',{challengeId:original.challenge.id})).status,409);await clean();
+ assert.equal((await httpOwner(owner.access_token)).status,409);assert.equal(await evidenceCount(),1);await clean();
  assert.equal(Number((await db.query('select count(*) from master_device_enrollment_candidate.key_possession_challenges')).rows[0].count),1);
  phase='preserved-existing-identifier';
  assert.equal((await db.query('select device_key from private.master_devices where id=$1',[deviceId])).rows[0].device_key,'fixture-legacy-identifier');
@@ -195,6 +239,8 @@ try {
   expired_and_revoked_sessions_rejected:true,transaction_claim_cleanup:true,
   http_request_boundary_with_real_gotrue:true,http_password_counter_commit:true,http_original_challenge_readback:true,
   http_key_proof_submission_pending_only:true,http_consumed_result_reconciliation:true,
+  http_owner_evidence_forced_stored_issuer:true,http_owner_evidence_auth_session_fail_closed:true,
+  owner_evidence_authority_is_synthetic_fixture:true,
   master_and_device_fixtures:true,public_endpoint:false,key_activation:false,production_changed:false}));
 } catch(error) {
  console.error(JSON.stringify({result:'FAIL isolated real GoTrue pending-key boundary',phase,

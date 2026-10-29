@@ -14,6 +14,42 @@ do $$begin
  end if;
 end$$;
 
+-- Exact challenge attribution for accepted issuance only. No raw proof, proof
+-- hash, password, mutable expiry or shared-ledger FK is stored here. No backfill.
+create table qr_attendance_private.scanner_proof_issuance_receipts(
+ challenge_id uuid primary key
+);
+alter table qr_attendance_private.scanner_proof_issuance_receipts enable row level security;
+revoke all on qr_attendance_private.scanner_proof_issuance_receipts from public,anon,authenticated,service_role;
+create function qr_attendance_private.reject_proof_issuance_receipt_mutation()
+returns trigger language plpgsql set search_path='' as $$begin
+ raise sqlstate '42501' using message='qr_proof_issuance_receipt_immutable';
+end$$;
+revoke all on function qr_attendance_private.reject_proof_issuance_receipt_mutation() from public,anon,authenticated,service_role;
+create trigger immutable_proof_issuance_receipt before update or delete on qr_attendance_private.scanner_proof_issuance_receipts
+ for each row execute function qr_attendance_private.reject_proof_issuance_receipt_mutation();
+create trigger no_truncate_proof_issuance_receipt before truncate on qr_attendance_private.scanner_proof_issuance_receipts
+ for each statement execute function qr_attendance_private.reject_proof_issuance_receipt_mutation();
+
+create function qr_attendance_private.read_own_registration_proof_issuance(p_challenge uuid)
+returns text language plpgsql security definer set search_path='' as $$
+declare c qr_attendance_private.scanner_key_challenges%rowtype;principal jsonb;
+begin
+ select * into c from qr_attendance_private.scanner_key_challenges where id=p_challenge for share;
+ if not found then raise sqlstate '42501' using message='qr_registration_proof_denied';end if;
+ principal:=qr_attendance_private.require_registration_actor(c.company_id);
+ if c.actor_id is distinct from (principal->>'actor')::uuid or c.session_id is distinct from (principal->>'session')::uuid then
+  raise sqlstate '42501' using message='qr_registration_proof_denied';
+ end if;
+ -- Historical issuance evidence only: expiry/consumption/registration cannot be
+ -- inferred. A missing marker cannot authorize another password/proof attempt.
+ if exists(select 1 from qr_attendance_private.scanner_proof_issuance_receipts where challenge_id=p_challenge) then
+  return 'committed_unrecoverable';
+ end if;
+ return 'not_found';
+end$$;
+revoke all on function qr_attendance_private.read_own_registration_proof_issuance(uuid) from public,anon,authenticated,service_role;
+
 create function qr_attendance_private.issue_registration_proof(p_challenge uuid,p_password text,p_proof_hash text)
 returns timestamptz language plpgsql security definer set search_path='' as $$
 declare c jsonb;principal jsonb;stamp timestamptz;expiry timestamptz;fingerprint text;v_target jsonb;
@@ -36,6 +72,7 @@ begin
   'actor_id',auth.uid(),'public_key_hex',c->>'keyHex');
  insert into private.reauthentication_proofs(proof_hash,actor_id,session_id,operation,target,issued_at,expires_at,secondary_credential_fingerprint)
   values(p_proof_hash,auth.uid(),(c->>'session')::uuid,'qr.scanner.register',v_target,stamp,expiry,fingerprint);
+ insert into qr_attendance_private.scanner_proof_issuance_receipts(challenge_id) values(p_challenge) on conflict do nothing;
  return expiry;
 end$$;
 revoke all on function qr_attendance_private.issue_registration_proof(uuid,text,text) from public,anon,authenticated,service_role;
