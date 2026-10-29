@@ -54,6 +54,7 @@ class Fixture {
   int get writes => calls.where((r)=>r.url.path.endsWith('revoke_master_device') || r.url.path.endsWith('set_master_device_locked')).length;
 }
 Future<void> open(WidgetTester t, Fixture f) async {
+  t.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
   await t.pumpWidget(MaterialApp(home:MasterDeviceManagementPage(repository:MasterDeviceRepository.forTesting(f.client),reauthentication:OperationReauthenticationRepository(f.client))));
   await t.pumpAndSettle();
 }
@@ -66,7 +67,7 @@ Future<http.Request> waitCall(WidgetTester t, Fixture f, String suffix) async {
     if (matching.isNotEmpty) return matching.single;
     await t.pump(const Duration(milliseconds:10));
   }
-  throw StateError('Expected fixture request $suffix');
+  throw StateError('Expected fixture request $suffix; visible: ${t.widgetList<Text>(find.byType(Text)).map((w)=>w.data).join(" | ")}');
 }
 void main() {
   testWidgets('actual SDK same UID SID A to B to A during revoke confirmation never mutates', (t) async {
