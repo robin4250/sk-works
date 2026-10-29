@@ -16,7 +16,7 @@ export async function verifyInvoiceNoticeTransport(db,c){
    try{
     const request=new Request(`http://127.0.0.1${req.url}`,{method:req.method,headers:req.headers,body:Readable.toWeb(req),duplex:'half'});
     const result=await handler(request);
-    if(req.url==='/invoice-notice/confirm'){commands++;if(drop&&result.status===200){drop=false;req.socket.destroy();return;}}
+    if(req.url==='/invoice-notice/confirm'&&result.status===200){commands++;if(drop){drop=false;req.socket.destroy();return;}}
     res.writeHead(result.status,Object.fromEntries(result.headers));res.end(Buffer.from(await result.arrayBuffer()));
    }catch{res.writeHead(503);res.end();}
   });server.requestTimeout=15000;server.headersTimeout=10000;server.timeout=20000;
@@ -27,8 +27,16 @@ export async function verifyInvoiceNoticeTransport(db,c){
   const hash=(await db.query("select encode(sha256(convert_to($1::jsonb::text,'UTF8')),'hex') v",[JSON.stringify(expected)])).rows[0].v;
   const operation={ticket_id:ticket,local_document_id:x.local,company_id:A,revision:1,request_id:id(29021),expected_preview:expected,expected_hash:hash};
   const before=await state(x);check(before.audit,0);check(before.consents,0);
+  // The existing SQL gate stays OFF until this disposable fixture enables it.
+  check((await post('confirm',{...operation,financial_confirmed:true,seal_confirmed:true})).status,503);
+  check(await state(x),before);check(commands,0);
+  check((await db.query('select consumed_at is null v from invoice_month_close_candidate.notice_open_tickets where id=$1',[ticket])).rows[0].v,true);
+  await db.exec('update trade_document_consent_private.notice_confirmation_settings set enabled=true');
   // Drop a real HTTP response only AFTER the private SQL COMMIT completed.
-  await assert.rejects(()=>post('confirm',{...operation,financial_confirmed:true,seal_confirmed:true}));
+  let failed=false,status;
+  try{status=(await post('confirm',{...operation,financial_confirmed:true,seal_confirmed:true})).status;}catch{failed=true;}
+  if(!failed){const error=new Error('confirmation response was not dropped');error.code='INVOICE_CONFIRM_HTTP_'+status;throw error;}
+  check(drop,false);check(commands,1);
   const response=await post('result',operation);check(response.status,200);
   const result=await response.json();check(result.found,true);check(result.status,'recorded');check(result.result.financial_approved,true);check(result.result.seal_consent_recorded,true);
   const ownerClaims=JSON.parse(Buffer.from(tokens.owner.split('.')[1],'base64url').toString('utf8'));

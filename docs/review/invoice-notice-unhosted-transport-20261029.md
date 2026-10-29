@@ -21,8 +21,14 @@ it to the operation. No client SQL/function name/issuer is accepted.
 Only fixed confirm/result paths and exact fields are accepted. Both explicit
 financial and seal confirmations are mandatory. Requests are capped at 64 KiB,
 10 seconds for body, 5 seconds for GoTrue fetch/body, 10 seconds statement and 5 seconds lock
-wait. A total request/pool-connect deadline is not implemented; future backend
-provisioning must bound the trusted connect callback. Errors are generic and responses are noncacheable. One confirmation query
+wait. A monotonic absolute budget (default/max 20 seconds) covers body/Auth,
+pool-connect wait, every SQL await, cleanup wait and success construction. Lazy
+pre/post-await checks also reject synchronous external work that overruns the
+budget. A late lease is closed without BEGIN; cleanup starts exactly once for
+owned peers. Overdue/in-flight COMMIT is unknown, never success or resend, even
+if its completion arrives later. Cleanup cancellation may finish after the
+response deadline; synchronous code cannot be preempted, but overdue results
+cannot authorize the next stage or report success. Errors are generic and responses are noncacheable. One confirmation query
 is issued; errors never retry it. A COMMIT-ACK failure stays unknown to the
 caller. Historical result lookup uses the original actor/SID and full operation.
 
@@ -37,7 +43,8 @@ an account-deletion worker race. Actual Auth users/tokens/sessions and actual
 financial/seal SQL writes are used. There is no Auth-table mutation by the
 application fixture: users/login/logout use GoTrue itself.
 
-The real HTTP fixture drops the confirmation response after the SQL COMMIT,
+The real HTTP fixture first verifies the SQL default-OFF rejection leaves state
+and ticket unchanged, then explicitly enables only the disposable fixture. It drops the confirmation response after the SQL COMMIT,
 requires fetch to fail, and uses fresh HTTP result readback to verify one
 immutable result and one financial/seal mutation. It rejects foreign users,
 wrong hash, a new SID for the same user, and the old SID after actual GoTrue
