@@ -135,6 +135,9 @@ jobs:
                   assert '協力会社名（仮）' not in front_text and 'すみだ建設株式会社' not in front_text
                   text=clean(modern[1].get_text())
                   assert '[工事請負契約条項]' in text
+                  bodylines=[line for block in modern[1].get_text('dict')['blocks'] for line in block.get('lines',[]) if line.get('spans') and all(abs(span['size']-6.5)<.05 for span in line['spans'])]
+                  assert len(bodylines)==92,(kind,len(bodylines))
+                  for a,b in zip(bodylines,bodylines[1:]): assert abs((b['bbox'][1]-a['bbox'][1])-8.14)<.1,(kind,a['bbox'],b['bbox'])
                   for number,(title,paragraphs) in enumerate(articles,1):
                       assert clean(f'（{title}）') in text and clean(f'第{number}条　{paragraphs[0]}') in text,(kind,number,title)
                       for paragraph in paragraphs: assert clean(paragraph) in text,(kind,number,paragraph)
