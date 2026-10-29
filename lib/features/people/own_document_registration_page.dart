@@ -621,7 +621,8 @@ class _OwnDocumentRegistrationPageState
             '見出し・一覧・登録フォームの文字を小さめに揃えています。iPhoneの文字サイズ設定による拡大は利用できます。'
             '\n\n写真は表面・裏面・追加写真をまとめて保存できます。写真をタップすると拡大表示できます。'
             '自社・取引会社で共用の書類は、一度の登録を両方で使います。再撮影は不要です。'
-            '一覧の「確認・編集」で、写真の追加・差し替え・並べ替え・一覧からの削除ができます。'
+            '保存済み書類は一覧から変更申請に進み、期限・備考と保存済み写真の並べ替え・一覧からの除外を申請できます。承認されるまで正式な書類は変わりません。'
+            '保存済み書類への新しい写真の追加・差し替えは準備中です。'
             '小さい画像・PDFを押すと、その場で拡大できます。下の「書類を登録」から既存の書類を登録します。'
             '写真の選択や撮影をキャンセルした場合は保存しません。'
             '\n\n写真の送信や登録に失敗した場合は、登録成功として扱いません。'
@@ -779,9 +780,7 @@ class _OwnDocumentRegistrationPageState
                           ];
                           final action = _saving ? null : isBank ? _openBank : attachmentMissing &&
                                   workerDocumentHasRegisteredContent(status)
-                            ? () => ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text(
-                                  '登録済み書類への添付追加は準備中です。')))
+                            ? () => _changeRegistered(status)
                             : needsRegistration
                             ? () => _registerDocument(initialRequirementId: id)
                             : gateway is OwnDocumentPhotoGateway

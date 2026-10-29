@@ -38,7 +38,7 @@ void main() {
     expect(find.text('登録済み'), findsNothing);
     await tester.tap(find.byTooltip('詳細を確認'));
     await tester.pump();
-    expect(find.text('登録済み書類への添付追加は準備中です。'), findsOneWidget);
+    expect(find.text('書類変更申請は準備中です。'), findsOneWidget);
   });
   testWidgets('添付があれば登録済み、任意書類は添付を強制しない', (tester) async {
     await show(tester, req('免許証'), {'requirement_id':'r','status':'submitted','attachment_path':'private/object'});

@@ -20,4 +20,5 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get --enforce-lockfile
-      - run: flutter test test/own_document_registration_save_test.dart --plain-name 'partial saved required metadata opens existing edit approval without direct overwrite'
+      - run: flutter analyze lib/features/people/own_document_registration_page.dart test/own_document_registration_save_test.dart test/own_required_document_status_test.dart
+      - run: flutter test test/own_document_registration_save_test.dart test/own_required_document_status_test.dart test/worker_document_change_flow_test.dart
