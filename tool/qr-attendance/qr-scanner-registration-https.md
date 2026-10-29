@@ -71,3 +71,41 @@ original is changed. Real device key custody, least-privilege hosted pool,
 catalog install/restore, all registration routes, photo/route/report compatibility,
 attendance writer and owner iPhone verification remain incomplete. All rollout
 flags, including individual-document exemption, retain their prior OFF state.
+
+
+## Lost password-proof acknowledgement
+
+`proof_result` accepts only schema/requestId/operation/challengeId through this
+same TLS, bearer, admission and private-pool boundary. It returns
+`issuance: {status: "committed_unrecoverable"}` only when an immutable private
+marker was committed with an accepted password proof for that exact challenge.
+It returns `not_found` when no marker exists. Neither status grants a retry,
+recovers the raw proof, states that a credential remains usable, or confirms
+scanner registration. Reads never issue/rotate/consume a proof. A caller who
+lost the raw proof remains blocked; safe restart/recovery policy is incomplete.
+
+The existing proof ledger binds company/device/actor/key, not challenge ID.
+Therefore old ledger rows are never guessed into this receipt table; no backfill
+is performed. `not_found` may include legacy issuance and is not proof that a
+write did not occur. Accepted issuance writes its exact challenge marker in the
+same transaction; wrong-password counters still commit without a marker, while
+a late marker failure rolls back the accepted proof. No raw proof, proof hash,
+password, mutable expiry, or Auth/shared-proof/business FK is stored. Repeated
+accepted issuance already permitted by the old issuer remains unchanged; one
+marker proves historical acceptance, not an attempt count or approval to repeat.
+
+Reads require the original challenge plus the current live original actor/SID,
+company membership/permission and QR gate, even after expiry or consumption.
+Missing/deleted original challenge is denied. The marker blocks ordinary UPDATE,
+DELETE and TRUNCATE and has RLS with no public/client/service-role grants. It
+has no FK, preserving old challenge deletion behavior. Privileged owner rollback,
+retention/erasure/restore reconciliation and coverage of existing installations
+remain separate release blockers. This is fresh-install candidate SQL only;
+no production migration, route, grant, client UI or activation is added.
+
+Source inspection at main a891fbf9 found no scanner-registration app UI: the
+existing mobile_scanner page scans employee invitations, and QR attendance only
+has a pure transition model. No unrelated onboarding path is reused as scanner
+registration. The actual TLS/GoTrue/PostgreSQL fixture now drops an accepted
+proof reply and reads only its immutable issuance status, denies other UID/SID
+and revoked SID, and proves no scanner registration is created by this recovery.

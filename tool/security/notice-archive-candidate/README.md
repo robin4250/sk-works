@@ -1,5 +1,52 @@
 # Independent notice archive — isolated proof of concept
 
+## OFF readback server and required descriptor registry (2026-10-29)
+
+`archive-readback-server-candidate.mjs` composes the existing exact-bearer
+`createManagementTransport.authenticate()` with the existing live-session and
+`security_management_issuer_private.binding` guards. The bounded TLS server
+accepts only its fixed host/path and exact request fields. Actor/SID come from
+the verified Auth result; body actor, pool, role and user_metadata are never
+authority. In one transaction it installs only verified minimal claims and
+share-locks an exact saved descriptor/authority/company/owner/deployment record
+before any byte restore or signing. It requires the saved owner to match the
+verified actor and uses the **saved** company/deployment for both authorization
+checks. Existing user/session/account-deletion/Master/company owner-or-admin/
+deployment/secondary-credential checks and their shared locks are retained.
+After real byte restore/signing it rechecks those guards, JWT expiry and the
+monotonic request deadline, commits, then emits the unchanged observation receipt.
+It does not grant raw collector-log access or bypass that endpoint's proof flow.
+
+`archive-readback-registry.sql.review-only` is a narrow missing prerequisite:
+private RLS-enabled exact records, no client grants, no seed/registration API,
+and update/delete/truncate rejection. **Authenticated source-owner population
+is absent. An empty or missing registry blocks every read.** The new table is
+not proof that the source association is authentic or independently retained.
+No production migration is supplied or applied, and no source original is moved,
+rewritten or released. Future registry registration/transfer/retention/restore
+must be independently reviewed rather than inferred from caller descriptors.
+
+Ten new scoped tests use actual loopback TLS/client/server, PGlite and the exact
+existing guard SQL. Auth /user is an independently MAC-checking fixture, not real
+GoTrue. Tests cover own success, foreign/changed/unregistered actual byte objects,
+forged JWT/metadata/body authority, actual guard denial states, immutable/private
+registry, transaction-local claim cleanup, expiry recheck, and timer-starved valid
+signer/late-pool callbacks. The timer-only mutant demonstrably accepts a valid
+late signature; the absolute monotonic check rejects it before final SQL/commit.
+The pool-overrun case rejects and discards the owned lease before BEGIN.
+
+The factory never binds a host automatically. It remains OFF/unhosted, with no
+production grant/key/credential or feature change. Least-privilege production
+pool/managed catalog compatibility, authentic registry population, real GoTrue,
+Native PostgreSQL concurrent locking/termination, caller rate policy and real
+authority operation are unverified. PGlite's single-connection expiry mutation
+tests final revalidation, not concurrent lock behavior. Deadline/disconnect
+discards only an owned pg lease via release(true); this is not proof of synchronous
+backend cancellation or external signer cancellation. Late callback results are
+refused. Connection/header limits do not constitute complete pre-header TLS or
+ingress DoS protection. Results remain `archive_bytes_observed` and
+`readback_verified_unattested`, never custody/WORM/retention or source-release proof.
+
 ## Authenticated HTTPS readback client (2026-10-29, OFF)
 
 `archive-readback-https-candidate.mjs` connects the existing fresh-challenge

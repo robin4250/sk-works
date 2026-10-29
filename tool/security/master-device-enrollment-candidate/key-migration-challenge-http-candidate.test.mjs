@@ -2,6 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash,generateKeyPairSync} from 'node:crypto';
 import {handleMigrationChallengeRequest} from './key-migration-challenge-http-candidate.mjs';
+import {performance} from 'node:perf_hooks';
 const actor='00000000-0000-0000-0000-000000000001',session='00000000-0000-0000-0000-000000000002',deviceId='00000000-0000-0000-0000-000000000003';
 const publicKeyPem=generateKeyPairSync('ec',{namedCurve:'prime256v1'}).publicKey.export({type:'spki',format:'pem'}).toString();
 const token='synthetic-token-not-a-real-jwt';
@@ -67,4 +68,65 @@ test('submit requires a canonical bounded DER transport and cannot accept body i
   const r=await handleMigrationChallengeRequest(request({action:'submit',deviceId,publicKeyPem,challengeId:f.challenge.id,...extra}),f);
   assert.equal(r.status,400);assert.equal(f.calls.length,0);
  }
+});
+const ownerRequestId='00000000-0000-0000-0000-000000000008';
+const ownerBody={action:'owner-evidence',requestId:ownerRequestId,receipt:{requestId:ownerRequestId}};
+test('owner evidence defaults OFF and cannot use a configured fixed pin',async()=>{
+ const f=fixture();let checkpoints=0;
+ const r=await handleMigrationChallengeRequest(request(ownerBody),{...f,ownerEvidence:{pinnedIssuer:{keyId:'old'},loadAuthorityCheckpoint:async()=>{checkpoints++;return {};}}});
+ assert.equal(r.status,503);assert.equal(checkpoints,0);assert.equal(f.calls.length,0);
+});
+test('enabled owner evidence fails closed without a server checkpoint adapter, never fixed-pin fallback',async()=>{
+ const f=fixture();
+ const r=await handleMigrationChallengeRequest(request(ownerBody),{...f,ownerEvidence:{enabled:true,pinnedIssuer:{keyId:'old'}}});
+ assert.equal(r.status,503);assert.equal(f.calls.length,0);
+});
+test('body cannot choose issuer mode, pin, checkpoint, auth identity or pool',async()=>{
+ for(const extra of [{issuerMode:'fixed'},{pinnedIssuer:{keyId:'old'}},{authorityCheckpoint:{}},{actor},{session},{pool:{}},{ownerEvidence:{enabled:true}}]){
+  const f=fixture();let checkpoints=0;
+  const r=await handleMigrationChallengeRequest(request({...ownerBody,...extra}),{...f,ownerEvidence:{enabled:true,loadAuthorityCheckpoint:async()=>{checkpoints++;return {};}}});
+  assert.equal(r.status,400);assert.equal(checkpoints,0);assert.equal(f.calls.length,0);
+ }
+});
+test('owner request/receipt mismatch is refused before checkpoint or database access',async()=>{
+ const f=fixture();let calls=0;
+ const r=await handleMigrationChallengeRequest(request({...ownerBody,receipt:{requestId:deviceId}}),{...f,ownerEvidence:{enabled:true,loadAuthorityCheckpoint:async()=>{calls++;return {};}}});
+ assert.equal(r.status,400);assert.equal(calls,0);assert.equal(f.calls.length,0);
+});
+test('checkpoint failure stays generic and cannot fall back to a fixed issuer',async()=>{
+ const f=fixture();let calls=0;
+ const r=await handleMigrationChallengeRequest(request(ownerBody),{...f,ownerEvidence:{enabled:true,pinnedIssuer:{keyId:'old'},loadAuthorityCheckpoint:async()=>{calls++;throw Error('private authority detail MUST NOT LEAK');}}});
+ assert.equal(r.status,409);assert.ok(!(await r.text()).includes('MUST NOT LEAK'));assert.equal(calls,1);assert.equal(f.calls.length,0);
+});
+test('captured checkpoint adapter cannot be replaced during authentication',async()=>{
+ const f=fixture();let original=0,replaced=0;
+ const config={enabled:true,loadAuthorityCheckpoint:async args=>{original++;assert.equal(args.actor,actor);assert.equal(args.session,session);assert.ok(Object.isFrozen(args));return {};}};
+ const authenticateBearer=async value=>{config.loadAuthorityCheckpoint=async()=>{replaced++;return {};};return f.authenticateBearer(value);};
+ const r=await handleMigrationChallengeRequest(request(ownerBody),{authenticateBearer,ownerEvidence:config});
+ assert.equal(r.status,409);assert.equal(original,1);assert.equal(replaced,0);assert.equal(f.calls.length,0);
+});
+test('late checkpoint completion cannot start evidence recording after HTTP deadline',async()=>{
+ const f=fixture();let calls=0,resolveCheckpoint;
+ const pending=new Promise(resolve=>{resolveCheckpoint=resolve;});
+ const r=await handleMigrationChallengeRequest(request(ownerBody),{...f,timeoutMs:10,ownerEvidence:{enabled:true,loadAuthorityCheckpoint:async({signal})=>{calls++;assert.equal(signal.aborted,false);return pending;}}});
+ assert.equal(r.status,409);resolveCheckpoint({});await new Promise(resolve=>setTimeout(resolve,10));
+ assert.equal(calls,1);assert.equal(f.calls.length,0);
+});
+const checkpoint={authorityId:actor,epoch:1,headSha256:'a'.repeat(64),keyId:'fixture',publicKeySha256:'b'.repeat(64),retiredKeysSha256:'c'.repeat(64)};
+test('synchronous checkpoint overrun cannot acquire the evidence pool before timer dispatch',async()=>{
+ let acquired=0;
+ const pool={connect:async()=>{acquired++;return {query:async()=>({rows:[]}),release:()=>{}};}};
+ const r=await handleMigrationChallengeRequest(request(ownerBody),{timeoutMs:10,authenticateBearer:async()=>({actor,session,pool}),
+  ownerEvidence:{enabled:true,loadAuthorityCheckpoint:()=>{const until=performance.now()+50;while(performance.now()<until){}return checkpoint;}}});
+ assert.equal(r.status,409);assert.equal(acquired,0);
+});
+test('evidence lease arriving after HTTP timeout is released before any BEGIN',async()=>{
+ let resolveLease,released=0;const queries=[];
+ const pool={connect:()=>new Promise(resolve=>{resolveLease=resolve;})};
+ const r=await handleMigrationChallengeRequest(request(ownerBody),{timeoutMs:10,authenticateBearer:async()=>({actor,session,pool}),
+  ownerEvidence:{enabled:true,loadAuthorityCheckpoint:async()=>checkpoint}});
+ assert.equal(r.status,409);assert.equal(typeof resolveLease,'function');
+ resolveLease({query:async sql=>{queries.push(sql);return {rows:[]};},release:()=>{released++;}});
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.deepEqual(queries,[]);assert.equal(released,1);
 });

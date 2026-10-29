@@ -6,19 +6,46 @@ import {issuePasswordVerifiedMigrationKeyChallenge} from './key-migration-challe
 import {readOwnMigrationKeyChallenge} from './key-migration-challenge-delivery.mjs';
 import {storeProvenPendingDeviceKey} from './key-migration-proven-adapter.mjs';
 import {readOwnMigrationKeySubmission} from './key-migration-submission-status.mjs';
+import {recordOwnerDecisionUsingStoredIssuer} from './owner-decision-evidence.mjs';
+import {performance} from 'node:perf_hooks';
 
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 function response(status,value) {
  return new Response(JSON.stringify(value),{status,headers:{'content-type':'application/json',
   'cache-control':'no-store','pragma':'no-cache','referrer-policy':'no-referrer','x-content-type-options':'nosniff'}});
 }
-export async function handleMigrationChallengeRequest(request,{authenticateBearer,timeoutMs=10000}={}) {
+export async function handleMigrationChallengeRequest(request,{authenticateBearer,timeoutMs=10000,ownerEvidence}={}) {
+ const started=performance.now();
+ // Server-only configuration is captured before the first await. A body flag,
+ // fixed pin or later replacement callback cannot choose this issuer path.
+ const evidenceEnabled=ownerEvidence?.enabled===true;
+ const checkpointMethod=evidenceEnabled?ownerEvidence?.loadAuthorityCheckpoint:null;
+ const loadCheckpoint=typeof checkpointMethod==='function'?checkpointMethod.bind(ownerEvidence):null;
  if(!Number.isSafeInteger(timeoutMs)||timeoutMs<1||timeoutMs>10000)return response(400,{error:'invalid request'});
  const controller=new AbortController();
- const timer=setTimeout(()=>controller.abort(),timeoutMs);
+ const expires=started+timeoutMs;
+ const timer=setTimeout(()=>controller.abort(),Math.max(0,expires-performance.now()));
  const deadline=new Promise((_,reject)=>controller.signal.addEventListener('abort',()=>reject(new Error('deadline')),{once:true}));
  deadline.catch(()=>{});
- const bounded=value=>Promise.race([value,deadline]);
+ const check=()=>{if(controller.signal.aborted||performance.now()>=expires){controller.abort();throw Error('deadline');}};
+ const bounded=async work=>{
+  check();const value=await Promise.race([Promise.resolve().then(()=>{check();return work();}),deadline]);check();return value;
+ };
+ const evidencePool=pool=>{
+  const acquire=pool.connect.bind(pool);
+  return Object.freeze({connect:async()=>{
+   check();const client=await acquire();let released=false,begun=false;
+   const release=()=>{if(!released){released=true;client.release();}};
+   try{check();}catch(error){try{release();}catch{}throw error;}
+   return Object.freeze({release,query:async(sql,args)=>{
+    // Cleanup remains possible after expiry. A late lease is never allowed to
+    // BEGIN; an in-flight COMMIT is still an unknown outcome, not undone here.
+    if(sql==='rollback'){return begun?client.query(sql,args):{rows:[]};}
+    check();if(sql==='begin')begun=true;
+    const result=await client.query(sql,args);check();return result;
+   }});
+  }});
+ };
  let reader;
  try {
   const url=new URL(request.url);
@@ -26,19 +53,33 @@ export async function handleMigrationChallengeRequest(request,{authenticateBeare
   if(request.headers.get('content-type')?.split(';')[0].trim()!=='application/json') return response(400,{error:'invalid request'});
   const authorization=request.headers.get('authorization');
   if(typeof authorization!=='string'||!/^Bearer [^\s]{16,4096}$/.test(authorization)||typeof authenticateBearer!=='function') return response(401,{error:'authentication required'});
-  const context=await bounded(authenticateBearer(authorization.slice(7),{signal:controller.signal}));
+  const context=await bounded(()=>authenticateBearer(authorization.slice(7),{signal:controller.signal}));
   if(!context||!uuid.test(context.actor)||!uuid.test(context.session)||!context.pool||typeof context.pool.connect!=='function') return response(401,{error:'authentication required'});
+  const verified=Object.freeze({actor:context.actor,session:context.session,pool:context.pool});
   const declared=request.headers.get('content-length');
   if(declared!==null&&(!/^\d+$/.test(declared)||Number(declared)>8192)) return response(400,{error:'invalid request'});
   if(!request.body) return response(400,{error:'invalid request'});
   reader=request.body.getReader();
   const bytes=new Uint8Array(8192);let length=0;
   while(true) {
-   const {done,value}=await bounded(reader.read());if(done)break;
+   const {done,value}=await bounded(()=>reader.read());if(done)break;
    if(!(value instanceof Uint8Array)||value.length>bytes.length-length)return response(400,{error:'invalid request'});
    bytes.set(value,length);length+=value.length;
   }
   const body=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes.subarray(0,length)));
+  if(body&&typeof body==='object'&&!Array.isArray(body)&&body.action==='owner-evidence'){
+   if(Object.keys(body).length!==3||Object.keys(body).some(k=>!['action','requestId','receipt'].includes(k))||
+    typeof body.requestId!=='string'||!uuid.test(body.requestId)||!body.receipt||typeof body.receipt!=='object'||
+    Array.isArray(body.receipt)||body.receipt.requestId!==body.requestId)return response(400,{error:'invalid request'});
+   if(!evidenceEnabled||!loadCheckpoint)return response(503,{error:'owner evidence unavailable'});
+   const pool=evidencePool(verified.pool);
+   // The adapter must obtain/authenticate a fresh external authority checkpoint.
+   // This boundary does not fabricate that source or accept one from the body.
+   const checkpoint=await bounded(()=>loadCheckpoint(Object.freeze({actor:verified.actor,session:verified.session,signal:controller.signal})));
+   const evidence=await bounded(()=>recordOwnerDecisionUsingStoredIssuer({enabled:true,pool,
+    actor:verified.actor,session:verified.session,requestId:body.requestId,receipt:body.receipt,authorityCheckpoint:checkpoint}));
+   return response(200,{accepted:true,evidence}); // evidence only; NEVER activation
+  }
   if(!body||Array.isArray(body)||typeof body!=='object'||!['issue','read','submit','status'].includes(body.action)||
     Object.keys(body).some(k=>!['action','deviceId','publicKeyPem',...(body.action==='issue'?['secondPassword']:[]),
       ...(['submit','status'].includes(body.action)?['challengeId']:[]),...(body.action==='submit'?['signature']:[])].includes(k))||
@@ -46,18 +87,18 @@ export async function handleMigrationChallengeRequest(request,{authenticateBeare
     (['submit','status'].includes(body.action)&&!uuid.test(body.challengeId))||
     (body.action==='issue'&&(typeof body.secondPassword!=='string'||body.secondPassword.length>1024)))return response(400,{error:'invalid request'});
   // actor/session/pool are exclusively from the trusted verification adapter.
-  const args={pool:context.pool,actor:context.actor,session:context.session,deviceId:body.deviceId,publicKeyPem:body.publicKeyPem};
-  if(body.action==='status')return response(200,{accepted:true,submission:await bounded(readOwnMigrationKeySubmission({...args,challengeId:body.challengeId}))});
+  const args={pool:verified.pool,actor:verified.actor,session:verified.session,deviceId:body.deviceId,publicKeyPem:body.publicKeyPem};
+  if(body.action==='status')return response(200,{accepted:true,submission:await bounded(()=>readOwnMigrationKeySubmission({...args,challengeId:body.challengeId}))});
   if(body.action==='submit') {
    // Canonical base64 transports only the small DER signature, never a key or a
    // caller-asserted verification result. The DB adapter rechecks the locked proof.
    if(typeof body.signature!=='string'||body.signature.length>108||!/^[A-Za-z0-9+/]+={0,2}$/.test(body.signature))return response(400,{error:'invalid request'});
    const signature=Buffer.from(body.signature,'base64');
    if(signature.length<8||signature.length>80||signature.toString('base64')!==body.signature)return response(400,{error:'invalid request'});
-   return response(200,{accepted:true,submission:await bounded(storeProvenPendingDeviceKey({...args,challengeId:body.challengeId,signature}))});
+   return response(200,{accepted:true,submission:await bounded(()=>storeProvenPendingDeviceKey({...args,challengeId:body.challengeId,signature}))});
   }
-  if(body.action==='read')return response(200,{accepted:true,challenge:await bounded(readOwnMigrationKeyChallenge(args))});
-  const result=await bounded(issuePasswordVerifiedMigrationKeyChallenge({...args,secondPassword:body.secondPassword}));
+  if(body.action==='read')return response(200,{accepted:true,challenge:await bounded(()=>readOwnMigrationKeyChallenge(args))});
+  const result=await bounded(()=>issuePasswordVerifiedMigrationKeyChallenge({...args,secondPassword:body.secondPassword}));
   return response(result.accepted?200:403,result);
  } catch {
   // A commit may have succeeded before transport failed. Never automatically

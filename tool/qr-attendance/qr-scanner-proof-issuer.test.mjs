@@ -22,3 +22,22 @@ test('unknown outcome is generic, rolled back if possible, and never automatical
  assert.equal(f.calls.at(-1),'rollback');await assert.rejects(f.issuer.issue({challengeId:id(1),password:'synthetic-correct'}));
  assert.equal(f.calls.filter(s=>s.includes('issue_registration')).length,1);
 });
+
+test('issuance reader returns only immutable status and never invokes issuer',async()=>{
+ const {createScannerProofIssuanceReader}=await import('./qr-scanner-proof-issuer.mjs');
+ for(const status of ['not_found','committed_unrecoverable']){
+  const calls=[];let released=false;
+  const reader=createScannerProofIssuanceReader({initializeVerifiedSession:async()=>({actor:id(2),session:id(3)}),pool:{connect:async()=>({query:async(sql,args)=>{calls.push(sql);if(sql.includes('read_own_registration_proof_issuance')){assert.deepEqual(args,[id(1)]);return {rows:[{status,proof:'must-not-escape'}]};}return {rows:[]};},release(){released=true;}})}});
+  assert.deepEqual(await reader.read({challengeId:id(1)}),{status});assert.equal(calls.at(-1),'commit');assert.equal(released,true);
+  assert.equal(calls.some(sql=>/issue_registration_proof\(/.test(sql)),false);await assert.rejects(reader.read({challengeId:id(1)}));
+ }
+});
+test('issuance reader rejects corrupt state and unknown COMMIT without retry or credential disclosure',async()=>{
+ const {createScannerProofIssuanceReader}=await import('./qr-scanner-proof-issuer.mjs');
+ for(const mode of ['corrupt','lost-commit','bad-principal']){
+  const calls=[];
+  const reader=createScannerProofIssuanceReader({initializeVerifiedSession:async()=>mode==='bad-principal'?{}:{actor:id(2),session:id(3)},pool:{connect:async()=>({query:async(sql)=>{calls.push(sql);if(sql==='commit')throw Error('synthetic-secret');return {rows:[{status:mode==='corrupt'?'synthetic-secret':'committed_unrecoverable'}]};},release(){}})}});
+  await assert.rejects(reader.read({challengeId:id(1)}),error=>!error.message.includes('synthetic-secret'));assert.equal(calls.at(-1),'rollback');
+  await assert.rejects(reader.read({challengeId:id(1)}));assert.equal(calls.filter(sql=>sql.includes('read_own_registration_proof_issuance')).length,mode==='bad-principal'?0:1);
+ }
+});

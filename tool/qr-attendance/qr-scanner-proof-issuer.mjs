@@ -28,3 +28,26 @@ export function createScannerRegistrationProofIssuer({pool,initializeVerifiedSes
   } finally {if(client)client.release(discard);}
  }};
 }
+
+// Read-only original-challenge reconciliation. No proof recovery or reissue.
+export function createScannerProofIssuanceReader({pool,initializeVerifiedSession}) {
+ if(typeof pool?.connect!=='function'||typeof initializeVerifiedSession!=='function')throw TypeError('trusted request pool required');
+ let attempted=false;
+ return {async read({challengeId}) {
+  const fail=()=>Error('scanner proof issuance unavailable; reconcile original request');
+  if(attempted||!uuid.test(challengeId??''))throw fail();
+  attempted=true;let client,started=false,discard=false;
+  try {
+   client=await pool.connect();await client.query('begin isolation level serializable');started=true;
+   await client.query("set local lock_timeout='2s';set local statement_timeout='5s';set local idle_in_transaction_session_timeout='5s'");
+   const principal=await initializeVerifiedSession(client);
+   if(!uuid.test(principal?.actor??'')||!uuid.test(principal?.session??''))throw fail();
+   const status=(await client.query('select qr_attendance_private.read_own_registration_proof_issuance($1) as status',[challengeId])).rows[0]?.status;
+   if(!['committed_unrecoverable','not_found'].includes(status))throw fail();
+   await client.query('commit');started=false;return {status};
+  }catch{
+   if(client&&started){try{await client.query('rollback');}catch{discard=true;}}
+   throw fail();
+  }finally{if(client)client.release(discard);}
+ }};
+}
