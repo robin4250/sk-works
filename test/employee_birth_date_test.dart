@@ -51,7 +51,7 @@ void main(){
   expect(find.textContaining('birth_date_contract_version'),findsNothing);
   await t.pumpWidget(const SizedBox.shrink());
  });
- for(final supported in [false,true]) { test('fresh server contract '+supported.toString()+' controls canonical birthday submission',()async{
+ for(final supported in [false,true]) { test('fresh server contract $supported controls canonical birthday submission',()async{
   final w=fixture.Wire();await w.seed();addTearDown(w.client.dispose);
   Map<String,dynamic>? saved;
   w.respond=(r)async{
