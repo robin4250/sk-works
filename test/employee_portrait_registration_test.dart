@@ -38,6 +38,9 @@ class _HeldLogout implements AppLogoutPersistenceFence {
  @override Future<void> releaseFence(bool Function() localLogoutStillConfirmed) async {}
 }
 Future<void> drainPortraitIo(WidgetTester tester) async {
+ // Finish outer route entry before testing whether its IO spinner exists.
+ // Otherwise an offstage first frame can skip the real-IO drain entirely.
+ await tester.pump(const Duration(milliseconds:350));
  final clock=Stopwatch()..start();
  while(find.byType(LinearProgressIndicator).evaluate().isNotEmpty){
   if(clock.elapsed>const Duration(seconds:5)){throw StateError('portrait fixture IO did not settle');}
