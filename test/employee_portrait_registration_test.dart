@@ -45,17 +45,34 @@ Future<void> drainPortraitIo(WidgetTester tester) async {
  }
  await tester.pumpAndSettle();
 }
+Future<void> cleanupPortraitIo(WidgetTester tester,Future<void> Function() cleanup) async {
+ var done=false;Object? failure;
+ await tester.runAsync(() async {
+  unawaited(cleanup().then((_) {done=true;},onError:(Object error){failure=error;done=true;}));
+ });
+ final clock=Stopwatch()..start();
+ while(!done){
+  if(clock.elapsed>const Duration(seconds:5)){throw StateError('portrait fixture cleanup did not settle');}
+  await tester.runAsync(() async {await Future<void>.delayed(const Duration(milliseconds:5));});
+  await tester.pump(Duration.zero);
+ }
+ if(failure!=null){throw failure!;}
+}
 void main(){
  TestWidgetsFlutterBinding.ensureInitialized();
- late managed.Fixture f;late PersonnelPrivacySession session;late _Documents docs;late EmployeePortraitRepository repo;int privacyReads=0;
+ late managed.Fixture f;late PersonnelPrivacySession session;late _Documents docs;late EmployeePortraitRepository repo;int privacyReads=0;bool fixtureClosed=false;
  setUp(() async {
-  privacyReads=0;f=managed.Fixture();
+  privacyReads=0;fixtureClosed=false;f=managed.Fixture();
   await HttpOverrides.runZoned(f.start,createHttpClient:(context)=>_NativeFixtureHttp().createHttpClient(context));docs=_Documents(f);
   session=PersonnelPrivacySession(actor:managed.actor,company:managed.company,currentActor:()=>f.client.auth.currentUser?.id,
     load:() async {privacyReads++;return PersonnelPrivacySnapshot(actor:managed.actor,company:managed.company,role:f.role,canManage:f.role!='viewer',records:[{'id':managed.worker}]);});
   repo=EmployeePortraitRepository.forTesting(privacySession:session,workerId:managed.worker,client:f.client,documents:docs);
  });
- tearDown(() async {await repo.dispose();session.dispose();await f.close();});
+ Future<void> closeFixture() async {
+  if(fixtureClosed){return;}fixtureClosed=true;
+  try{await repo.dispose();}finally{session.dispose();await f.close();}
+ }
+ tearDown(closeFixture);
  WorkerDocumentPhoto photo()=>WorkerDocumentPhoto.pending(base64Decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='),'portrait.png');
  test('actual managed HTTP upload then row binding retains originals and resets new-photo verification',() async {
   f.existing={'id':managed.statusId,'updated_at':'2026-10-11T00:00:00Z','attachment_path':managed.savedPath,'attachment_paths':[managed.savedPath],'status':'verified','original_verified':true,'notes':'keep'};
@@ -135,19 +152,28 @@ void main(){
   expect(f.mutations,isEmpty);
  });
  testWidgets('photo page requires explicit selection/save; cancellation never uploads',(tester) async {
-  await tester.pumpWidget(MaterialApp(home:EmployeePortraitRegistrationPage(privacySession:session,workerId:managed.worker,companyName:'テスト会社',repositoryOverride:repo,photoPicker:(_)async=>[photo()])));
-  await drainPortraitIo(tester);
-  final save=find.byKey(const Key('employee-portrait-save'));expect(tester.widget<FilledButton>(save).onPressed,isNull);
-  await tester.tap(find.byKey(const Key('employee-portrait-pick')));await tester.pump();await drainPortraitIo(tester);
-  expect(tester.widget<FilledButton>(save).onPressed,isNotNull);expect(f.mutations,isEmpty);
-  await tester.tap(find.text('キャンセル'));await tester.pumpAndSettle();expect(f.mutations,isEmpty);
-  await tester.pumpWidget(const SizedBox());
- });
+  try {
+   await tester.pumpWidget(MaterialApp(home:EmployeePortraitRegistrationPage(privacySession:session,workerId:managed.worker,companyName:'テスト会社',repositoryOverride:repo,photoPicker:(_)async=>[photo()])));
+   await drainPortraitIo(tester);
+   final save=find.byKey(const Key('employee-portrait-save'));expect(tester.widget<FilledButton>(save).onPressed,isNull);
+   await tester.tap(find.byKey(const Key('employee-portrait-pick')));await tester.pump();await drainPortraitIo(tester);
+   expect(tester.widget<FilledButton>(save).onPressed,isNotNull);expect(f.mutations,isEmpty);
+   await tester.tap(find.text('キャンセル'));await tester.pump();
+   expect(f.mutations,isEmpty);
+  } finally {
+   await cleanupPortraitIo(tester,closeFixture);
+   await tester.pumpWidget(const SizedBox());
+  }
+ },timeout:const Timeout(Duration(seconds:30)));
  testWidgets('missing face requirement offers existing explicit settings entry without creating rows',(tester) async {
   docs.missing=true;
-  await tester.pumpWidget(MaterialApp(home:EmployeePortraitRegistrationPage(privacySession:session,workerId:managed.worker,companyName:'テスト会社',repositoryOverride:repo)));
-  await drainPortraitIo(tester);
-  expect(find.byKey(const Key('employee-portrait-settings')),findsOneWidget);expect(f.mutations,isEmpty);
-  await tester.pumpWidget(const SizedBox());
- });
+  try {
+   await tester.pumpWidget(MaterialApp(home:EmployeePortraitRegistrationPage(privacySession:session,workerId:managed.worker,companyName:'テスト会社',repositoryOverride:repo)));
+   await drainPortraitIo(tester);
+   expect(find.byKey(const Key('employee-portrait-settings')),findsOneWidget);expect(f.mutations,isEmpty);
+  } finally {
+   await cleanupPortraitIo(tester,closeFixture);
+   await tester.pumpWidget(const SizedBox());
+  }
+ },timeout:const Timeout(Duration(seconds:30)));
 }
