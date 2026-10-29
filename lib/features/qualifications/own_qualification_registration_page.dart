@@ -60,7 +60,7 @@ class _OwnQualificationRegistrationPageState
 
   @override
   void dispose() {
-    _galleryChanges.dispose();
+    _galleryGeneration++; _galleryChanges.value++; _galleryChanges.dispose();
     _searchController.dispose();
     super.dispose();
   }

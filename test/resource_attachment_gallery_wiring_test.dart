@@ -112,58 +112,69 @@ Future<void> verifyLiveTitles(WidgetTester tester,String title,bool qualificatio
     await tester.runAsync(()=>Future<void>.delayed(const Duration(milliseconds:10)));await tester.pump(const Duration(milliseconds:16));
   }
   expect(tester.widget<RawImage>(find.descendant(of:thumb,matching:find.byType(RawImage))).image,isNotNull);
-  await tester.pumpAndSettle(); await tester.ensureVisible(thumb);await tester.tap(thumb);await tester.pumpAndSettle();
+  await settle(tester); await tester.ensureVisible(thumb);await tester.tap(thumb);await settle(tester);
   final count=qualifications?4:3;
   expect(find.descendant(of:find.byType(AppBar).last,matching:find.text(title)),findsOneWidget);
   expect(find.text('1/$count'),findsOneWidget);
-  for(var i=1;i<count;i++) { await tester.drag(find.byType(PageView),Offset(-tester.getSize(find.byType(PageView)).width*.75,0));await tester.pumpAndSettle(); }
+  for(var i=1;i<count;i++) { await tester.drag(find.byType(PageView),Offset(-tester.getSize(find.byType(PageView)).width*.75,0));await settle(tester); }
   expect(find.text('$count/$count'),findsOneWidget);
   expect(find.descendant(of:find.byType(AppBar).last,matching:find.text(qualifications?'合成資格B':'合成書類B')),findsOneWidget);
-  await tester.tap(find.byWidgetPredicate((widget)=>widget is IconButton && widget.tooltip=='閉じる'));await tester.pumpAndSettle();
+  await tester.tap(find.byWidgetPredicate((widget)=>widget is IconButton && widget.tooltip=='閉じる'));await settle(tester);
   expect(find.byType(PageView),findsNothing);
+}
+// Decode/HTTP completions need real event-loop turns; fake-time pumpAndSettle
+// alone cannot complete native codec callbacks while spinners schedule frames.
+Future<void> settle(WidgetTester tester) async {
+  for (var frame=0; frame<30; frame++) {
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds:10)));
+    await tester.pump(const Duration(milliseconds:20));
+  }
+  expect(find.byType(CircularProgressIndicator), findsNothing,
+    reason: 'Synthetic signed attachment HTTP/decode must finish before assertions');
+  await tester.pumpAndSettle();
 }
 void main() {
   setUp(() { TestWidgetsFlutterBinding.ensureInitialized().handleAppLifecycleStateChanged(AppLifecycleState.resumed);_changes=StreamController<AuthState>.broadcast(); });
   tearDown(() async { await _changes.close(); });
   testWidgets('own qualifications wire full saved same-worker names and ordinal identities beyond search results',(tester) async {
     await HttpOverrides.runZoned(() async {
-    await tester.pumpWidget(MaterialApp(home:OwnQualificationRegistrationPage(repository:_Qualifications()))); await tester.pumpAndSettle();
+    await tester.pumpWidget(MaterialApp(home:OwnQualificationRegistrationPage(repository:_Qualifications()))); await settle(tester);
     verify(tester,'合成資格A',true);
-    await tester.enterText(find.byType(TextField).first,'合成資格A'); await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first,'合成資格A'); await settle(tester);
     verify(tester,'合成資格A',true); await verifyLiveTitles(tester,'合成資格A',true);expect(tester.takeException(),isNull);
     },createHttpClient:(_) => _PictureClient());
   });
   testWidgets('managed qualifications wire same-worker gallery across records without foreign employee paths',(tester) async {
     await HttpOverrides.runZoned(() async {
-    await tester.pumpWidget(MaterialApp(home:QualificationCloudPage(repository:_Qualifications(),certificateRepository:_Certificates()))); await tester.pumpAndSettle();
+    await tester.pumpWidget(MaterialApp(home:QualificationCloudPage(repository:_Qualifications(),certificateRepository:_Certificates()))); await settle(tester);
     verify(tester,'合成資格A',true); await verifyLiveTitles(tester,'合成資格A',true);expect(tester.takeException(),isNull);
     },createHttpClient:(_) => _PictureClient());
   });
   testWidgets('own documents wire one and paired slots across saved document names',(tester) async {
     await HttpOverrides.runZoned(() async {
-    await tester.pumpWidget(MaterialApp(home:OwnDocumentRegistrationPage(gateway:_OwnDocuments()))); await tester.pumpAndSettle();
+    await tester.pumpWidget(MaterialApp(home:OwnDocumentRegistrationPage(gateway:_OwnDocuments()))); await settle(tester);
     verify(tester,'合成書類A',false); await verifyLiveTitles(tester,'合成書類A',false);expect(tester.takeException(),isNull);
     },createHttpClient:(_) => _PictureClient());
   });
   testWidgets('managed documents wire same worker and company gallery across document scope filters',(tester) async {
     await HttpOverrides.runZoned(() async {
     final client=SupabaseClient('https://synthetic.invalid','synthetic-public',authOptions:const AuthClientOptions(autoRefreshToken:false));addTearDown(client.dispose);
-    await tester.pumpWidget(MaterialApp(home:WorkerDocumentPage(view:WorkerDocumentView.workers,repositoryOverride:_ManagedDocuments(client))));await tester.pumpAndSettle();
-    await tester.tap(find.text('合成社員A'));await tester.pumpAndSettle();verify(tester,'合成書類A',false);await verifyLiveTitles(tester,'合成書類A',false);expect(tester.takeException(),isNull);
+    await tester.pumpWidget(MaterialApp(home:WorkerDocumentPage(view:WorkerDocumentView.workers,repositoryOverride:_ManagedDocuments(client))));await settle(tester);
+    await tester.tap(find.text('合成社員A'));await settle(tester);verify(tester,'合成書類A',false);await verifyLiveTitles(tester,'合成書類A',false);expect(tester.takeException(),isNull);
     },createHttpClient:(_) => _PictureClient());
   });
   testWidgets('newer qualification response wins and a stale load cannot retire the current gallery',(tester) async {
     await HttpOverrides.runZoned(() async {
     final repository=_Qualifications();
-    await tester.pumpWidget(MaterialApp(home:QualificationCloudPage(repository:repository,certificateRepository:_Certificates())));await tester.pumpAndSettle();
+    await tester.pumpWidget(MaterialApp(home:QualificationCloudPage(repository:repository,certificateRepository:_Certificates())));await settle(tester);
     final oldGallery=tester.widgetList<ResourceRegistrationCard>(find.byType(ResourceRegistrationCard)).first.gallery!;
     final old=Completer<Map<String,dynamic>>(),fresh=Completer<Map<String,dynamic>>();repository.pending.addAll([old.future,fresh.future]);
     final reload=tester.widget<IconButton>(find.byWidgetPredicate((widget)=>widget is IconButton && widget.tooltip=='再読み込み')).onPressed!;
     reload(); reload(); await tester.pump(); expect(oldGallery.isCurrent(),isFalse);
-    fresh.complete({'workers':[_worker],'masters':[{'id':'m1','name':'最新資格A'},_masters[1]],'qualifications':_qualifications});await tester.pumpAndSettle();
+    fresh.complete({'workers':[_worker],'masters':[{'id':'m1','name':'最新資格A'},_masters[1]],'qualifications':_qualifications});await settle(tester);
     final current=tester.widgetList<ResourceRegistrationCard>(find.byType(ResourceRegistrationCard)).firstWhere((card)=>card.title=='最新資格A').gallery!;
     expect(current.isCurrent(),isTrue);
-    old.complete({'workers':[_worker],'masters':_masters,'qualifications':_qualifications});await tester.pumpAndSettle();
+    old.complete({'workers':[_worker],'masters':_masters,'qualifications':_qualifications});await settle(tester);
     expect(find.text('最新資格A'),findsOneWidget);expect(current.isCurrent(),isTrue);expect(tester.takeException(),isNull);
     },createHttpClient:(_) => _PictureClient());
   });
@@ -171,7 +182,7 @@ void main() {
     await HttpOverrides.runZoned(() async {
     for(final company in [null,'company-B']) {
       final repository=_Qualifications(rows:[{..._qualifications.first,'company_id':company}]);
-      await tester.pumpWidget(MaterialApp(home:OwnQualificationRegistrationPage(key:ValueKey(company),repository:repository)));await tester.pumpAndSettle();
+      await tester.pumpWidget(MaterialApp(home:OwnQualificationRegistrationPage(key:ValueKey(company),repository:repository)));await settle(tester);
       final card=tester.widget<ResourceRegistrationCard>(find.byType(ResourceRegistrationCard));
       expect(card.requireGalleryScope,isTrue);expect(card.gallery,isNull);expect(tester.takeException(),isNull);
       await tester.pumpWidget(const SizedBox.shrink());

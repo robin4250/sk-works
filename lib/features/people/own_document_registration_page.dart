@@ -251,7 +251,7 @@ class _OwnDocumentRegistrationPageState
 
   @override
   void dispose() {
-    _galleryChanges.dispose();
+    _galleryGeneration++; _galleryChanges.value++; _galleryChanges.dispose();
     _bankGateway?.removeListener(_bankChanged);
     if (widget.bankGateway==null && _bankGateway!=null) unawaited(_bankGateway!.close());
     super.dispose();

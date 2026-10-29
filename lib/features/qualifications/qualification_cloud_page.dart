@@ -56,7 +56,7 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
 
   @override
   void dispose() {
-    _galleryChanges.dispose();
+    _galleryGeneration++; _galleryChanges.value++; _galleryChanges.dispose();
     _workerQueryController.dispose();
     _qualificationQueryController.dispose();
     super.dispose();
@@ -105,6 +105,11 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
         _error = error.toString();
       });
     }
+  }
+
+  void _selectGalleryWorker(String? worker) {
+    if (_selectedWorkerId == worker) { return; }
+    _selectedWorkerId = worker; _galleryGeneration++; _galleryChanges.value++; setState(() {});
   }
 
   ResourceAttachmentGallery? _galleryForWorker(String workerId) {
@@ -250,7 +255,7 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
                   ChoiceChip(
                     label: const Text('全員'),
                     selected: _selectedWorkerId == null,
-                    onSelected: (_) => setState(() => _selectedWorkerId = null),
+                    onSelected: (_) => _selectGalleryWorker(null),
                   ),
                   const SizedBox(width: 8),
                   for (final worker in filteredWorkers) ...[
@@ -258,9 +263,7 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
                       label: Text(worker['name']?.toString() ?? '名前未登録'),
                       selected:
                           _selectedWorkerId == worker['id']?.toString(),
-                      onSelected: (_) => setState(
-                        () => _selectedWorkerId = worker['id']?.toString(),
-                      ),
+                      onSelected: (_) => _selectGalleryWorker(worker['id']?.toString()),
                     ),
                     const SizedBox(width: 8),
                   ],

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:printing/printing.dart';
 import 'package:pdf/pdf.dart';
 import 'pdf_pinch_pages.dart';
@@ -278,7 +279,11 @@ class _ResourceAttachmentThumbnailState extends State<ResourceAttachmentThumbnai
       late final DialogRoute<void> route;
       route = DialogRoute<void>(context: context, builder: (previewContext) =>
         _ResourceGalleryViewer(entries: entries, initialIndex: index, initialBytes: bytes,
-          defaultTitle: widget.recordTitle, isCurrent: current, changes: gallery?.changes, signal: gallery?.signal, onClose: () {
+          defaultTitle: widget.recordTitle, isCurrent: current, changes: gallery?.changes, signal: gallery?.signal,
+          onRetire: () {
+            if (closing) { return; } closing = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) { if (route.isActive) { route.navigator?.removeRoute(route); } });
+          }, onClose: () {
             if (closing || !route.isCurrent) { return; }
             closing = true; Navigator.of(previewContext).pop();
           }));
@@ -329,19 +334,68 @@ class _ResourceAttachmentThumbnailState extends State<ResourceAttachmentThumbnai
 Future<void> showResourceAttachments(BuildContext context, {
   required String title, required List<ResourceAttachment> attachments,
   ResourceAttachmentGallery? gallery, bool requireGalleryScope = false,
-}) => showDialog<void>(context: context, useRootNavigator: false, builder: (context) => Dialog(
-  child: Padding(padding: const EdgeInsets.all(16), child: Column(
-    mainAxisSize: MainAxisSize.min, children: [
-      Text(title, style: Theme.of(context).textTheme.titleMedium),
-      const SizedBox(height: 12),
-      Flexible(child: SingleChildScrollView(child: Wrap(spacing: 12, runSpacing: 12,
-        children: [for (final attachment in attachments)
-          ResourceAttachmentThumbnail(attachment: attachment, gallery: gallery, recordTitle: title, requireGalleryScope: requireGalleryScope)]))),
-      const SizedBox(height: 12),
-      TextButton(onPressed: () => Navigator.pop(context), child: Text(SkoLanguageController.tr('閉じる'))),
-    ],
-  )),
-));
+}) {
+  if (!context.mounted || WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed ||
+      (requireGalleryScope && gallery == null) || gallery?.isCurrent() == false) { return Future.value(); }
+  var closing = false;
+  late final DialogRoute<void> route;
+  route = DialogRoute<void>(context: context, builder: (dialogContext) => _ResourceAttachmentChooser(
+    title: title, attachments: List.unmodifiable(attachments), gallery: gallery,
+    requireGalleryScope: requireGalleryScope,
+    onClose: () {
+      if (closing || !route.isCurrent) { return; } closing = true;
+      Navigator.of(dialogContext).pop();
+    }, onRetire: () {
+      if (closing) { return; } closing = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) { if (route.isActive) { route.navigator?.removeRoute(route); } });
+    }));
+  return Navigator.of(context).push(route);
+}
+class _ResourceAttachmentChooser extends StatefulWidget {
+  const _ResourceAttachmentChooser({required this.title, required this.attachments,
+    required this.gallery, required this.requireGalleryScope, required this.onClose, required this.onRetire});
+  final String title;
+  final List<ResourceAttachment> attachments;
+  final ResourceAttachmentGallery? gallery;
+  final bool requireGalleryScope;
+  final VoidCallback onClose, onRetire;
+  @override State<_ResourceAttachmentChooser> createState() => _ResourceAttachmentChooserState();
+}
+class _ResourceAttachmentChooserState extends State<_ResourceAttachmentChooser> with WidgetsBindingObserver {
+  bool _active = false;
+  StreamSubscription<Object?>? _subscription;
+  bool get _current => mounted && _active && WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed &&
+    (!widget.requireGalleryScope || widget.gallery != null) && (widget.gallery?.isCurrent() ?? true);
+  @override void initState() {
+    super.initState(); _active = WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+    WidgetsBinding.instance.addObserver(this); widget.gallery?.signal?.addListener(_scopeChanged);
+    _subscription = widget.gallery?.changes?.listen((_) => _scopeChanged(), onError: (Object error) => _retire(), onDone: _retire);
+  }
+  void _scopeChanged() { if (!_current) { _retire(); } }
+  void _retire() {
+    if (!_active || !mounted) { return; } _active = false;
+    if (SchedulerBinding.instance.schedulerPhase == SchedulerPhase.persistentCallbacks) {
+      WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) { setState(() {}); } });
+    } else { setState(() {}); }
+    widget.onRetire();
+  }
+  @override void didChangeAppLifecycleState(AppLifecycleState state) { if (state != AppLifecycleState.resumed) { _retire(); } }
+  @override void dispose() {
+    _active = false; WidgetsBinding.instance.removeObserver(this); widget.gallery?.signal?.removeListener(_scopeChanged);
+    final subscription = _subscription; _subscription = null; if (subscription != null) { unawaited(subscription.cancel()); }
+    super.dispose();
+  }
+  @override Widget build(BuildContext context) => !_current ? const SizedBox.shrink() : Dialog(
+    child: Padding(padding: const EdgeInsets.all(16), child: Column(mainAxisSize: MainAxisSize.min, children: [
+      Text(widget.title, style: Theme.of(context).textTheme.titleMedium), const SizedBox(height: 12),
+      Flexible(child: SingleChildScrollView(child: Wrap(spacing: 12, runSpacing: 12, children: [
+        for (final attachment in widget.attachments) ResourceAttachmentThumbnail(attachment: attachment,
+          gallery: widget.gallery, recordTitle: widget.title, requireGalleryScope: widget.requireGalleryScope),
+      ]))), const SizedBox(height: 12),
+      TextButton(onPressed: widget.onClose, child: Text(SkoLanguageController.tr('閉じる'))),
+    ])),
+  );
+}
 
 class ResourceRegistrationFooter extends StatelessWidget {
   const ResourceRegistrationFooter({super.key, required this.label, required this.onPressed});
@@ -412,7 +466,7 @@ List<String> resourceQualificationMetadata(Map<String, dynamic> row) => [
 
 class _ResourceGalleryViewer extends StatefulWidget {
   const _ResourceGalleryViewer({required this.entries, required this.initialIndex,
-    required this.initialBytes, required this.isCurrent, required this.onClose, this.defaultTitle, this.changes, this.signal});
+    required this.initialBytes, required this.isCurrent, required this.onClose, required this.onRetire, this.defaultTitle, this.changes, this.signal});
   final Stream<Object?>? changes;
   final Listenable? signal;
   final List<ResourceAttachment> entries;
@@ -420,7 +474,7 @@ class _ResourceGalleryViewer extends StatefulWidget {
   final Uint8List initialBytes;
   final String? defaultTitle;
   final bool Function() isCurrent;
-  final VoidCallback onClose;
+  final VoidCallback onClose, onRetire;
   @override State<_ResourceGalleryViewer> createState() => _ResourceGalleryViewerState();
 }
 class _ResourceGalleryViewerState extends State<_ResourceGalleryViewer> with WidgetsBindingObserver {
@@ -438,7 +492,11 @@ class _ResourceGalleryViewerState extends State<_ResourceGalleryViewer> with Wid
   void _scopeChanged() { if (!widget.isCurrent()) { _retire(); } }
   void _retire() {
     if (!_active || !mounted) { return; }
-    _active = false; setState(() {}); widget.onClose();
+    _active = false;
+    if (SchedulerBinding.instance.schedulerPhase == SchedulerPhase.persistentCallbacks) {
+      WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) { setState(() {}); } });
+    } else { setState(() {}); }
+    widget.onRetire();
   }
   @override void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed) { _retire(); }

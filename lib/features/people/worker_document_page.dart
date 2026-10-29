@@ -65,7 +65,7 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
   }
 
   @override
-  void dispose() { _galleryChanges.dispose(); super.dispose(); }
+  void dispose() { _galleryGeneration++; _galleryChanges.value++; _galleryChanges.dispose(); super.dispose(); }
 
   Future<void> _load() async {
     final galleryGeneration = ++_galleryGeneration;
@@ -123,6 +123,11 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
         _error = error.toString();
       });
     }
+  }
+
+  void _selectGalleryWorker(String? worker) {
+    if (_selectedWorkerId == worker) { return; }
+    _selectedWorkerId = worker; _galleryGeneration++; _galleryChanges.value++; setState(() {});
   }
 
   ResourceAttachmentGallery? _galleryForWorker(String workerId) {
@@ -240,10 +245,11 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                         labelText: '従業員検索',
                         prefixIcon: Icon(Icons.person_search_outlined),
                       ),
-                      onChanged: (value) => setState(() {
+                      onChanged: (value) {
                         _workerQuery = value;
-                        _selectedWorkerId = null;
-                      }),
+                        _selectGalleryWorker(null);
+                        setState(() {});
+                      },
                     ),
                   ),
                   SizedBox(
@@ -289,7 +295,7 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                                     ? const Icon(Icons.check_circle)
                                     : const Icon(Icons.chevron_right),
                                 onTap: () =>
-                                    setState(() => _selectedWorkerId = id),
+                                    _selectGalleryWorker(id),
                               ),
                             );
                           },

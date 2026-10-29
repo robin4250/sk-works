@@ -130,4 +130,46 @@ void main() {
     });
   }
 
+  for (final reason in ['company ABA', 'background', 'auth']) {
+    testWidgets('cached attachment chooser retires terminally on $reason', (tester) async {
+      final signal=ValueNotifier(0), changes=StreamController<Object?>.broadcast(sync:true);
+      var epoch=0; final captured=epoch;
+      final attachment=entry('q:0','合成資格');
+      final gallery=ResourceAttachmentGallery(source:Object(),workerId:'w',companyId:'A',
+        isCurrent:()=>epoch==captured,signal:signal,changes:changes.stream,entries:[attachment]);
+      await tester.pumpWidget(MaterialApp(home:Scaffold(body:Builder(builder:(context)=>TextButton(
+        onPressed:()=>showResourceAttachments(context,title:'全ての添付',attachments:[attachment],gallery:gallery,requireGalleryScope:true),
+        child:const Text('open chooser'))))));
+      await tester.tap(find.text('open chooser'));await tester.pumpAndSettle();
+      for(var i=0;i<30&&tester.widgetList<RawImage>(find.byType(RawImage)).any((image)=>image.image==null);i++) {
+        await tester.runAsync(()=>Future<void>.delayed(const Duration(milliseconds:10)));await tester.pump(const Duration(milliseconds:16));
+      }
+      expect(find.byType(Image),findsOneWidget);expect(find.text('全ての添付'),findsOneWidget);
+      if(reason=='company ABA') { epoch++;epoch++;signal.value++; }
+      if(reason=='auth') { epoch++;changes.add(null); }
+      if(reason=='background') { tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused); }
+      await tester.pump();
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);await tester.pumpAndSettle();
+      expect(find.byType(Image),findsNothing);expect(find.text('全ての添付'),findsNothing);
+      expect(find.text('open chooser'),findsOneWidget);expect(tester.takeException(),isNull);
+      await tester.pumpWidget(const SizedBox.shrink());signal.dispose();await changes.close();
+    });
+  }
+  testWidgets('chooser retains its parent after fullscreen swipe and repeated owned close', (tester) async {
+    final entries=[entry('a:0','資格A'),entry('b:0','資格B')];
+    final gallery=ResourceAttachmentGallery(source:Object(),workerId:'w',companyId:'c',isCurrent:()=>true,entries:entries);
+    await tester.pumpWidget(MaterialApp(home:Scaffold(body:Builder(builder:(context)=>TextButton(
+      onPressed:()=>showResourceAttachments(context,title:'登録済全体',attachments:[entries.first],gallery:gallery,requireGalleryScope:true),
+      child:const Text('parent'))))));
+    await tester.tap(find.text('parent'));await tester.pumpAndSettle();
+    await open(tester);expect(find.text('1/2'),findsOneWidget);
+    await tester.drag(find.byType(PageView),Offset(-tester.getSize(find.byType(PageView)).width*.75,0));await tester.pumpAndSettle();
+    expect(find.text('資格B'),findsOneWidget);expect(find.text('2/2'),findsOneWidget);
+    await tester.tap(find.byWidgetPredicate((widget)=>widget is IconButton&&widget.tooltip=='閉じる'));await tester.pumpAndSettle();
+    expect(find.text('登録済全体'),findsOneWidget);
+    final close=find.widgetWithText(TextButton,'閉じる');final callback=tester.widget<TextButton>(close).onPressed!;
+    await tester.tap(close);callback();await tester.pumpAndSettle();
+    expect(find.text('parent'),findsOneWidget);expect(find.byType(Dialog),findsNothing);expect(tester.takeException(),isNull);
+  });
+
 }
