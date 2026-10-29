@@ -52,3 +52,28 @@ or expired SID, and the deletion barrier stay enforced. It locks the selected
 membership and active partner FOR SHARE, rather than relying on unlocked EXISTS.
 Native disposable races exercise revoker-first denial/no append and writer-first
 ordering; they are synthetic Auth fixtures, not a real GoTrue enrollment test.
+
+The standalone order path also uses the explicit canonical directory
+partner_company_id link for an optional bank read. It verifies the returned
+company/partner/version and copies only that authority snapshot into the PDF
+payload; form fields cannot supply bank values. Missing links, OFF and a missing
+unreleased RPC keep the prior bank-free path. Malformed/foreign responses fail.
+Acceptance documents do not read or copy a supplier bank.
+
+## Confirmed two-page requirement, legal text pending
+
+The requested new order and acceptance are each A4 portrait with margins: the
+approved sample front on page one and `[ 工事請負契約条項 ]` on page two. The exact
+22 articles are awaiting handoff; no inferred, corrected or placeholder legal
+text is shipped. Current one-page checks remain evidence for the bank increment,
+not completion of this new two-page requirement. Once the confirmed text is
+supplied, page-count expectations must be updated together with actual rendering.
+
+The shared append renderers also serve approved/archive snapshots. Therefore
+adding current clauses unconditionally would change old signed documents.
+The implementation must bind an explicit confirmed terms snapshot/version to
+new document payloads and approval bodies, render page two only for that new
+contract, and keep historical saved bodies and renderer contracts unchanged.
+Monthly bundled invoice/payment first pages are distinct: the new two-page
+order/acceptance appendix follows them; the whole bundle is not a two-page PDF.
+An original stored PDF must never be overwritten by regeneration.
