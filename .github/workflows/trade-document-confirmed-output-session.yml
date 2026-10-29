@@ -18,9 +18,37 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
       - uses: subosito/flutter-action@v2
         with: {flutter-version: '3.47.5', channel: stable, cache: true}
       - run: flutter pub get --enforce-lockfile
       - run: flutter analyze lib/features/shared/trade_document_confirmation_repository.dart lib/features/shared/trade_document_confirmation_dialog.dart lib/features/shared/trade_document_output_page.dart test/trade_document_confirmed_output_session_test.dart test/trade_document_confirmed_output_host_test.dart test/trade_document_confirmation_test.dart
+      - name: Exact previous callback baseline with actual SDK early listener
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_file=lib/features/shared/trade_document_confirmation_dialog.dart
+          corrected_blob=$(git hash-object "$source_file")
+          backup_file=$(mktemp)
+          cp "$source_file" "$backup_file"
+          restore() { cp "$backup_file" "$source_file"; rm -f "$backup_file"; test "$(git hash-object "$source_file")" = "$corrected_blob"; }
+          trap restore EXIT
+          git show f2860e88df725bafc5d35768ccfdc511b91587ac:"$source_file" > "$source_file"
+          test "$(git hash-object "$source_file")" = f294565b7da5aaa1f7db31f3436445a2018a4106
+          mkdir -p build/confirmed-output-boundary
+          set +e
+          flutter test --reporter expanded --plain-name 'only actual child native call permits parent inactive; completed callbacks reject logout intent and paused history' test/trade_document_confirmed_output_host_test.dart > build/confirmed-output-boundary/baseline.log 2>&1
+          baseline_status=$?
+          set -e
+          restore
+          trap - EXIT
+          test "$baseline_status" -ne 0
+          # A setup/cleanup failure or listener that never ran is not RED proof.
+          rg -F 'retained-builder-probe returned_bytes=true state_error=false' build/confirmed-output-boundary/baseline.log
+          rg -F 'The earlier real SDK listener calls' build/confirmed-output-boundary/baseline.log
+          echo 'Exact original callback returned cached bytes across the observed actual SDK boundary; corrected source restored by hash.'
       - run: flutter test --reporter expanded test/trade_document_confirmed_output_session_test.dart test/trade_document_confirmed_output_host_test.dart test/trade_document_confirmation_test.dart
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: confirmed-output-boundary, path: build/confirmed-output-boundary}
       - run: git diff --exit-code -- pubspec.yaml pubspec.lock

@@ -3,14 +3,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 // The exact pinned 5.15.1 public platform method signatures are used here.
 // ignore: implementation_imports
 import 'package:printing/src/interface.dart' show PrintingPlatform;
 import 'package:sk_works/features/auth/app_auth_mutation_gateway.dart';
 import 'package:sk_works/features/shared/trade_document_confirmation_dialog.dart';
+import 'package:sk_works/features/shared/trade_document_confirmation_repository.dart';
+import 'package:sk_works/features/shared/company_seal_pdf.dart';
 import 'package:sk_works/features/shared/trade_document_output_page.dart';
 import 'trade_document_confirmed_output_session_test.dart' show ConfirmedOutputFixture,confirmedOutputScope;
 
+class _HostFixture extends ConfirmedOutputFixture{
+  VoidCallback? beforeRepository;
+  @override Future<SupabaseTradeConfirmationRepository> start()async{
+    await login();beforeRepository?.call();return repository=SupabaseTradeConfirmationRepository(client);
+  }
+}
 class _NativePrinting extends PrintingPlatform{
   LayoutCallback? callback;Completer<bool>? _done;
   Completer<bool> get done=>_done??=Completer<bool>();
@@ -28,12 +37,15 @@ Future<void> _ready(WidgetTester tester)async{
     if(button.evaluate().isNotEmpty&&tester.widget<TextButton>(button).onPressed!=null&&find.byType(PdfPreview).evaluate().isNotEmpty)break;
     await tester.runAsync(()=>Future<void>.delayed(const Duration(milliseconds:10)));await tester.pump(const Duration(milliseconds:20));
   }
-  expect(find.byType(PdfPreview),findsOneWidget);
+  expect(find.byType(PdfPreview),findsOneWidget,reason:'Confirmed render stage: ${tester.widgetList<Text>(find.byType(Text)).map((text)=>text.data).join(" | ")}');
   expect(tester.widget<TextButton>(find.widgetWithText(TextButton,'形式を選んで保存・印刷')).onPressed,isNotNull);
   await tester.pumpAndSettle();
 }
 Future<void> _mount(WidgetTester tester,ConfirmedOutputFixture f)async{
   tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+  // CompanySealPdf caches its asset Future. Create it in the real zone so the
+  // next Widget test never inherits a completed Future owned by an old FakeAsync.
+  await tester.runAsync(()=>CompanySealPdf.loadFont().timeout(const Duration(seconds:5)));
   final repository=(await tester.runAsync(f.start))!;expect(await tester.runAsync(repository.available),isTrue);
   await tester.pumpWidget(MaterialApp(home:TradeApprovedDocumentPage(repository:repository,scope:confirmedOutputScope(f.wire.envelope))));
   await _ready(tester);
@@ -60,10 +72,19 @@ void main(){
     }finally{await _close(tester,f,printing);}
   });
   testWidgets('only actual child native call permits parent inactive; completed callbacks reject logout intent and paused history',(tester)async{
-    for(final invalidation in ['logout intent','paused']){
-      final f=ConfirmedOutputFixture(),printing=_NativePrinting();PrintingPlatform.instance=printing;
+    for(final invalidation in ['logout intent','paused','fresh SDK before host listener']){
+      final f=_HostFixture(),printing=_NativePrinting();PrintingPlatform.instance=printing;
+      LayoutCallback? retainedParent;StreamSubscription<AuthState>? probe;
+      var probeArmed=false,earlyBytes=false;Object? earlyError;
+      if(invalidation=='fresh SDK before host listener'){
+        f.beforeRepository=(){probe=f.client.auth.onAuthStateChange.listen((event){
+          final callback=retainedParent;
+          if(!probeArmed||callback==null||event.event!=AuthChangeEvent.signedIn||event.session?.accessToken!=f.wire.token)return;
+          unawaited(Future.sync(()=>callback(PdfPageFormat.a4)).then<void>((_){earlyBytes=true;},onError:(Object error){earlyError=error;}));
+        });};
+      }
       try{
-        await _mount(tester,f);final parent=tester.widget<PdfPreview>(find.byType(PdfPreview)).build;
+        await _mount(tester,f);final parent=tester.widget<PdfPreview>(find.byType(PdfPreview)).build;retainedParent=parent;
         await tester.tap(find.widgetWithText(TextButton,'形式を選んで保存・印刷'));await tester.pumpAndSettle();
         final child=tester.widget<PdfPreview>(find.byType(PdfPreview)).build;
         final originalBytes=await parent(PdfPageFormat.a4);
@@ -78,19 +99,26 @@ void main(){
         if(invalidation=='logout intent'){
           f.wire.holdLogout=Completer<void>();logout=AppAuthMutationGateway.forClient(f.client).signOut();
           expect(f.wire.logoutStarted.isCompleted,isFalse);expect(f.client.auth.currentSession?.accessToken,f.wire.token);
-          // Invoke parent first, before a queued notifier or child's guard can
-          // clear its cached bytes. Intent must fence the retained builder now.
+          // Check intent synchronously as well. No queued-notifier assumption
+          // is made: this gateway's quarantine notification is synchronous.
           final parentRejected=expectLater(parent(PdfPageFormat.a4),throwsStateError);
           final childRejected=expectLater(child(PdfPageFormat.a4),throwsStateError);
           await parentRejected;await childRejected;
-        }else{tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);}
+        }else if(invalidation=='paused'){tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);}
+        else{
+          probeArmed=true;f.wire.sid='20000000-0000-4000-8000-000000000099';await tester.runAsync(f.login);
+          await tester.runAsync(()=>Future<void>.delayed(Duration.zero));
+          debugPrint('retained-builder-probe returned_bytes=$earlyBytes state_error=${earlyError is StateError}');
+          expect(earlyError,isA<StateError>(),reason:'The earlier real SDK listener calls the retained parent builder before the host subscriber');
+          expect(earlyBytes,isFalse);
+        }
         tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);await tester.pumpAndSettle();
         expect(find.byType(PdfPreview,skipOffstage:false),findsNothing);
         await expectLater(parent(PdfPageFormat.a4),throwsStateError);await expectLater(child(PdfPageFormat.a4),throwsStateError);
         await expectLater(printing.callback!(PdfPageFormat.a4),throwsStateError);
         final pendingLogout=logout;if(pendingLogout!=null){f.wire.holdLogout!.complete();await tester.pump();await tester.runAsync(()=>pendingLogout);}
         expect(f.wire.rpcs,hasLength(2));expect(tester.takeException(),isNull);
-      }finally{await _close(tester,f,printing);}
+      }finally{final subscription=probe;if(subscription!=null)await tester.runAsync(subscription.cancel);await _close(tester,f,printing);}
     }
   });
 }
