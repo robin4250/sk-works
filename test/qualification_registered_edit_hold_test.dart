@@ -57,6 +57,7 @@ class _Photos implements QualificationCertificateRepository {
 }
 
 class _Cloud implements QualificationCloudRepository {
+  @override Future<bool Function()> captureAttachmentReadScope() async => () => false;
   _Cloud({this.hasSaved = true});
   final bool hasSaved;
   final inserts = <Map<String, Object?>>[];

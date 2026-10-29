@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:printing/printing.dart';
 import 'package:pdf/pdf.dart';
 import 'pdf_pinch_pages.dart';
@@ -14,9 +16,10 @@ class ResourceAttachment {
     this.path,
     this.loadBytes,
     this.known = true,
-    this.validateAccess,
+    this.validateAccess, this.previewKey, this.recordTitle,
   });
   final String label;
+  final String? previewKey, recordTitle;
   final String? path;
   final Future<Uint8List> Function()? loadBytes;
   final bool known;
@@ -28,9 +31,9 @@ ResourceAttachment signedResourceAttachment({
   required String label,
   required String? path,
   required Future<String> Function(String) signedUrl,
-  bool known = true,
+  bool known = true, String? previewKey, String? recordTitle,
 }) => ResourceAttachment(
-  label: label,
+  label: label, previewKey: previewKey, recordTitle: recordTitle,
   path: path,
   known: known,
   validateAccess: path?.trim().isNotEmpty != true ? null : () async { await signedUrl(path!); },
@@ -54,6 +57,27 @@ ResourceAttachment signedResourceAttachment({
   },
 );
 
+/// A fixed, already-authorized worker/company response, never a gallery query.
+class ResourceAttachmentGallery {
+  ResourceAttachmentGallery({required this.source, required this.workerId,
+    required this.companyId, required this.isCurrent, this.changes, this.signal, required Iterable<ResourceAttachment> entries})
+      : entries = List.unmodifiable(entries.where((entry) => entry.registered && entry.loadBytes != null)) {
+    final keys = this.entries.map((entry) => entry.previewKey).toList();
+    if (workerId.isEmpty || companyId.isEmpty || keys.any((key) => key == null || key.isEmpty) ||
+        keys.toSet().length != keys.length || this.entries.any((entry) => entry.recordTitle?.trim().isNotEmpty != true)) {
+      throw ArgumentError('Invalid saved attachment gallery scope');
+    }
+  }
+  final Stream<Object?>? changes;
+  final Listenable? signal;
+  final Object source;
+  final String workerId, companyId;
+  final bool Function() isCurrent;
+  final List<ResourceAttachment> entries;
+  int indexOf(ResourceAttachment entry) => entries.indexWhere((saved) =>
+    saved.previewKey == entry.previewKey && saved.path == entry.path);
+}
+
 class ResourceRegistrationCard extends StatelessWidget {
   const ResourceRegistrationCard({
     super.key,
@@ -67,9 +91,11 @@ class ResourceRegistrationCard extends StatelessWidget {
     this.registeredActionLabel = '確認・編集',
     this.detailLabel = '',
     this.onOpenDetail,
-    this.rasterizeFirstPage,
+    this.rasterizeFirstPage, this.gallery, this.requireGalleryScope = false,
   });
   static const cardHeight = 204.0;
+  final ResourceAttachmentGallery? gallery;
+  final bool requireGalleryScope;
   final String title, dateLabel, detailLabel;
   final IconData icon;
   final bool registered;
@@ -133,7 +159,7 @@ class ResourceRegistrationCard extends StatelessWidget {
                 : Row(children: [
                     for (final attachment in attachments.take(2)) ...[
                       ResourceAttachmentThumbnail(key: ValueKey('${attachment.label}:${attachment.path ?? ''}'),
-                        attachment: attachment, rasterizeFirstPage: rasterizeFirstPage),
+                        attachment: attachment, rasterizeFirstPage: rasterizeFirstPage, gallery: gallery, recordTitle: title, requireGalleryScope: requireGalleryScope),
                       const SizedBox(width: 6),
                     ],
                   ])),
@@ -161,21 +187,44 @@ bool _isPdf(Uint8List bytes) => bytes.length >= 5 &&
   bytes[0] == 37 && bytes[1] == 80 && bytes[2] == 68 && bytes[3] == 70 && bytes[4] == 45;
 
 class ResourceAttachmentThumbnail extends StatefulWidget {
-  const ResourceAttachmentThumbnail({super.key, required this.attachment, this.rasterizeFirstPage});
+  const ResourceAttachmentThumbnail({super.key, required this.attachment, this.rasterizeFirstPage, this.gallery, this.recordTitle, this.requireGalleryScope = false});
   final ResourceAttachment attachment;
+  final ResourceAttachmentGallery? gallery;
+  final String? recordTitle;
+  final bool requireGalleryScope;
   final Future<Uint8List> Function(Uint8List)? rasterizeFirstPage;
   @override
   State<ResourceAttachmentThumbnail> createState() => _ResourceAttachmentThumbnailState();
 }
 
-class _ResourceAttachmentThumbnailState extends State<ResourceAttachmentThumbnail> {
+class _ResourceAttachmentThumbnailState extends State<ResourceAttachmentThumbnail> with WidgetsBindingObserver {
+  Route<void>? _previewRoute;
+  bool _opening = false;
+  bool _foreground = false;
+  int _openEpoch = 0;
+  void _retirePreview() {
+    final route = _previewRoute; _previewRoute = null;
+    if (route != null) { WidgetsBinding.instance.addPostFrameCallback((_) { if (route.isActive) { route.navigator?.removeRoute(route); } }); }
+  }
+  @override void didChangeAppLifecycleState(AppLifecycleState state) {
+    _foreground = state == AppLifecycleState.resumed;
+    if (!_foreground) { _openEpoch++; _retirePreview(); }
+  }
+  @override void dispose() { _openEpoch++; WidgetsBinding.instance.removeObserver(this); _retirePreview(); super.dispose(); }
   Future<(Uint8List, Uint8List?, bool)>? _content;
   Future<Uint8List>? _original;
   @override
-  void initState() { super.initState(); _content = _load(); }
+  void initState() {
+    super.initState(); _foreground = WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+    WidgetsBinding.instance.addObserver(this); _content = _load();
+  }
   @override
   void didUpdateWidget(covariant ResourceAttachmentThumbnail oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.gallery?.source, widget.gallery?.source) ||
+        oldWidget.gallery?.workerId != widget.gallery?.workerId ||
+        oldWidget.gallery?.companyId != widget.gallery?.companyId ||
+        widget.gallery?.isCurrent() == false || oldWidget.attachment.previewKey != widget.attachment.previewKey) { _openEpoch++; _retirePreview(); }
     if (oldWidget.attachment.path != widget.attachment.path ||
         oldWidget.attachment.known != widget.attachment.known) {
       _content = _load();
@@ -207,37 +256,40 @@ class _ResourceAttachmentThumbnailState extends State<ResourceAttachmentThumbnai
   }
 
   Future<void> _open() async {
-    if (_content == null) return;
+    if (_content == null || _opening || !_foreground) return;
+    _opening = true;
     final content = _original;
-    final path = widget.attachment.path;
+    final selected = widget.attachment, gallery = widget.gallery;
+    final path = selected.path, epoch = _openEpoch;
     try {
+      if (widget.requireGalleryScope && gallery == null) { throw StateError('Attachment scope unavailable'); }
+      if (gallery?.isCurrent() == false) { return; }
       final bytes = await content!;
-      await widget.attachment.validateAccess?.call();
-      if (!mounted || content != _original || path != widget.attachment.path) return;
-      final pdf = _isPdf(bytes);
-      Future<Uint8List> buildPreviewPdf(PdfPageFormat _) async => bytes;
+      if (!mounted || !_foreground || epoch != _openEpoch || gallery?.isCurrent() == false) { return; }
+      await selected.validateAccess?.call();
+      if (!mounted || !_foreground || epoch != _openEpoch || content != _original || path != widget.attachment.path) return;
+      final entries = gallery?.entries ?? [selected];
+      final index = gallery?.indexOf(selected) ?? 0;
+      bool current() => mounted && _foreground && epoch == _openEpoch &&
+        WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed &&
+        content == _original && path == widget.attachment.path && selected.previewKey == widget.attachment.previewKey &&
+        (gallery == null || identical(gallery.source, widget.gallery?.source) && gallery.isCurrent());
+      if (!current() || index < 0 || index >= entries.length) { return; }
       var closing = false;
-      await showDialog<void>(context: context, useRootNavigator: false, builder: (previewContext) {
-        final route = ModalRoute.of(previewContext);
-        return Dialog.fullscreen(
-        child: Scaffold(
-          resizeToAvoidBottomInset: false,
-          appBar: AppBar(title: Text(widget.attachment.label), leading: IconButton(
-            tooltip: SkoLanguageController.tr('閉じる'), icon: const Icon(Icons.close), onPressed: () {
-              if (closing || route?.isCurrent != true) { return; }
-              closing = true; Navigator.of(previewContext).pop();
-            })),
-          body: pdf ? PdfPreview.builder(build: buildPreviewPdf,
-            pagesBuilder: (_, pages) => PdfPinchPages(pages: pages), useActions: true,
-            canDebug: false, canChangeOrientation: false, canChangePageFormat: false,
-            allowPrinting: true, allowSharing: false, dynamicLayout: false,
-            onError: (_, __) => Center(child: Text(SkoLanguageController.tr('PDFを表示できませんでした。'))))
-            : Center(child: InteractiveViewer(minScale: .5, maxScale: 5,
-                child: Image.memory(bytes, fit: BoxFit.contain,
-                  errorBuilder: (_, __, ___) => Text(SkoLanguageController.tr('画像を表示できませんでした。'))))),
-        ),
-      );
-      });
+      late final DialogRoute<void> route;
+      route = DialogRoute<void>(context: context, builder: (previewContext) =>
+        _ResourceGalleryViewer(entries: entries, initialIndex: index, initialBytes: bytes,
+          defaultTitle: widget.recordTitle, isCurrent: current, changes: gallery?.changes, signal: gallery?.signal,
+          onRetire: () {
+            if (closing) { return; } closing = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) { if (route.isActive) { route.navigator?.removeRoute(route); } });
+          }, onClose: () {
+            if (closing || !route.isCurrent) { return; }
+            closing = true; Navigator.of(previewContext).pop();
+          }));
+      _previewRoute = route;
+      await Navigator.of(context).push(route);
+      if (identical(_previewRoute, route)) { _previewRoute = null; }
     } catch (_) {
       if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(SkoLanguageController.tr('添付を表示できませんでした。')),
@@ -247,7 +299,7 @@ class _ResourceAttachmentThumbnailState extends State<ResourceAttachmentThumbnai
             setState(() { _content = reloaded; });
           }
         }))); }
-    }
+    } finally { _opening = false; }
   }
 
   @override
@@ -281,19 +333,70 @@ class _ResourceAttachmentThumbnailState extends State<ResourceAttachmentThumbnai
 
 Future<void> showResourceAttachments(BuildContext context, {
   required String title, required List<ResourceAttachment> attachments,
-}) => showDialog<void>(context: context, useRootNavigator: false, builder: (context) => Dialog(
-  child: Padding(padding: const EdgeInsets.all(16), child: Column(
-    mainAxisSize: MainAxisSize.min, children: [
-      Text(title, style: Theme.of(context).textTheme.titleMedium),
-      const SizedBox(height: 12),
-      Flexible(child: SingleChildScrollView(child: Wrap(spacing: 12, runSpacing: 12,
-        children: [for (final attachment in attachments)
-          ResourceAttachmentThumbnail(attachment: attachment)]))),
-      const SizedBox(height: 12),
-      TextButton(onPressed: () => Navigator.pop(context), child: Text(SkoLanguageController.tr('閉じる'))),
-    ],
-  )),
-));
+  ResourceAttachmentGallery? gallery, bool requireGalleryScope = false,
+}) {
+  if (!context.mounted || WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed ||
+      (requireGalleryScope && gallery == null) || gallery?.isCurrent() == false) { return Future.value(); }
+  var closing = false;
+  late final DialogRoute<void> route;
+  route = DialogRoute<void>(context: context, builder: (dialogContext) => _ResourceAttachmentChooser(
+    title: title, attachments: List.unmodifiable(attachments), gallery: gallery,
+    requireGalleryScope: requireGalleryScope,
+    onClose: () {
+      if (closing || !route.isCurrent) { return; } closing = true;
+      Navigator.of(dialogContext).pop();
+    }, onRetire: () {
+      if (closing) { return; } closing = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) { if (route.isActive) { route.navigator?.removeRoute(route); } });
+    }));
+  return Navigator.of(context).push(route);
+}
+class _ResourceAttachmentChooser extends StatefulWidget {
+  const _ResourceAttachmentChooser({required this.title, required this.attachments,
+    required this.gallery, required this.requireGalleryScope, required this.onClose, required this.onRetire});
+  final String title;
+  final List<ResourceAttachment> attachments;
+  final ResourceAttachmentGallery? gallery;
+  final bool requireGalleryScope;
+  final VoidCallback onClose, onRetire;
+  @override State<_ResourceAttachmentChooser> createState() => _ResourceAttachmentChooserState();
+}
+class _ResourceAttachmentChooserState extends State<_ResourceAttachmentChooser> with WidgetsBindingObserver {
+  bool _active = false;
+  StreamSubscription<Object?>? _subscription;
+  bool get _current => mounted && _active && WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed &&
+    (!widget.requireGalleryScope || widget.gallery != null) && (widget.gallery?.isCurrent() ?? true);
+  @override void initState() {
+    super.initState(); _active = WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+    WidgetsBinding.instance.addObserver(this); widget.gallery?.signal?.addListener(_scopeChanged);
+    _subscription = widget.gallery?.changes?.listen((_) => _scopeChanged(), onError: (Object error) => _retire(), onDone: _retire);
+    WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted && !_current) { widget.onRetire(); } });
+  }
+  void _scopeChanged() { if (!_current) { _retire(); } }
+  void _retire() {
+    if (!_active || !mounted) { return; } _active = false;
+    if (SchedulerBinding.instance.schedulerPhase == SchedulerPhase.persistentCallbacks) {
+      WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) { setState(() {}); } });
+    } else { setState(() {}); }
+    widget.onRetire();
+  }
+  @override void didChangeAppLifecycleState(AppLifecycleState state) { if (state != AppLifecycleState.resumed) { _retire(); } }
+  @override void dispose() {
+    _active = false; WidgetsBinding.instance.removeObserver(this); widget.gallery?.signal?.removeListener(_scopeChanged);
+    final subscription = _subscription; _subscription = null; if (subscription != null) { unawaited(subscription.cancel()); }
+    super.dispose();
+  }
+  @override Widget build(BuildContext context) => !_current ? const SizedBox.shrink() : Dialog(
+    child: Padding(padding: const EdgeInsets.all(16), child: Column(mainAxisSize: MainAxisSize.min, children: [
+      Text(widget.title, style: Theme.of(context).textTheme.titleMedium), const SizedBox(height: 12),
+      Flexible(child: SingleChildScrollView(child: Wrap(spacing: 12, runSpacing: 12, children: [
+        for (final attachment in widget.attachments) ResourceAttachmentThumbnail(attachment: attachment,
+          gallery: widget.gallery, recordTitle: widget.title, requireGalleryScope: widget.requireGalleryScope),
+      ]))), const SizedBox(height: 12),
+      TextButton(onPressed: widget.onClose, child: Text(SkoLanguageController.tr('閉じる'))),
+    ])),
+  );
+}
 
 class ResourceRegistrationFooter extends StatelessWidget {
   const ResourceRegistrationFooter({super.key, required this.label, required this.onPressed});
@@ -360,3 +463,103 @@ List<String> resourceQualificationMetadata(Map<String, dynamic> row) => [
   if ((row['issuer']?.toString() ?? '').isNotEmpty) '発行元: ${row['issuer']}',
   if ((row['certificate_number']?.toString() ?? '').isNotEmpty) '証明書 ${row['certificate_number']}',
 ];
+
+
+class _ResourceGalleryViewer extends StatefulWidget {
+  const _ResourceGalleryViewer({required this.entries, required this.initialIndex,
+    required this.initialBytes, required this.isCurrent, required this.onClose, required this.onRetire, this.defaultTitle, this.changes, this.signal});
+  final Stream<Object?>? changes;
+  final Listenable? signal;
+  final List<ResourceAttachment> entries;
+  final int initialIndex;
+  final Uint8List initialBytes;
+  final String? defaultTitle;
+  final bool Function() isCurrent;
+  final VoidCallback onClose, onRetire;
+  @override State<_ResourceGalleryViewer> createState() => _ResourceGalleryViewerState();
+}
+class _ResourceGalleryViewerState extends State<_ResourceGalleryViewer> with WidgetsBindingObserver {
+  late final PageController _controller = PageController(initialPage: widget.initialIndex);
+  late int _index = widget.initialIndex;
+  bool _active = false;
+  StreamSubscription<Object?>? _subscription;
+  bool get _current => mounted && _active && WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed && widget.isCurrent();
+  @override void initState() {
+    super.initState(); _active = WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed; WidgetsBinding.instance.addObserver(this);
+    widget.signal?.addListener(_scopeChanged);
+    _subscription = widget.changes?.listen((_) { if (!widget.isCurrent()) { _retire(); } },
+      onError: (Object error) => _retire(), onDone: _retire);
+    WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted && !_current) { widget.onRetire(); } });
+  }
+  void _scopeChanged() { if (!widget.isCurrent()) { _retire(); } }
+  void _retire() {
+    if (!_active || !mounted) { return; }
+    _active = false;
+    if (SchedulerBinding.instance.schedulerPhase == SchedulerPhase.persistentCallbacks) {
+      WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) { setState(() {}); } });
+    } else { setState(() {}); }
+    widget.onRetire();
+  }
+  @override void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) { _retire(); }
+  }
+  @override void dispose() { _active = false; widget.signal?.removeListener(_scopeChanged); final subscription = _subscription; _subscription = null; if (subscription != null) { unawaited(subscription.cancel()); } WidgetsBinding.instance.removeObserver(this); _controller.dispose(); super.dispose(); }
+  @override Widget build(BuildContext context) {
+    final entry = widget.entries[_index];
+    return Dialog.fullscreen(child: Scaffold(resizeToAvoidBottomInset: false,
+      appBar: AppBar(toolbarHeight: (56 * MediaQuery.textScalerOf(context).scale(1)).clamp(56.0, 160.0).toDouble(),
+        leading: IconButton(tooltip: SkoLanguageController.tr('閉じる'),
+        icon: const Icon(Icons.close), onPressed: widget.onClose),
+        title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(entry.recordTitle ?? widget.defaultTitle ?? entry.label, maxLines: 1, overflow: TextOverflow.ellipsis),
+          Text(entry.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
+        ]), actions: [Center(child: Padding(padding: const EdgeInsets.only(right: 12), child: Text('${_index + 1}/${widget.entries.length}')))]),
+      body: !_current ? const SizedBox.shrink() : PageView.builder(controller: _controller,
+        itemCount: widget.entries.length, onPageChanged: (value) {
+          if (!_current) { widget.onClose(); return; }
+          setState(() => _index = value);
+        }, itemBuilder: (_, index) => index != _index ? const SizedBox.expand() : _ResourceGalleryPage(key: ValueKey(widget.entries[index].previewKey ?? index),
+          attachment: widget.entries[index], isCurrent: () => _current,
+          initialBytes: index == widget.initialIndex ? widget.initialBytes : null)),
+    ));
+  }
+}
+class _ResourceGalleryPage extends StatefulWidget {
+  const _ResourceGalleryPage({super.key, required this.attachment, required this.isCurrent, this.initialBytes});
+  final ResourceAttachment attachment;
+  final bool Function() isCurrent;
+  final Uint8List? initialBytes;
+  @override State<_ResourceGalleryPage> createState() => _ResourceGalleryPageState();
+}
+class _ResourceGalleryPageState extends State<_ResourceGalleryPage> {
+  late final Future<Uint8List> _bytes = _load();
+  Future<Uint8List> _load() async {
+    if (!widget.isCurrent()) { throw StateError('Attachment scope changed'); }
+    await widget.attachment.validateAccess?.call();
+    if (!mounted || !widget.isCurrent()) { throw StateError('Attachment scope changed'); }
+    final bytes = widget.initialBytes ?? await widget.attachment.loadBytes!();
+    if (!mounted || !widget.isCurrent()) { throw StateError('Attachment scope changed'); }
+    await widget.attachment.validateAccess?.call();
+    if (!mounted || !widget.isCurrent() || bytes.isEmpty) { throw StateError('Attachment scope changed'); }
+    return bytes;
+  }
+  @override Widget build(BuildContext context) => FutureBuilder<Uint8List>(future: _bytes, builder: (context, snapshot) {
+    if (!widget.isCurrent()) { return const SizedBox.shrink(); }
+    if (snapshot.hasError) { return Center(child: Text(SkoLanguageController.tr('添付を表示できませんでした。'))); }
+    final bytes = snapshot.data;
+    if (bytes == null) { return const Center(child: CircularProgressIndicator()); }
+    if (_isPdf(bytes)) {
+      Future<Uint8List> buildPreviewPdf(PdfPageFormat _) async {
+        if (!mounted || !widget.isCurrent()) { throw StateError('Attachment scope changed'); }
+        return bytes;
+      }
+      return PdfPreview.builder(build: buildPreviewPdf, pagesBuilder: (_, pages) => PdfPinchPages(pages: pages), useActions: true,
+        canDebug: false, canChangeOrientation: false, canChangePageFormat: false,
+        allowPrinting: true, allowSharing: false, dynamicLayout: false,
+        onError: (_, __) => Center(child: Text(SkoLanguageController.tr('PDFを表示できませんでした。'))));
+    }
+    return Center(child: InteractiveViewer(minScale: .5, maxScale: 5,
+      child: Image.memory(bytes, fit: BoxFit.contain,
+        errorBuilder: (_, __, ___) => Text(SkoLanguageController.tr('画像を表示できませんでした。')))));
+  });
+}
