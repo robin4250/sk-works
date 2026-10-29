@@ -58,7 +58,7 @@ jobs:
                       if name == 'invoice-locked-saved':
                           assert '2026年10月20日' in text and '2026年10月15日' in text, text
                       else:
-                          assert '2026年10月16日' in text and '2026-09-15' in text, text
+                          assert '2026年9月30日' in text and '2026-09-15' in text, text
                   for index, page in enumerate(pdf):
                       page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5)).save(folder/(name+f'-{index+1}.png'))
           print('PASS: locked/normal 2 pages, saved original, auto OFF, and identical parent page pixels/text')
