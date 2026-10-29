@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -33,6 +34,7 @@ class InvoiceNoticeOperation {
 }
 
 enum InvoiceNoticeRecoveryState { idle, awaitingResult, recorded, unavailable, invalidated }
+typedef InvoiceNoticeConsentTransport = Future<Object?> Function(InvoiceNoticeOperation operation, {required bool financialConfirmed, required bool sealConfirmed});
 typedef InvoiceNoticeOperationTransport = Future<Object?> Function(InvoiceNoticeOperation operation);
 
 /// Memory-only, opt-in composition with the existing ticket controller.
@@ -42,7 +44,8 @@ class InvoiceNoticeRecoveryController extends ChangeNotifier {
   InvoiceNoticeRecoveryController({required this.actor, required this.session,
     required NoticeTicketOpener openTicket,
     required this.operationForTicket, required this.confirm, required this.readResult,
-    this.timeout = const Duration(seconds: 20), SupabaseClient? authClient}) {
+    this.timeout = const Duration(seconds: 20), SupabaseClient? authClient,
+    this.explicitConsentRequired = false, this.confirmWithConsent, this.buildOwnPreview, this.closeTransport}) {
     tickets = InvoiceNoticeTicketController(actor: actor, session: session,
       openTicket: (id) async {
         // Even a newly opened ticket must not create a second approval attempt
@@ -56,6 +59,17 @@ class InvoiceNoticeRecoveryController extends ChangeNotifier {
   final InvoiceNoticeOperation Function(String ticket) operationForTicket;
   final InvoiceNoticeOperationTransport confirm, readResult;
   final Duration timeout;
+  final bool explicitConsentRequired;
+  final InvoiceNoticeConsentTransport? confirmWithConsent;
+  final Future<Uint8List> Function()? buildOwnPreview;
+  final VoidCallback? closeTransport;
+  bool _financialConfirmed = false, _sealConfirmed = false;
+
+  Future<InvoiceNoticeApprovalResult> approve({required bool financialConfirmed, required bool sealConfirmed}) async {
+    if (explicitConsentRequired && (!financialConfirmed || !sealConfirmed)) { return InvoiceNoticeApprovalResult.notSubmitted; }
+    _financialConfirmed = financialConfirmed; _sealConfirmed = sealConfirmed;
+    try { return await tickets.approve(); } finally { _financialConfirmed = false; _sealConfirmed = false; }
+  }
   late final InvoiceNoticeTicketController tickets;
   InvoiceNoticeRecoveryState _state = InvoiceNoticeRecoveryState.idle;
   InvoiceNoticeRecoveryState get state => _state;
@@ -121,6 +135,7 @@ class InvoiceNoticeRecoveryController extends ChangeNotifier {
     _operation = null; _actor = null; _session = null;
     _state = InvoiceNoticeRecoveryState.invalidated;
     tickets.invalidate();
+    closeTransport?.call();
     final subscription = _authSubscription;
     _authSubscription = null;
     if (subscription != null) { unawaited(subscription.cancel()); }
@@ -128,7 +143,8 @@ class InvoiceNoticeRecoveryController extends ChangeNotifier {
   }
 
   Future<Object?> _submit(String ticket) async {
-    if (_invalidated || _operation != null) { return false; }
+    if (_invalidated || _operation != null ||
+        explicitConsentRequired && (!_financialConfirmed || !_sealConfirmed || confirmWithConsent == null)) { return false; }
     final a = actor(), s = session();
     if (a == null || a.isEmpty || s == null || s.isEmpty) { return false; }
     final operation = operationForTicket(ticket);
@@ -140,7 +156,10 @@ class InvoiceNoticeRecoveryController extends ChangeNotifier {
     try {
       // A command return is provisional. Only explicit immutable readback can
       // establish a recorded result; errors/timeouts never resend confirmation.
-      await confirm(operation).timeout(timeout);
+      final submit = confirmWithConsent;
+      if (submit != null) {
+        await submit(operation, financialConfirmed: _financialConfirmed, sealConfirmed: _sealConfirmed).timeout(timeout);
+      } else { await confirm(operation).timeout(timeout); }
     } catch (_) {}
     if (!_current(generation)) { return false; }
     return false;

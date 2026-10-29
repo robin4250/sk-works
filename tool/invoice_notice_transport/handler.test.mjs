@@ -92,3 +92,35 @@ test('healthy private command succeeds and closes one owned connection',async()=
  const reply=await handler(command());assert.equal(reply.status,200);assert.equal((await reply.json()).financial_approved,true);
  assert.equal(state.committed,1);assert.equal(state.ends,1);
 });
+
+const notification='10000000-0000-0000-0000-000000000003',document='10000000-0000-0000-0000-000000000004';
+const sourceRevision='2026-10-29T00:00:00.123456Z';
+const openingRequest=(extra={})=>new Request('http://127.0.0.1/functions/v1/invoice-notice/open',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+token},body:JSON.stringify({notification_id:notification,invoice_id:actor,source_revision:sourceRevision,...extra})});
+function openBackend(count=1,alter={}){
+ const saved={invoice_id:actor,company_id:actor,local_document_id:sid,document_id:document,revision:3,body:{kind:'acceptance'},body_hash:'b'.repeat(64),source_revision:sourceRevision,binding:{parent_kind:'invoice',parent_id:actor,attachment_version:7}};
+ const expected={document_id:document,local_document_id:sid,company_id:actor,revision:3,body_hash:saved.body_hash,binding:saved.binding};
+ const bundle=backend(sql=>{
+  if(sql.startsWith('select enabled'))return {rows:[{enabled:true}]};
+  if(sql.includes('ticket_from_notification'))return {rows:[{v:{notification_id:notification,invoice_id:actor,status:'ready',ticket_id:actor,expires_at:new Date(Date.now()+60000).toISOString()}}]};
+  if(sql.includes('order by d.id for share'))return {rows:Array(count).fill({...saved,...alter}),rowCount:count};
+  if(sql.includes('preview_confirmation'))return {rows:[{v:expected}]};
+ });return bundle;
+}
+test('open maps authoritative local integer revision/hash, never client timestamp/hash',async()=>{
+ const {peer,state}=openBackend();const handler=createInvoiceNoticeTransport({enabled:true,authOrigin:'http://127.0.0.1:1',apiKey:'fixture',fetchAuth:auth,connect:()=>peer});
+ const reply=await handler(openingRequest());assert.equal(reply.status,200);const value=await reply.json();
+ assert.equal(value.operation.local_document_id,sid);assert.equal(value.operation.revision,3);assert.equal(value.operation.expected_hash,operation.expected_hash);
+ assert.equal(value.source_revision,sourceRevision);assert.equal(value.preview.expected_command.document_id,document);
+ assert.notEqual(value.operation.request_id,actor);assert.equal(state.committed,1);assert.equal(state.ends,1);
+});
+test('zero/multiple/collapsed local mapping rolls back the issued ticket without commit',async()=>{
+ for(const [count,alter] of [[0,{}],[2,{}],[1,{local_document_id:document}],[1,{company_id:sid}]]){
+  const {peer,state}=openBackend(count,alter);const handler=createInvoiceNoticeTransport({enabled:true,authOrigin:'http://127.0.0.1:1',apiKey:'fixture',fetchAuth:auth,connect:()=>peer});
+  assert.equal((await handler(openingRequest())).status,403);assert.equal(state.committed,0);assert.equal(state.ends,1);
+  assert.equal(state.queries.includes('rollback'),true);assert.equal(state.queries.some(q=>q.includes('ticket_from_notification')),true);
+ }
+});
+test('open refuses client-supplied operation and hash before Auth',async()=>{
+ let calls=0;const handler=createInvoiceNoticeTransport({enabled:true,authOrigin:'http://127.0.0.1:1',apiKey:'fixture',fetchAuth:()=>{calls++;},connect:()=>{calls++;}});
+ assert.equal((await handler(openingRequest({expected_hash:'f'.repeat(64)}))).status,400);assert.equal(calls,0);
+});

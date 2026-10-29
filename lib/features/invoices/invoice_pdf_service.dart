@@ -1029,12 +1029,12 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
   late final _noticeController = invoiceNoticeApprovalReleased && SupabaseBackend.isInitialized
       ? createInvoiceNoticeCandidateController(client: SupabaseBackend.client,
           enabled: invoiceNoticeApprovalReleased,
-          actor: () => SupabaseBackend.client.auth.currentUser?.id,
-          session: () => SupabaseBackend.client.auth.currentSession?.accessToken)
+          invoiceId: _singleInvoice?.invoiceId ?? '',
+          sourceRevision: _singleInvoice?.documentUpdatedAt ?? '')
       : null;
 
   @override
-  void dispose() { _noticeController?.invalidate(); _actorLease.dispose(); super.dispose(); }
+  void dispose() { _noticeController?.dispose(); _actorLease.dispose(); super.dispose(); }
 
   @override
   void initState() {
@@ -1329,7 +1329,8 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                 fromNotification: widget.approvalFromNotification,
                 busy: _approving,
                 onLegacyApprove: invoiceNoticeApprovalReleased ? null : _approve,
-                controller: _noticeController,
+                controller: null,
+                recoveryController: _noticeController,
                 notificationId: widget.approvalNotificationId ?? '',
                 invoiceId: _singleInvoice?.invoiceId ?? '',
                 revision: _singleInvoice?.documentUpdatedAt ?? '',

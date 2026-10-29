@@ -3,6 +3,10 @@ on:
   pull_request:
     paths:
       - 'tool/invoice_notice_transport/**'
+      - 'lib/features/invoices/invoice_notice_candidate_rpc.dart'
+      - 'lib/features/invoices/invoice_notice_recovery_controller.dart'
+      - 'lib/features/invoices/invoice_notice_approval_panel.dart'
+      - 'test/invoice_notice_app_transport_e2e_test.dart'
       - 'tool/trade_document_notice_seal_fixture.mjs'
       - 'tool/trade_document_auth_api_gotrue_e2e.mjs'
       - 'tool/trade_document_auth_fixture_context.mjs'
@@ -28,8 +32,16 @@ jobs:
       - run: npm ci --ignore-scripts --no-audit --no-fund --prefix tool/security/fixture_dependencies
       - run: node --test tool/invoice_notice_transport/handler.test.mjs
       - run: node tool/invoice_notice_transport/verify_gotrue.mjs --check-generated
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/invoices/invoice_notice_candidate_rpc.dart lib/features/invoices/invoice_notice_recovery_controller.dart lib/features/invoices/invoice_notice_approval_panel.dart lib/features/invoices/invoice_pdf_service.dart test/invoice_notice_app_transport_e2e_test.dart
       - name: Actual GoTrue bearer and private PG with lost HTTP commit response
         env:
           SKO_TRADE_DOCUMENT_REAL_AUTH_HOOK: contract-v1
           SKO_INVOICE_NOTICE_TRANSPORT_HOOK: contract-v1
+          SKO_INVOICE_NOTICE_APP_HOOK: contract-v1
         run: node tool/invoice_notice_transport/verify_gotrue.mjs

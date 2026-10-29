@@ -54,6 +54,7 @@ export async function verifyInvoiceNoticeTransport(db,c){
   assert.notEqual(anotherClaims.session_id,ownerClaims.session_id);
   check((await post('result',operation,another)).status,403);
   check((await post('result',operation)).status,200);
+  if(process.env.SKO_INVOICE_NOTICE_APP_HOOK==='contract-v1')await (await import('./app_fixture.mjs')).verifyInvoiceNoticeApp(db,c,context);
   const logout=await request('/auth/v1/logout?scope=local',{token:tokens.owner});assert.ok([200,204].includes(logout.status));
   check((await db.query('select count(*)::int n from auth.sessions where id=$1',[ownerClaims.session_id])).rows[0].n,0);
   assert.ok([401,403].includes((await post('result',operation)).status));
