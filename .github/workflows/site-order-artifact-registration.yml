@@ -5,7 +5,7 @@ on:
       - 'docs/review/site-order-artifact-registration/**'
       - 'tool/site_order_artifact_registration_fixture.mjs'
       - 'tool/fixtures/site_order_master_gate.fixture.sql'
-      - 'tool/verify_trade_document_bound_seal_consent.mjs'
+      - 'tool/verify_site_order_artifact_registration.mjs'
       - '.github/workflows/site-order-artifact-registration.yml'
 permissions:
   contents: read
@@ -34,6 +34,7 @@ jobs:
           node-version: '22.21.0'
       - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts
       - run: node --check tool/site_order_artifact_registration_fixture.mjs
+      - run: node --check tool/verify_site_order_artifact_registration.mjs
       - name: Reuse actual consent candidates and verify private registration
         env:
           SKO_CONFIRMED_TERMS_HOOK: content-v1
@@ -43,8 +44,8 @@ jobs:
           SKO_CONSENT_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_document_consent_fixture
         run: |
           if [ '${{ matrix.engine }}' = 'postgres' ]; then
-            node tool/verify_trade_document_bound_seal_consent.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js" postgres
+            node tool/verify_site_order_artifact_registration.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js" postgres
           else
-            node tool/verify_trade_document_bound_seal_consent.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
+            node tool/verify_site_order_artifact_registration.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
           fi
       - run: git diff --exit-code -- tool/security/fixture_dependencies/package.json tool/security/fixture_dependencies/package-lock.json

@@ -170,10 +170,5 @@ await db.exec(await fs.readFile(new URL('../supabase/migrations/20261014124714_m
   if(process.env.SKO_MONTHLY_PAYMENT_REVIEW_HOOK!=='contract-v1')throw Error('unknown monthly review fixture hook');
   await (await import('./trade_document_monthly_review_fixture.mjs')).verifyMonthlyReview(db,{id,A,B,C,UA,UB,UV,UC,PARTNER,CUSTOMER,actor,q,check,deny,localId,render,upload,openNativePeer,confirmedTerms});
  }
- if(process.env.SKO_SITE_ORDER_ARTIFACT_REGISTRATION_HOOK){
-  if(process.env.SKO_SITE_ORDER_ARTIFACT_REGISTRATION_HOOK!=='contract-v1')throw Error('unknown site artifact registration fixture hook');
-  await (await import('./site_order_artifact_registration_fixture.mjs')).verifySiteOrderArtifactRegistration(db,
-   {id,A,B,C,UA,UB,UV,UC,actor,q,prepare,preview,decide,confirmedTerms});
- }
  console.log('PASS '+n+' bound consent checks; separate company local IDs and directional kinds, issuer-only explicit seal consent, identical received copy without extra approval, official v1/v2 source, change/replay/rotation/denial, actual attachment binding, no parent financial writes; private invoice adapter separately checked; public API/UI/monthly-payment production rollout NOT PERFORMED');
 }finally{await db.close();}

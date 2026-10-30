@@ -67,6 +67,10 @@ sealフラグは受け取らない。登録PDFのhashはDBがbyteaの実内容�
 内部renderer commandが承認済みevidenceだけを読んでbytesを生成することが必要。
 生成処理が未提供なので、SQL単独を本番適用したりcapabilityをONにしない。
 
+テストは専用driverが既存canonical manifestの全blobを照合し、元harnessを変更せず
+一時moduleへ追加fixture呼び出しだけを挿入して実行する。終了時に一時moduleは削除。
+旧source-bound gateのmanifestや原本harnessの固定hashを緩和・更新しない。
+
 ## 実測
 
 2026-10-30 PGliteで新しい登録fixture **23 checks passed**。
