@@ -1,0 +1,34 @@
+{
+  "source_commit": "2d9e02981d02d2f9e4a017f65af1af84a3a8394a",
+  "status": "review-only, production HOLD; not an executable installer",
+  "ordered_existing_sources": [
+    {
+      "path": "docs/review/trade-document-terms/save-guard.sql.review-only",
+      "sha256": "e5967ad6b5d54f413ba7db94887423f1f5c98057cafae6c1abed318ce171da5a"
+    },
+    {
+      "path": "docs/review/trade-document-form-input/server-save.sql.review-only",
+      "sha256": "d57918a806b72e0d52299a3e175c9841258eaa71ce18f2abaab0a7877bd62178"
+    },
+    {
+      "path": "docs/review/trade-document-month-end/server-upgrade.sql.review-only",
+      "sha256": "bc53ac3daa85452c032d2e2880ca334fe1ce4aee4601cf9cc0be9c6d09818a79"
+    }
+  ],
+  "accepted_core_source_md5": "ebcc70935938482054943560390038b2",
+  "accepted_core_saver_md5": "82fa37936aea1e0199e1b359e1379d65",
+  "accepted_optional_bank_source_md5": "1f877168bc5767b2efb6946a19c3d198",
+  "accepted_optional_bank_saver_md5": "b7711fe5caf45cf8afabc39856a86a0e",
+  "after_terms_saver_md5": "04501fda2c30a17257142dc02fc87b6d",
+  "v1_validator_md5": "940f73c7301d47204382bed1aa92ea4e",
+  "v1_saver_md5": "7a998158bcc2cc6da7c2f31c21559404",
+  "v2_core_source_md5": "f46a4457a520eec9f28bfea30499dd97",
+  "v2_required_contact_predecessor_md5": "06ce79748602c8ca5aebda226bc7f742",
+  "constraints": [
+    "Fresh complete catalog/definition comparison and restoration material remain required; MD5 pins alone are not full deployment approval.",
+    "Apply only the missing predecessors after observing current actual state. Never replay blindly.",
+    "Production application, master enabling and financial-row repair are separate scopes.",
+    "No saved attachment rewrite; no deletion of private delegates during restoration.",
+    "Stop writers and finish inflight operations before function-only restoration; after any schema2 receipt exists, legacy saver restoration requires separate compatibility review."
+  ]
+}
