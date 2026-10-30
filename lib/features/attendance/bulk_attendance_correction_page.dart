@@ -4,6 +4,11 @@ import '../daily_reports/signature_capture_page.dart';
 import 'attendance_correction_repository.dart';
 import 'paid_leave_correction_page.dart';
 
+@visibleForTesting
+Widget attendanceCorrectionEditorForTesting({required AttendanceCorrectionEntry entry,
+  required Map<String, dynamic> proposed}) =>
+    _AttendanceCorrectionEditPage(entry: entry, proposed: proposed);
+
 class BulkAttendanceCorrectionPage extends StatefulWidget {
   const BulkAttendanceCorrectionPage({super.key});
 
@@ -541,7 +546,9 @@ class _AttendanceCorrectionEditPageState
       'overtimeHours': parsedOvertime,
       'earlyHours': parsedEarly,
       'nightHours': parsedNight,
-      'allowanceYen': 0,
+      // This editor does not expose the legacy amount. Preserve it when only
+      // hours, names or notes are edited instead of silently clearing money.
+      'allowanceYen': widget.proposed['allowanceYen'] ?? widget.entry.allowanceYen,
       'allowanceNames': allowanceNames,
       'notes': _notes.text.trim(),
     });

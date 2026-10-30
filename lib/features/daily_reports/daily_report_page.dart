@@ -27,6 +27,7 @@ import 'daily_report_pdf_service.dart';
 import 'daily_report_month_page.dart';
 import '../operations/vehicle_driver_meter_page.dart';
 import '../attendance/paid_work_hours_repository.dart';
+import '../attendance/attendance_protected_routes.dart';
 import '../attendance/paid_work_hours_report_section.dart';
 import 'daily_report_pending_notice.dart';
 import 'daily_report_repository.dart';
@@ -63,6 +64,7 @@ String dailyReportActionErrorMessage(Object error) {
     'shared_report_source_conflict': '勤務原本が別の日報に関連付いています。別の日報の記録は移動せず、管理者に確認してください。',
     'explicit_report_finalized_payroll_protected': '対象月の給与が確定済みのため保存できません。確定済みの給与は変更せず、管理者に確認してください。',
     'explicit_report_finalized_invoice_protected': '対象月の請求書が確定済みのため保存できません。確定済みの請求書は変更せず、管理者に確認してください。',
+    'explicit_report_finalized_edit_requires_attendance_management': 'この日報は確定済みのため、日報の編集承認では変更できません。権限のある管理者が「勤怠管理」で対象日の勤務・手当を修正してください。',
     'explicit_report_payroll_projection_missing': '給与への反映結果を確認できないため、日報の確定を保留しました。管理者に給与設定を確認してもらってください。',
     'explicit_report_invoice_projection_missing': '請求への反映結果を確認できないため、日報の確定を保留しました。管理者に請求先と請求設定を確認してもらってください。',
     'explicit_report_payroll_projection_blocked': '給与計算に必要な設定が不足しているため保存できません。管理者に個別給与設定と手当の設定を確認してもらってください。',
@@ -198,6 +200,10 @@ class _DailyReportPageState extends State<DailyReportPage> {
   bool _loading = true;
   bool _saving = false;
   bool _approvedEditAvailable = false;
+  String? _approvedEditStartFailure;
+  Object? _approvedEditFailureTarget;
+  Object get _approvedEditTarget => (_repository?.currentActorId, _report?.companyId,
+    _report?.id, _date, _siteId, _routeAssignmentId);
   final _editSessions = DailyReportEditSessionStore();
   DailyReportEditSession? _editSession;
   bool _editSessionUnverified = false;
@@ -1308,7 +1314,12 @@ class _DailyReportPageState extends State<DailyReportPage> {
 
   Future<String?> _saveDraft({bool ownsBusyState = true,
       DailyReportEditSession? approvedReset, bool quiet = false}) async {
-    if (_sharedContext?.financialTransitionPending == true) { return _preparedFinancialReportId(); }
+    if (_sharedContext?.financialTransitionPending == true) {
+      if (approvedReset != null) {
+        throw StateError('勤務実績の確認・再サインが進行中のため、編集を開始できません。日報を再読み込みし、勤務実績とサインの状態を管理者に確認してください。');
+      }
+      return _preparedFinancialReportId();
+    }
     if (_managementHold) return null;
     if (ownsBusyState && _saving) return null;
     final resettingApprovedReport = approvedReset != null && !_visitReport &&
@@ -1342,6 +1353,9 @@ class _DailyReportPageState extends State<DailyReportPage> {
     );
     if (!_visitReport && !_partialSharedDraftAllowed && missingOdometer.isNotEmpty) {
       final names = missingOdometer.map((worker) => worker.workerName).join('、');
+      if (approvedReset != null) {
+        throw StateError('$names の退勤時走行距離を確認できないため、編集を開始できません。管理者に車両記録を確認してもらってください。');
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -1399,6 +1413,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
       return id;
     } catch (error) {
       _rememberManagementHold(error);
+      if (approvedReset != null) rethrow;
       if (!mounted) return null;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('${SkoLanguageController.tr('登録できませんでした')}: ${dailyReportActionErrorMessage(error)}'),
@@ -1963,11 +1978,16 @@ class _DailyReportPageState extends State<DailyReportPage> {
     final repository = _repository;
     final report = _report;
     final actor = repository?.currentActorId;
-    if (_saving || _visitReport || repository == null || report == null ||
+    final editTarget = _approvedEditTarget;
+    if (_saving || _visitReport || _sharedContext?.requiresAttendanceManagement == true || repository == null || report == null ||
         !report.signed || !_approvedEditAvailable || actor == null) {
       return;
     }
-    setState(() => _saving = true);
+    setState(() {
+      _saving = true;
+      _approvedEditStartFailure = null;
+      _approvedEditFailureTarget = null;
+    });
     try {
       final confirmed = await showDialog<bool>(
         context: context,
@@ -2023,14 +2043,27 @@ class _DailyReportPageState extends State<DailyReportPage> {
         SkoLanguageController.tr('編集できる状態になりました。編集後は報告者・責任者のサインを登録してください。'),
       )));
     } catch (error) {
-      if (mounted && repository.currentActorId == actor) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('編集を開始できませんでした: $error')),
-        );
+      if (mounted && repository.currentActorId == actor && _approvedEditTarget == editTarget) {
+        setState(() {
+          _approvedEditFailureTarget = editTarget;
+          _approvedEditStartFailure = dailyReportActionErrorMessage(error);
+        });
       }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  Future<void> _openFinalizedAttendanceManagement() async {
+    final shared = _sharedContext;
+    final target = _approvedEditTarget;
+    if (_saving || !_signed || shared?.requiresAttendanceManagement != true ||
+        shared?.canManageAttendance != true || shared?.reportId != _report?.id ||
+        shared?.companyId != _report?.companyId || shared?.actorId != _repository?.currentActorId) { return; }
+    await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) =>
+      attendanceManagementDestination(initialDate: _date,
+        initialWorkerId: _workers.length == 1 ? _workers.single.workerId : null)));
+    if (mounted && _approvedEditTarget == target) await _loadSelectedSite();
   }
 
   String _signatureFingerprint(Object? signature) => jsonEncode(
@@ -2814,14 +2847,39 @@ class _DailyReportPageState extends State<DailyReportPage> {
                           if (_documentComplete)
                             const Padding(padding: EdgeInsets.symmetric(vertical: 8),
                               child: Text('日報のサインは保存済みです。給与・請求への反映には、勤務実績の確認と新しいサインが必要です。')),
-                          if (_signed && !_visitReport && _approvedEditAvailable)
+                          if (_approvedEditStartFailure != null && _approvedEditFailureTarget == _approvedEditTarget)
+                            Card(key: const ValueKey('daily-report-approved-edit-start-failure'),
+                              child: Padding(padding: const EdgeInsets.all(12),
+                                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                                  const Text('編集開始を確認できません', style: TextStyle(fontWeight: FontWeight.w800)),
+                                  const SizedBox(height: 8),
+                                  Text(_approvedEditStartFailure!),
+                                  const SizedBox(height: 8),
+                                  const Text('サインが残る間は変更できません。日報を再読み込みし、保存済みの内容とサインを確認してください。'),
+                                  TextButton.icon(onPressed: _saving ? null : _loadSelectedSite,
+                                    icon: const Icon(Icons.refresh), label: const Text('日報を再読み込み')),
+                                ]))),
+                          if (_signed && !_visitReport && _sharedContext?.requiresAttendanceManagement == true)
+                            Card(key: const ValueKey('daily-report-finalized-management-only'),
+                              child: Padding(padding: const EdgeInsets.all(12),
+                                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                                  const Text('確定済み日報の修正', style: TextStyle(fontWeight: FontWeight.w800)),
+                                  const SizedBox(height: 8),
+                                  const Text('勤務時間・会社共通手当の変更は「勤怠管理」で行います。日報の編集承認では変更できません。'),
+                                  if (_sharedContext?.canManageAttendance == true)
+                                    OutlinedButton.icon(key: const ValueKey('daily-report-open-attendance-management'),
+                                      onPressed: _saving ? null : _openFinalizedAttendanceManagement,
+                                      icon: const Icon(Icons.manage_accounts_outlined), label: const Text('勤怠管理を開く'))
+                                  else const Text('権限のある管理者に対象日の修正を依頼してください。'),
+                                ]))),
+                          if (_signed && !_visitReport && _sharedContext?.requiresAttendanceManagement != true && _approvedEditAvailable)
                             FilledButton.icon(
                               key: const ValueKey('daily-report-begin-approved-edit'),
                               onPressed: _managementHold || _saving ? null : _beginApprovedEdit,
                               icon: const Icon(Icons.edit_outlined),
                               label: Text(SkoLanguageController.tr('承認済みの編集を開始')),
                             ),
-                          if (_signed && !_visitReport && !_approvedEditAvailable)
+                          if (_signed && !_visitReport && _sharedContext?.requiresAttendanceManagement != true && !_approvedEditAvailable)
                             FilledButton.tonalIcon(
                               onPressed: _saving ? null : _requestEdit,
                               icon: const Icon(Icons.edit_outlined),
