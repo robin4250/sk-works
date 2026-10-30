@@ -5,7 +5,7 @@
       "name": "save_route_visit_report_signature",
       "identity": "p_report_id uuid, p_role text, p_signer_name text, p_signature_json jsonb",
       "before": "c00c361151bea9b5a00a73001797c663",
-      "after": "3ecc09cc84a6009686089bc869fa3dbc"
+      "after": "64a1a86a68aa2d225e4a3106389e9ce3"
     },
     {
       "schema": "public",
@@ -23,6 +23,6 @@
     }
   ],
   "historical_has_signature_unchanged": "ed912d8e9bff5f6ac316d40e60762236",
-  "validator_sha256": "37ad0dfb5c8414bc34ab0dabe2d553fcfff65a1f7ce32c61955d17a925719757",
-  "candidate_sha256": "2ed06e2dacc7f60619320dde0480a4938af1f0f18f6e26d17f9591c175773418"
+  "validator_sha256": "bb841cd9334b26c4a6e277d8f8b91c190a41ae7ed8f86b23b24491e7d29093ed",
+  "candidate_sha256": "5304ac823c233b69adc34fe94cdd426e9f625373c7c5a2e4cf00301046a24986"
 }

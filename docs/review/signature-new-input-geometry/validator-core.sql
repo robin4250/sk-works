@@ -6,7 +6,7 @@ returns void language plpgsql immutable set search_path='' as $$
 declare strokes jsonb;stroke jsonb;point jsonb;keys text[];has_ink boolean:=false;
  total_points integer:=0;with_dimensions boolean;dimensions_mode boolean;
  width_value numeric:=400;height_value numeric:=120;px double precision;py double precision;
- previous_x double precision;previous_y double precision;line_length double precision;
+ previous_x double precision;previous_y double precision;delta_x double precision;delta_y double precision;line_length double precision;
 begin
  if p_value is null or jsonb_typeof(p_value) is distinct from 'object' or octet_length(p_value::text)>4194304 then
   raise sqlstate '22023' using message='new_signature_input_invalid';end if;
@@ -44,7 +44,8 @@ begin
    end if;
    px:=(point->>'x')::double precision;py:=(point->>'y')::double precision;
    if previous_x is not null then
-    line_length:=line_length+sqrt(power((px-previous_x)*width_value::double precision,2)+power((py-previous_y)*height_value::double precision,2));
+    delta_x:=(px-previous_x)*width_value::double precision;delta_y:=(py-previous_y)*height_value::double precision;
+    line_length:=line_length+sqrt(delta_x*delta_x+delta_y*delta_y);
     if line_length>=1 then has_ink:=true;end if;
    end if;
    previous_x:=px;previous_y:=py;

@@ -11,13 +11,17 @@ for f in sources['writers']:
   marker="  if shared_daily_report_private.document_mode(r.id) then\n    update shared_daily_report_private.work_protocol"
   replacement="  perform signature_new_input_private.require_ink(p_signature_json);\n"+marker
  elif f['schema']=='private':
-  marker=" if p_role='reporter' and r.representative_signature_json is null then"
-  replacement=" perform signature_new_input_private.require_ink(p_signature_json);\n"+marker
+  marker=" for stroke in select value from jsonb_array_elements(p_signature_json->'strokes') loop"
+  replacement=" if r.status is distinct from 'completed' and r.status is distinct from 'skipped' and ((p_role='reporter' and r.representative_signature_json is null) or p_role='responsible') then perform signature_new_input_private.require_ink(p_signature_json);end if;\n"+marker
  else:
   marker="  checkout_receipts:=company_checkout_allowance_private.capture_report(p_report_id);"
   replacement="  perform signature_new_input_private.require_financial_signature(p_signature_json);\n"+marker
  assert definition.count(marker)==1
- changed=definition.replace(marker,replacement);fragments.append(changed+';\n')
+ changed=definition.replace(marker,replacement)
+ if f['schema']=='private' and f['proname']=='save_route_visit_report_signature':
+  assert changed.index('perform signature_new_input_private.require_ink')<changed.index('for stroke in select')
+  assert changed.index('return explicit_route_finalization_private.decorate')<changed.index('perform signature_new_input_private.require_ink')
+ fragments.append(changed+';\n')
  pins.append({'schema':f['schema'],'name':f['proname'],'identity':f['identity'],'before':f['source_md5'],'after':hashlib.md5(body(changed).encode()).hexdigest()})
 core=(root/'validator-core.sql').read_text()
 head="-- REVIEW ONLY. Source-pinned new signature input validation. No production authorization.\nbegin;set local lock_timeout='3s';set local statement_timeout='30s';\ndo $pre$ begin\n if current_user<>'postgres' or to_regnamespace('signature_new_input_private') is not null then raise exception 'new_signature_input_install_unavailable';end if;\n"

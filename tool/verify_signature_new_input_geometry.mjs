@@ -6,8 +6,10 @@ import {createHash} from 'node:crypto';
 const url=new URL(process.env.SKO_SIGNATURE_INPUT_FIXTURE_URL??'postgres://invalid');
 assert.equal(process.env.CI,'true');assert.equal(url.hostname,'127.0.0.1');assert.equal(url.username,'postgres');
 assert.equal(url.password,'fixture-only');assert.equal(url.pathname,'/sko_signature_input_fixture');assert.equal(url.port,'5432');
+assert.ok(['postgres:','postgresql:'].includes(url.protocol));assert.equal(url.search,'');assert.equal(url.hash,'');
 assert.ok(!Object.keys(process.env).some(k=>/^SUPABASE_(ACCESS_TOKEN|DB_PASSWORD|URL|SERVICE_ROLE_KEY|SECRET_KEY|PROJECT_REF)$/.test(k)));
-const pg=(await import(process.argv[2])).default;const db=new pg.Client({connectionString:url.href});await db.connect();
+const pg=(await import(process.argv[2])).default;const db=new pg.Client({connectionString:url.href});
+assert.equal(db.connectionParameters.host,'127.0.0.1');assert.equal(db.connectionParameters.database,'sko_signature_input_fixture');assert.equal(db.connectionParameters.user,'postgres');assert.equal(Number(db.connectionParameters.port),5432);await db.connect();
 let checks=0,phase='setup',sequence=100;const id=n=>`00000000-0000-0000-0000-${String(n).padStart(12,'0')}`;
 const q=async(s,p=[]) => (await db.query(s,p)).rows[0]?.v;const eq=(a,b,m)=>{assert.deepEqual(a,b,m);checks++;};
 const reject=async(action,pattern=/signature|invalid|input|range|json/i)=>{await assert.rejects(action,pattern);checks++;};
@@ -44,7 +46,7 @@ function inputFor(row){
  throw Error('Unknown fixture generator');
 }
 try{
- eq(Number(await q("select current_setting('server_version_num') v"))>=170000,true,'Native PG17 required');
+ const version=Number(await q("select current_setting('server_version_num') v"));eq(version>=170000&&version<180000,true,'Native PG17 required');
  eq(await q("select count(*)::int v from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public'"),0,'Fresh disposable database only');
  await db.query(`create role anon;create role authenticated;create role service_role;
  create schema auth;create schema private;create schema payroll_scope_private;create schema explicit_report_finalization_private;
@@ -60,7 +62,7 @@ try{
  create table daily_report_workers(report_id uuid,worker_id uuid,overtime_hours numeric default 0,early_hours numeric default 0,night_hours numeric default 0,allowance_amount integer default 0,allowance_label text,work_category text default 'day',primary key(report_id,worker_id));
  create table attendance_entries(id uuid primary key default gen_random_uuid(),company_id uuid,work_date date,worker_id uuid,site_id uuid,route_assignment_id uuid,
  base_man_days numeric,overtime_hours numeric,early_hours numeric,night_hours numeric,allowance_amount integer,notes text,work_category text,
- allowance_names text[],source_report_id uuid,company_allowance_receipt_id uuid,created_by uuid,updated_by uuid,created_at timestamptz default now());
+ allowance_names text[],source_report_id uuid,company_allowance_receipt_id uuid,created_by uuid,updated_by uuid,created_at timestamptz default now(),updated_at timestamptz default now());
  create table shared_daily_report_private.work_protocol(report_id uuid primary key,document_only boolean);
  create table private.route_visit_reports(id uuid primary key,company_id uuid,created_by uuid,workers jsonb,status text,site_name text,
  representative_signature_json jsonb,representative_signer_name text,supervisor_signature_json jsonb,supervisor_signer_name text,
@@ -90,9 +92,10 @@ try{
   for(const acl of f.attributes.proacl??[]){const role=acl.split('=')[0];if(role==='postgres')continue;assert.match(role,/^(authenticated|service_role)$/);await db.query('grant execute on function '+identity+' to '+role);}
  }
  for(const f of fixture.shared_entry_points){eq(md5(body(f.definition)),f.source_md5,'Exact shared source preserved');assert.ok(f.definition.includes('perform private.save_daily_report_signature('),'Observed shared role entry converges on the validated writer');checks++;}
- const old=await report(),oldVisit=await visit();
+ const old=await report(),oldVisit=await visit(),legacyVisit=await visit();
  await db.query("update daily_reports set status='signed',signature_json=$2::jsonb,representative_signature_json=$2::jsonb,supervisor_signature_json=$2::jsonb,signer_name='Old synthetic',representative_signer_name='Old synthetic',supervisor_signer_name='Old synthetic' where id=$1",[old,JSON.stringify(dots)]);
  await db.query("update private.route_visit_reports set status='reporter_signed',explicit_enabled=true,representative_signature_json=$2::jsonb,representative_signer_name='Old synthetic' where id=$1",[oldVisit,JSON.stringify(dots)]);
+ await db.query("update private.route_visit_reports set status='reporter_signed',representative_signature_json=$2::jsonb,representative_signer_name='Old synthetic' where id=$1",[legacyVisit,JSON.stringify(dots)]);
  const oldRows=await snapshot();const untouchedHistoryHash=await q("select md5(prosrc) v from pg_proc where oid='checkout_report_registration_private.has_signature(text,jsonb)'::regprocedure");
  phase='old-server-dot-acceptance-red';const red=await report();await ordinary(red,'representative',JSON.stringify(dots));
  eq(await q('select representative_signature_json v from daily_reports where id=$1',[red]),dots,'RED current server accepts isolated dots before the candidate');
@@ -103,6 +106,7 @@ try{
  eq(await q('select checkout_report_registration_private.has_signature($1,$2::jsonb) v',['Old synthetic',JSON.stringify(dots)]),true,'Old dots retain historical interpretation; no retroactive global validator change');
  const returned=await call(owner,'select public.save_route_visit_report_signature($1,$2,$3,$4::jsonb) v',[oldVisit,'reporter','Old synthetic',JSON.stringify(dots)]);
  eq(returned.representative_signature_json,dots,'Existing exact read-only route acknowledgement still returns the original dots');
+ const legacyBefore=await snapshot();const legacyAck=await route(legacyVisit,'reporter',JSON.stringify(dots));eq(legacyAck.representative_signature_json,dots,'Legacy nonterminal reporter exact retry retains old dots');eq(await snapshot(),legacyBefore,'Legacy reporter read-only acknowledgement makes no write');
  eq(await q('select representative_signature_json v from daily_reports where id=$1',[old]),dots,'Historical original remains readable and unmodified');
  for(const row of cases){phase='new-input-'+row.name;const input=inputFor(row);
   for(const [name,prepare,invoke] of [

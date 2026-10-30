@@ -16,7 +16,7 @@ returns void language plpgsql immutable set search_path='' as $$
 declare strokes jsonb;stroke jsonb;point jsonb;keys text[];has_ink boolean:=false;
  total_points integer:=0;with_dimensions boolean;dimensions_mode boolean;
  width_value numeric:=400;height_value numeric:=120;px double precision;py double precision;
- previous_x double precision;previous_y double precision;line_length double precision;
+ previous_x double precision;previous_y double precision;delta_x double precision;delta_y double precision;line_length double precision;
 begin
  if p_value is null or jsonb_typeof(p_value) is distinct from 'object' or octet_length(p_value::text)>4194304 then
   raise sqlstate '22023' using message='new_signature_input_invalid';end if;
@@ -54,7 +54,8 @@ begin
    end if;
    px:=(point->>'x')::double precision;py:=(point->>'y')::double precision;
    if previous_x is not null then
-    line_length:=line_length+sqrt(power((px-previous_x)*width_value::double precision,2)+power((py-previous_y)*height_value::double precision,2));
+    delta_x:=(px-previous_x)*width_value::double precision;delta_y:=(py-previous_y)*height_value::double precision;
+    line_length:=line_length+sqrt(delta_x*delta_x+delta_y*delta_y);
     if line_length>=1 then has_ink:=true;end if;
    end if;
    previous_x:=px;previous_y:=py;
@@ -98,6 +99,7 @@ begin
  if p_role not in ('reporter','responsible') or p_role is null or nullif(trim(p_signer_name),'') is null
  or p_signature_json is null or jsonb_typeof(p_signature_json)<>'object'
  or jsonb_typeof(p_signature_json->'strokes') is distinct from 'array' or jsonb_array_length(p_signature_json->'strokes')=0 then raise exception 'name and signature required'; end if;
+ if r.status is distinct from 'completed' and r.status is distinct from 'skipped' and ((p_role='reporter' and r.representative_signature_json is null) or p_role='responsible') then perform signature_new_input_private.require_ink(p_signature_json);end if;
  for stroke in select value from jsonb_array_elements(p_signature_json->'strokes') loop
   if jsonb_typeof(stroke) is distinct from 'array' or jsonb_array_length(stroke)=0 then raise exception 'invalid signature stroke'; end if;
   for point in select value from jsonb_array_elements(stroke) loop
@@ -106,7 +108,6 @@ begin
   end loop;
  end loop;
  if r.status in ('completed','skipped') then return explicit_route_finalization_private.decorate(to_jsonb(r)); end if;
- perform signature_new_input_private.require_ink(p_signature_json);
  if p_role='reporter' and r.representative_signature_json is null then
   update private.route_visit_reports set representative_signer_name=trim(p_signer_name),representative_signature_json=p_signature_json,status='reporter_signed',updated_at=now() where id=r.id returning * into r;
  elsif p_role='responsible' then
@@ -304,11 +305,11 @@ $function$
 do $post$ begin
  if not exists(select 1 from pg_namespace n where n.nspname='signature_new_input_private' and pg_get_userbyid(n.nspowner)='postgres' and n.nspacl is not distinct from ARRAY['postgres=UC/postgres']::aclitem[]) then raise exception 'new_signature_input_schema_attributes_changed';end if;
  if exists(select 1 from new_signature_original_attributes o left join pg_proc p on p.oid=o.oid where p.oid is null or (to_jsonb(p)-'prosrc') is distinct from o.attributes) then raise exception 'new_signature_input_existing_attributes_changed';end if;
- if not exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='private' and p.proname='save_route_visit_report_signature' and pg_get_function_identity_arguments(p.oid)='p_report_id uuid, p_role text, p_signer_name text, p_signature_json jsonb' and md5(p.prosrc)='3ecc09cc84a6009686089bc869fa3dbc') then raise exception 'new_signature_input_updated_body_differ';end if;
+ if not exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='private' and p.proname='save_route_visit_report_signature' and pg_get_function_identity_arguments(p.oid)='p_report_id uuid, p_role text, p_signer_name text, p_signature_json jsonb' and md5(p.prosrc)='64a1a86a68aa2d225e4a3106389e9ce3') then raise exception 'new_signature_input_updated_body_differ';end if;
  if not exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='sign_daily_report' and pg_get_function_identity_arguments(p.oid)='p_report_id uuid, p_signer_name text, p_signature_json jsonb' and md5(p.prosrc)='f350e07307e2370a1773b1826ccbea3f') then raise exception 'new_signature_input_updated_body_differ';end if;
  if not exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='private' and p.proname='save_daily_report_signature' and pg_get_function_identity_arguments(p.oid)='p_report_id uuid, p_role text, p_signer_name text, p_signature_json jsonb' and md5(p.prosrc)='1940a5f58cb2565d7e7a825a2ca01680') then raise exception 'new_signature_input_updated_body_differ';end if;
  if (select md5(prosrc) from pg_proc where oid='checkout_report_registration_private.has_signature(text,jsonb)'::regprocedure) is distinct from 'ed912d8e9bff5f6ac316d40e60762236' then raise exception 'new_signature_input_history_source_changed';end if;
- if not exists(select 1 from pg_proc p where p.oid='signature_new_input_private.require_ink(jsonb)'::regprocedure and md5(p.prosrc)='90439a920470807d09565a3d813be1e4' and pg_get_userbyid(p.proowner)='postgres' and not p.prosecdef and p.provolatile='i' and not p.proisstrict and p.proparallel='u' and not p.proleakproof and p.proconfig=ARRAY['search_path=""']::text[] and p.proacl is not distinct from ARRAY['postgres=X/postgres']::aclitem[]) then raise exception 'new_signature_input_helper_attributes_changed';end if;
+ if not exists(select 1 from pg_proc p where p.oid='signature_new_input_private.require_ink(jsonb)'::regprocedure and md5(p.prosrc)='e7eb2086b4ed5216f8cda4efaf43341e' and pg_get_userbyid(p.proowner)='postgres' and not p.prosecdef and p.provolatile='i' and not p.proisstrict and p.proparallel='u' and not p.proleakproof and p.proconfig=ARRAY['search_path=""']::text[] and p.proacl is not distinct from ARRAY['postgres=X/postgres']::aclitem[]) then raise exception 'new_signature_input_helper_attributes_changed';end if;
  if not exists(select 1 from pg_proc p where p.oid='signature_new_input_private.require_financial_signature(jsonb)'::regprocedure and md5(p.prosrc)='1b4f071096b8a2f412740699e0c4cf34' and pg_get_userbyid(p.proowner)='postgres' and not p.prosecdef and p.provolatile='i' and not p.proisstrict and p.proparallel='u' and not p.proleakproof and p.proconfig=ARRAY['search_path=""']::text[] and p.proacl is not distinct from ARRAY['postgres=X/postgres']::aclitem[]) then raise exception 'new_signature_input_helper_attributes_changed';end if;
 end $post$;
 commit;

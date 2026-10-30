@@ -1,6 +1,6 @@
 # 新規署名入力に限定したサーバー幾何検証候補
 
-本番HOLD。READ ONLY採取した実3writerを原典に、認証・会社・権限・入場条件と既存の読み取り専用ACKを保ったまま、新しい書き込み前へvalidator呼び出しを1行ずつ加える。shared submit／管理／承認済み責任者の入力は普通rolewriterへ収束する。直接呼べる旧finalizerも対象に含める。
+本番HOLD。READ ONLY採取した実3writerを原典に、認証・会社・権限・入場条件と既存の読み取り専用ACKを保ったまま、新しい書き込み前へvalidator呼び出しを加える。訪問の新規書き込みでは元のpoint全走査より先に資源上限を確認し、completed/skippedの旧読み取り経路と明示確定のexact ACKは元の位置・チェックのまま残す。shared submit／管理／承認済み責任者の入力は普通rolewriterへ収束する。直接呼べる旧finalizerも対象に含める。
 
 `checkout_report_registration_private.has_signature` は履歴の解釈であり、変更しない。旧原本・receipt・履歴・点だけの既保存署名を削除・修正・一括再判定しない。既存の保存済み署名を返す読み取り専用の正規ACKは維持する。新たに確定を書き込む要求には有効な筆跡が必要であり、旧点署名の再採用は拒否する。
 
