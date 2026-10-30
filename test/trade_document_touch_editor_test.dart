@@ -28,7 +28,7 @@ class Harness {
  int companyEdits=0;
 }
 Future<Harness> mount(WidgetTester t,{Size size=const Size(600,900),Map<String,dynamic>? payload,
- bool amount=false})async{
+ bool amount=false,bool extended=false})async{
  t.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
  t.view.devicePixelRatio=1;t.view.physicalSize=size;
  addTearDown(t.view.resetPhysicalSize);addTearDown(t.view.resetDevicePixelRatio);addTearDown(t.view.resetViewInsets);
@@ -36,7 +36,7 @@ Future<Harness> mount(WidgetTester t,{Size size=const Size(600,900),Map<String,d
  final initial=TradeDocumentFormDraft.fromPayload(payload??body(),allowAmountEditing:amount);
  await t.pumpWidget(MaterialApp(home:Builder(builder:(context)=>Scaffold(body:TextButton(
   onPressed:()=>Navigator.of(context).push<bool>(MaterialPageRoute(builder:(_)=>TradeDocumentTouchEditorPage(
-   initial:initial,requireScope:h.scope.check,scopeChanges:h.scope,canEdit:true,
+   initial:initial,requireScope:h.scope.check,scopeChanges:h.scope,canEdit:true,allowExtendedFields:extended,
    buildPreview:(_)async=>Uint8List.fromList([1]),
    onSave:(value)async{h.saves.add(value);await h.save?.call(value);},
    onEditOwnCompany:()=>h.companyEdits++))),child:const Text('開く'))))));
@@ -56,6 +56,22 @@ Future<void> pinch(WidgetTester t,Offset center)async{
  await t.pump(const Duration(milliseconds:16));await a.up();await b.up();await t.pumpAndSettle();
 }
 void main(){
+ testWidgets('month-end selection stays distinct from numeric 31 and saves only on explicit confirm',(t)async{
+  final h=await mount(t,extended:true);
+  await t.tap(target('cutoffs'));await t.pumpAndSettle();
+  await t.tap(find.widgetWithText(ChoiceChip,'末日'));await t.pumpAndSettle();
+  expect(h.saves,isEmpty);
+  await t.tap(confirm);await t.pumpAndSettle();
+  await t.tap(find.byKey(const Key('trade-touch-save')));await t.pumpAndSettle();
+  expect(h.saves.single['form_fields']['progress_cutoff_day'],'month_end');
+  expect(h.saves.single['form_fields']['schema'],2);expect(t.takeException(),isNull);
+ });
+ testWidgets('unavailable server capability explains month-end without silently saving 31',(t)async{
+  final h=await mount(t);
+  await t.tap(target('cutoffs'));await t.pumpAndSettle();
+  expect(t.widget<ChoiceChip>(find.widgetWithText(ChoiceChip,'末日')).onSelected,isNull);
+  expect(find.textContaining('末日の設定は'),findsOneWidget);expect(h.saves,isEmpty);
+ });
  testWidgets('approved paper has nine editable rows and trusted company source link',(t)async{
   final h=await mount(t);
   for(var i=0;i<9;i++){expect(target('row_$i'),findsOneWidget);}

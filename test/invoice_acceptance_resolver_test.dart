@@ -32,6 +32,18 @@ void main() {
   };
   final date = DateTime(2026, 2, 5);
 
+  test('fresh unlocked acceptance receives agreed defaults only with authorized v2 capability',(){
+    final data=workspace()..['form_fields_schema_version']=2;
+    final result=InvoiceAcceptanceResolver.resolve(data,issueDate:date)!;
+    final fields=result.payload['form_fields'];
+    expect(fields['schema'],2);expect(fields['progress_cutoff_day'],'month_end');
+    expect(fields['rows'][0]['quantity'],'1');expect(fields['rows'][0]['unit'],'人日');
+    expect(fields['rows'][0]['unit_price_yen'],isNull);expect(fields['rows'][0]['amount_yen'],isNull);
+    expect(result.payload['total_amount_yen'],110000);
+    expect((data['defaults'] as Map).containsKey('form_fields'),isFalse);
+    data['auto_generate']=false;expect(InvoiceAcceptanceResolver.resolve(data,issueDate:date),isNull);
+  });
+
   test(
     'unsaved draft uses authorized source and prose without mutating input',
     () {

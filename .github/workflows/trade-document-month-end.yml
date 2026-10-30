@@ -1,0 +1,91 @@
+name: Formal month-end contacts and defaults proof
+on:
+  pull_request:
+    paths:
+      - 'lib/domain/trade_document_form_draft.dart'
+      - 'lib/features/shared/*trade_document*'
+      - 'lib/features/invoices/invoice_*'
+      - 'lib/features/payroll/payment_order_resolver.dart'
+      - 'test/trade_document_*'
+      - 'docs/review/trade-document-month-end/**'
+      - 'tool/verify_trade_document_month_end.mjs'
+      - '.github/workflows/trade-document-month-end.yml'
+permissions:
+  contents: read
+jobs:
+  server-guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix: {runtime: [pglite, postgres], predecessor: [core, bank]}
+    services:
+      database:
+        image: postgres:17.6
+        env: {POSTGRES_USER: postgres, POSTGRES_PASSWORD: fixture-only, POSTGRES_DB: partner_bank_fixture}
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22.14.0'}
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
+      - if: matrix.runtime == 'pglite'
+        run: node tool/verify_trade_document_month_end.mjs "$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js" "${{ matrix.predecessor }}"
+      - if: matrix.runtime == 'postgres'
+        run: node tool/verify_trade_document_month_end.mjs "$GITHUB_WORKSPACE/docs/review/partner-company-bank-order/native-db.mjs" "${{ matrix.predecessor }}"
+        env: {PARTNER_BANK_TEST_DATABASE_URL: 'postgres://postgres:fixture-only@127.0.0.1:5432/partner_bank_fixture'}
+      - run: git diff --exit-code -- pubspec.yaml pubspec.lock tool/security/fixture_dependencies/package-lock.json
+  defaults-and-pdf:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: '3.47.5', channel: stable, cache: true}
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/domain/trade_document_form_draft.dart lib/features/shared/standalone_trade_document.dart lib/features/shared/standalone_trade_document_page.dart lib/features/shared/standalone_trade_document_repository.dart lib/features/shared/trade_document_attachment_editor_page.dart lib/features/shared/trade_document_touch_editor_page.dart lib/features/shared/trade_document_form_pdf.dart lib/features/invoices/invoice_acceptance_resolver.dart lib/features/invoices/invoice_pdf_service.dart lib/features/payroll/payment_order_resolver.dart test/trade_document_agreed_defaults_pdf_test.dart test/trade_document_form_draft_test.dart
+      - run: flutter test test/trade_document_form_draft_test.dart test/trade_document_form_host_wiring_test.dart test/trade_document_touch_editor_test.dart test/invoice_acceptance_resolver_test.dart test/payment_order_resolver_test.dart test/standalone_trade_document_repository_test.dart
+      - run: flutter test test/trade_document_agreed_defaults_pdf_test.dart
+        env: {TRADE_DEFAULTS_PDF_OUTPUT_DIR: /tmp/trade-defaults-output}
+      - run: python -m pip install PyMuPDF==1.26.6
+      - name: Check actual defaults, legible issuer, complete terms and invoice page order
+        run: |
+          python - <<'PYCODE'
+          import fitz,json
+          from pathlib import Path
+          out=Path('/tmp/trade-defaults-output')
+          compact=lambda s:''.join(s.split())
+          legal=json.loads(Path('docs/fixtures/trade-document-terms/user-confirmed-20261029-v1.json').read_text())
+          for path in out.glob('*.pdf'):
+            d=fitz.open(path)
+            if path.stem=='invoice-multipage':
+              assert len(d)==4,(path,len(d))
+              assert '工事35' in compact(d[0].get_text())
+              assert '工事36' in compact(d[1].get_text())
+              assert '請書' in compact(d[2].get_text())
+              assert '工事請負契約条項' in compact(d[3].get_text())
+              assert '39,600' in compact(d[1].get_text())
+              continue
+            assert len(d)==2,(path,len(d))
+            text=compact(d[0].get_text())
+            for value in ['とび工事','下記「施工単価内訳書」による','末日','仮設材他','とび工安全施設・足場組立解体作業（一般作業員）','人日','代表取締役','齊藤竜一','03-1111-2222','03-3333-4444']:
+              assert compact(value) in text,(path,value,text)
+            assert text.count('[特記事項]')==1,(path,text)
+            assert '記載されてない事項を記入' in text
+            assert '末日日' not in text
+            for title,paragraphs in legal:
+              assert compact(title) in compact(d[1].get_text()),(path,title)
+              for paragraph in paragraphs: assert compact(paragraph) in compact(d[1].get_text()),(path,title)
+            spans=[s for b in d[0].get_text('dict')['blocks'] if b['type']==0 for l in b['lines'] for s in l['spans']]
+            rep=[s for s in spans if '代表取締役' in compact(s['text']) and '齊藤' in s['text']]
+            assert rep and all(s['size']>=8 for s in rep),(path,rep)
+            for b in d[0].get_text('blocks'):
+              assert b[0]>=32 and b[2]<=d[0].rect.width-32,(path,b)
+          assert len(list(out.glob('*.pdf')))==7
+          print('Actual Japanese form defaults, grouped issuer, complete terms and invoice page order verified')
+          PYCODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: formal-defaults-pdf-output, path: /tmp/trade-defaults-output}
+      - run: git diff --exit-code -- pubspec.yaml pubspec.lock

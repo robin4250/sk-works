@@ -159,13 +159,15 @@ class InvoicePdfService {
             ),
           ),
         );
-        if (pageIndex == 0 && acceptance != null) {
-          await InvoiceOrderAcceptancePdf.append(document, acceptance,
-            regularFont: regular, boldFont: bold);
-        }
-        if (pageIndex == 0 && expenses != null) {
-          ExpenseDetailPdf.append(document, claims:expenses.claims, kind:ExpenseDocument.invoice, subjectId:expenses.subjectId, regularFont:regular, boldFont:bold, costRecoveryAmountYen:expenses.costRecoveryAmountYen);
-        }
+      }
+      // Keep every invoice detail page together. Its contract and terms follow
+      // the invoice as one appendix; a single-page invoice starts it on page 2.
+      if (acceptance != null) {
+        await InvoiceOrderAcceptancePdf.append(document, acceptance,
+          regularFont: regular, boldFont: bold);
+      }
+      if (expenses != null) {
+        ExpenseDetailPdf.append(document, claims:expenses.claims, kind:ExpenseDocument.invoice, subjectId:expenses.subjectId, regularFont:regular, boldFont:bold, costRecoveryAmountYen:expenses.costRecoveryAmountYen);
       }
     }
     final bytes = await document.save();

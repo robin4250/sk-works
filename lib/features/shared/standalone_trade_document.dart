@@ -29,7 +29,7 @@ TradeDocumentAttachment standaloneTradeDocument({required Map<String, dynamic> c
   for (final party in ['issuer', 'counterparty']) {
     final original = Map<String, dynamic>.from(context[party] as Map);
     if ((original['name'] as String? ?? '').trim().isEmpty) throw StateError('会社名を登録してください。');
-    final values = <String, dynamic>{'name': original['name'],if(original['phone'] is String)'phone':original['phone']};
+    final values = <String, dynamic>{'name': original['name'],for(final key in ['phone','fax'])if(original[key] is String)key:original[key]};
     for (final key in ['address', 'corporate_number', 'representative_name']) {
       final value = fields['$party.$key']?.trim() ?? original[key]?.toString().trim() ?? '';
       if (value.runes.length > (key == 'address' ? 240 : key == 'representative_name' ? 80 : 13) ||
