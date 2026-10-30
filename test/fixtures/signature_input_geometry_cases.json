@@ -1,0 +1,593 @@
+{
+  "schema": 1,
+  "defaults": {
+    "canvas_width": 400,
+    "canvas_height": 120,
+    "minimum_stroke_length_px": 1
+  },
+  "cases": [
+    {
+      "name": "empty",
+      "value": {
+        "strokes": []
+      },
+      "expected_server": false,
+      "expected_client_ink": false
+    },
+    {
+      "name": "empty_stroke",
+      "value": {
+        "strokes": [
+          []
+        ]
+      },
+      "expected_server": false,
+      "expected_client_ink": false
+    },
+    {
+      "name": "single_dot",
+      "value": {
+        "strokes": [
+          [
+            {
+              "x": 0.2,
+              "y": 0.3
+            }
+          ]
+        ]
+      },
+      "expected_server": false,
+      "expected_client_ink": false
+    },
+    {
+      "name": "two_isolated_dots",
+      "value": {
+        "strokes": [
+          [
+            {
+              "x": 0.2,
+              "y": 0.3
+            }
+          ],
+          [
+            {
+              "x": 0.7,
+              "y": 0.8
+            }
+          ]
+        ]
+      },
+      "expected_server": false,
+      "expected_client_ink": false
+    },
+    {
+      "name": "repeated_same_point",
+      "value": {
+        "strokes": [
+          [
+            {
+              "x": 0.2,
+              "y": 0.3
+            },
+            {
+              "x": 0.2,
+              "y": 0.3
+            },
+            {
+              "x": 0.2,
+              "y": 0.3
+            },
+            {
+              "x": 0.2,
+              "y": 0.3
+            },
+            {
+              "x": 0.2,
+              "y": 0.3
+            },
+            {
+              "x": 0.2,
+              "y": 0.3
+            },
+            {
+              "x": 0.2,
+              "y": 0.3
+            },
+            {
+              "x": 0.2,
+              "y": 0.3
+            },
+            {
+              "x": 0.2,
+              "y": 0.3
+            },
+            {
+              "x": 0.2,
+              "y": 0.3
+            },
+            {
+              "x": 0.2,
+              "y": 0.3
+            },
+            {
+              "x": 0.2,
+              "y": 0.3
+            },
+            {
+              "x": 0.2,
+              "y": 0.3
+            },
+            {
+              "x": 0.2,
+              "y": 0.3
+            },
+            {
+              "x": 0.2,
+              "y": 0.3
+            },
+            {
+              "x": 0.2,
+              "y": 0.3
+            }
+          ]
+        ]
+      },
+      "expected_server": false,
+      "expected_client_ink": false
+    },
+    {
+      "name": "short_segment",
+      "value": {
+        "strokes": [
+          [
+            {
+              "x": 0.2,
+              "y": 0.3
+            },
+            {
+              "x": 0.20001,
+              "y": 0.3
+            }
+          ]
+        ]
+      },
+      "expected_server": false,
+      "expected_client_ink": false
+    },
+    {
+      "name": "two_short_strokes_do_not_join",
+      "value": {
+        "strokes": [
+          [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0.0015,
+              "y": 0
+            }
+          ],
+          [
+            {
+              "x": 0.5,
+              "y": 0.5
+            },
+            {
+              "x": 0.5015,
+              "y": 0.5
+            }
+          ]
+        ]
+      },
+      "expected_server": false,
+      "expected_client_ink": false
+    },
+    {
+      "name": "one_pixel_boundary",
+      "value": {
+        "strokes": [
+          [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0.0025,
+              "y": 0
+            }
+          ]
+        ]
+      },
+      "expected_server": true,
+      "expected_client_ink": true
+    },
+    {
+      "name": "accumulated_one_pixel",
+      "value": {
+        "strokes": [
+          [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0.00125,
+              "y": 0
+            },
+            {
+              "x": 0.0025,
+              "y": 0
+            }
+          ]
+        ]
+      },
+      "expected_server": true,
+      "expected_client_ink": true
+    },
+    {
+      "name": "normal_legacy_line",
+      "value": {
+        "strokes": [
+          [
+            {
+              "x": 0.2,
+              "y": 0.3
+            },
+            {
+              "x": 0.4,
+              "y": 0.5
+            }
+          ]
+        ]
+      },
+      "expected_server": true,
+      "expected_client_ink": true
+    },
+    {
+      "name": "dot_and_valid_line",
+      "value": {
+        "strokes": [
+          [
+            {
+              "x": 0.1,
+              "y": 0.1
+            }
+          ],
+          [
+            {
+              "x": 0.2,
+              "y": 0.3
+            },
+            {
+              "x": 0.4,
+              "y": 0.5
+            }
+          ]
+        ]
+      },
+      "expected_server": true,
+      "expected_client_ink": true
+    },
+    {
+      "name": "normal_capture_dimensions",
+      "value": {
+        "strokes": [
+          [
+            {
+              "x": 0.2,
+              "y": 0.3,
+              "canvas_width": 600,
+              "canvas_height": 220
+            },
+            {
+              "x": 0.4,
+              "y": 0.5,
+              "canvas_width": 600,
+              "canvas_height": 220
+            }
+          ]
+        ]
+      },
+      "expected_server": true,
+      "expected_client_ink": true
+    },
+    {
+      "name": "negative_coordinate",
+      "value": {
+        "strokes": [
+          [
+            {
+              "x": -0.1,
+              "y": 0.3
+            },
+            {
+              "x": 0.7,
+              "y": 0.8
+            }
+          ]
+        ]
+      },
+      "expected_server": false,
+      "expected_client_ink": false
+    },
+    {
+      "name": "coordinate_above_frame",
+      "value": {
+        "strokes": [
+          [
+            {
+              "x": 0.1,
+              "y": 0.3
+            },
+            {
+              "x": 1.01,
+              "y": 0.8
+            }
+          ]
+        ]
+      },
+      "expected_server": false,
+      "expected_client_ink": false
+    },
+    {
+      "name": "trailing_invalid_point_after_ink",
+      "value": {
+        "strokes": [
+          [
+            {
+              "x": 0.2,
+              "y": 0.3
+            },
+            {
+              "x": 0.4,
+              "y": 0.5
+            },
+            {
+              "x": 2,
+              "y": 0.5
+            }
+          ]
+        ]
+      },
+      "expected_server": false,
+      "expected_client_ink": false
+    },
+    {
+      "name": "non_number_coordinate",
+      "value": {
+        "strokes": [
+          [
+            {
+              "x": "NaN",
+              "y": 0.3
+            },
+            {
+              "x": 0.4,
+              "y": 0.5
+            }
+          ]
+        ]
+      },
+      "expected_server": false
+    },
+    {
+      "name": "null_coordinate",
+      "value": {
+        "strokes": [
+          [
+            {
+              "x": null,
+              "y": 0.3
+            },
+            {
+              "x": 0.4,
+              "y": 0.5
+            }
+          ]
+        ]
+      },
+      "expected_server": false
+    },
+    {
+      "name": "huge_coordinate",
+      "value": {
+        "strokes": [
+          [
+            {
+              "x": 1e+300,
+              "y": 0.3
+            },
+            {
+              "x": 0.4,
+              "y": 0.5
+            }
+          ]
+        ]
+      },
+      "expected_server": false,
+      "expected_client_ink": false
+    },
+    {
+      "name": "inconsistent_dimensions",
+      "value": {
+        "strokes": [
+          [
+            {
+              "x": 0.2,
+              "y": 0.3,
+              "canvas_width": 600,
+              "canvas_height": 220
+            },
+            {
+              "x": 0.4,
+              "y": 0.5,
+              "canvas_width": 601,
+              "canvas_height": 220
+            }
+          ]
+        ]
+      },
+      "expected_server": false
+    },
+    {
+      "name": "partial_dimensions",
+      "value": {
+        "strokes": [
+          [
+            {
+              "x": 0.2,
+              "y": 0.3,
+              "canvas_width": 600
+            },
+            {
+              "x": 0.4,
+              "y": 0.5,
+              "canvas_width": 600
+            }
+          ]
+        ]
+      },
+      "expected_server": false
+    },
+    {
+      "name": "mixed_dimensions",
+      "value": {
+        "strokes": [
+          [
+            {
+              "x": 0.2,
+              "y": 0.3,
+              "canvas_width": 600,
+              "canvas_height": 220
+            },
+            {
+              "x": 0.4,
+              "y": 0.5
+            }
+          ]
+        ]
+      },
+      "expected_server": false
+    },
+    {
+      "name": "zero_dimensions",
+      "value": {
+        "strokes": [
+          [
+            {
+              "x": 0.2,
+              "y": 0.3,
+              "canvas_width": 0,
+              "canvas_height": 220
+            },
+            {
+              "x": 0.4,
+              "y": 0.5,
+              "canvas_width": 0,
+              "canvas_height": 220
+            }
+          ]
+        ]
+      },
+      "expected_server": false
+    },
+    {
+      "name": "forged_unbounded_dimensions",
+      "value": {
+        "strokes": [
+          [
+            {
+              "x": 0.2,
+              "y": 0.3,
+              "canvas_width": 1e+300,
+              "canvas_height": 220
+            },
+            {
+              "x": 0.4,
+              "y": 0.5,
+              "canvas_width": 1e+300,
+              "canvas_height": 220
+            }
+          ]
+        ]
+      },
+      "expected_server": false
+    },
+    {
+      "name": "unknown_point_key",
+      "value": {
+        "strokes": [
+          [
+            {
+              "x": 0.2,
+              "y": 0.3,
+              "other": 1
+            },
+            {
+              "x": 0.4,
+              "y": 0.5,
+              "other": 1
+            }
+          ]
+        ]
+      },
+      "expected_server": false
+    },
+    {
+      "name": "non_object_root",
+      "value": [
+        [
+          {
+            "x": 0.2,
+            "y": 0.3
+          },
+          {
+            "x": 0.4,
+            "y": 0.5
+          }
+        ]
+      ],
+      "expected_server": false
+    },
+    {
+      "name": "unknown_root_key",
+      "value": {
+        "strokes": [
+          [
+            {
+              "x": 0.2,
+              "y": 0.3
+            },
+            {
+              "x": 0.4,
+              "y": 0.5
+            }
+          ]
+        ],
+        "padding": "not canonical"
+      },
+      "expected_server": false
+    },
+    {
+      "name": "stroke_limit",
+      "generator": "stroke_limit",
+      "expected_server": false
+    },
+    {
+      "name": "per_stroke_point_limit",
+      "generator": "per_stroke_point_limit",
+      "expected_server": false
+    },
+    {
+      "name": "total_point_limit",
+      "generator": "total_point_limit",
+      "expected_server": false
+    },
+    {
+      "name": "payload_limit",
+      "generator": "payload_limit",
+      "expected_server": false
+    }
+  ]
+}
