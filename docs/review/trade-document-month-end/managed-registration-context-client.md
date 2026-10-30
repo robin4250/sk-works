@@ -6,7 +6,7 @@ current managed operation gate. No legacy owner/admin fallback is permitted.
 
 The new hub chooses a repository bound to the gate's company and the exact
 TradeDocumentFormSession. Only this new mode calls the dedicated RPC; existing
-owner/admin loaders remain unchanged. The managed receipt must match captured
+owner/admin membership, session, role and row-scope checks remain unchanged. The managed receipt must match captured
 SDK actor and session ID, company, registered trade company, and document kind.
 Unknown versions, fields, missing capabilities/RPCs, malformed registered seals,
 and cross-company bank snapshots fail closed. The new mode requires the
@@ -30,3 +30,13 @@ PDFs, existing financial-document auto-generation flags, and archive viewing.
 Existing originals and saved signatures are retained. Main integration must
 combine the exact client and server contracts and validate their shared path;
 until then the new hub remains unavailable and the master remains OFF.
+
+
+For legacy standalone registration, the same company-ID-filtered, captured
+Bearer/RLS/abort-bound company row also selects phone and FAX. Only a missing
+key in the old private profile helper may use that row's contact. An explicit
+profile blank or null stays blank. Malformed/oversized contact values are
+rejected, not truncated. This requires no production profile DDL and changes no
+saved document. Financial attachment schema-2 persistence still requires its
+separate backend candidate. Tests cover both direct legacy and bound-session
+reads and prove there is still exactly one same-company read.
