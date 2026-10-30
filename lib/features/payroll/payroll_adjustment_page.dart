@@ -4,14 +4,17 @@ import '../notifications/notification_bell.dart';
 import 'payroll_adjustment_repository.dart';
 
 class PayrollAdjustmentPage extends StatefulWidget {
-  const PayrollAdjustmentPage({super.key});
+  const PayrollAdjustmentPage({super.key, this.repository});
+
+  @visibleForTesting
+  final PayrollAdjustmentRepository? repository;
 
   @override
   State<PayrollAdjustmentPage> createState() => _PayrollAdjustmentPageState();
 }
 
 class _PayrollAdjustmentPageState extends State<PayrollAdjustmentPage> {
-  final _repository = PayrollAdjustmentRepository.maybeCreate();
+  late final _repository = widget.repository ?? PayrollAdjustmentRepository.maybeCreate();
 
   PayrollAdjustmentAccess? _access;
   List<PayrollAdjustmentWorker> _workers = const [];
@@ -512,6 +515,35 @@ class _PayrollAdjustmentPageState extends State<PayrollAdjustmentPage> {
     }
   }
 
+  Widget _entryDialog({required String title, required Widget content,
+      required List<Widget> actions}) {
+    final theme = Theme.of(context);
+    return Theme(
+      data: theme.copyWith(
+        textTheme: theme.textTheme.copyWith(
+          bodyLarge: theme.textTheme.bodyLarge?.copyWith(fontSize: 16),
+          bodyMedium: theme.textTheme.bodyMedium?.copyWith(fontSize: 16),
+          labelLarge: theme.textTheme.labelLarge?.copyWith(fontSize: 14),
+        ),
+        inputDecorationTheme: theme.inputDecorationTheme.copyWith(
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          border: const OutlineInputBorder(),
+          labelStyle: theme.textTheme.bodyMedium?.copyWith(fontSize: 14),
+        ),
+      ),
+      child: AlertDialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        titlePadding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+        contentPadding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        actionsPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+        titleTextStyle: theme.textTheme.titleMedium?.copyWith(fontSize: 18, fontWeight: FontWeight.w800),
+        contentTextStyle: theme.textTheme.bodyMedium?.copyWith(fontSize: 16),
+        title: Text(title), content: content, actions: actions,
+      ),
+    );
+  }
+
   Future<void> _addAdjustment() async {
     final repository = _repository;
     final access = _access;
@@ -536,6 +568,7 @@ class _PayrollAdjustmentPageState extends State<PayrollAdjustmentPage> {
     if (!mounted) return;
     final amount = TextEditingController();
     final note = TextEditingController();
+    final noteFocus = FocusNode();
 
     final saved = await showDialog<bool>(
       context: context,
@@ -547,15 +580,18 @@ class _PayrollAdjustmentPageState extends State<PayrollAdjustmentPage> {
             typeId = activeTypes.isEmpty ? null : activeTypes.first.id;
           }
 
-          return AlertDialog(
-            title: Text('${access?.pageLabel ?? '給与調整'}を登録'),
+          return _entryDialog(
+            title: '${access?.pageLabel ?? '給与調整'}を登録',
             content: SizedBox(
               width: 520,
               child: SingleChildScrollView(
+                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     DropdownButtonFormField<String>(
+                      isExpanded: true,
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontSize: 16),
                       initialValue: workerId,
                       decoration: const InputDecoration(
                         labelText: '従業員',
@@ -564,7 +600,7 @@ class _PayrollAdjustmentPageState extends State<PayrollAdjustmentPage> {
                         for (final worker in _workers)
                           DropdownMenuItem(
                             value: worker.id,
-                            child: Text(worker.name),
+                            child: Text(worker.name, maxLines: 1, overflow: TextOverflow.ellipsis),
                           ),
                       ],
                       onChanged: (value) async {
@@ -586,6 +622,8 @@ class _PayrollAdjustmentPageState extends State<PayrollAdjustmentPage> {
                       children: [
                         Expanded(
                           child: DropdownButtonFormField<String>(
+                            isExpanded: true,
+                            style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontSize: 16),
                             initialValue: typeId,
                             decoration: const InputDecoration(
                               labelText: '項目',
@@ -596,6 +634,7 @@ class _PayrollAdjustmentPageState extends State<PayrollAdjustmentPage> {
                                   value: type.id,
                                   child: Text(
                                     '${type.label}（${type.isAddition ? '加算' : '控除'}）',
+                                    maxLines: 1, overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
                             ],
@@ -604,7 +643,8 @@ class _PayrollAdjustmentPageState extends State<PayrollAdjustmentPage> {
                           ),
                         ),
                         const SizedBox(width: 8),
-                        OutlinedButton.icon(
+                        IconButton.outlined(
+                          tooltip: '項目追加',
                           onPressed: () async {
                             final created = await _addType();
                             if (!created || !mounted) return;
@@ -620,7 +660,6 @@ class _PayrollAdjustmentPageState extends State<PayrollAdjustmentPage> {
                             });
                           },
                           icon: const Icon(Icons.add),
-                          label: const Text('項目追加'),
                         ),
                       ],
                     ),
@@ -628,6 +667,8 @@ class _PayrollAdjustmentPageState extends State<PayrollAdjustmentPage> {
                     TextField(
                       controller: amount,
                       keyboardType: TextInputType.number,
+                      textInputAction: TextInputAction.next,
+                      onSubmitted: (_) => noteFocus.requestFocus(),
                       decoration: const InputDecoration(
                         labelText: '金額',
                         suffixText: '円',
@@ -635,6 +676,7 @@ class _PayrollAdjustmentPageState extends State<PayrollAdjustmentPage> {
                     ),
                     const SizedBox(height: 12),
                     ListTile(
+                      dense: true,
                       contentPadding: EdgeInsets.zero,
                       title: const Text('対象日'),
                       subtitle: Text(_date(effectiveDate)),
@@ -655,13 +697,16 @@ class _PayrollAdjustmentPageState extends State<PayrollAdjustmentPage> {
                     const Align(
                       alignment: Alignment.centerLeft,
                       child: Text(
-                        '最新の給与明細がある場合は、その明細の対象期間末日を初期値にします。',
+                        '対象日は最新明細の期間末日が初期値です。',
                         style: TextStyle(fontSize: 12),
                       ),
                     ),
                     const SizedBox(height: 6),
                     TextField(
                       controller: note,
+                      focusNode: noteFocus,
+                      textInputAction: TextInputAction.done,
+                      onSubmitted: (_) => noteFocus.unfocus(),
                       maxLines: 2,
                       decoration: const InputDecoration(
                         labelText: '備考（任意）',
@@ -672,6 +717,10 @@ class _PayrollAdjustmentPageState extends State<PayrollAdjustmentPage> {
               ),
             ),
             actions: [
+              TextButton(
+                onPressed: () => FocusManager.instance.primaryFocus?.unfocus(),
+                child: const Text('入力完了'),
+              ),
               TextButton(
                 onPressed: () => Navigator.pop(dialogContext, false),
                 child: const Text('キャンセル'),
@@ -716,6 +765,7 @@ class _PayrollAdjustmentPageState extends State<PayrollAdjustmentPage> {
 
     amount.dispose();
     note.dispose();
+    noteFocus.dispose();
 
     if (saved == true) {
       await _reloadItems();
@@ -734,16 +784,20 @@ class _PayrollAdjustmentPageState extends State<PayrollAdjustmentPage> {
     final saved = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('給与調整の項目を追加'),
+        builder: (context, setDialogState) => _entryDialog(
+          title: '給与調整の項目を追加',
           content: SizedBox(
             width: 460,
-            child: Column(
+            child: SingleChildScrollView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 TextField(
                   controller: label,
                   autofocus: true,
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => FocusManager.instance.primaryFocus?.unfocus(),
                   maxLength: 60,
                   decoration: const InputDecoration(
                     labelText: '項目名',
@@ -769,9 +823,14 @@ class _PayrollAdjustmentPageState extends State<PayrollAdjustmentPage> {
                       setDialogState(() => direction = value.first),
                 ),
               ],
+              ),
             ),
           ),
           actions: [
+            TextButton(
+              onPressed: () => FocusManager.instance.primaryFocus?.unfocus(),
+              child: const Text('入力完了'),
+            ),
             TextButton(
               onPressed: () => Navigator.pop(dialogContext, false),
               child: const Text('キャンセル'),
