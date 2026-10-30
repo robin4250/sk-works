@@ -49,6 +49,10 @@ export async function verifySiteOrderPackageFlow(db,c){
  const projection=await q('select payload v from private.company_data_delivery_items where id=$1',[received.data_item_id]);
  check(Object.keys(projection).sort(),['source_site_id','name','formal_name','address','nearest_station','representative_name','representative_phone','latitude','longitude','starts_on','ends_on','status'].sort());
  check(JSON.stringify(projection).includes('99999'),false);check(Object.hasOwn(projection,'notes'),false);
+ check(await q('select site_projection v from site_order_package_private.packages where id=$1',[received.package_id]),projection);
+ // A legacy transport mutation cannot replace the immutable received snapshot.
+ await db.query("update private.company_data_delivery_items set payload=payload||$2::jsonb where id=$1",
+ [received.data_item_id,JSON.stringify({name:'後から変更された現場',address:'後から変更された住所',notes:'金額入りの非公開メモ'})]);
  await deny(()=>send(id(12001),source.job,id(999999)),/registered_original/);
  await deny(()=>send(id(12000),id(999999),source.receipt),/request_changed/);
  await db.query("update private.master_feature_settings set enabled=false where feature_key='site_order_documents'");
@@ -106,6 +110,7 @@ export async function verifySiteOrderPackageFlow(db,c){
  check(await approve(),approved);check(await q('select count(*)::int v from sites'),beforeApproval+1);
  const actualSite=await q('select to_jsonb(s) v from sites s where id=$1',[approved.site_id]);
  check(actualSite.company_id,B);check(actualSite.notes,null);
+ check(actualSite.name,projection.name);check(actualSite.address,projection.address);
  check(await q('select accepted_site_id v from private.site_share_inbox where data_item_id=$1',[packet]),approved.site_id);
  const reply=await q('select to_jsonb(i) v from site_order_package_private.reply_intents i where id=$1',[approved.reply_intent_id]);
  const originalBody=await q("select evidence->'body' v from site_order_artifact_private.render_jobs where id=$1",[source.job]);
