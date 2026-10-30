@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:sk_works/features/auth/apple_successor_client_preparation.dart';
+import 'package:sk_works/features/auth/app_auth_mutation_gateway.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 const actor = '40000000-0000-0000-0000-000000000001';
@@ -222,5 +223,34 @@ void main() {
     await expectLater(preparation.prepare(requestId: requestId, receiveOnce: () async {calls++;return envelope();}), throwsStateError);
     expect(calls, 1);unchanged();
   });
+  test('actual common gateway blocks password writes through isolated preparation lifetime',() async {
+    final preparation = make(enabled:true);
+    final owner = AppAuthMutationGateway.forClient(application);
+    final entered = Completer<void>(), reply = Completer<Map<String,dynamic>>();
+    final pending = preparation.prepare(requestId:requestId,receiveOnce:() {
+      entered.complete();return reply.future;
+    });
+    await entered.future;
+    await expectLater(owner.signInWithPassword(email:'fixture@example.invalid',password:'synthetic'),throwsStateError);
+    reply.complete(envelope());await pending;
+    expect(preparation.ready,isTrue);
+    await expectLater(owner.inspectCurrentSession(),throwsStateError);
+    expect(await owner.externalFlowAdmission(),isNull);
+    preparation.invalidate();
+    final inspection = await owner.inspectCurrentSession();
+    expect(inspection.isCurrent,isTrue);inspection.release();
+    unchanged();
+  });
+  test('SDK callback outside injected history retires prepared inspection via common owner',() async {
+    final preparation = make(enabled:true);
+    await preparation.prepare(requestId:requestId,receiveOnce:() async => envelope());
+    expect(preparation.ready,isTrue);
+    // This event is not supplied through the preparer's injected test stream.
+    await application.auth.setInitialSession(initialSession(other));
+    await Future<void>.delayed(Duration.zero);
+    expect(preparation.ready,isFalse);
+    expect(isolatedCreations,1);
+  });
+
 }
 

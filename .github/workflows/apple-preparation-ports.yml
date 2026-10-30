@@ -5,6 +5,7 @@ on:
       - 'lib/features/auth/apple_native_credential_preparation.dart'
       - 'test/apple_native_credential_preparation_test.dart'
       - 'lib/features/auth/apple_successor_client_preparation.dart'
+      - 'lib/features/auth/app_auth_mutation_gateway.dart'
       - 'test/apple_successor_client_preparation_test.dart'
       - 'lib/features/auth/apple_successor_https_delivery.dart'
       - 'test/apple_successor_https_delivery_test.dart'
