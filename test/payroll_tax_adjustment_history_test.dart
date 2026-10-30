@@ -270,7 +270,11 @@ void main() {
     await tester.runAsync(() async { await Future<void>.delayed(const Duration(milliseconds: 30)); });
     await tester.pumpAndSettle();
     expect(find.text('通知書の金額へ訂正'), findsOneWidget);
-    final logout = AppAuthMutationGateway.forClient(client).signOut();
+    late Future<void> logout;
+    await tester.runAsync(() async {
+      logout = AppAuthMutationGateway.forClient(client).signOut();
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+    });
     await tester.pump();
     expect(find.text('通知書の金額へ訂正'), findsNothing);
     wire.holdLogout!.complete(); await tester.runAsync(() async { await logout; });
