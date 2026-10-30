@@ -1,0 +1,84 @@
+-- REVIEW ONLY. No production deployment or data repair is authorized.
+-- Additive recovery only for an already consumed exact live approved edit.
+-- A source/catalog-pinned guarded installer must be generated before deployment.
+begin;
+set local lock_timeout='3s';set local statement_timeout='30s';
+do $$ begin
+ if not exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='shared_report_edit_private' and p.proname='current_session' and pg_get_function_identity_arguments(p.oid)='rid uuid, closed_allowed boolean' and md5(p.prosrc)='2372c276ead1583ccc0ec1eb642c0ad9' and pg_get_userbyid(p.proowner)='postgres' and p.prosecdef=true and p.provolatile='s') then raise exception 'approved_signature_resume_dependency_changed: shared_report_edit_private.current_session';end if;
+ if not exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='shared_report_edit_private' and p.proname='evidence' and pg_get_function_identity_arguments(p.oid)='rid uuid, request uuid' and md5(p.prosrc)='3fcd21a761da64a5e543c1977a1348f9' and pg_get_userbyid(p.proowner)='postgres' and p.prosecdef=true and p.provolatile='s') then raise exception 'approved_signature_resume_dependency_changed: shared_report_edit_private.evidence';end if;
+ if not exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='shared_daily_report_private' and p.proname='guard_report' and pg_get_function_identity_arguments(p.oid)='' and md5(p.prosrc)='943f215ce9e2f5f568cf0d6522fed660' and pg_get_userbyid(p.proowner)='postgres' and p.prosecdef=true and p.provolatile='v') then raise exception 'approved_signature_resume_dependency_changed: shared_daily_report_private.guard_report';end if;
+ if current_user<>'postgres' or to_regprocedure('public.resume_approved_daily_report_signatures(uuid,uuid,timestamp with time zone,text)') is not null
+ or to_regprocedure('shared_report_edit_private.resume_original_signatures(uuid,uuid,timestamp with time zone,text)') is not null
+ or to_regprocedure('shared_report_edit_private.current_session(uuid,boolean)') is null
+ or to_regprocedure('shared_report_edit_private.evidence(uuid,uuid)') is null
+ or to_regclass('explicit_report_finalization_private.events') is null
+ or to_regclass('explicit_report_finalization_private.management_reports') is null then
+ raise exception 'approved_signature_resume_dependencies_or_new_objects_differ';end if;
+end $$;
+create function shared_report_edit_private.resume_original_signatures(rid uuid,request uuid,expected_at timestamptz,expected_scope text)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare actor uuid;sid uuid;company uuid;r public.daily_reports%rowtype;proof jsonb;roster jsonb;scope text;
+ ignored text[]:=array['status','signer_name','signature_json','signed_at','updated_at','updated_by',
+ 'representative_signature_json','representative_signer_name','supervisor_signature_json','supervisor_signer_name'];
+begin
+ actor:=checkout_report_registration_private.current_actor();sid:=(auth.jwt()->>'session_id')::uuid;
+ if rid is null or request is null or expected_at is null or nullif(expected_scope,'') is null then
+  raise sqlstate '22023' using message='approved_signature_resume_scope_required';end if;
+ -- Keep actor/session/membership live through this transaction. Never trust a
+ -- public request's used status, a client flag, or a previous authentication.
+ perform 1 from auth.users where id=actor for share;
+ perform 1 from auth.sessions where id=sid and user_id=actor for share;
+ perform checkout_report_registration_private.current_actor();
+ select company_id into company from public.daily_reports where id=rid;
+ perform 1 from public.company_members where company_id=company and user_id=actor for share;
+ if (select count(*) from public.company_members where company_id=company and user_id=actor)<>1 then
+  raise sqlstate '42501' using message='approved_signature_resume_membership_required';end if;
+ select * into r from public.daily_reports where id=rid for update;
+ if not found then raise sqlstate '42501' using message='approved_signature_resume_report_unavailable';end if;
+ perform 1 from shared_report_edit_private.sessions where report_id=rid for update;
+ proof:=shared_report_edit_private.evidence(rid,request);
+ if proof->>'actor_id' is distinct from actor::text or proof->>'session_id' is distinct from sid::text
+ or proof->>'company_id' is distinct from r.company_id::text or proof->>'state'<>'active'
+ or r.status<>'draft' or proof->'old_report'->>'status'<>'signed' then
+  raise sqlstate '42501' using message='approved_signature_resume_exact_session_required';end if;
+ -- Explicit finalization and management remain a different authorized workflow.
+ if exists(select 1 from explicit_report_finalization_private.events where report_id=rid and kind='finalized')
+ or exists(select 1 from explicit_report_finalization_private.management_reports where report_id=rid) then
+  raise sqlstate '55000' using message='explicit_report_finalized_edit_requires_attendance_management';end if;
+ perform 1 from public.daily_report_workers where report_id=rid order by worker_id for share;
+ select coalesce(jsonb_agg(to_jsonb(w) order by w.worker_id),'[]'::jsonb) into roster from public.daily_report_workers w where report_id=rid;
+ if (to_jsonb(r)-ignored) is distinct from ((proof->'old_report')-ignored)
+ or roster is distinct from proof->'old_roster' then
+  raise sqlstate '40001' using message='approved_signature_resume_original_basis_changed';end if;
+ -- Never erase a new signature. All four role fields must still be exactly the
+ -- archived pre-edit originals, or all be empty following an earlier reset.
+ if r.representative_signature_json is null and r.representative_signer_name is null
+ and r.supervisor_signature_json is null and r.supervisor_signer_name is null then
+  return shared_daily_report_private.read_context(rid);
+ end if;
+ if r.representative_signature_json is null or r.supervisor_signature_json is null
+ or row(to_jsonb(r)->'representative_signature_json',to_jsonb(r)->'representative_signer_name',
+  to_jsonb(r)->'supervisor_signature_json',to_jsonb(r)->'supervisor_signer_name') is distinct from
+ row(proof->'old_report'->'representative_signature_json',proof->'old_report'->'representative_signer_name',
+  proof->'old_report'->'supervisor_signature_json',proof->'old_report'->'supervisor_signer_name') then
+  raise sqlstate '40001' using message='approved_signature_resume_new_signature_present';end if;
+ scope:=shared_daily_report_private.signature_scope(rid)->>'signature_scope_fingerprint';
+ if r.updated_at is distinct from expected_at or scope is distinct from expected_scope then
+  raise sqlstate '40001' using message='shared_report_signature_scope_changed';end if;
+ if r.signer_name is not null or r.signature_json is not null or r.signed_at is not null then
+  raise sqlstate '55000' using message='approved_signature_resume_legacy_envelope_present';end if;
+ -- Existing trigger/audit protections run normally. The original report,
+ -- roster, annex, request and session are never edited by this function.
+ update public.daily_reports set representative_signature_json=null,representative_signer_name=null,
+ supervisor_signature_json=null,supervisor_signer_name=null,updated_by=actor,updated_at=clock_timestamp() where id=rid;
+ perform shared_report_edit_private.evidence(rid,request);
+ return shared_daily_report_private.read_context(rid);
+end $$;
+revoke all on function shared_report_edit_private.resume_original_signatures(uuid,uuid,timestamptz,text) from public,anon,authenticated,service_role;
+create function public.resume_approved_daily_report_signatures(p_report_id uuid,p_request_id uuid,p_expected_updated_at timestamptz,p_expected_signature_scope text)
+returns jsonb language sql security definer set search_path='' as $$
+ select shared_report_edit_private.resume_original_signatures(p_report_id,p_request_id,p_expected_updated_at,p_expected_signature_scope)
+$$;
+revoke all on function public.resume_approved_daily_report_signatures(uuid,uuid,timestamptz,text) from public,anon,authenticated,service_role;
+grant execute on function public.resume_approved_daily_report_signatures(uuid,uuid,timestamptz,text) to authenticated;
+commit;

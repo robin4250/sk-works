@@ -1,0 +1,37 @@
+name: Approved signature resume
+on:
+  pull_request:
+    paths:
+      - 'docs/review/approved-edit-signature-resume/**'
+      - 'tool/verify_approved_signature_resume.mjs'
+      - '.github/workflows/approved-signature-resume.yml'
+  workflow_dispatch:
+jobs:
+  native-resume:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_checkout_integration_fixture
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --no-audit --no-fund --prefix tool/security/fixture_dependencies
+      - run: python3 tool/prepare_checkout_paid_hours.py --output "$RUNNER_TEMP/paid-hours-v1-patches.sql"
+      - run: python3 tool/prepare_checkout_shared_hours_v2.py --output "$RUNNER_TEMP/shared-hours-v2-patches.sql"
+      - run: node --check tool/verify_approved_signature_resume.mjs
+      - name: Old writer failure then exact active-session signature recovery
+        env:
+          SKO_CHECKOUT_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_checkout_integration_fixture
+          SKO_PAID_HOURS_PATCHES: ${{ runner.temp }}/paid-hours-v1-patches.sql
+          SKO_SHARED_HOURS_V2_PATCHES: ${{ runner.temp }}/shared-hours-v2-patches.sql
+        run: node tool/verify_approved_signature_resume.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"
