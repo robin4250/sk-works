@@ -258,4 +258,57 @@ void main() {
     }
   });
 
+  test('session inspection reserves existing repository writes and external admission',() async {
+    await w.seed();
+    final inspection = await w.auth.inspectCurrentSession();
+    expect(inspection.isCurrent,isTrue);
+    await expectLater(w.legacy.signIn(email:'other@example.invalid',password:'synthetic'),throwsStateError);
+    await expectLater(w.auth.updateUser(UserAttributes(data:{'test':true})),throwsStateError);
+    expect(await w.auth.externalFlowAdmission(),isNull);
+    expect(w.calls,isEmpty);
+    inspection.release();
+    expect(inspection.isCurrent,isFalse);
+    await w.legacy.signIn(email:'fixture@example.invalid',password:'synthetic');
+    expect(w.calls.where((r)=>r.method=='POST' && r.url.path.endsWith('/token')),hasLength(1));
+    expect(w.calls.where((r)=>r.method=='GET' && r.url.path.endsWith('/company_members')),hasLength(1));
+    expect(w.calls,hasLength(2));
+  });
+  test('released inspection cannot release a newer owner',() async {
+    await w.seed();
+    final first = await w.auth.inspectCurrentSession();
+    first.release();
+    final second = await w.auth.inspectCurrentSession();
+    first.release();
+    expect(second.isCurrent,isTrue);
+    await expectLater(w.auth.inspectCurrentSession(),throwsStateError);
+    second.release();
+  });
+  test('logout cancels inspection synchronously without waiting for its reader',() async {
+    await w.seed();
+    final inspection = await w.auth.inspectCurrentSession();
+    final logout = w.auth.signOut();
+    expect(inspection.isCurrent,isFalse);
+    await inspection.invalidated;
+    await logout;
+    expect(w.client.auth.currentSession,isNull);
+    expect(w.calls.where((r)=>r.url.path.endsWith('/logout')),hasLength(1));
+  });
+  test('raw SDK A to B to A history permanently retires inspection',() async {
+    await w.seed();
+    final inspection = await w.auth.inspectCurrentSession();
+    await w.seed(uid:other,sessionId:nextSid);
+    await w.seed();
+    await inspection.invalidated;
+    expect(inspection.isCurrent,isFalse);
+    expect(w.calls,isEmpty);
+  });
+  test('silent same UID restore is rejected even when token bytes are unchanged',() async {
+    await w.seed();
+    final inspection = await w.auth.inspectCurrentSession();
+    await w.client.auth.recoverSession(jsonEncode(session()));
+    expect(inspection.isCurrent,isFalse);
+    await inspection.invalidated;
+    expect(w.calls,isEmpty);
+  });
+
 }

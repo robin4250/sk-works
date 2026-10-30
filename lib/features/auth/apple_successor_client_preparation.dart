@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'apple_successor_https_delivery.dart';
+import 'app_auth_mutation_gateway.dart';
 
 part 'apple_owned_session_coordinator.dart';
 
@@ -35,6 +36,7 @@ class AppleSuccessorClientPreparation with WidgetsBindingObserver {
   StreamSubscription<AuthState>? _subscription;
   SupabaseClient? _preparedClient;
   AppleSuccessorHttpsDelivery? _activeDelivery;
+  AppAuthSessionInspection? _inspection;
   bool _attempted = false, _disposed = false, _ready = false;
   int _generation = 0;
   String? _originalActor, _originalAccessToken, _successorAccessToken;
@@ -45,6 +47,7 @@ class AppleSuccessorClientPreparation with WidgetsBindingObserver {
   // This still does not provide a global session-write CAS or ABA guarantee.
   bool get ready {
     if (!_ready || _disposed) { return false; }
+    if (_inspection?.isCurrent != true) { invalidate(); return false; }
     final current = applicationClient.auth.currentSession;
     final prepared = _preparedClient?.auth.currentSession;
     if (current == null || current.isExpired || current.user.id != _originalActor ||
@@ -70,6 +73,9 @@ class AppleSuccessorClientPreparation with WidgetsBindingObserver {
   void invalidate() {
     _generation++;
     _ready = false;
+    final inspection = _inspection;
+    _inspection = null;
+    inspection?.release();
     _originalActor = _originalAccessToken = _successorAccessToken = null;
     _activeDelivery?.cancel();
     _activeDelivery = null;
@@ -169,7 +175,7 @@ class AppleSuccessorClientPreparation with WidgetsBindingObserver {
     final generation = ++_generation;
     void check() {
       final current = applicationClient.auth.currentSession;
-      if (_disposed || generation != _generation || current == null || current.isExpired ||
+      if (_inspection?.isCurrent != true || _disposed || generation != _generation || current == null || current.isExpired ||
           current.user.id != actor || current.accessToken != originalToken) { throw _failure(); }
     }
     _subscription = (_authChanges ?? applicationClient.auth.onAuthStateChange).listen((event) {
@@ -179,6 +185,16 @@ class AppleSuccessorClientPreparation with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     SupabaseClient? isolated;
     try {
+      final inspection = await AppAuthMutationGateway.forClient(applicationClient).inspectCurrentSession();
+      if (_disposed || generation != _generation) {
+        inspection.release();
+        throw _failure();
+      }
+      _inspection = inspection;
+      inspection.invalidated.then((_) {
+        if (identical(_inspection, inspection)) invalidate();
+      });
+      check();
       final original = (await applicationClient.auth.getUser(originalToken)
           .timeout(const Duration(seconds: 15))).user;
       check();
