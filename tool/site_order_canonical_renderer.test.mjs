@@ -7,7 +7,8 @@ function database({stored=false,role='postgres',renderDenied=false,commitUnknown
  const calls=[];
  return {calls,async query(sql,args){calls.push({sql,args});
   if(sql==='select session_user as role')return{rows:[{role}]};
-  if(sql.startsWith('select j.evidence'))return{rows:[{evidence:{body:{unchanged:true}},pdf_bytes:stored?pdf:null}]};
+  if(sql.startsWith('select j.evidence'))return{rows:[{evidence:{body:{unchanged:true}}}]};
+  if(sql.startsWith('select pdf_bytes'))return{rows:stored?[{pdf_bytes:pdf}]:[]};
   if(sql.includes('register_canonical_pdf')){
    if(renderDenied)throw Error('session revoked');
    return{rows:[{receipt:{job_id:id,pdf_byte_length:args[1].length,pdf_sha256:'server-computed'}}]};
@@ -20,6 +21,7 @@ test('only DB evidence reaches renderer and receipt follows commit',async()=>{
  const db=database();let evidence;
  const receipt=await registerCanonicalSiteOrderJob(db,id,async e=>{evidence=e;return pdf;});
  assert.deepEqual(evidence,{body:{unchanged:true}});
+ assert.equal(db.calls[0].sql,'begin isolation level read committed');
  assert.equal(receipt.pdf_sha256,'server-computed');
  assert.equal(db.calls.at(-1).sql,'commit');
  assert.deepEqual(db.calls.find(c=>c.sql.includes('register_canonical_pdf')).args,[id,pdf]);
@@ -28,6 +30,9 @@ test('exact retry never regenerates timestamp-varying PDF',async()=>{
  const db=database({stored:true});
  await registerCanonicalSiteOrderJob(db,id,async()=>{throw Error('must not rerender');});
  assert.deepEqual(db.calls.find(c=>c.sql.includes('register_canonical_pdf')).args[1],pdf);
+ const lock=db.calls.findIndex(c=>c.sql.startsWith('select j.evidence'));
+ const original=db.calls.findIndex(c=>c.sql.startsWith('select pdf_bytes'));
+ assert.ok(lock>=0&&original>lock,'Read original in a fresh statement after the job lock');
 });
 test('client/service connection is rejected before loading evidence',async()=>{
  const db=database({role:'service_role'});
