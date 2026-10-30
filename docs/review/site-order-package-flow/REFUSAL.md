@@ -16,7 +16,10 @@ inbox cannot be approved. A notification failure rolls back refusal, request
 operation and inbox state together. Existing originals remain readable with
 master OFF. A terminal refusal retires the exact original approval prompt and
 sends a `site_order_package` result notification without price/notes/PDF URL.
-Device push is not claimed.
+If neither a new eligible sender recipient nor an existing notification receipt
+exists, the whole refusal transaction fails; it never claims a notification was
+stored when no inbox row exists. Exact retries with an existing receipt remain
+idempotent even if memberships later change. Device push is not claimed.
 
 The existing identifier-only journal/storage engine is reused with a distinct
 refusal namespace and no fabricated preview ID. Failure before durable storage

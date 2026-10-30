@@ -112,6 +112,8 @@ begin
  values(notification,p.sender_company_id,m.user_id,'info','注文が辞退されました','対象の注文・請書を開いて内容をご確認ください。','site_order_package',p.id,clock_timestamp());
  insert into site_order_package_private.refusal_notice_receipts(package_id,recipient_user_id,notification_id) values(p.id,m.user_id,notification);added:=added+1;
  end loop;
+ if not exists(select 1 from site_order_package_private.refusal_notice_receipts where package_id=p.id) then
+ raise exception 'site_order_refusal_notification_recipient_missing' using errcode='40001';end if;
  -- Retire the original recipient approval prompt only after terminal refusal.
  update public.app_notifications n set read_at=coalesce(n.read_at,clock_timestamp())
  from site_order_package_private.notification_receipts r join site_order_package_private.notice_intents i on i.id=r.source_id

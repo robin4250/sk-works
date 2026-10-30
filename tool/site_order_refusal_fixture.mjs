@@ -9,6 +9,27 @@ export async function verifySiteOrderRefusal(db,c){
  const stable=()=>q(`select jsonb_build_object('sites',(select count(*) from sites),'docs',(select count(*) from trade_document_consent_private.documents),'ready',(select count(*) from site_order_package_private.ready_reply_jobs),'originals',(select count(*) from site_order_artifact_private.pdf_records)) v`);
  const target=await make(12500),before=await stable();
  await deny(()=>q('select site_order_package_private.refuse_order($1,$2,false) v',[target.package_id,target.request_id]),/explicit_refusal_confirmation/);
+ // RED control: the exact previous dispatcher falsely accepted refusal with
+ // no sender management recipient and no notification receipt. DDL/data are
+ // rolled back before the corrected full-source check below.
+ const dispatcher=await q("select jsonb_build_object('definition',pg_get_functiondef(p.oid),'source',p.prosrc,'md5',md5(p.prosrc)) v from pg_proc p where p.oid='site_order_package_private.dispatch_refusal_notifications(uuid)'::regprocedure");
+ const recipientGuard=" if not exists(select 1 from site_order_package_private.refusal_notice_receipts where package_id=p.id) then\n raise exception 'site_order_refusal_notification_recipient_missing' using errcode='40001';end if;\n";
+ check(dispatcher.source.split(recipientGuard).length,2);
+ await db.exec('begin');try{
+ await db.exec(dispatcher.definition.replace(dispatcher.source,dispatcher.source.replace(recipientGuard,'')));
+ check(await q("select md5(prosrc) v from pg_proc where oid='site_order_package_private.dispatch_refusal_notifications(uuid)'::regprocedure"),'df062850767bfd3a9676c2dac7283ac3');
+ await db.query("update company_members set role='worker' where company_id=$1",[target.sender_company_id]);
+ check((await refuse(target)).status,'rejected');
+ check(await q('select count(*)::int v from site_order_package_private.refusal_notice_receipts'),0);
+ }finally{await db.exec('rollback');}
+ check(await q("select md5(prosrc) v from pg_proc where oid='site_order_package_private.dispatch_refusal_notifications(uuid)'::regprocedure"),dispatcher.md5);
+ // No eligible sender recipient must not claim notification success.
+ await db.exec('begin');try{
+ await db.query("update company_members set role='worker' where company_id=$1",[target.sender_company_id]);
+ await deny(()=>refuse(target),/notification_recipient_missing/);
+ }finally{await db.exec('rollback');}
+ check(await q('select count(*)::int v from site_order_package_private.refusals'),0);
+ check(await q('select status v from private.site_share_inbox where data_item_id=$1',[target.data_item_id]),'pending');
  await signed(UA);await deny(()=>refuse(target),/received_package_not_found/);await signed(UC);await deny(()=>refuse(target),/received_package_not_found/);await signed(UB);
  await db.exec("create function pg_temp.reject_refusal_notice()returns trigger language plpgsql as $$begin raise exception 'fixture_refusal_notice_failure';end$$;create trigger fixture_refusal_notice before insert on public.app_notifications for each row execute function pg_temp.reject_refusal_notice()");
  await db.exec('begin');try{await deny(()=>refuse(target),/fixture_refusal_notice_failure/);}finally{await db.exec('rollback');}
@@ -19,6 +40,7 @@ export async function verifySiteOrderRefusal(db,c){
  const notices=await q('select count(*)::int v from public.app_notifications');
  check((await refuse(target)).notifications.app_inbox_inserted,0);check(await q('select count(*)::int v from public.app_notifications'),notices);
  check((await reconcile(target)).operation_state,'accepted');
+ await db.exec('begin');try{await db.query("update company_members set role='worker' where company_id=$1",[target.sender_company_id]);check((await refuse(target)).notifications.app_inbox_inserted,0);}finally{await db.exec('rollback');}
  check(await q('select status v from private.site_share_inbox where data_item_id=$1',[target.data_item_id]),'rejected');
  await deny(()=>refuse({...target,request_id:id(12502)}),/refusal_request_changed/);
  await deny(()=>q('select site_order_package_private.approve_order($1,$2,$3,$4) v',[target.package_id,recipientTrade,recipientPeer.connection_fingerprint,id(12503)]),/pending_inbox_required/);
