@@ -50,7 +50,12 @@ not permission to blindly retry. Preserve every append-only reason and condition
 history record.
 
 `build_payroll_tax_reason_pause.py` prepares a **separate permission-change**
-review from an exact committed private function/table receipt. After independently
+review from an exact committed private function/table receipt. The forward
+returns definition, source_md5 and full attributes for its function scope; the
+pause generator consumes those actual rows unchanged. Capture the new table
+class/constraints/triggers/policies immediately after COMMIT in an independent
+read before user operations and preserve it with that receipt. The fixture uses
+these actual returned rows rather than adding missing fields in a fresh capture. After independently
 stopping new reason writers and waiting for in-flight work, it can revoke only
 the new capability and public/private reason-save EXECUTE grants, leaving scoped
 history reading and all legacy APIs available. It refuses later function/table

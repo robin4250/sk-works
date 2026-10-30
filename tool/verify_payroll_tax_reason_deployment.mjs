@@ -38,6 +38,8 @@ try {
  assert.equal((await db.query("select to_regclass('payroll_tax_private.adjustment_reasons') value")).rows[0].value,null);groups++;
  await db.exec('alter default privileges for role postgres in schema public revoke execute on functions from reason_unknown_default;drop role reason_unknown_default');
  const candidate=await make();
+ const committedFunctionCount=(await capture()).functions.length+6;
+ const readReasonTableReceipt=async()=>(await db.query("select jsonb_build_object('class',to_jsonb(c),'constraints',(select coalesce(jsonb_agg(to_jsonb(k) order by k.oid),'[]'::jsonb) from pg_constraint k where k.conrelid=c.oid),'triggers',(select coalesce(jsonb_agg(to_jsonb(t) order by t.oid),'[]'::jsonb) from pg_trigger t where t.tgrelid=c.oid and not t.tgisinternal),'policies',(select coalesce(jsonb_agg(to_jsonb(pol) order by pol.oid),'[]'::jsonb) from pg_policy pol where pol.polrelid=c.oid)) v from pg_class c where c.oid='payroll_tax_private.adjustment_reasons'::regclass")).rows[0].v;
  await db.exec('begin;alter function private.payroll_settings_allowed(uuid,uuid,text) cost 101');
  await assert.rejects(db.exec(candidate),/Payroll reason dependency catalog changed/);await db.exec('rollback');groups++;
  const failPoint="end $reason_post$;";
@@ -47,6 +49,13 @@ try {
  assert.deepEqual(await metadata(),before);groups++;
  `;
  source="import {spawnSync as fixtureSpawn} from 'node:child_process';\nimport {readFile as fixtureRead,writeFile as fixtureWrite} from 'node:fs/promises';\n"+source.replace(point,injected);
+ const installPoint=' await db.exec(candidate);';
+ assert.equal(source.split(installPoint).length,2);
+ source=source.replace(installPoint,` const installedStatements=await db.exec(candidate);
+ const committedFunctionReceipt=installedStatements.find(result=>Array.isArray(result.rows)&&result.rows.length===committedFunctionCount&&result.rows.every(row=>row.definition&&row.attributes&&row.source_md5))?.rows;
+ assert.equal(committedFunctionReceipt?.length,committedFunctionCount);
+ const committedReasonTableReceipt=await readReasonTableReceipt();groups++;
+ `);
  const end=" await db.exec('reset role');assert.deepEqual(await metadata(),before,'all original function metadata still unchanged after use');";
  assert.equal(source.split(end).length,2);
  source=source.replace(end,`
@@ -54,8 +63,10 @@ try {
  const stateBeforePause=await snapshot();
  const entries=['public.payroll_tax_adjustment_reason_contract_version()','public.save_worker_payroll_tax_conditions_with_reason(uuid,uuid,date,bigint,jsonb,boolean,text)','payroll_tax_private.save_conditions_with_reason(uuid,uuid,date,bigint,jsonb,boolean,text)'];
  const aclBefore=(await db.query('select oid,proacl from pg_proc where oid=any($1::regprocedure[]) order by oid',[entries])).rows;
- const receipt={functions:(await db.query("select pg_get_functiondef(p.oid) definition,md5(p.prosrc) source_md5,to_jsonb(p) attributes from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname in ('public','private','auth','payroll_tax_private') order by p.oid")).rows,
- reason_table:(await db.query("select jsonb_build_object('class',to_jsonb(c),'constraints',(select coalesce(jsonb_agg(to_jsonb(k) order by k.oid),'[]'::jsonb) from pg_constraint k where k.conrelid=c.oid),'triggers',(select coalesce(jsonb_agg(to_jsonb(t) order by t.oid),'[]'::jsonb) from pg_trigger t where t.tgrelid=c.oid and not t.tgisinternal),'policies',(select coalesce(jsonb_agg(to_jsonb(pol) order by pol.oid),'[]'::jsonb) from pg_policy pol where pol.polrelid=c.oid)) v from pg_class c where c.oid='payroll_tax_private.adjustment_reasons'::regclass")).rows[0].v};
+ // Use the actual guarded-forward return rows without synthesizing missing
+ // fields. Table metadata is captured immediately after committed installation,
+ // before any reason save, and retained as the separate table receipt.
+ const receipt={functions:committedFunctionReceipt,reason_table:committedReasonTableReceipt};
  await fixtureWrite(out+'/pause-receipt.json',JSON.stringify(receipt));
  const paused=fixtureSpawn('python3',[${JSON.stringify(resolve('tool/build_payroll_tax_reason_pause.py'))},'--receipt',out+'/pause-receipt.json','--output',out+'/pause.sql.review-only'],{encoding:'utf8'});assert.equal(paused.status,0,paused.stderr);
  const pause=await fixtureRead(out+'/pause.sql.review-only','utf8');

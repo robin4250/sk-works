@@ -152,7 +152,7 @@ end $reason_pre$;
  end if;
 end $reason_post$;
 -- Private function and table receipt only; no employee/payroll business-row read.
-select n.nspname schema,p.proname name,pg_get_functiondef(p.oid) definition,to_jsonb(p) attributes
+select n.nspname schema,p.proname name,pg_get_functiondef(p.oid) definition,md5(p.prosrc) source_md5,to_jsonb(p) attributes
 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
 where exists(select 1 from reason_review_expected e where to_regprocedure(e.payload->>'signature')=p.oid)
  or exists(select 1 from jsonb_array_elements((select payload from reason_review_before)->'functions') e where (e#>>'{attributes,oid}')::oid=p.oid)
@@ -180,6 +180,7 @@ def main():
             'installation_business_dml': False,
             'later_usage': 'Existing saver may recalculate applicable automatic draft payroll; finalized values remain protected by existing saver',
             'history_ui': 'Read RPC exists in candidate but client history display is not connected',
+            'pause_receipt': 'Use actual returned function rows including definition/source_md5/full attributes; capture reason-table class/constraints/triggers/policies immediately after COMMIT in an independent read before user writes',
             'recovery': 'No destructive uninstall or source rollback. Preserve append-only reason records. A separately reviewed disable of new entry EXECUTE may pause new operations after writer quiescence, preserving all originals and legacy APIs.'}
     (output / 'review-plan.json').write_text(json.dumps(plan, ensure_ascii=False, indent=2) + '\n')
     print(json.dumps({key: plan[key] for key in ('status', 'guarded_forward_sha256', 'existing_functions_unchanged', 'existing_tables_unchanged')}))
