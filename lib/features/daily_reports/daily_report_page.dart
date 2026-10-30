@@ -267,13 +267,28 @@ class _DailyReportPageState extends State<DailyReportPage> {
 
   bool _savedSignatureHasInk(Object? signature) {
     try {
-      final points = SignatureResult.fromJson(signature).expand((stroke) => stroke).toList();
-      return points.isNotEmpty && points.every((point) => point.dx.isFinite && point.dy.isFinite &&
-        point.dx >= 0 && point.dx <= 1 && point.dy >= 0 && point.dy <= 1);
+      return signatureHasDrawableInk(SignatureResult.fromJson(signature),
+        canvasSize: SignatureResult.sizeFromJson(signature));
     } catch (_) {
       return false;
     }
   }
+
+  bool _savedSignatureNeedsReview(Object? signature) {
+    try {
+      final strokes = SignatureResult.fromJson(signature);
+      final points = strokes.expand((stroke) => stroke).toList();
+      return points.isNotEmpty && !signatureHasDrawableInk(strokes,
+        canvasSize: SignatureResult.sizeFromJson(signature)) &&
+        points.every((point) => point.dx.isFinite && point.dy.isFinite &&
+          point.dx >= 0 && point.dx <= 1 && point.dy >= 0 && point.dy <= 1);
+    } catch (_) { return false; }
+  }
+
+  bool get _reporterSignatureNeedsReview =>
+      _savedSignatureNeedsReview(_report?.reporterSignatureJson);
+  bool get _supervisorSignatureNeedsReview =>
+      _savedSignatureNeedsReview(_report?.responsibleSignatureJson ?? _report?.signatureJson);
 
   RoundedRectangleBorder get _stepCardShape => RoundedRectangleBorder(
     borderRadius: BorderRadius.circular(12),
@@ -1595,6 +1610,9 @@ class _DailyReportPageState extends State<DailyReportPage> {
         ),
       );
       if (result == null || !mounted) return;
+      if (!result.hasDrawableInk || result.signerName.trim().isEmpty) {
+        throw const FormatException('氏名と、線で書いたサインを確認してください。');
+      }
       checkSigningContext();
       if (_report?.id != reportId) throw StateError('対象日報が変わりました');
       final repository = _repository;
@@ -1771,6 +1789,9 @@ class _DailyReportPageState extends State<DailyReportPage> {
         ),
       );
       if (result == null || !mounted) return;
+      if (!result.hasDrawableInk || result.signerName.trim().isEmpty) {
+        throw const FormatException('氏名と、線で書いたサインを確認してください。');
+      }
       checkSigningContext();
       if (_report?.id != reportId) throw StateError('対象日報が変わりました');
       final repository = _repository;
@@ -1852,7 +1873,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
     final visit = widget.routeVisitContext;
     final actor = repository?.currentActorId;
     if (_saving || repository == null || before == null || visit == null || actor == null ||
-        !before.canFinalizeVisit) { return; }
+        !before.canFinalizeVisit || !_reporterSignatureSaved || !_supervisorSignatureSaved) { return; }
     FocusScope.of(context).unfocus();
     setState(() => _saving = true);
     try {
@@ -1904,7 +1925,8 @@ class _DailyReportPageState extends State<DailyReportPage> {
     final before = _sharedContext;
     if (_saving || _managementHold || repository == null || before == null ||
         !before.canFinalize || before.reportId != _report?.id ||
-        before.actorId != _repository?.currentActorId) { return; }
+        before.actorId != _repository?.currentActorId ||
+        !_reporterSignatureSaved || !_supervisorSignatureSaved) { return; }
     FocusScope.of(context).unfocus();
     setState(() => _saving = true);
     try {
@@ -2037,6 +2059,10 @@ class _DailyReportPageState extends State<DailyReportPage> {
     setState(() => _saving = true);
     try {
       checkContext();
+      if (!signature.hasDrawableInk || signature.signerName.trim().isEmpty ||
+          !_savedSignatureHasInk(report.reporterSignatureJson)) {
+        throw const FormatException('報告者・責任者のサインの筆跡を確認してください。');
+      }
       if (_pendingSignatureFingerprint != _draftFingerprint() ||
           _savedDraftFingerprint != _draftFingerprint() ||
           _pendingReporterFingerprint != _signatureFingerprint(report.reporterSignatureJson)) {
@@ -2370,7 +2396,9 @@ class _DailyReportPageState extends State<DailyReportPage> {
 
   Future<void> _showSignature({bool reporter = false}) async {
     final report = _report;
-    if (report == null || (reporter ? !_reporterSignatureSaved : !_supervisorSignatureSaved)) { return; }
+    if (report == null || (reporter
+        ? !(_reporterSignatureSaved || _reporterSignatureNeedsReview)
+        : !(_supervisorSignatureSaved || _supervisorSignatureNeedsReview))) { return; }
     final signature = reporter ? report.reporterSignatureJson
       : report.responsibleSignatureJson ?? report.signatureJson;
     final strokes = SignatureResult.fromJson(signature);
@@ -2382,7 +2410,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         scrollable: true,
-        title: Text('${reporter ? '報告者サイン' : '責任者サイン'}：$signerName'),
+        title: Text('${reporter ? '報告者サイン' : '責任者サイン'}：$signerName${(reporter ? _reporterSignatureNeedsReview : _supervisorSignatureNeedsReview) ? '（要確認）' : ''}'),
         content: SizedBox(width: 460, height: height,
           child: InteractiveViewer(minScale: 1, maxScale: 4,
             child: SignaturePreview(strokes: strokes, height: height,
@@ -2667,17 +2695,18 @@ class _DailyReportPageState extends State<DailyReportPage> {
                               horizontalTitleGap: 8, minLeadingWidth: 40,
                               leading: _ReportStepBadge(_dailyStep(3)),
                               title: _stepTitle('報告者サイン', step: 'reporter', complete: _reporterSignatureSaved,
-                                status: _reporterSignatureSaved ? 'サイン済み' : '未サイン',
+                                status: _reporterSignatureSaved ? 'サイン済み' : _reporterSignatureNeedsReview ? '要確認' : '未サイン',
                                 onSavedTap: _reporterSignatureSaved ? () => _showSignature(reporter: true) : null),
-                              subtitle: _reporterSignatureSaved ? Text(
-                                _report?.reporterSignerName ?? SkoLanguageController.tr('報告者サイン済み'))
+                              subtitle: _reporterSignatureSaved || _reporterSignatureNeedsReview ? Text(
+                                '${_report?.reporterSignerName ?? SkoLanguageController.tr('報告者サイン済み')}${_reporterSignatureNeedsReview ? '\n保存済みサインの筆跡を確認できません。編集・修正を申請してください。' : ''}')
                                 : SignatureEntryFrame(role: '報告者',
                                   signerName: _report?.reporterSignerName ??
                                     (_workers.length == 1 ? _workers.single.workerName : '出勤メンバーから選択')),
-                              trailing: _managementHold || _signed || _visitReporterLocked || _sharedFactsReadOnly
+                              trailing: !_reporterSignatureNeedsReview && (_managementHold || _signed || _visitReporterLocked || _sharedFactsReadOnly)
                                   ? null
                                   : const Icon(Icons.chevron_right),
-                              onTap: _managementHold || _saving || _signed || _visitReporterLocked || _sharedFactsReadOnly ? null : _signReporter,
+                              onTap: _reporterSignatureNeedsReview ? () => _showSignature(reporter: true)
+                                : _managementHold || _saving || _signed || _visitReporterLocked || _sharedFactsReadOnly ? null : _signReporter,
                             ),
                           ),
                           const SizedBox(height: 8),
@@ -2690,13 +2719,13 @@ class _DailyReportPageState extends State<DailyReportPage> {
                                 horizontalTitleGap: 8, minLeadingWidth: 40,
                                 leading: _ReportStepBadge(_dailyStep(4)),
                                 title: _stepTitle('責任者サイン', step: 'supervisor', complete: _supervisorSignatureSaved,
-                                  status: _supervisorSignatureSaved ? 'サイン済み' : '未サイン',
+                                  status: _supervisorSignatureSaved ? 'サイン済み' : _supervisorSignatureNeedsReview ? '要確認' : '未サイン',
                                   onSavedTap: _supervisorSignatureSaved ? () => _showSignature() : null),
                                 subtitle: Text(
-                                  _report?.responsibleSignerName ?? _report?.signerName ?? SkoLanguageController.tr('責任者サイン済み'),
+                                  '${_report?.responsibleSignerName ?? _report?.signerName ?? SkoLanguageController.tr('責任者サイン済み')}${_supervisorSignatureNeedsReview ? '\n保存済みサインの筆跡を確認できません。編集・修正を申請してください。' : ''}',
                                 ),
                                 trailing: const Icon(Icons.chevron_right),
-                                onTap: _supervisorSignatureSaved ? () => _showSignature() : null,
+                                onTap: _supervisorSignatureSaved || _supervisorSignatureNeedsReview ? () => _showSignature() : null,
                               ),
                             )
                           else
@@ -2707,7 +2736,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
                                 horizontalTitleGap: 8, minLeadingWidth: 40,
                                 leading: _ReportStepBadge(_dailyStep(4)),
                                 title: _stepTitle('責任者サイン', step: 'supervisor', complete: _supervisorSignatureSaved,
-                                  status: _supervisorSignatureSaved ? 'サイン済み' : '未サイン',
+                                  status: _supervisorSignatureSaved ? 'サイン済み' : _supervisorSignatureNeedsReview ? '要確認' : '未サイン',
                                   onSavedTap: _supervisorSignatureSaved ? () => _showSignature() : null),
                                 subtitle: SignatureEntryFrame(role: '責任者',
                                   signerName: _report?.responsibleSignerName ?? _report?.signerName ?? _responsibleFrameName ?? '現場責任者名を確認'),
@@ -2726,7 +2755,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
                               const SizedBox(height: 8),
                               if (!_signed) FilledButton.icon(
                                 key: const ValueKey('daily-report-finalize'),
-                                onPressed: _saving || _managementHold || (_visitReport
+                                onPressed: _saving || _managementHold || !_reporterSignatureSaved || !_supervisorSignatureSaved || (_visitReport
                                     ? _report?.canFinalizeVisit != true : _sharedContext?.canFinalize != true)
                                   ? null : _visitReport ? _finalizeVisitReport : _finalizeReport,
                                 icon: const Icon(Icons.check_circle_outline),

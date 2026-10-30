@@ -12,6 +12,8 @@ class SignatureResult {
   final List<List<Offset>> strokes;
   final Size? canvasSize;
 
+  bool get hasDrawableInk => signatureHasDrawableInk(strokes, canvasSize: canvasSize);
+
   Object toJson() => [
         for (final stroke in strokes)
           [
@@ -64,6 +66,32 @@ class SignatureResult {
   }
 }
 
+/// A visible signature requires a finite, in-frame segment within one stroke.
+/// Two isolated pen-down points must not be joined into a synthetic signature.
+bool signatureHasDrawableInk(List<List<Offset>> strokes, {Size? canvasSize}) {
+  final source = canvasSize ?? const Size(400, 120);
+  if (!source.width.isFinite || !source.height.isFinite || source.width <= 0 || source.height <= 0) return false;
+  var hasSegment = false;
+  for (final stroke in strokes) {
+    Offset? previous;
+    var length = 0.0;
+    for (final point in stroke) {
+      if (!point.dx.isFinite || !point.dy.isFinite ||
+          point.dx < 0 || point.dx > 1 || point.dy < 0 || point.dy > 1) {
+        return false;
+      }
+      if (previous != null) {
+        final delta = Offset((point.dx - previous.dx) * source.width,
+          (point.dy - previous.dy) * source.height);
+        length += delta.distance;
+        if (length >= 1) hasSegment = true;
+      }
+      previous = point;
+    }
+  }
+  return hasSegment;
+}
+
 class SignatureCapturePage extends StatefulWidget {
   const SignatureCapturePage({
     super.key,
@@ -88,6 +116,7 @@ class SignatureCapturePage extends StatefulWidget {
 
 class _SignatureCapturePageState extends State<SignatureCapturePage> {
   final _signer = TextEditingController();
+  final _nameFocus = FocusNode();
   final _strokes = <List<Offset>>[];
   Size _canvasSize = Size.zero;
   Size? _captureSize;
@@ -98,17 +127,33 @@ class _SignatureCapturePageState extends State<SignatureCapturePage> {
   void initState() {
     super.initState();
     _signer.text = widget.initialSignerName;
+    _nameFocus.addListener(_nameFocusChanged);
     SkoOrientationPolicy.enterSignature();
   }
 
   @override
   void dispose() {
+    _nameFocus.removeListener(_nameFocusChanged);
+    _nameFocus.dispose();
     _signer.dispose();
     SkoOrientationPolicy.leaveSignature();
     super.dispose();
   }
 
+  bool get _editingName => _nameFocus.hasFocus || MediaQuery.viewInsetsOf(context).bottom > 0;
+
+  void _nameFocusChanged() {
+    if (!mounted) return;
+    setState(() { if (_nameFocus.hasFocus) _strokeActive = false; });
+  }
+
+  void _finishNameInput() {
+    _strokeActive = false;
+    FocusManager.instance.primaryFocus?.unfocus();
+  }
+
   void _startStroke(DragStartDetails details) {
+    if (_editingName) { _finishNameInput(); return; }
     if (!_landscape || _canvasSize.width <= 0 || _canvasSize.height <= 0) { return; }
     FocusManager.instance.primaryFocus?.unfocus();
     _strokeActive = true;
@@ -124,7 +169,7 @@ class _SignatureCapturePageState extends State<SignatureCapturePage> {
   }
 
   void _addPoint(DragUpdateDetails details) {
-    if (!_landscape || !_strokeActive || _strokes.isEmpty || _canvasSize.width <= 0 || _canvasSize.height <= 0) {
+    if (_editingName || !_landscape || !_strokeActive || _strokes.isEmpty || _canvasSize.width <= 0 || _canvasSize.height <= 0) {
       return;
     }
     setState(() {
@@ -139,13 +184,15 @@ class _SignatureCapturePageState extends State<SignatureCapturePage> {
 
   void _submit() {
     if (!_landscape) { return; }
+    // A tap used to dismiss the name keyboard is never a signature approval.
+    if (_editingName) { _finishNameInput(); return; }
     if (_signer.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('${widget.signerLabel}を入力してください')),
       );
       return;
     }
-    if (_strokes.isEmpty) {
+    if (!signatureHasDrawableInk(_strokes, canvasSize: _captureSize)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('サインを入力してください')),
       );
@@ -184,16 +231,24 @@ class _SignatureCapturePageState extends State<SignatureCapturePage> {
         DropdownMenuItem(value: name, child: Text(name))],
       onChanged: (name) { if (name != null) { _signer.text = name; } },
     );
-    final nameField = TextField(controller: _signer,
+    final editingName = _editingName;
+    final nameField = TextField(controller: _signer, focusNode: _nameFocus,
+      textInputAction: TextInputAction.done,
+      onSubmitted: (_) => _finishNameInput(),
       decoration: InputDecoration(labelText: widget.signerLabel,
         prefixIcon: const Icon(Icons.person_outline), isDense: true));
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       appBar: AppBar(
         title: Text(
           widget.title,
           style: const TextStyle(fontWeight: FontWeight.w900),
         ),
         actions: [
+          if (editingName) TextButton(
+            key: const ValueKey('signature-name-done'),
+            onPressed: _finishNameInput,
+            child: const Text('名前入力を完了')),
           if (widget.reviewText != null) IconButton(
             tooltip: 'サインする日報を確認', icon: const Icon(Icons.description_outlined),
             onPressed: () => showDialog<void>(context: context, builder: (dialogContext) => AlertDialog(
@@ -232,6 +287,7 @@ class _SignatureCapturePageState extends State<SignatureCapturePage> {
                   child: GestureDetector(
                     key: const ValueKey('signature-drawing-surface'),
                     behavior: HitTestBehavior.opaque,
+                    onTap: editingName ? _finishNameInput : null,
                     onPanStart: _landscape ? _startStroke : null,
                     onPanUpdate: _landscape ? _addPoint : null,
                     onPanEnd: _landscape ? (_) { _strokeActive = false; } : null,
@@ -266,7 +322,7 @@ class _SignatureCapturePageState extends State<SignatureCapturePage> {
                     child: Column(mainAxisSize: MainAxisSize.min, children: [
                       const Icon(Icons.check_circle_outline, size: 24),
                       const SizedBox(height: 4),
-                      Text(widget.submitLabel, textAlign: TextAlign.center,
+                      Text(editingName ? '名前入力を完了' : widget.submitLabel, textAlign: TextAlign.center,
                         style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
                     ]))),
                 ))),
@@ -365,6 +421,13 @@ class SignaturePainter extends CustomPainter {
       if (stroke.isEmpty) { continue; }
       final path = Path();
       final first = project(stroke.first);
+      if (stroke.length == 1) {
+        // Retain visibility of legacy point-only evidence without accepting it
+        // as a new signature. The PDF renderer already displays these dots.
+        canvas.drawCircle(first, paint.strokeWidth / 2,
+          Paint()..color = Colors.black..style = PaintingStyle.fill);
+        continue;
+      }
       path.moveTo(first.dx, first.dy);
       for (final point in stroke.skip(1)) {
         final projected = project(point);

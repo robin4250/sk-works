@@ -92,6 +92,7 @@ void main() {
     await tester.pump(const Duration(seconds: 5));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), '責任者本人');
+      await tester.testTextInput.receiveAction(TextInputAction.done); await tester.pump();
     await tester.tap(find.text('サインを確定'));
     await tester.pump();
     expect(find.text('サインを入力してください'), findsOneWidget);

@@ -25,8 +25,8 @@ class _VisitFinalizationFixture implements DailyReportRepository {
       siteName: '現場', date: DateTime(2026, 10, 26), workDescription: '保存済みの訪問作業',
       status: finalized ? 'signed' : 'reporter_signed',
       workers: [DailyReportWorkerDraft(workerId: 'worker', workerName: '現場メンバー')],
-      reporterSignerName: '報告者', reporterSignatureJson: {'strokes': [[{'x': 0.1, 'y': 0.2}]]},
-      responsibleSignerName: '責任者', responsibleSignatureJson: {'strokes': [[{'x': 0.2, 'y': 0.3}]]},
+      reporterSignerName: '報告者', reporterSignatureJson: {'strokes': [[{'x': 0.1, 'y': 0.2}, {'x': 0.3, 'y': 0.4}]]},
+      responsibleSignerName: '責任者', responsibleSignatureJson: {'strokes': [[{'x': 0.2, 'y': 0.3}, {'x': 0.4, 'y': 0.5}]]},
       visitFinalizationRequired: true, visitFinalizationReady: !finalized,
       visitFinalizationCompleted: finalized, visitExpectedUpdatedAt: DateTime.utc(2026, 10, 26),
       visitSignatureScope: List.filled(64, 'a').join());
