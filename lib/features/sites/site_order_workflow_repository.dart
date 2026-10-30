@@ -53,9 +53,12 @@ abstract class SiteOrderWorkflowApi extends ChangeNotifier {
 /// One captured SDK session/gateway lease. No automatic mutation retry or new
 /// request ID after an uncertain response; the caller must read saved status.
 class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
-  SiteOrderWorkflowRepository(this._client)
-    : _token = _client.auth.currentSession!.accessToken,
-      _session = TradeDocumentFormSession(_client) {
+  SiteOrderWorkflowRepository(
+    this._client, {
+    @visibleForTesting SiteOrderApprovalJournal? approvalJournal,
+  }) : _approvalJournal = approvalJournal ?? SiteOrderApprovalJournal(),
+       _token = _client.auth.currentSession!.accessToken,
+       _session = TradeDocumentFormSession(_client) {
     _session.addListener(_scopeChanged);
   }
   static SiteOrderWorkflowRepository? maybeCreate() {
@@ -74,7 +77,7 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
   final String _token;
   final TradeDocumentFormSession _session;
   final _retired = Completer<void>();
-  final _approvalJournal = SiteOrderApprovalJournal();
+  final SiteOrderApprovalJournal _approvalJournal;
   String get _actor => _client.auth.currentUser!.id;
   String? _company, _role;
   bool _invalid = false;

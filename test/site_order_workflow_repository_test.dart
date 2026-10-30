@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sk_works/features/sites/site_order_workflow_repository.dart';
+import 'package:sk_works/features/sites/site_order_approval_journal.dart';
 
 const actor = '10000000-0000-0000-0000-000000000001';
 const company = '10000000-0000-0000-0000-000000000002';
@@ -97,9 +98,26 @@ class _Wire extends http.BaseClient {
   }
 }
 
+class _FailingPreferences extends Fake implements SharedPreferences {
+  _FailingPreferences(this.throwsOnWrite);
+  final bool throwsOnWrite;
+  @override
+  Future<void> reload() async {}
+  @override
+  bool containsKey(String key) => false;
+  @override
+  String? getString(String key) => null;
+  @override
+  Future<bool> setString(String key, String value) async {
+    if (throwsOnWrite) throw StateError('synthetic storage failure');
+    return false;
+  }
+}
+
 Future<(SupabaseClient, SiteOrderWorkflowRepository)> _fixture(
-  _Wire wire,
-) async {
+  _Wire wire, {
+  SiteOrderApprovalJournal? approvalJournal,
+}) async {
   final client = SupabaseClient(
     'https://synthetic.invalid',
     'synthetic-public',
@@ -108,11 +126,38 @@ Future<(SupabaseClient, SiteOrderWorkflowRepository)> _fixture(
   );
   await client.auth.setInitialSession(jsonEncode(wire.session));
   await client.auth.recoverSession(jsonEncode(wire.session));
-  return (client, SiteOrderWorkflowRepository(client));
+  return (
+    client,
+    SiteOrderWorkflowRepository(client, approvalJournal: approvalJournal),
+  );
 }
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+  for (final throwsOnWrite in [false, true]) {
+    test(
+      'approval sends no SDK HTTP request if durable storage fails ($throwsOnWrite)',
+      () async {
+        final wire = _Wire();
+        final journal = SiteOrderApprovalJournal.withPreferences(
+          () async => _FailingPreferences(throwsOnWrite),
+        );
+        final f = await _fixture(wire, approvalJournal: journal);
+        addTearDown(f.$1.dispose);
+        addTearDown(f.$2.dispose);
+        await expectLater(
+          f.$2.approve({
+            'package_id': package,
+            'preview_id': package,
+            'body_hash': 'b' * 64,
+            'own_seal': {'seal_hash': 'c' * 64},
+          }, package),
+          throwsStateError,
+        );
+        expect(wire.functions, 0);
+      },
+    );
+  }
   test('unknown approval remains quarantined across repositories until exact server barrier resolves', () async {
     final wire = _Wire()..functionStatus = 409;
     final f = await _fixture(wire);

@@ -1,12 +1,17 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Contains identifiers only; never a token, document body, price or seal.
 /// A retained entry quarantines approval until the server's serialized barrier
 /// confirms an accepted operation or permanently cancels that exact request.
 class SiteOrderApprovalJournal {
+  SiteOrderApprovalJournal() : _preferences = SharedPreferences.getInstance;
+  @visibleForTesting
+  SiteOrderApprovalJournal.withPreferences(this._preferences);
+  final Future<SharedPreferences> Function() _preferences;
   static Future<void> _tail = Future<void>.value();
   static final _uuid = RegExp(r'^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$');
 
@@ -34,7 +39,7 @@ class SiteOrderApprovalJournal {
     String company,
     String package,
   ) => _serial(() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _preferences();
     await prefs.reload();
     final raw = prefs.getString(_key(actor, company, package));
     if (raw == null) return null;
@@ -60,7 +65,7 @@ class SiteOrderApprovalJournal {
     if (!_uuid.hasMatch(preview) || !_uuid.hasMatch(request)) {
       throw StateError('保存状態の識別情報を確認できません。');
     }
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _preferences();
     await prefs.reload();
     final key = _key(actor, company, package);
     if (prefs.containsKey(key)) throw StateError('前の承認結果を確認してください。');
@@ -82,7 +87,7 @@ class SiteOrderApprovalJournal {
     String package,
     String request,
   ) => _serial(() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _preferences();
     await prefs.reload();
     final key = _key(actor, company, package), raw = prefs.getString(key);
     if (raw == null) return;
