@@ -1,0 +1,315 @@
+-- REVIEW ONLY. Source-pinned new signature input validation. No production authorization.
+begin;set local lock_timeout='3s';set local statement_timeout='30s';
+do $pre$ begin
+ if current_user<>'postgres' or to_regnamespace('signature_new_input_private') is not null then raise exception 'new_signature_input_install_unavailable';end if;
+ if not exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='private' and p.proname='save_route_visit_report_signature' and pg_get_function_identity_arguments(p.oid)='p_report_id uuid, p_role text, p_signer_name text, p_signature_json jsonb' and md5(p.prosrc)='c00c361151bea9b5a00a73001797c663') then raise exception 'new_signature_input_original_source_changed';end if;
+ if not exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='sign_daily_report' and pg_get_function_identity_arguments(p.oid)='p_report_id uuid, p_signer_name text, p_signature_json jsonb' and md5(p.prosrc)='4026e733aeefe59b95b5a22d7b76deeb') then raise exception 'new_signature_input_original_source_changed';end if;
+ if not exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='private' and p.proname='save_daily_report_signature' and pg_get_function_identity_arguments(p.oid)='p_report_id uuid, p_role text, p_signer_name text, p_signature_json jsonb' and md5(p.prosrc)='5fa704bc20e20cac533c31fb3d27b8da') then raise exception 'new_signature_input_original_source_changed';end if;
+ if (select md5(prosrc) from pg_proc where oid='checkout_report_registration_private.has_signature(text,jsonb)'::regprocedure) is distinct from 'ed912d8e9bff5f6ac316d40e60762236' then raise exception 'new_signature_input_history_source_changed';end if;
+end $pre$;
+create temporary table new_signature_original_attributes on commit drop as select p.oid,(to_jsonb(p)-'prosrc') attributes from pg_proc p join pg_namespace n on n.oid=p.pronamespace where (n.nspname='private' and p.proname='save_route_visit_report_signature' and pg_get_function_identity_arguments(p.oid)='p_report_id uuid, p_role text, p_signer_name text, p_signature_json jsonb') or (n.nspname='public' and p.proname='sign_daily_report' and pg_get_function_identity_arguments(p.oid)='p_report_id uuid, p_signer_name text, p_signature_json jsonb') or (n.nspname='private' and p.proname='save_daily_report_signature' and pg_get_function_identity_arguments(p.oid)='p_report_id uuid, p_role text, p_signer_name text, p_signature_json jsonb');
+-- REVIEW ONLY. New inputs only; never replace the historical has_signature helper.
+create schema signature_new_input_private;
+revoke all on schema signature_new_input_private from public,anon,authenticated,service_role;
+create function signature_new_input_private.require_ink(p_value jsonb)
+returns void language plpgsql immutable set search_path='' as $$
+declare strokes jsonb;stroke jsonb;point jsonb;keys text[];has_ink boolean:=false;
+ total_points integer:=0;with_dimensions boolean;dimensions_mode boolean;
+ width_value numeric:=400;height_value numeric:=120;px double precision;py double precision;
+ previous_x double precision;previous_y double precision;delta_x double precision;delta_y double precision;line_length double precision;
+begin
+ if p_value is null or jsonb_typeof(p_value) is distinct from 'object' or octet_length(p_value::text)>4194304 then
+  raise sqlstate '22023' using message='new_signature_input_invalid';end if;
+ select array_agg(k order by k) into keys from jsonb_object_keys(p_value) k;
+ if keys is distinct from array['strokes']::text[] or jsonb_typeof(p_value->'strokes') is distinct from 'array' then
+  raise sqlstate '22023' using message='new_signature_input_invalid';end if;
+ strokes:=p_value->'strokes';
+ if jsonb_array_length(strokes)=0 or jsonb_array_length(strokes)>256 then
+  raise sqlstate '22023' using message='new_signature_input_invalid';end if;
+ for stroke in select value from jsonb_array_elements(strokes) loop
+  if jsonb_typeof(stroke) is distinct from 'array' or jsonb_array_length(stroke)=0 or jsonb_array_length(stroke)>16384 then
+   raise sqlstate '22023' using message='new_signature_input_invalid';end if;
+  previous_x:=null;previous_y:=null;line_length:=0;
+  for point in select value from jsonb_array_elements(stroke) loop
+   total_points:=total_points+1;
+   if total_points>65536 or jsonb_typeof(point) is distinct from 'object' then
+    raise sqlstate '22023' using message='new_signature_input_invalid';end if;
+   select array_agg(k order by k) into keys from jsonb_object_keys(point) k;
+   if keys is distinct from array['x','y']::text[] and keys is distinct from array['canvas_height','canvas_width','x','y']::text[] then
+    raise sqlstate '22023' using message='new_signature_input_invalid';end if;
+   if jsonb_typeof(point->'x') is distinct from 'number' or jsonb_typeof(point->'y') is distinct from 'number'
+    or not ((point->>'x')::numeric between 0 and 1) or not ((point->>'y')::numeric between 0 and 1) then
+    raise sqlstate '22023' using message='new_signature_input_invalid';end if;
+   with_dimensions:=point?'canvas_width';
+   if dimensions_mode is null then dimensions_mode:=with_dimensions;
+   elsif dimensions_mode is distinct from with_dimensions then raise sqlstate '22023' using message='new_signature_input_invalid';end if;
+   if with_dimensions then
+    if jsonb_typeof(point->'canvas_width') is distinct from 'number' or jsonb_typeof(point->'canvas_height') is distinct from 'number'
+     or not ((point->>'canvas_width')::numeric>0 and (point->>'canvas_width')::numeric<=16384)
+     or not ((point->>'canvas_height')::numeric>0 and (point->>'canvas_height')::numeric<=16384) then
+     raise sqlstate '22023' using message='new_signature_input_invalid';end if;
+    if total_points=1 then width_value:=(point->>'canvas_width')::numeric;height_value:=(point->>'canvas_height')::numeric;
+    elsif width_value is distinct from (point->>'canvas_width')::numeric or height_value is distinct from (point->>'canvas_height')::numeric then
+     raise sqlstate '22023' using message='new_signature_input_invalid';end if;
+   end if;
+   px:=(point->>'x')::double precision;py:=(point->>'y')::double precision;
+   if previous_x is not null then
+    delta_x:=(px-previous_x)*width_value::double precision;delta_y:=(py-previous_y)*height_value::double precision;
+    line_length:=line_length+sqrt(delta_x*delta_x+delta_y*delta_y);
+    if line_length>=1 then has_ink:=true;end if;
+   end if;
+   previous_x:=px;previous_y:=py;
+  end loop;
+ end loop;
+ if not has_ink then raise sqlstate '22023' using message='new_signature_visible_stroke_required';end if;
+end $$;
+create function signature_new_input_private.require_financial_signature(p_value jsonb)
+returns void language plpgsql immutable set search_path='' as $$
+declare keys text[];
+begin
+ if p_value is null or jsonb_typeof(p_value) is distinct from 'object' or octet_length(p_value::text)>4194304 then
+  raise sqlstate '22023' using message='new_signature_input_invalid';end if;
+ select array_agg(k order by k) into keys from jsonb_object_keys(p_value) k;
+ if keys=array['strokes']::text[] then perform signature_new_input_private.require_ink(p_value);
+ elsif keys=array['representative','supervisor','version']::text[] and p_value->'version'='3'::jsonb then
+  perform signature_new_input_private.require_ink(p_value->'representative');
+  perform signature_new_input_private.require_ink(p_value->'supervisor');
+ else raise sqlstate '22023' using message='new_signature_input_invalid';end if;
+end $$;
+revoke all on all functions in schema signature_new_input_private from public,anon,authenticated,service_role;
+
+CREATE OR REPLACE FUNCTION private.save_route_visit_report_signature(p_report_id uuid, p_role text, p_signer_name text, p_signature_json jsonb)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare r private.route_visit_reports%rowtype; stroke jsonb; point jsonb;
+begin
+ if auth.uid() is null or not private.account_access_allowed() then raise exception 'account unavailable' using errcode='42501'; end if;
+ select * into r from private.route_visit_reports where id=p_report_id for update;
+ if not found or (case when explicit_route_finalization_private.required(r.id) then not explicit_route_finalization_private.actor_allowed(r.id) else r.created_by<>auth.uid() end) or not exists(select 1 from public.company_members where company_id=r.company_id and user_id=auth.uid()) then raise exception 'report unavailable' using errcode='42501'; end if;
+ if explicit_route_finalization_private.required(r.id) then
+  perform explicit_route_finalization_private.lock_actor(r.id);perform explicit_route_finalization_private.enroll(r.id);
+  if (case when p_role='reporter' then r.representative_signature_json else r.supervisor_signature_json end) is not null then
+   if (case when p_role='reporter' then r.representative_signature_json else r.supervisor_signature_json end) is distinct from p_signature_json or (case when p_role='reporter' then r.representative_signer_name else r.supervisor_signer_name end) is distinct from trim(p_signer_name) then raise sqlstate '55000' using message='explicit_route_signature_already_saved';end if;
+   return explicit_route_finalization_private.decorate(to_jsonb(r)||jsonb_build_object('daily_report_workers',r.workers,'sites',jsonb_build_object('name',r.site_name)));
+  end if;
+ end if;
+ if p_role not in ('reporter','responsible') or p_role is null or nullif(trim(p_signer_name),'') is null
+ or p_signature_json is null or jsonb_typeof(p_signature_json)<>'object'
+ or jsonb_typeof(p_signature_json->'strokes') is distinct from 'array' or jsonb_array_length(p_signature_json->'strokes')=0 then raise exception 'name and signature required'; end if;
+ if r.status is distinct from 'completed' and r.status is distinct from 'skipped' and ((p_role='reporter' and r.representative_signature_json is null) or p_role='responsible') then perform signature_new_input_private.require_ink(p_signature_json);end if;
+ for stroke in select value from jsonb_array_elements(p_signature_json->'strokes') loop
+  if jsonb_typeof(stroke) is distinct from 'array' or jsonb_array_length(stroke)=0 then raise exception 'invalid signature stroke'; end if;
+  for point in select value from jsonb_array_elements(stroke) loop
+   if jsonb_typeof(point) is distinct from 'object' or jsonb_typeof(point->'x') is distinct from 'number' or jsonb_typeof(point->'y') is distinct from 'number' then raise exception 'invalid signature point'; end if;
+   if (point->>'x')::numeric not between 0 and 1 or (point->>'y')::numeric not between 0 and 1 then raise exception 'invalid signature coordinates'; end if;
+  end loop;
+ end loop;
+ if r.status in ('completed','skipped') then return explicit_route_finalization_private.decorate(to_jsonb(r)); end if;
+ if p_role='reporter' and r.representative_signature_json is null then
+  update private.route_visit_reports set representative_signer_name=trim(p_signer_name),representative_signature_json=p_signature_json,status='reporter_signed',updated_at=now() where id=r.id returning * into r;
+ elsif p_role='responsible' then
+  if r.representative_signature_json is null then raise exception 'reporter signature required'; end if;
+  update private.route_visit_reports set supervisor_signer_name=trim(p_signer_name),supervisor_signature_json=p_signature_json,status=case when explicit_route_finalization_private.required(r.id) then 'reporter_signed' else 'completed' end,signed_at=case when explicit_route_finalization_private.required(r.id) then null else now() end,updated_at=now() where id=r.id returning * into r;
+ end if;
+ return explicit_route_finalization_private.decorate(to_jsonb(r)||jsonb_build_object('daily_report_workers',r.workers,'sites',jsonb_build_object('name',r.site_name)));
+end $function$
+;
+CREATE OR REPLACE FUNCTION public.sign_daily_report(p_report_id uuid, p_signer_name text, p_signature_json jsonb)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'private', 'pg_temp'
+AS $function$
+declare scope_before jsonb; checkout_receipts jsonb;
+  v_user_id uuid:=auth.uid();
+  v_company_id uuid;
+  v_site_id uuid;
+  v_route_id uuid;
+  v_date date;
+  v_detail record;
+  v_entry_id uuid;
+begin
+  if v_user_id is null then raise exception 'authentication required'; end if;
+
+  if not exists(select 1 from public.daily_reports dr join public.company_members cm on cm.company_id=dr.company_id and cm.user_id=auth.uid() where dr.id=p_report_id) then raise exception 'daily report not found'; end if;
+  scope_before:=payroll_scope_private.report_sources(p_report_id);
+  perform payroll_scope_private.lock_scopes(scope_before->'scopes');
+  select dr.company_id,dr.site_id,dr.route_assignment_id,dr.report_date
+  into v_company_id,v_site_id,v_route_id,v_date
+  from public.daily_reports dr
+  join public.company_members cm
+    on cm.company_id=dr.company_id and cm.user_id=v_user_id
+  where dr.id=p_report_id
+  for update;
+
+  if v_company_id is null then raise exception 'daily report not found'; end if;
+  perform 1 from public.daily_report_workers where report_id=p_report_id order by worker_id for share;
+  if payroll_scope_private.report_sources(p_report_id) is distinct from scope_before then raise exception 'daily report payroll scope changed' using errcode='40001'; end if;
+
+  if nullif(trim(coalesce(p_signer_name,'')),'') is null then
+    raise exception 'signer name is required';
+  end if;
+  if p_signature_json is null or p_signature_json='[]'::jsonb then
+    raise exception 'signature is required';
+  end if;
+
+  perform signature_new_input_private.require_financial_signature(p_signature_json);
+  checkout_receipts:=company_checkout_allowance_private.capture_report(p_report_id);
+  perform checkout_paid_hours_candidate_private.capture_report(p_report_id,p_signature_json);
+
+  update public.daily_reports
+  set status='signed',
+      signer_name=trim(p_signer_name),
+      signature_json=p_signature_json,
+      signed_at=now(),
+      updated_by=v_user_id,
+      updated_at=now()
+  where id=p_report_id;
+
+  delete from public.attendance_entries ae
+  where ae.source_report_id=p_report_id
+    and (
+      ae.site_id is distinct from v_site_id
+      or ae.route_assignment_id is distinct from v_route_id
+      or ae.work_date<>v_date
+      or not exists(
+        select 1 from public.daily_report_workers rw
+        where rw.report_id=p_report_id and rw.worker_id=ae.worker_id
+      )
+    );
+
+  for v_detail in
+    select * from public.daily_report_workers
+    where report_id=p_report_id
+  loop
+    select ae.id into v_entry_id
+    from public.attendance_entries ae
+    where ae.company_id=v_company_id
+      and ae.worker_id=v_detail.worker_id
+      and ae.site_id is not distinct from v_site_id
+      and ae.route_assignment_id is not distinct from v_route_id
+      and ae.work_date=v_date
+      and ae.source_report_id=p_report_id
+    order by ae.created_at
+    limit 1;
+
+    if v_entry_id is null then
+      if exists(
+        select 1 from public.attendance_entries ae
+        where ae.company_id=v_company_id
+          and ae.worker_id=v_detail.worker_id
+          and ae.site_id is not distinct from v_site_id
+          and ae.route_assignment_id is not distinct from v_route_id
+          and ae.work_date=v_date
+          and ae.source_report_id is distinct from p_report_id
+      ) then
+        raise exception '同じ日・勤務先の別の出勤記録があります。管理者が確認してください。';
+      end if;
+
+      insert into public.attendance_entries(
+        company_id,work_date,worker_id,site_id,route_assignment_id,
+        base_man_days,overtime_hours,early_hours,night_hours,
+        allowance_amount,notes,work_category,allowance_names,
+        source_report_id,company_allowance_receipt_id,created_by,updated_by
+      )
+      values(
+        v_company_id,v_date,v_detail.worker_id,v_site_id,v_route_id,
+        1,v_detail.overtime_hours,v_detail.early_hours,v_detail.night_hours,
+        v_detail.allowance_amount,v_detail.allowance_label,v_detail.work_category,
+        array(
+          select distinct trim(v)
+          from unnest(string_to_array(coalesce(v_detail.allowance_label,''),E'\n')) v
+          where trim(v)<>''
+        ),
+        p_report_id,(checkout_receipts->>v_detail.worker_id::text)::uuid,v_user_id,v_user_id
+      );
+    else
+      update public.attendance_entries
+      set base_man_days=1,
+          overtime_hours=v_detail.overtime_hours,
+          early_hours=v_detail.early_hours,
+          night_hours=v_detail.night_hours,
+          allowance_amount=v_detail.allowance_amount,
+          notes=v_detail.allowance_label,
+          work_category=v_detail.work_category,
+          allowance_names=array(
+            select distinct trim(v)
+            from unnest(string_to_array(coalesce(v_detail.allowance_label,''),E'\n')) v
+            where trim(v)<>''
+          ),
+          source_report_id=p_report_id,
+          company_allowance_receipt_id=(checkout_receipts->>v_detail.worker_id::text)::uuid,
+          updated_by=v_user_id,
+          updated_at=now()
+      where id=v_entry_id and source_report_id=p_report_id;
+    end if;
+
+    v_entry_id:=null;
+  end loop;
+end;
+$function$
+;
+CREATE OR REPLACE FUNCTION private.save_daily_report_signature(p_report_id uuid, p_role text, p_signer_name text, p_signature_json jsonb)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare scope_before jsonb; r public.daily_reports%rowtype;
+begin
+  if auth.uid() is null then raise exception 'authentication required'; end if;
+  if not exists(select 1 from public.daily_reports dr join public.company_members cm on cm.company_id=dr.company_id and cm.user_id=auth.uid() where dr.id=p_report_id) then raise exception 'daily report not found'; end if;
+  scope_before:=payroll_scope_private.report_sources(p_report_id);
+  perform payroll_scope_private.lock_scopes(scope_before->'scopes');
+  select dr.* into r from public.daily_reports dr where dr.id=p_report_id and exists (
+    select 1 from public.company_members cm where cm.company_id=dr.company_id and cm.user_id=auth.uid()
+  ) for update;
+  if r.id is null then raise exception 'daily report not found'; end if;
+  perform 1 from public.daily_report_workers where report_id=p_report_id order by worker_id for share;
+  if payroll_scope_private.report_sources(p_report_id) is distinct from scope_before then raise exception 'daily report payroll scope changed' using errcode='40001'; end if;
+
+  perform explicit_report_finalization_private.enroll(r.id);
+  if explicit_report_finalization_private.required(r.id) then
+    perform explicit_report_finalization_private.lock_actor(r.id);
+    if shared_daily_report_private.document_mode(r.id) then raise sqlstate '55000' using message='explicit_report_actual_revision_required';end if;
+    if p_role='representative' then perform explicit_report_finalization_private.auto_confirm(r.id);
+    elsif p_role='supervisor' then perform explicit_report_finalization_private.assert_supervisor(r.id);end if;
+  end if;
+  if r.status <> 'draft' then raise exception 'signed report requires approved edit request'; end if;
+  if p_role not in ('representative','supervisor') or p_role is null then raise exception 'invalid signature role'; end if;
+  if nullif(trim(p_signer_name),'') is null then raise exception 'signer name is required'; end if;
+  if jsonb_typeof(p_signature_json->'strokes') is distinct from 'array' then raise exception 'signature strokes required'; end if;
+  if not exists (select 1 from jsonb_array_elements(p_signature_json->'strokes') stroke where jsonb_typeof(stroke)='array' and jsonb_array_length(stroke)>0) then raise exception 'signature strokes required'; end if;
+  perform signature_new_input_private.require_ink(p_signature_json);
+  if shared_daily_report_private.document_mode(r.id) then
+    update shared_daily_report_private.work_protocol set document_only=true where report_id=r.id;
+  end if;
+  if p_role='representative' then
+    update public.daily_reports set representative_signature_json=p_signature_json, representative_signer_name=trim(p_signer_name), updated_by=auth.uid(),updated_at=now() where id=p_report_id;
+  else
+    update public.daily_reports set supervisor_signature_json=p_signature_json, supervisor_signer_name=trim(p_signer_name),updated_by=auth.uid(),updated_at=now() where id=p_report_id;
+  end if;
+  select * into r from public.daily_reports where id=p_report_id;
+  if r.representative_signature_json is not null and r.supervisor_signature_json is not null
+     and not shared_daily_report_private.document_mode(r.id) and not explicit_report_finalization_private.required(r.id) then
+    -- Retain the existing finalization/attendance workflow, with two distinct signatures in the legacy envelope.
+    perform public.sign_daily_report(p_report_id,r.supervisor_signer_name,jsonb_build_object('version',3,
+      'representative',r.representative_signature_json,'supervisor',r.supervisor_signature_json));
+  end if;
+end;
+$function$
+;
+do $post$ begin
+ if not exists(select 1 from pg_namespace n where n.nspname='signature_new_input_private' and pg_get_userbyid(n.nspowner)='postgres' and n.nspacl is not distinct from ARRAY['postgres=UC/postgres']::aclitem[]) then raise exception 'new_signature_input_schema_attributes_changed';end if;
+ if exists(select 1 from new_signature_original_attributes o left join pg_proc p on p.oid=o.oid where p.oid is null or (to_jsonb(p)-'prosrc') is distinct from o.attributes) then raise exception 'new_signature_input_existing_attributes_changed';end if;
+ if not exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='private' and p.proname='save_route_visit_report_signature' and pg_get_function_identity_arguments(p.oid)='p_report_id uuid, p_role text, p_signer_name text, p_signature_json jsonb' and md5(p.prosrc)='64a1a86a68aa2d225e4a3106389e9ce3') then raise exception 'new_signature_input_updated_body_differ';end if;
+ if not exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='sign_daily_report' and pg_get_function_identity_arguments(p.oid)='p_report_id uuid, p_signer_name text, p_signature_json jsonb' and md5(p.prosrc)='f350e07307e2370a1773b1826ccbea3f') then raise exception 'new_signature_input_updated_body_differ';end if;
+ if not exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='private' and p.proname='save_daily_report_signature' and pg_get_function_identity_arguments(p.oid)='p_report_id uuid, p_role text, p_signer_name text, p_signature_json jsonb' and md5(p.prosrc)='1940a5f58cb2565d7e7a825a2ca01680') then raise exception 'new_signature_input_updated_body_differ';end if;
+ if (select md5(prosrc) from pg_proc where oid='checkout_report_registration_private.has_signature(text,jsonb)'::regprocedure) is distinct from 'ed912d8e9bff5f6ac316d40e60762236' then raise exception 'new_signature_input_history_source_changed';end if;
+ if not exists(select 1 from pg_proc p where p.oid='signature_new_input_private.require_ink(jsonb)'::regprocedure and md5(p.prosrc)='e7eb2086b4ed5216f8cda4efaf43341e' and pg_get_userbyid(p.proowner)='postgres' and not p.prosecdef and p.provolatile='i' and not p.proisstrict and p.proparallel='u' and not p.proleakproof and p.proconfig=ARRAY['search_path=""']::text[] and p.proacl is not distinct from ARRAY['postgres=X/postgres']::aclitem[]) then raise exception 'new_signature_input_helper_attributes_changed';end if;
+ if not exists(select 1 from pg_proc p where p.oid='signature_new_input_private.require_financial_signature(jsonb)'::regprocedure and md5(p.prosrc)='1b4f071096b8a2f412740699e0c4cf34' and pg_get_userbyid(p.proowner)='postgres' and not p.prosecdef and p.provolatile='i' and not p.proisstrict and p.proparallel='u' and not p.proleakproof and p.proconfig=ARRAY['search_path=""']::text[] and p.proacl is not distinct from ARRAY['postgres=X/postgres']::aclitem[]) then raise exception 'new_signature_input_helper_attributes_changed';end if;
+end $post$;
+commit;

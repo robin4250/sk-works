@@ -1,0 +1,227 @@
+{
+  "application_rows_read": false,
+  "writers": [
+    {
+      "schema": "private",
+      "proname": "save_route_visit_report_signature",
+      "identity": "p_report_id uuid, p_role text, p_signer_name text, p_signature_json jsonb",
+      "definition": "CREATE OR REPLACE FUNCTION private.save_route_visit_report_signature(p_report_id uuid, p_role text, p_signer_name text, p_signature_json jsonb)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare r private.route_visit_reports%rowtype; stroke jsonb; point jsonb;\nbegin\n if auth.uid() is null or not private.account_access_allowed() then raise exception 'account unavailable' using errcode='42501'; end if;\n select * into r from private.route_visit_reports where id=p_report_id for update;\n if not found or (case when explicit_route_finalization_private.required(r.id) then not explicit_route_finalization_private.actor_allowed(r.id) else r.created_by<>auth.uid() end) or not exists(select 1 from public.company_members where company_id=r.company_id and user_id=auth.uid()) then raise exception 'report unavailable' using errcode='42501'; end if;\n if explicit_route_finalization_private.required(r.id) then\n  perform explicit_route_finalization_private.lock_actor(r.id);perform explicit_route_finalization_private.enroll(r.id);\n  if (case when p_role='reporter' then r.representative_signature_json else r.supervisor_signature_json end) is not null then\n   if (case when p_role='reporter' then r.representative_signature_json else r.supervisor_signature_json end) is distinct from p_signature_json or (case when p_role='reporter' then r.representative_signer_name else r.supervisor_signer_name end) is distinct from trim(p_signer_name) then raise sqlstate '55000' using message='explicit_route_signature_already_saved';end if;\n   return explicit_route_finalization_private.decorate(to_jsonb(r)||jsonb_build_object('daily_report_workers',r.workers,'sites',jsonb_build_object('name',r.site_name)));\n  end if;\n end if;\n if p_role not in ('reporter','responsible') or p_role is null or nullif(trim(p_signer_name),'') is null\n or p_signature_json is null or jsonb_typeof(p_signature_json)<>'object'\n or jsonb_typeof(p_signature_json->'strokes') is distinct from 'array' or jsonb_array_length(p_signature_json->'strokes')=0 then raise exception 'name and signature required'; end if;\n for stroke in select value from jsonb_array_elements(p_signature_json->'strokes') loop\n  if jsonb_typeof(stroke) is distinct from 'array' or jsonb_array_length(stroke)=0 then raise exception 'invalid signature stroke'; end if;\n  for point in select value from jsonb_array_elements(stroke) loop\n   if jsonb_typeof(point) is distinct from 'object' or jsonb_typeof(point->'x') is distinct from 'number' or jsonb_typeof(point->'y') is distinct from 'number' then raise exception 'invalid signature point'; end if;\n   if (point->>'x')::numeric not between 0 and 1 or (point->>'y')::numeric not between 0 and 1 then raise exception 'invalid signature coordinates'; end if;\n  end loop;\n end loop;\n if r.status in ('completed','skipped') then return explicit_route_finalization_private.decorate(to_jsonb(r)); end if;\n if p_role='reporter' and r.representative_signature_json is null then\n  update private.route_visit_reports set representative_signer_name=trim(p_signer_name),representative_signature_json=p_signature_json,status='reporter_signed',updated_at=now() where id=r.id returning * into r;\n elsif p_role='responsible' then\n  if r.representative_signature_json is null then raise exception 'reporter signature required'; end if;\n  update private.route_visit_reports set supervisor_signer_name=trim(p_signer_name),supervisor_signature_json=p_signature_json,status=case when explicit_route_finalization_private.required(r.id) then 'reporter_signed' else 'completed' end,signed_at=case when explicit_route_finalization_private.required(r.id) then null else now() end,updated_at=now() where id=r.id returning * into r;\n end if;\n return explicit_route_finalization_private.decorate(to_jsonb(r)||jsonb_build_object('daily_report_workers',r.workers,'sites',jsonb_build_object('name',r.site_name)));\nend $function$\n",
+      "source_md5": "c00c361151bea9b5a00a73001797c663",
+      "attributes": {
+        "proacl": [
+          "postgres=X/postgres",
+          "authenticated=X/postgres"
+        ],
+        "proconfig": [
+          "search_path=\"\""
+        ],
+        "prosecdef": true,
+        "provolatile": "v",
+        "proisstrict": false,
+        "proparallel": "u",
+        "proleakproof": false
+      },
+      "signature": "private.save_route_visit_report_signature"
+    },
+    {
+      "schema": "public",
+      "proname": "sign_daily_report",
+      "identity": "p_report_id uuid, p_signer_name text, p_signature_json jsonb",
+      "definition": "CREATE OR REPLACE FUNCTION public.sign_daily_report(p_report_id uuid, p_signer_name text, p_signature_json jsonb)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'private', 'pg_temp'\nAS $function$\ndeclare scope_before jsonb; checkout_receipts jsonb;\n  v_user_id uuid:=auth.uid();\n  v_company_id uuid;\n  v_site_id uuid;\n  v_route_id uuid;\n  v_date date;\n  v_detail record;\n  v_entry_id uuid;\nbegin\n  if v_user_id is null then raise exception 'authentication required'; end if;\n\n  if not exists(select 1 from public.daily_reports dr join public.company_members cm on cm.company_id=dr.company_id and cm.user_id=auth.uid() where dr.id=p_report_id) then raise exception 'daily report not found'; end if;\n  scope_before:=payroll_scope_private.report_sources(p_report_id);\n  perform payroll_scope_private.lock_scopes(scope_before->'scopes');\n  select dr.company_id,dr.site_id,dr.route_assignment_id,dr.report_date\n  into v_company_id,v_site_id,v_route_id,v_date\n  from public.daily_reports dr\n  join public.company_members cm\n    on cm.company_id=dr.company_id and cm.user_id=v_user_id\n  where dr.id=p_report_id\n  for update;\n\n  if v_company_id is null then raise exception 'daily report not found'; end if;\n  perform 1 from public.daily_report_workers where report_id=p_report_id order by worker_id for share;\n  if payroll_scope_private.report_sources(p_report_id) is distinct from scope_before then raise exception 'daily report payroll scope changed' using errcode='40001'; end if;\n\n  if nullif(trim(coalesce(p_signer_name,'')),'') is null then\n    raise exception 'signer name is required';\n  end if;\n  if p_signature_json is null or p_signature_json='[]'::jsonb then\n    raise exception 'signature is required';\n  end if;\n\n  checkout_receipts:=company_checkout_allowance_private.capture_report(p_report_id);\n  perform checkout_paid_hours_candidate_private.capture_report(p_report_id,p_signature_json);\n\n  update public.daily_reports\n  set status='signed',\n      signer_name=trim(p_signer_name),\n      signature_json=p_signature_json,\n      signed_at=now(),\n      updated_by=v_user_id,\n      updated_at=now()\n  where id=p_report_id;\n\n  delete from public.attendance_entries ae\n  where ae.source_report_id=p_report_id\n    and (\n      ae.site_id is distinct from v_site_id\n      or ae.route_assignment_id is distinct from v_route_id\n      or ae.work_date<>v_date\n      or not exists(\n        select 1 from public.daily_report_workers rw\n        where rw.report_id=p_report_id and rw.worker_id=ae.worker_id\n      )\n    );\n\n  for v_detail in\n    select * from public.daily_report_workers\n    where report_id=p_report_id\n  loop\n    select ae.id into v_entry_id\n    from public.attendance_entries ae\n    where ae.company_id=v_company_id\n      and ae.worker_id=v_detail.worker_id\n      and ae.site_id is not distinct from v_site_id\n      and ae.route_assignment_id is not distinct from v_route_id\n      and ae.work_date=v_date\n      and ae.source_report_id=p_report_id\n    order by ae.created_at\n    limit 1;\n\n    if v_entry_id is null then\n      if exists(\n        select 1 from public.attendance_entries ae\n        where ae.company_id=v_company_id\n          and ae.worker_id=v_detail.worker_id\n          and ae.site_id is not distinct from v_site_id\n          and ae.route_assignment_id is not distinct from v_route_id\n          and ae.work_date=v_date\n          and ae.source_report_id is distinct from p_report_id\n      ) then\n        raise exception '同じ日・勤務先の別の出勤記録があります。管理者が確認してください。';\n      end if;\n\n      insert into public.attendance_entries(\n        company_id,work_date,worker_id,site_id,route_assignment_id,\n        base_man_days,overtime_hours,early_hours,night_hours,\n        allowance_amount,notes,work_category,allowance_names,\n        source_report_id,company_allowance_receipt_id,created_by,updated_by\n      )\n      values(\n        v_company_id,v_date,v_detail.worker_id,v_site_id,v_route_id,\n        1,v_detail.overtime_hours,v_detail.early_hours,v_detail.night_hours,\n        v_detail.allowance_amount,v_detail.allowance_label,v_detail.work_category,\n        array(\n          select distinct trim(v)\n          from unnest(string_to_array(coalesce(v_detail.allowance_label,''),E'\\n')) v\n          where trim(v)<>''\n        ),\n        p_report_id,(checkout_receipts->>v_detail.worker_id::text)::uuid,v_user_id,v_user_id\n      );\n    else\n      update public.attendance_entries\n      set base_man_days=1,\n          overtime_hours=v_detail.overtime_hours,\n          early_hours=v_detail.early_hours,\n          night_hours=v_detail.night_hours,\n          allowance_amount=v_detail.allowance_amount,\n          notes=v_detail.allowance_label,\n          work_category=v_detail.work_category,\n          allowance_names=array(\n            select distinct trim(v)\n            from unnest(string_to_array(coalesce(v_detail.allowance_label,''),E'\\n')) v\n            where trim(v)<>''\n          ),\n          source_report_id=p_report_id,\n          company_allowance_receipt_id=(checkout_receipts->>v_detail.worker_id::text)::uuid,\n          updated_by=v_user_id,\n          updated_at=now()\n      where id=v_entry_id and source_report_id=p_report_id;\n    end if;\n\n    v_entry_id:=null;\n  end loop;\nend;\n$function$\n",
+      "source_md5": "4026e733aeefe59b95b5a22d7b76deeb",
+      "attributes": {
+        "proacl": [
+          "postgres=X/postgres",
+          "authenticated=X/postgres",
+          "service_role=X/postgres"
+        ],
+        "proconfig": [
+          "search_path=public, private, pg_temp"
+        ],
+        "prosecdef": true,
+        "provolatile": "v",
+        "proisstrict": false,
+        "proparallel": "u",
+        "proleakproof": false
+      },
+      "signature": "public.sign_daily_report"
+    },
+    {
+      "schema": "private",
+      "proname": "save_daily_report_signature",
+      "identity": "p_report_id uuid, p_role text, p_signer_name text, p_signature_json jsonb",
+      "definition": "CREATE OR REPLACE FUNCTION private.save_daily_report_signature(p_report_id uuid, p_role text, p_signer_name text, p_signature_json jsonb)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare scope_before jsonb; r public.daily_reports%rowtype;\nbegin\n  if auth.uid() is null then raise exception 'authentication required'; end if;\n  if not exists(select 1 from public.daily_reports dr join public.company_members cm on cm.company_id=dr.company_id and cm.user_id=auth.uid() where dr.id=p_report_id) then raise exception 'daily report not found'; end if;\n  scope_before:=payroll_scope_private.report_sources(p_report_id);\n  perform payroll_scope_private.lock_scopes(scope_before->'scopes');\n  select dr.* into r from public.daily_reports dr where dr.id=p_report_id and exists (\n    select 1 from public.company_members cm where cm.company_id=dr.company_id and cm.user_id=auth.uid()\n  ) for update;\n  if r.id is null then raise exception 'daily report not found'; end if;\n  perform 1 from public.daily_report_workers where report_id=p_report_id order by worker_id for share;\n  if payroll_scope_private.report_sources(p_report_id) is distinct from scope_before then raise exception 'daily report payroll scope changed' using errcode='40001'; end if;\n\n  perform explicit_report_finalization_private.enroll(r.id);\n  if explicit_report_finalization_private.required(r.id) then\n    perform explicit_report_finalization_private.lock_actor(r.id);\n    if shared_daily_report_private.document_mode(r.id) then raise sqlstate '55000' using message='explicit_report_actual_revision_required';end if;\n    if p_role='representative' then perform explicit_report_finalization_private.auto_confirm(r.id);\n    elsif p_role='supervisor' then perform explicit_report_finalization_private.assert_supervisor(r.id);end if;\n  end if;\n  if r.status <> 'draft' then raise exception 'signed report requires approved edit request'; end if;\n  if p_role not in ('representative','supervisor') or p_role is null then raise exception 'invalid signature role'; end if;\n  if nullif(trim(p_signer_name),'') is null then raise exception 'signer name is required'; end if;\n  if jsonb_typeof(p_signature_json->'strokes') is distinct from 'array' then raise exception 'signature strokes required'; end if;\n  if not exists (select 1 from jsonb_array_elements(p_signature_json->'strokes') stroke where jsonb_typeof(stroke)='array' and jsonb_array_length(stroke)>0) then raise exception 'signature strokes required'; end if;\n  if shared_daily_report_private.document_mode(r.id) then\n    update shared_daily_report_private.work_protocol set document_only=true where report_id=r.id;\n  end if;\n  if p_role='representative' then\n    update public.daily_reports set representative_signature_json=p_signature_json, representative_signer_name=trim(p_signer_name), updated_by=auth.uid(),updated_at=now() where id=p_report_id;\n  else\n    update public.daily_reports set supervisor_signature_json=p_signature_json, supervisor_signer_name=trim(p_signer_name),updated_by=auth.uid(),updated_at=now() where id=p_report_id;\n  end if;\n  select * into r from public.daily_reports where id=p_report_id;\n  if r.representative_signature_json is not null and r.supervisor_signature_json is not null\n     and not shared_daily_report_private.document_mode(r.id) and not explicit_report_finalization_private.required(r.id) then\n    -- Retain the existing finalization/attendance workflow, with two distinct signatures in the legacy envelope.\n    perform public.sign_daily_report(p_report_id,r.supervisor_signer_name,jsonb_build_object('version',3,\n      'representative',r.representative_signature_json,'supervisor',r.supervisor_signature_json));\n  end if;\nend;\n$function$\n",
+      "source_md5": "5fa704bc20e20cac533c31fb3d27b8da",
+      "attributes": {
+        "proacl": [
+          "postgres=X/postgres",
+          "authenticated=X/postgres"
+        ],
+        "proconfig": [
+          "search_path=\"\""
+        ],
+        "prosecdef": true,
+        "provolatile": "v",
+        "proisstrict": false,
+        "proparallel": "u",
+        "proleakproof": false
+      },
+      "signature": "private.save_daily_report_signature"
+    }
+  ],
+  "public_wrappers": [
+    {
+      "schema": "public",
+      "proname": "save_daily_report_signature",
+      "identity": "p_report_id uuid, p_role text, p_signer_name text, p_signature_json jsonb",
+      "definition": "CREATE OR REPLACE FUNCTION public.save_daily_report_signature(p_report_id uuid, p_role text, p_signer_name text, p_signature_json jsonb)\n RETURNS void\n LANGUAGE sql\n SET search_path TO ''\nAS $function$\n  select private.save_daily_report_signature(p_report_id,p_role,p_signer_name,p_signature_json);\n$function$\n",
+      "source_md5": "acb037e984efe9800318ec86aa936a4f",
+      "attributes": {
+        "proacl": [
+          "postgres=X/postgres",
+          "authenticated=X/postgres",
+          "service_role=X/postgres"
+        ],
+        "proconfig": [
+          "search_path=\"\""
+        ],
+        "prosecdef": false,
+        "provolatile": "v",
+        "proisstrict": false,
+        "proparallel": "u",
+        "proleakproof": false
+      },
+      "signature": "public.save_daily_report_signature"
+    },
+    {
+      "schema": "public",
+      "proname": "save_route_visit_report_signature",
+      "identity": "p_report_id uuid, p_role text, p_signer_name text, p_signature_json jsonb",
+      "definition": "CREATE OR REPLACE FUNCTION public.save_route_visit_report_signature(p_report_id uuid, p_role text, p_signer_name text, p_signature_json jsonb)\n RETURNS jsonb\n LANGUAGE sql\n SET search_path TO ''\nAS $function$select private.save_route_visit_report_signature(p_report_id,p_role,p_signer_name,p_signature_json)$function$\n",
+      "source_md5": "bc30547513243ecacedad61b3116d3be",
+      "attributes": {
+        "proacl": [
+          "postgres=X/postgres",
+          "service_role=X/postgres",
+          "authenticated=X/postgres"
+        ],
+        "proconfig": [
+          "search_path=\"\""
+        ],
+        "prosecdef": false,
+        "provolatile": "v",
+        "proisstrict": false,
+        "proparallel": "u",
+        "proleakproof": false
+      },
+      "signature": "public.save_route_visit_report_signature"
+    }
+  ],
+  "shared_entry_points": [
+    {
+      "schema": "shared_daily_report_private",
+      "proname": "submit_report",
+      "identity": "p_source_clock_in_id uuid, p_expected_updated_at timestamp with time zone, p_work_description text, p_workers jsonb, p_signer_name text, p_signature jsonb, p_expected_signature_scope text",
+      "definition": "CREATE OR REPLACE FUNCTION shared_daily_report_private.submit_report(p_source_clock_in_id uuid, p_expected_updated_at timestamp with time zone, p_work_description text, p_workers jsonb, p_signer_name text, p_signature jsonb, p_expected_signature_scope text)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare actor uuid;i public.attendance_verifications%rowtype;r public.daily_reports%rowtype;\n state jsonb;scopes jsonb;rid uuid;peer uuid;\nbegin\n actor:=checkout_report_registration_private.current_actor();\n state:=shared_daily_report_private.resolve_own(p_source_clock_in_id);\n if state->>'state'='own_checkout_required' then return state;end if;\n if state->>'state' in('reporter_saved_waiting_supervisor','supervisor_saved') then\n  return shared_daily_report_private.reuse_own(p_source_clock_in_id);end if;\n select a.* into i from public.attendance_verifications a join public.workers w\n  on w.id=a.worker_id and w.company_id=a.company_id and w.user_id=actor\n  where a.id=p_source_clock_in_id and a.event_type='clock_in';\n if i.id is null or (not shared_daily_report_private.enabled(i.company_id,i.work_date) and not shared_daily_report_private.report_enabled((state->>'report_id')::uuid))\n or jsonb_typeof(p_workers) is distinct from 'array' or jsonb_array_length(p_workers) not between 1 and 100\n or not exists(select 1 from jsonb_array_elements(p_workers) w where (w->>'worker_id')::uuid=i.worker_id)\n or exists(select 1 from jsonb_array_elements(p_workers) w where not exists(select 1 from public.workers worker\n   where worker.id=(w->>'worker_id')::uuid and worker.company_id=i.company_id)) then\n  raise sqlstate '42501' using message='shared_report_roster_unavailable';end if;\n if (select count(distinct (w->>'worker_id')::uuid) from jsonb_array_elements(p_workers) w)<>jsonb_array_length(p_workers) then\n  raise sqlstate '22023' using message='shared_report_duplicate_roster';end if;\n for peer in select (w->>'worker_id')::uuid from jsonb_array_elements(p_workers) w loop\n  if not exists(select 1 from public.attendance_verifications a where a.company_id=i.company_id and a.worker_id=peer\n    and a.work_date=i.work_date and a.event_type='clock_in' and a.confirmed_at is not null\n    and a.site_id is not distinct from i.site_id and a.route_assignment_id is not distinct from i.route_assignment_id)\n   or (select count(*) from public.attendance_verifications a where a.company_id=i.company_id and a.worker_id=peer\n    and a.work_date=i.work_date and a.event_type='clock_in' and a.site_id is not distinct from i.site_id\n    and a.route_assignment_id is not distinct from i.route_assignment_id\n    and not exists(select 1 from public.attendance_verifications o where o.source_clock_in_id=a.id and o.event_type='clock_out'))>1\n   or exists(select 1 from public.attendance_verifications a where a.company_id=i.company_id and a.worker_id=peer\n    and a.work_date=i.work_date and a.event_type='clock_in' and a.site_id is not distinct from i.site_id\n    and a.route_assignment_id is not distinct from i.route_assignment_id and\n    ((a.daily_report_id is not null and a.daily_report_id is distinct from (state->>'report_id')::uuid)\n     or (select count(*) from public.attendance_verifications o where o.source_clock_in_id=a.id and o.event_type='clock_out')>1\n     or exists(select 1 from public.attendance_verifications o where o.source_clock_in_id=a.id and o.event_type='clock_out'\n      and (o.confirmed_at<=a.confirmed_at or row(o.company_id,o.worker_id,o.work_date,o.site_id,o.route_assignment_id)\n       is distinct from row(a.company_id,a.worker_id,a.work_date,a.site_id,a.route_assignment_id))))) then\n   raise sqlstate '42501' using message='shared_report_peer_source_unavailable';end if;\n end loop;\n if exists(select 1 from jsonb_array_elements(p_workers) w where coalesce((w->>'allowance_amount')::numeric,0)<>0) then\n  raise sqlstate '42501' using message='shared_report_manual_cash_requires_trusted_source';end if;\n if shared_daily_report_private.strong_vehicle_enabled(i.company_id) then\n  raise sqlstate '55000' using message='shared_report_strong_vehicle_scope_not_supported';end if;\n select jsonb_agg(jsonb_build_object('cid',i.company_id,'wid',ids.wid,'day',i.work_date) order by ids.wid)\n  into scopes from (select distinct (w->>'worker_id')::uuid wid from jsonb_array_elements(p_workers) w\n   union select rw.worker_id from public.daily_report_workers rw join public.daily_reports d on d.id=rw.report_id\n    where d.company_id=i.company_id and d.report_date=i.work_date and d.site_id is not distinct from i.site_id\n     and d.route_assignment_id is not distinct from i.route_assignment_id) ids;\n perform payroll_scope_private.lock_scopes(scopes,false);\n perform pg_advisory_xact_lock(hashtextextended(jsonb_build_array(i.company_id,i.work_date,i.site_id,i.route_assignment_id)::text,0));\n select * into r from public.daily_reports d where d.company_id=i.company_id and d.report_date=i.work_date\n  and d.site_id is not distinct from i.site_id and d.route_assignment_id is not distinct from i.route_assignment_id for update;\n if r.id is not null and checkout_report_registration_private.has_signature(r.representative_signer_name,r.representative_signature_json) then\n  return shared_daily_report_private.reuse_own(p_source_clock_in_id);end if;\n if r.id is not null and (r.status<>'draft' or checkout_report_registration_private.has_signature(r.supervisor_signer_name,r.supervisor_signature_json)) then\n  raise sqlstate '55000' using message='shared_report_existing_signature_requires_review';end if;\n if r.id is not null and r.updated_at is distinct from p_expected_updated_at then\n  raise sqlstate '40001' using message='shared_report_reload_required';end if;\n if r.id is null then raise sqlstate '55000' using message='shared_report_draft_preview_required';end if;\n if shared_daily_report_private.signature_scope(r.id)->>'signature_scope_fingerprint' is distinct from p_expected_signature_scope then\n  raise sqlstate '40001' using message='shared_report_eligible_roster_or_source_changed';end if;\n if exists(select 1 from jsonb_array_elements_text(shared_daily_report_private.known_roster_snapshot(r.id)->'worker_ids') known\n  where not exists(select 1 from jsonb_array_elements(p_workers) w where (w->>'worker_id')::uuid=known.value::uuid)) then\n  raise sqlstate '40001' using message='shared_report_known_roster_incomplete';end if;\n if r.work_description is distinct from p_work_description\n or (select coalesce(jsonb_agg(wid order by wid),'[]'::jsonb) from(select (w->>'worker_id')::uuid wid from jsonb_array_elements(p_workers) w) p)\n  is distinct from (select coalesce(jsonb_agg(worker_id order by worker_id),'[]'::jsonb) from public.daily_report_workers where report_id=r.id) then\n  raise sqlstate '40001' using message='shared_report_common_preview_changed';end if;\n -- The draft was explicitly saved and reviewed before capture. Do not re-run\n -- the legacy delete/reinsert writer or silently change the reviewed work facts.\n rid:=r.id;\n if not exists(select 1 from public.daily_reports d where d.id=rid and d.company_id=i.company_id and d.report_date=i.work_date\n  and d.site_id is not distinct from i.site_id and d.route_assignment_id is not distinct from i.route_assignment_id) then\n  raise sqlstate '42501' using message='shared_report_company_context_unavailable';end if;\n -- Exact own pair only. Other participants still clock out independently.\n perform 1 from public.attendance_verifications a where a.id=i.id or a.source_clock_in_id=i.id order by a.id for update;\n if exists(select 1 from public.attendance_verifications a where (a.id=i.id or a.source_clock_in_id=i.id)\n  and a.daily_report_id is not null and a.daily_report_id<>rid) then raise sqlstate '55000' using message='shared_report_source_conflict';end if;\n update public.attendance_verifications set daily_report_id=rid where daily_report_id is null and (id=i.id or source_clock_in_id=i.id);\n state:=shared_daily_report_private.resolve_own(p_source_clock_in_id);\n if state->>'report_id' is distinct from rid::text or (state->>'source_attached')::boolean is distinct from true\n or nullif(btrim(p_work_description),'') is null then raise sqlstate '55000' using message='shared_report_required_input_incomplete';end if;\n perform shared_daily_report_private.enroll_work_report(rid);\n if explicit_report_finalization_private.required(rid) then\n  perform explicit_report_finalization_private.enroll(rid);\n  perform explicit_report_finalization_private.assert_payload(rid,p_workers);\n  perform explicit_report_finalization_private.bind_closed_sources(rid,p_expected_signature_scope);\n  perform explicit_report_finalization_private.auto_confirm(rid,p_workers);\n end if;\n perform private.save_daily_report_signature(rid,'representative',p_signer_name,p_signature);\n return shared_daily_report_private.resolve_own(p_source_clock_in_id);\nend $function$\n",
+      "source_md5": "e1eef7bb790297a0b8aa48f4f6a0d8da",
+      "attributes": {
+        "proacl": [
+          "postgres=X/postgres"
+        ],
+        "proconfig": [
+          "search_path=\"\""
+        ],
+        "prosecdef": true,
+        "provolatile": "v",
+        "proisstrict": false,
+        "proparallel": "u",
+        "proleakproof": false
+      },
+      "signature": "shared_daily_report_private.submit_report"
+    },
+    {
+      "schema": "shared_daily_report_private",
+      "proname": "collect_supervisor",
+      "identity": "p_report_id uuid, p_source_clock_in_id uuid, p_signer_name text, p_signature jsonb, p_management boolean, p_expected_updated_at timestamp with time zone, p_expected_signature_scope text",
+      "definition": "CREATE OR REPLACE FUNCTION shared_daily_report_private.collect_supervisor(p_report_id uuid, p_source_clock_in_id uuid, p_signer_name text, p_signature jsonb, p_management boolean, p_expected_updated_at timestamp with time zone, p_expected_signature_scope text)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare actor uuid; state jsonb;r public.daily_reports%rowtype;before_scope jsonb;signature_scope jsonb;\nbegin\n actor:=checkout_report_registration_private.current_actor();\n select * into r from public.daily_reports where id=p_report_id;\n if r.id is null or not shared_daily_report_private.report_enabled(r.id) then\n  raise sqlstate '42501' using message='shared_report_unavailable';end if;\n if p_management then\n  if not exists(select 1 from public.company_members where company_id=r.company_id and user_id=actor)\n   or private.has_company_feature(r.company_id,'can_manage_attendance') is distinct from true then\n   raise sqlstate '42501' using message='shared_report_management_required';end if;\n else\n  state:=shared_daily_report_private.read_context(r.id);\n  if not exists(select 1 from public.attendance_verifications a join public.workers w\n    on w.id=a.worker_id and w.company_id=r.company_id and w.user_id=actor\n    join public.daily_report_workers rw on rw.report_id=r.id and rw.worker_id=w.id\n    where a.id=p_source_clock_in_id and a.event_type='clock_in' and a.company_id=r.company_id and a.work_date=r.report_date\n     and a.site_id is not distinct from r.site_id and a.route_assignment_id is not distinct from r.route_assignment_id\n     and (a.daily_report_id is null or a.daily_report_id=r.id)) then\n   raise sqlstate '42501' using message='shared_report_member_required';end if;\n end if;\n before_scope:=payroll_scope_private.report_sources(r.id);\n perform payroll_scope_private.lock_scopes(before_scope->'scopes');\n perform pg_advisory_xact_lock(hashtextextended(jsonb_build_array(r.company_id,r.report_date,r.site_id,r.route_assignment_id)::text,0));\n select * into r from public.daily_reports where id=p_report_id for update;\n perform 1 from public.daily_report_workers where report_id=r.id order by worker_id for share;\n if payroll_scope_private.report_sources(r.id) is distinct from before_scope then\n  raise sqlstate '40001' using message='shared_report_scope_changed';end if;\n if not p_management then\n  perform 1 from public.attendance_verifications where id=p_source_clock_in_id for share;\n  state:=shared_daily_report_private.read_context(r.id);\n  if not exists(select 1 from public.attendance_verifications a join public.workers w\n   on w.id=a.worker_id and w.company_id=r.company_id and w.user_id=actor\n   join public.daily_report_workers rw on rw.report_id=r.id and rw.worker_id=w.id\n   where a.id=p_source_clock_in_id and a.event_type='clock_in' and a.company_id=r.company_id and a.work_date=r.report_date\n    and a.site_id is not distinct from r.site_id and a.route_assignment_id is not distinct from r.route_assignment_id\n    and (a.daily_report_id is null or a.daily_report_id=r.id)) then\n   raise sqlstate '42501' using message='shared_report_member_source_required';end if;\n end if;\n if checkout_report_registration_private.has_signature(r.supervisor_signer_name,r.supervisor_signature_json) then\n  if r.supervisor_signer_name is distinct from btrim(p_signer_name) or r.supervisor_signature_json is distinct from p_signature then\n   raise sqlstate '55000' using message='shared_report_supervisor_signature_already_saved';end if;\n  return jsonb_build_object('schema',1,'actor_id',actor,'report_id',r.id,'state','already_saved');end if;\n if not checkout_report_registration_private.has_signature(r.representative_signer_name,r.representative_signature_json) then\n  raise sqlstate '55000' using message='shared_report_reporter_signature_required';end if;\n signature_scope:=shared_daily_report_private.signature_scope(r.id);\n if r.updated_at is distinct from p_expected_updated_at or signature_scope->>'signature_scope_fingerprint' is distinct from p_expected_signature_scope then\n  raise sqlstate '40001' using message='shared_report_signature_scope_changed';end if;\n if (signature_scope->>'supervisor_ready')::boolean is distinct from true then\n  raise sqlstate '55000' using message='shared_report_supervisor_not_ready';end if;\n if not shared_daily_report_private.document_mode(r.id) and (signature_scope#>>'{hours_annex,enabled}')::boolean is true then\n  if (signature_scope#>>'{hours_annex,required}')::boolean is true and (signature_scope#>>'{hours_annex,ready}')::boolean is distinct from true then\n   raise sqlstate '55000' using message='shared_report_hours_annex_not_ready';end if;\n  if not explicit_report_finalization_private.required(r.id) then execute 'select checkout_shared_hours_private.prepare_supervisor($1,$2)' using r.id,signature_scope#>>'{hours_annex,fingerprint}'; end if;\n end if;\n if not shared_daily_report_private.document_mode(r.id) and not checkout_report_registration_private.inputs_complete(r.id) then raise sqlstate '55000' using message='shared_report_required_input_incomplete';end if;\n -- Actual signature capture is supplied by the supervisor. This records the\n -- member/manager as updater and never invents a supervisor identity/signature.\n perform private.save_daily_report_signature(r.id,'supervisor',p_signer_name,p_signature);\n if not shared_daily_report_private.document_mode(r.id) and to_regprocedure('checkout_shared_managed_private.assert_managed_adoption_unchanged(uuid)') is not null then\n  execute 'select checkout_shared_managed_private.assert_managed_adoption_unchanged($1)' using r.id;end if;\n return jsonb_build_object('schema',1,'actor_id',actor,'report_id',r.id,'state','saved');\nend $function$\n",
+      "source_md5": "71ae095403b1b09e446e911a87ebde5e",
+      "attributes": {
+        "proacl": [
+          "postgres=X/postgres"
+        ],
+        "proconfig": [
+          "search_path=\"\""
+        ],
+        "prosecdef": true,
+        "provolatile": "v",
+        "proisstrict": false,
+        "proparallel": "u",
+        "proleakproof": false
+      },
+      "signature": "shared_daily_report_private.collect_supervisor"
+    },
+    {
+      "schema": "shared_daily_report_private",
+      "proname": "manage_signature",
+      "identity": "p_report_id uuid, p_role text, p_signer_name text, p_signature jsonb, p_expected_updated_at timestamp with time zone, p_expected_signature_scope text",
+      "definition": "CREATE OR REPLACE FUNCTION shared_daily_report_private.manage_signature(p_report_id uuid, p_role text, p_signer_name text, p_signature jsonb, p_expected_updated_at timestamp with time zone, p_expected_signature_scope text)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare actor uuid;r public.daily_reports%rowtype;before_scope jsonb;existing_name text;existing_value jsonb;signature_scope jsonb;\nbegin\n actor:=checkout_report_registration_private.current_actor();\n select * into r from public.daily_reports where id=p_report_id;\n if r.id is null or not shared_daily_report_private.report_enabled(r.id)\n or not exists(select 1 from public.company_members where company_id=r.company_id and user_id=actor)\n or private.has_company_feature(r.company_id,'can_manage_attendance') is distinct from true then\n  raise sqlstate '42501' using message='shared_report_management_required';end if;\n if p_role not in ('representative','supervisor') or p_role is null then raise exception 'invalid signature role';end if;\n before_scope:=payroll_scope_private.report_sources(r.id);\n perform payroll_scope_private.lock_scopes(before_scope->'scopes');\n perform pg_advisory_xact_lock(hashtextextended(jsonb_build_array(r.company_id,r.report_date,r.site_id,r.route_assignment_id)::text,0));\n select * into r from public.daily_reports where id=p_report_id for update;\n perform 1 from public.daily_report_workers where report_id=r.id order by worker_id for share;\n if payroll_scope_private.report_sources(r.id) is distinct from before_scope then raise sqlstate '40001' using message='shared_report_scope_changed';end if;\n existing_name:=case when p_role='representative' then r.representative_signer_name else r.supervisor_signer_name end;\n existing_value:=case when p_role='representative' then r.representative_signature_json else r.supervisor_signature_json end;\n if checkout_report_registration_private.has_signature(existing_name,existing_value) then\n  if existing_name is distinct from btrim(p_signer_name) or existing_value is distinct from p_signature then\n   raise sqlstate '55000' using message='shared_report_signature_already_saved';end if;\n  return jsonb_build_object('schema',1,'actor_id',actor,'report_id',r.id,'state','already_saved');end if;\n signature_scope:=shared_daily_report_private.signature_scope(r.id);\n if r.updated_at is distinct from p_expected_updated_at or signature_scope->>'signature_scope_fingerprint' is distinct from p_expected_signature_scope then\n  raise sqlstate '40001' using message='shared_report_signature_scope_changed';end if;\n if p_role='supervisor' and (signature_scope->>'supervisor_ready')::boolean is distinct from true then\n  raise sqlstate '55000' using message='shared_report_supervisor_not_ready';end if;\n if p_role='representative' and (select coalesce(jsonb_agg(worker_id order by worker_id),'[]'::jsonb) from public.daily_report_workers where report_id=r.id)\n  is distinct from (shared_daily_report_private.known_roster_snapshot(r.id)->'worker_ids') then\n  raise sqlstate '40001' using message='shared_report_known_roster_incomplete';end if;\n if p_role='representative' and (nullif(btrim(r.work_description),'') is null or not exists(select 1 from public.daily_report_workers where report_id=r.id)) then\n  raise sqlstate '55000' using message='shared_report_required_input_incomplete';end if;\n if p_role='supervisor' and not shared_daily_report_private.document_mode(r.id) and (signature_scope#>>'{hours_annex,enabled}')::boolean is true then\n  if (signature_scope#>>'{hours_annex,required}')::boolean is true and (signature_scope#>>'{hours_annex,ready}')::boolean is distinct from true then\n   raise sqlstate '55000' using message='shared_report_hours_annex_not_ready';end if;\n  if not explicit_report_finalization_private.required(r.id) then execute 'select checkout_shared_hours_private.prepare_supervisor($1,$2)' using r.id,signature_scope#>>'{hours_annex,fingerprint}'; end if;\n end if;\n if p_role='supervisor' and not shared_daily_report_private.document_mode(r.id) and not checkout_report_registration_private.inputs_complete(r.id) then raise sqlstate '55000' using message='shared_report_required_input_incomplete';end if;\n -- Management bypasses own-clock/roster/GPS/scheduled-time requirements, not\n -- actual signature capture or the existing approved finalized-edit workflow.\n if not checkout_report_registration_private.has_signature(r.representative_signer_name,r.representative_signature_json)\n and not checkout_report_registration_private.has_signature(r.supervisor_signer_name,r.supervisor_signature_json) then\n  perform shared_daily_report_private.enroll_work_report(r.id);\n end if;\n perform private.save_daily_report_signature(r.id,p_role,p_signer_name,p_signature);\n if not shared_daily_report_private.document_mode(r.id) and to_regprocedure('checkout_shared_managed_private.assert_managed_adoption_unchanged(uuid)') is not null then\n  execute 'select checkout_shared_managed_private.assert_managed_adoption_unchanged($1)' using r.id;end if;\n return jsonb_build_object('schema',1,'actor_id',actor,'report_id',r.id,'state','saved');\nend $function$\n",
+      "source_md5": "b7c67f78b226d3dae6aff66e8618b3e5",
+      "attributes": {
+        "proacl": [
+          "postgres=X/postgres"
+        ],
+        "proconfig": [
+          "search_path=\"\""
+        ],
+        "prosecdef": true,
+        "provolatile": "v",
+        "proisstrict": false,
+        "proparallel": "u",
+        "proleakproof": false
+      },
+      "signature": "shared_daily_report_private.manage_signature"
+    },
+    {
+      "schema": "shared_report_edit_private",
+      "proname": "collect_supervisor",
+      "identity": "rid uuid, request uuid, signer text, signature jsonb, expected_at timestamp with time zone, expected_scope text",
+      "definition": "CREATE OR REPLACE FUNCTION shared_report_edit_private.collect_supervisor(rid uuid, request uuid, signer text, signature jsonb, expected_at timestamp with time zone, expected_scope text)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare actor uuid;s jsonb;r public.daily_reports%rowtype;scope_before jsonb;scope_now jsonb;\nbegin\n actor:=checkout_report_registration_private.current_actor();s:=shared_report_edit_private.current_session(rid,true);\n if s is null or (s->>'request_id')::uuid is distinct from request then\n  raise sqlstate '42501' using message='approved_edit_exact_session_required';end if;\n select * into r from public.daily_reports where id=rid;\n if s->>'state'='closed' then\n  if (r.status='signed' or (shared_daily_report_private.document_mode(r.id) and checkout_report_registration_private.has_signature(r.representative_signer_name,r.representative_signature_json))) and r.supervisor_signer_name is not distinct from btrim(signer)\n   and r.supervisor_signature_json is not distinct from signature then\n   return jsonb_build_object('schema',1,'actor_id',actor,'report_id',rid,'state','already_saved');end if;\n  raise sqlstate '55000' using message='shared_report_signature_already_saved';end if;\n perform shared_report_edit_private.evidence(rid,request);\n scope_before:=payroll_scope_private.report_sources(rid);perform payroll_scope_private.lock_scopes(scope_before->'scopes');\n perform pg_advisory_xact_lock(hashtextextended(jsonb_build_array(r.company_id,r.report_date,r.site_id,r.route_assignment_id)::text,0));\n select * into r from public.daily_reports where id=rid for update;\n if payroll_scope_private.report_sources(rid) is distinct from scope_before then raise sqlstate '40001' using message='shared_report_scope_changed';end if;\n perform shared_report_edit_private.evidence(rid,request);\n scope_now:=shared_daily_report_private.signature_scope(rid);\n if r.updated_at is distinct from expected_at or scope_now->>'signature_scope_fingerprint' is distinct from expected_scope then\n  raise sqlstate '40001' using message='shared_report_signature_scope_changed';end if;\n if (scope_now->>'supervisor_ready')::boolean is distinct from true then\n  raise sqlstate '55000' using message='shared_report_supervisor_not_ready';end if;\n if not shared_daily_report_private.document_mode(rid) then\n if not explicit_report_finalization_private.required(rid) then execute 'select checkout_shared_hours_private.prepare_supervisor($1,$2)' using rid,scope_now#>>'{hours_annex,fingerprint}'; end if;\n end if;\n if not shared_daily_report_private.document_mode(rid) and checkout_report_registration_private.inputs_complete(rid) is distinct from true then\n  raise sqlstate '55000' using message='shared_report_required_input_incomplete';end if;\n perform private.save_daily_report_signature(rid,'supervisor',signer,signature);\n if not shared_daily_report_private.document_mode(rid) and to_regprocedure('checkout_shared_managed_private.assert_managed_adoption_unchanged(uuid)') is not null then\n  execute 'select checkout_shared_managed_private.assert_managed_adoption_unchanged($1)' using rid;end if;\n return jsonb_build_object('schema',1,'actor_id',actor,'report_id',rid,'state','saved');\nend $function$\n",
+      "source_md5": "a6c5d30e1ec661f22939fbe925aaa47d",
+      "attributes": {
+        "proacl": [
+          "postgres=X/postgres"
+        ],
+        "proconfig": [
+          "search_path=\"\""
+        ],
+        "prosecdef": true,
+        "provolatile": "v",
+        "proisstrict": false,
+        "proparallel": "u",
+        "proleakproof": false
+      },
+      "signature": "shared_report_edit_private.collect_supervisor"
+    }
+  ],
+  "historical_interpreter": {
+    "schema": "checkout_report_registration_private",
+    "proname": "has_signature",
+    "identity": "p_name text, p_value jsonb",
+    "definition": "CREATE OR REPLACE FUNCTION checkout_report_registration_private.has_signature(p_name text, p_value jsonb)\n RETURNS boolean\n LANGUAGE sql\n IMMUTABLE\n SET search_path TO ''\nAS $function$\n select coalesce(nullif(btrim(p_name),'') is not null and\n case when jsonb_typeof(p_value->'strokes')='array' then exists\n (select 1 from jsonb_array_elements(p_value->'strokes') x\n where case when jsonb_typeof(x)='array' then jsonb_array_length(x)>0 else false end)\n else false end,false)\n$function$\n",
+    "source_md5": "ed912d8e9bff5f6ac316d40e60762236",
+    "attributes": {
+      "proacl": [
+        "postgres=X/postgres"
+      ],
+      "proconfig": [
+        "search_path=\"\""
+      ],
+      "prosecdef": false,
+      "provolatile": "i",
+      "proisstrict": false,
+      "proparallel": "u",
+      "proleakproof": false
+    },
+    "signature": "checkout_report_registration_private.has_signature"
+  }
+}

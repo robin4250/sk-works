@@ -1,0 +1,36 @@
+name: New signature full catalog guard
+on:
+  pull_request:
+    paths:
+      - 'tool/verify_signature_geometry_guard_only.mjs'
+      - '.github/workflows/signature-geometry-guard-only.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-full-catalog-guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_signature_input_fixture
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --no-audit --no-fund --prefix tool/security/fixture_dependencies
+      - run: python3 docs/review/signature-new-input-geometry/prepare.py
+      - run: git diff --exit-code -- docs/review/signature-new-input-geometry
+      - run: node --check tool/verify_signature_geometry_guard_only.mjs
+      - name: Late full helper guard failures roll back the entire code transaction
+        env:
+          SKO_SIGNATURE_INPUT_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_signature_input_fixture
+        run: node tool/verify_signature_geometry_guard_only.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"

@@ -1,0 +1,28 @@
+{
+  "writers": [
+    {
+      "schema": "private",
+      "name": "save_route_visit_report_signature",
+      "identity": "p_report_id uuid, p_role text, p_signer_name text, p_signature_json jsonb",
+      "before": "c00c361151bea9b5a00a73001797c663",
+      "after": "64a1a86a68aa2d225e4a3106389e9ce3"
+    },
+    {
+      "schema": "public",
+      "name": "sign_daily_report",
+      "identity": "p_report_id uuid, p_signer_name text, p_signature_json jsonb",
+      "before": "4026e733aeefe59b95b5a22d7b76deeb",
+      "after": "f350e07307e2370a1773b1826ccbea3f"
+    },
+    {
+      "schema": "private",
+      "name": "save_daily_report_signature",
+      "identity": "p_report_id uuid, p_role text, p_signer_name text, p_signature_json jsonb",
+      "before": "5fa704bc20e20cac533c31fb3d27b8da",
+      "after": "1940a5f58cb2565d7e7a825a2ca01680"
+    }
+  ],
+  "historical_has_signature_unchanged": "ed912d8e9bff5f6ac316d40e60762236",
+  "validator_sha256": "bb841cd9334b26c4a6e277d8f8b91c190a41ae7ed8f86b23b24491e7d29093ed",
+  "candidate_sha256": "5304ac823c233b69adc34fe94cdd426e9f625373c7c5a2e4cf00301046a24986"
+}
