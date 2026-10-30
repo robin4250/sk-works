@@ -14,6 +14,7 @@ import 'trade_document_form_renderer.dart';
 import 'trade_document_output_layout.dart';
 import 'trade_document_output_selector.dart';
 import 'trade_document_touch_editor_page.dart';
+import 'standalone_trade_document_operation_gate.dart';
 import 'standalone_trade_document.dart';
 import 'standalone_trade_document_repository.dart';
 import 'standalone_trade_document_print_scope.dart';
@@ -24,13 +25,14 @@ class StandaloneTradeDocumentPage extends StatefulWidget {
     super.key,
     required this.tradeCompanyId,
     required this.acceptance,
-    this.clientOverride,this.sessionOverride,this.repositoryOverride,
+    this.clientOverride,this.sessionOverride,this.repositoryOverride,this.operationGate,
   });
   final String tradeCompanyId;
   final bool acceptance;
   final SupabaseClient? clientOverride;
   final TradeDocumentFormSession? sessionOverride;
   final StandaloneTradeDocumentRepository? repositoryOverride;
+  final StandaloneTradeDocumentOperationGate? operationGate;
 
   @override
   State<StandaloneTradeDocumentPage> createState() => _StandaloneState();
@@ -44,6 +46,9 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
   final _controllers = <String, TextEditingController>{};
   StreamSubscription<dynamic>? _auth;
   late final StandaloneTradeDocumentPrintScope _printScope;
+  late final StandaloneTradeDocumentOperationGate? _operationGate;
+  late final Listenable _operationChanges;
+  final ChangeNotifier _retirementChanges=ChangeNotifier();
   Map<String, dynamic>? _context;
   Uint8List? _bytes,_canonicalBytes;
   Map<String,dynamic>? _renderedPayload;
@@ -70,6 +75,9 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
       currentTarget: () => '${widget.tradeCompanyId}:${widget.acceptance}',
       onRevoke: _invalidate,
     );
+    _operationGate=widget.operationGate;
+    _operationChanges=Listenable.merge([_session,_operationGate,_retirementChanges]);
+    _operationGate?.addListener(_gateChanged);
     WidgetsBinding.instance.addObserver(this);
     if (WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
       _invalidate();
@@ -95,7 +103,8 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
   void didUpdateWidget(covariant StandaloneTradeDocumentPage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.tradeCompanyId != widget.tradeCompanyId ||
-        oldWidget.acceptance != widget.acceptance) {
+        oldWidget.acceptance != widget.acceptance ||
+        !identical(oldWidget.operationGate,widget.operationGate)) {
       _invalidate();
     }
   }
@@ -105,9 +114,27 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
       throw StateError('会社詳細から開き直してください。');
     }
     _repository!.verify();
+    final gate=_operationGate;
+    if(gate!=null){
+      try{
+        gate.requireCurrent();
+        if(gate.companyId.isEmpty || gate.tradeCompanyId!=widget.tradeCompanyId ||
+          gate.acceptance!=widget.acceptance || (_context!=null&&gate.companyId!=_context!['company_id'])) {
+          throw StateError('書類の会社・作成対象を確認できません。');
+        }
+      }catch(_){_invalidate('書類の作成・保存を利用できません。現場管理から開き直してください。');rethrow;}
+    }
   }
 
-  void _invalidate() {
+  void _gateChanged(){try{_verify();}catch(_){_invalidate();}}
+
+  Future<void> _refreshOperationGate()async{
+    _verify();
+    try{await _operationGate?.refresh();_verify();}
+    catch(_){_invalidate('書類の作成・保存を利用できません。現場管理から開き直してください。');rethrow;}
+  }
+
+  void _invalidate([String? message]) {
     _repository?.invalidate();
     if (_revoked) {
       return;
@@ -121,11 +148,12 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
     for (final controller in _controllers.values) {
       controller.clear();
     }
+    _retirementChanges.notifyListeners();
     if (mounted) {
       setState(() {
         _busy = false;
         _loading = false;
-        _error = 'ログイン状態が変わりました。会社詳細から開き直してください。';
+        _error = message ?? 'ログイン状態が変わりました。会社詳細から開き直してください。';
       });
     }
   }
@@ -148,14 +176,15 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
   Future<void> _load() async {
     try {
       await _session?.ready();
-      _verify();
+      await _refreshOperationGate();
       final value = await _repository!.load(
         tradeCompanyId: widget.tradeCompanyId,
         acceptance: widget.acceptance,
       );
-      _verify();
+      await _refreshOperationGate();
       if (value['trade_company_id'] != widget.tradeCompanyId ||
-          value['acceptance'] != widget.acceptance) {
+          value['acceptance'] != widget.acceptance ||
+          (_operationGate!=null&&value['company_id']!=_operationGate!.companyId)) {
         throw StateError('対象会社が変わりました。会社詳細から開き直してください。');
       }
       if (!mounted) {
@@ -222,19 +251,22 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
   }
   Future<void> _edit()async {
     if(_busy||_revoked||_draft==null)return;
+    setState(()=>_busy=true);
     try{
-      _verify();
+      await _refreshOperationGate();
+      if(!mounted)return;
       await Navigator.of(context).push<bool>(MaterialPageRoute(builder:(_)=>TradeDocumentTouchEditorPage(
-        initial:_draft!,allowExtendedFields:true,requireScope:_verify,scopeChanges:_session,canEdit:true,
-        buildPreview:(payload)async{_verify();final bytes=await TradeDocumentFormRenderer.canonical(_validatedPayload(payload,_context!));_verify();return bytes;},
+        initial:_draft!,allowExtendedFields:true,requireScope:_verify,scopeChanges:_operationChanges,canEdit:true,
+        buildPreview:(payload)async{await _refreshOperationGate();final bytes=await TradeDocumentFormRenderer.canonical(_validatedPayload(payload,_context!));await _refreshOperationGate();return bytes;},
         onSave:(payload)async{
-          _verify();final validated=_validatedPayload(payload,_context!);
+          await _refreshOperationGate();final validated=_validatedPayload(payload,_context!);
           final next=TradeDocumentFormDraft.fromPayload(validated,allowAmountEditing:true);next.validateForSave();
-          _verify();setState((){_draft=next;_bytes=null;_canonicalBytes=null;_renderedPayload=null;_generation++;});
+          await _refreshOperationGate();setState((){_draft=next;_bytes=null;_canonicalBytes=null;_renderedPayload=null;_generation++;});
         },
       )));
-      _verify();
+      await _refreshOperationGate();
     }catch(error){if(mounted&&!_revoked)setState(()=>_error=error.toString());}
+    finally{if(mounted&&!_revoked)setState(()=>_busy=false);}
   }
 
   Future<void> _generate() async {
@@ -249,14 +281,14 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
       _error = null;
     });
     try {
-      _verify();
+      await _refreshOperationGate();
       final draft=_draft;if(draft==null)throw StateError('入力内容を確認してください。');
       draft.validateForSave();
       final payload=_validatedPayload(draft.payload,context);
       final canonical=await TradeDocumentFormRenderer.canonical(payload);
-      _verify();
+      await _refreshOperationGate();
       final bytes=await TradeDocumentFormRenderer.output(payload,layout:_layout,canonicalBytes:canonical);
-      _verify();
+      await _refreshOperationGate();
       if (!mounted || generation != _generation) {
         return;
       }
@@ -278,10 +310,11 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
 
   Future<void> _changeLayout(TradeDocumentOutputLayout next)async {
     if(_busy||_revoked)return;
+    try{await _refreshOperationGate();}catch(_){return;}
     final canonical=_canonicalBytes,payload=_renderedPayload;
     if(canonical==null||payload==null){setState(()=>_layout=next);return;}
     final generation=++_generation;setState(()=>_busy=true);
-    try{_verify();final bytes=await TradeDocumentFormRenderer.output(payload,layout:next,canonicalBytes:canonical);_verify();
+    try{_verify();final bytes=await TradeDocumentFormRenderer.output(payload,layout:next,canonicalBytes:canonical);await _refreshOperationGate();
       if(mounted&&generation==_generation)setState((){_layout=next;_bytes=bytes;});
     }catch(error){if(mounted&&!_revoked)setState(()=>_error=error.toString());}
     finally{if(mounted&&generation==_generation)setState(()=>_busy=false);}
@@ -294,15 +327,15 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
     }
     setState(() => _busy = true);
     try {
-      _verify();
+      await _refreshOperationGate();
       _printScope.begin(bytes);
       if(share){_printScope.layout();await Printing.sharePdf(bytes:bytes,filename:widget.acceptance?'請書.pdf':'注文書.pdf');}
       else{await Printing.layoutPdf(
         name: widget.acceptance ? '注文請書.pdf' : '注文書.pdf',
         format: _layout==TradeDocumentOutputLayout.a3Landscape?PdfPageFormat.a3.landscape:PdfPageFormat.a4,
-        onLayout: (_) async => _printScope.layout(),
+        onLayout: (_) async {await _refreshOperationGate();return _printScope.layout();},
       );}
-      _verify();
+      await _refreshOperationGate();
     } catch (_) {
       if (mounted && !_revoked) {
         setState(() => _error = '印刷を完了できません。状態を確認してください。');
@@ -323,6 +356,8 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
     _repository?.invalidate();
     _auth?.cancel();
     _repository?.dispose();
+    _operationGate?.removeListener(_gateChanged);
+    _retirementChanges.dispose();
     _session?.removeListener(_invalidate);
     if(widget.sessionOverride==null)_session?.dispose();
     for (final controller in _controllers.values) {
@@ -369,7 +404,7 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
               TextButton.icon(onPressed:_busy?null:()=>_print(share:true),icon:const Icon(Icons.save_alt),label:const Text('保存・共有')),
               SizedBox(height: 520, child: PdfPreview(
                 build: (_) async {
-                  _verify();
+                  await _refreshOperationGate();
                   if (!identical(bytes, _bytes)) {
                     throw StateError('入力内容が更新されました。帳票を作り直してください。');
                   }

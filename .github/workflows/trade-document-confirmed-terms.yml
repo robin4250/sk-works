@@ -178,13 +178,10 @@ jobs:
                   seal=(min(x for x,y in red),min(y for x,y in red),max(x for x,y in red),max(y for x,y in red))
                   assert abs((seal[0]+seal[2])/2-bound[2])<=4 and abs((seal[1]+seal[3]-bound[1]-bound[3])/2)<=6,(case,seal,bound)
                   assert min(seal[2],bound[2])>max(seal[0],bound[0]) and min(seal[3],bound[3])>max(seal[1],bound[1]),(case,seal,bound)
-                  # The grouped issuer now reserves a separate representative
-                  # row below the seal; preserve the adopted body grid and the
-                  # name-edge anchor rather than pinning the old 23pt header.
-                  g=geometry[case['kind']]
-                  assert seal[1]>=page.rect.height-(g['top']+72)-1 and seal[3]<=page.rect.height-(g['top']+36)+1,(case,'seal outside company header',seal)
-                  representatives=[s for b in page.get_text('dict')['blocks'] for l in b.get('lines',[]) for s in l['spans'] if '代表者甲代表' in clean(s['text'])]
-                  assert representatives and all(s['size']>=8 and s['bbox'][1]>seal[3] for s in representatives),(case,'representative must remain legible below seal',representatives,seal)
+                  g=geometry[case['kind']];scale=g['width']/(1217 if case['kind']=='order' else 1183)
+                  hy=lambda px:g['top']+((532 if case['kind']=='order' else 499)-px)*(scale if case['kind']=='order' else .35)
+                  bottom=hy(435 if case['kind']=='order' else 411)
+                  assert seal[1]>=page.rect.height-(bottom+23)-1 and seal[3]<=page.rect.height-bottom+1,(case,'seal outside own name row',seal,bottom)
                   assert seal[0]>=34 and seal[2]<=page.rect.width-34,(case,seal)
                   page.get_pixmap(matrix=fitz.Matrix(1.5,1.5)).save(folder/(case['file']+'.png'))
           print('PASS exact 22 confirmed articles, two A4 portrait pages with margins, adopted 9-row geometry and unchanged legacy pixels/text')

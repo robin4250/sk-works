@@ -85,7 +85,7 @@ class InvoiceAcceptanceResolver {
         ? TradeDocumentFormDraft.fromPayload(
             TradeDocumentTermsSnapshot.initialize(result),
             allowAmountEditing: false,
-            initializeDefaults: true,
+            initializeDefaults: workspace['form_fields_schema_version'] == 2,
             initializeExtendedFields: workspace['form_fields_schema_version'] == 2,
           ).payload
         : result;

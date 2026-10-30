@@ -66,7 +66,7 @@ class PaymentOrderResolver {
         sourceDefaults: defaults,
         hasSavedAttachment: false,
         subjectKind: 'payment_certificate',
-      )), allowAmountEditing: false, initializeDefaults: true,
+      )), allowAmountEditing: false, initializeDefaults: workspace['form_fields_schema_version'] == 2,
         initializeExtendedFields: workspace['form_fields_schema_version'] == 2).payload,
     });
     if (result.payload['kind'] != 'order') {

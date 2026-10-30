@@ -149,7 +149,7 @@ class _EditorState extends State<TradeDocumentAttachmentEditorPage> {
   Future<void> _openTyped()async{
     if(_typedLaunched||!_canEdit)return;
     try{
-      _requireScope();final draft=TradeDocumentFormDraft.fromPayload(_payload,allowAmountEditing:false,initializeDefaults:_version==0&&_workspace?['source_locked']==false,initializeExtendedFields:_version==0&&_workspace?['source_locked']==false&&_workspace?['form_fields_schema_version']==2);
+      _requireScope();final draft=TradeDocumentFormDraft.fromPayload(_payload,allowAmountEditing:false,initializeDefaults:_version==0&&_workspace?['source_locked']==false&&_workspace?['form_fields_schema_version']==2,initializeExtendedFields:_version==0&&_workspace?['source_locked']==false&&_workspace?['form_fields_schema_version']==2);
       _typedLaunched=true;
       final saved=await Navigator.of(context).push<bool>(MaterialPageRoute(builder:(_)=>TradeDocumentTouchEditorPage(
         initial:draft,allowExtendedFields:_workspace?['form_fields_schema_version']==2,onRefreshOwnCompany:_workspace?['form_fields_schema_version']==2?_refreshOwnCompany:null,requireScope:_requireScope,scopeChanges:_scope,canEdit:true,buildPreview:_preview,onSave:_saveTyped)));
