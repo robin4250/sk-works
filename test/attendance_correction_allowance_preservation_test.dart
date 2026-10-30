@@ -52,6 +52,8 @@ void main() {
     final message = protectedAttendanceAllowanceMessage(protected)!;
     expect(message, contains('元の手当を残して'));
     expect(message, contains('日報で手当を変更して再署名'));
+    expect(message, contains('この申請は承認せず、却下'));
+    expect(message, contains('以前の申請を再承認しないで'));
     expect(message, isNot(contains('PostgrestException')));
     expect(protectedAttendanceAllowanceMessage(const PostgrestException(code: '22023', message: 'Different invalid argument')), isNull);
     expect(protectedAttendanceAllowanceMessage(StateError('unrelated')), isNull);
