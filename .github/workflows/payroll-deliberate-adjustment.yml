@@ -1,0 +1,47 @@
+name: Payroll deliberate adjustment
+on:
+  pull_request:
+    paths:
+      - 'lib/features/payroll/payroll_fixed_deductions.dart'
+      - 'test/payroll_fixed_deductions_test.dart'
+      - '.github/workflows/payroll-deliberate-adjustment.yml'
+permissions:
+  contents: read
+jobs:
+  deliberate-adjustment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/payroll/payroll_fixed_deductions.dart test/payroll_fixed_deductions_test.dart
+      - name: Prove the old automatic amounts are directly editable
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_file=lib/features/payroll/payroll_fixed_deductions.dart
+          preserved=$(mktemp)
+          cp "$source_file" "$preserved"
+          before=$(sha256sum "$source_file" | cut -d' ' -f1)
+          trap 'cp "$preserved" "$source_file"; rm -f "$preserved"' EXIT
+          git show 67d1a1960e5f59662457ee23c34d2cbacc9e12aa:"$source_file" > "$source_file"
+          set +e
+          flutter test --reporter expanded test/payroll_fixed_deductions_test.dart --plain-name 'automatic amounts require a deliberate per-item adjustment and cancel never writes' > /tmp/payroll-deliberate-adjustment-red.log 2>&1
+          result=$?
+          set -e
+          cat /tmp/payroll-deliberate-adjustment-red.log
+          test "$result" -ne 0
+          grep -Eq 'Expected: (false|<false>)' /tmp/payroll-deliberate-adjustment-red.log
+          grep -F 'Actual: <true>' /tmp/payroll-deliberate-adjustment-red.log
+          cp "$preserved" "$source_file"
+          test "$(sha256sum "$source_file" | cut -d' ' -f1)" = "$before"
+      - run: flutter test --reporter expanded test/payroll_fixed_deductions_test.dart test/payroll_insurance_basis_fixed_test.dart
+      - run: git diff --exit-code -- pubspec.yaml pubspec.lock
