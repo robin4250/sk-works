@@ -73,33 +73,42 @@ class TradeDocumentFormPdf {
   text(order?'下記の通り注文致しますので、工事請負契約条項及び':'工事請負契約条項及び下記事項を承諾のうえ、貴注文',left+2,hy(order?365:330)-3,width*.49,14,size:7.6,bold:true);
   text(order?'下記事項をご確認のうえ請書を提出して下さい。':'をお請け致します。',left+2,hy(order?400:365)-3,width*.49,14,size:7.6,bold:true);
   final rx=left+width*.535,vx=rx+40;
-  text(order?'（注文者）':'（受注者）',rx,hy(order?272:272)-3,right-rx,14,size:8.5,bold:true);
+  text(order?'（注文者）':'（受注者）',rx,top+109,right-rx,14,size:8.5,bold:true);
   final seal=CompanySealSnapshot.fromJson(p['company_seal_snapshot']);
   final sealOn=p['company_seal_enabled']==true&&seal.name.isNotEmpty;
   if(sealOn&&seal.name!=val(issuer['name']))throw StateError('自社名と登録角印の会社が一致しません。');
   final sealFont=sealOn?await CompanySealPdf.loadStyleFont(seal.style):regularFont;
   for(final row in [
-   ('住所','address',order?338.0:319.0,order?367.0:344.0),
-   ('会社名','name',order?406.0:382.0,order?435.0:411.0),
-   ('ＴＥＬ','phone',order?459.0:437.0,order?472.0:448.0),
-   ('ＦＡＸ','fax',order?495.0:478.0,order?508.0:489.0),
+   ('住所','address',85.0,72.0),
+   ('会社名','name',57.0,36.0),
+   ('ＴＥＬ','phone',26.0,20.0),
+   ('ＦＡＸ','fax',11.0,5.0),
   ]){
-   final yy=hy(row.$3),bb=hy(row.$4);text(row.$1,rx,yy-3,38,14,size:8,bold:true);
+   final yy=top+row.$3,bb=top+row.$4;text(row.$1,rx,yy-3,38,12,size:8.8,bold:true);
    if(row.$2=='name'){
     // The complete company name and its own saved seal share a bounded row.
     // Place the seal center at the measured right edge; never at the page edge.
-    parts.add(pw.Positioned(left:vx,top:height-bb-23,child:pw.SizedBox(width:right-vx-3,height:23,child:pw.LayoutBuilder(builder:(context,constraints){
+    parts.add(pw.Positioned(left:vx,top:height-bb-35,child:pw.SizedBox(width:right-vx-3,height:35,child:pw.LayoutBuilder(builder:(context,constraints){
      final available=constraints!.maxWidth,registered=val(issuer['name']);
      final natural=boldFont.getFont(context).stringMetrics(registered).advanceWidth;
      final maxText=available-(sealOn?11:0);
-     final fontSize=natural==0?7.5:(maxText/natural).clamp(0.1,7.5).toDouble();
+     final fontSize=natural==0?9.0:(maxText/natural).clamp(0.1,9.0).toDouble();
      final printedWidth=natural*fontSize,sealLeft=(printedWidth-11).clamp(0.0,available-22).toDouble();
+     final representative=val(issuer['representative_name']);
+     final title=val(fields?['issuer_representative_title']).isNotEmpty ? val(fields?['issuer_representative_title']) : val(issuer['representative_title']).isNotEmpty ? val(issuer['representative_title']) : '代表者';
+     final representativeText=representative.isEmpty?'':'$title　$representative';
+     // The representative has its own row below the seal. Short company
+     // names must not squeeze the representative into a near-zero width.
+     final representativeWidth=available;
+     final representativeNatural=regularFont.getFont(context).stringMetrics(representativeText).advanceWidth;
+     final representativeSize=representativeNatural==0?8.5:(representativeWidth/representativeNatural).clamp(0.1,8.5).toDouble();
      return pw.Stack(children:[
-      pw.Positioned(left:0,top:0,child:pw.SizedBox(width:maxText,height:23,child:pw.Align(alignment:pw.Alignment.centerLeft,child:pw.Text(registered,style:pw.TextStyle(font:boldFont,fontSize:fontSize))))),
+      pw.Positioned(left:0,top:0,child:pw.SizedBox(width:maxText,height:12,child:pw.Align(alignment:pw.Alignment.centerLeft,child:pw.Text(registered,style:pw.TextStyle(font:boldFont,fontSize:fontSize))))),
+      if(representativeText.isNotEmpty)pw.Positioned(left:0,top:23,child:pw.SizedBox(width:representativeWidth,height:10,child:pw.Text(representativeText,style:pw.TextStyle(font:regularFont,fontSize:representativeSize)))),
       if(sealOn)pw.Positioned(left:sealLeft,top:0.5,child:pw.SizedBox(width:22,height:22,child:CompanySealPdf.build(seal.name,font:sealFont,fallbackFont:regularFont,companyId:seal.companyId,uploadedPng:seal.uploadedPng,style:seal.style,size:22))),
      ]);
     }))));
-   }else{text(val(issuer[row.$2]),vx,bb+1,right-vx-3,row.$2=='address'?24:14,size:8);}
+   }else{text(val(issuer[row.$2]),vx,bb+1,right-vx-3,row.$2=='address'?24:12,size:9);}
    line(vx-2,bb,right,bb,stroke:0.3);
   }
   for(var i=0;i<ys.length;i++){if(i==4||i==5)continue;line(left,ys[i],right,ys[i],stroke:[0,9,20,21].contains(i)?0.9:0.5);}
@@ -115,8 +124,14 @@ class TradeDocumentFormPdf {
    text(r.$1,n+4,r.$3+1,26,r.$4-r.$3-2,size:7.5);date(p[r.$2],n+30,r.$3+1,r.$4-1);
   }
   line(a,ys[2],a,ys[3]);label('発 注 金 額',left,a,ys[2],ys[3]);
-  if(p['total_amount_yen']!=null)text('金 ${money(p['total_amount_yen'])} 円',a+3,ys[3]+3,width*.34,ys[2]-ys[3]-6,size:9);
-  text('下記「施工単価内訳書」による',left+width*.45,ys[3]+3,width*.5,ys[2]-ys[3]-6,size:7.5);
+  final amountDescription=fields?['amount_description']?.toString()??'';
+  if(amountDescription.isNotEmpty){
+   // This editable contract caption does not rewrite its parent invoice total.
+   text(amountDescription,a+3,ys[3]+3,right-a-6,ys[2]-ys[3]-6,size:8,center:true);
+  }else{
+   if(p['total_amount_yen']!=null)text('金 ${money(p['total_amount_yen'])} 円',a+3,ys[3]+3,width*.34,ys[2]-ys[3]-6,size:9);
+   if(fields?['schema']!=2)text('下記「施工単価内訳書」による',left+width*.45,ys[3]+3,width*.5,ys[2]-ys[3]-6,size:7.5);
+  }
   final spine=x(order?210:285),choice=x(order?465:536),when=x(order?595:663),paylabel=x(order?882:945);
   for(final xx in [spine,a,choice,when,paylabel,n]){line(xx,ys[3],xx,ys[6]);}
   final cy=(ys[3]+ys[6])/2;
@@ -138,7 +153,7 @@ class TradeDocumentFormPdf {
   }
   for(final xx in [a,choice,when,m,n]){line(xx,ys[6],xx,ys[8]);}
   label('出来高締切日',left,a,ys[6],ys[7],size:7.8);label('請求書締切日',choice,when,ys[6],ys[7],size:7.8);label('支　払　日',m,n,ys[6],ys[7]);
-  for(final r in [(a,choice),(when,m)]){text('毎月',r.$1+7,ys[7]+3,26,ys[6]-ys[7]-6,size:8);text('日',r.$2-12,ys[7]+3,10,ys[6]-ys[7]-6,size:8);}
+  for(final r in [(a,choice),(when,m)]){text('毎月',r.$1+7,ys[7]+3,26,ys[6]-ys[7]-6,size:8);if(r.$1!=a||fields?['progress_cutoff_day']!='month_end')text('日',r.$2-12,ys[7]+3,10,ys[6]-ys[7]-6,size:8);}
   final offset=fields?['payment_month_offset'];
   final months=[for(var i=0;i<3;i++)offset==i?'【${['当月','翌月','翌々月'][i]}】':['当月','翌月','翌々月'][i]].join(' ・ ');
   text('（ $months ）',n+3,ys[7]+3,right-n-18,ys[6]-ys[7]-6,size:7.2);text('日',right-12,ys[7]+3,10,ys[6]-ys[7]-6,size:8);
@@ -147,7 +162,7 @@ class TradeDocumentFormPdf {
   line(a,ys[8],a,ys[9]);label('支　給　品',left,a,ys[8],ys[9]);
   if(fields!=null){
    for(final row in [('progress_cutoff_day',a+35,choice-14),('invoice_cutoff_day',when+35,m-14),('payment_day',right-29,right-14)]){
-    text(val(fields[row.$1]),row.$2,ys[7]+3,row.$3-row.$2,ys[6]-ys[7]-6,size:8,center:true);
+    text(tradeDocumentClosingDay(fields[row.$1]),row.$2,ys[7]+3,row.$3-row.$2,ys[6]-ys[7]-6,size:8,center:true);
    }
    if(fields['cash_ratio_percent']!=null)text('${fields['cash_ratio_percent']} %',choice+3,ys[8]+3,when-choice-6,ys[7]-ys[8]-6,size:8,center:true);
    if(fields['bill_ratio_percent']!=null)text('${fields['bill_ratio_percent']} %',m+3,ys[8]+3,n-m-6,ys[7]-ys[8]-6,size:8,center:true);
@@ -168,7 +183,10 @@ class TradeDocumentFormPdf {
     }
    }
   }
-  text('［特記事項］（右記工事請負契約条項に記載されていない事項を記入）',left+3,ys[20]-13,width-6,12,size:7.4,bold:true);
+  final notes=val(p['notes']);
+  final hasDefaultNote=notes.startsWith(tradeDocumentDefaultNotes);
+  final notesBody=hasDefaultNote?notes.substring(tradeDocumentDefaultNotes.length).trimLeft():notes;
+  text(hasDefaultNote?tradeDocumentDefaultNotes:'［特記事項］（右記工事請負契約条項に記載されていない事項を記入）',left+3,ys[20]-13,width-6,12,size:7.4,bold:true);
   final bank=order&&p['counterparty_bank']!=null?PartnerCompanyBankAccount.fromJson(p['counterparty_bank']):null;
   final details=[
    if(p['intro_text']?.toString().trim().isNotEmpty==true)val(p['intro_text']),
@@ -176,7 +194,7 @@ class TradeDocumentFormPdf {
    '支払条件：${val(p['payment_conditions'])}',
    if(p['tax_amount_yen']!=null)'うち消費税等：${money(p['tax_amount_yen'])} 円',
    if(bank!=null)'受注者の振込先：${bank.display}',
-   if(p['notes']?.toString().trim().isNotEmpty==true)'特記：${val(p['notes'])}',
+   if(notesBody.trim().isNotEmpty)'特記：$notesBody',
    '対象月：${val(p['month'])} 月分　発行日：${val(p['issue_date'])}　注文日：${val(p['order_date'])}',
    if(!order)'承諾日：${_fullDate(p['issue_date'])}',
    '自社法人番号：${val(issuer['corporate_number'])}　相手法人番号：${val(counter['corporate_number'])}',

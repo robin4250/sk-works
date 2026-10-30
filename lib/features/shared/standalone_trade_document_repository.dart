@@ -119,9 +119,9 @@ class StandaloneTradeDocumentRepository {
       if (partnerId != null) 'partner_company_id': partnerId,
       if (bank != null) 'counterparty_bank': bank,
       'issuer': {'name': profile['name'], 'address': profile['address'] ?? '',
-        'corporate_number': profile['corporate_number'] ?? '', 'representative_name': profile['representative_name'] ?? '', 'phone':profile['phone']??''},
+        'corporate_number': profile['corporate_number'] ?? '', 'representative_name': profile['representative_name'] ?? '', 'phone':profile['phone']??'','fax':profile['fax']??''},
       'counterparty': {'name': partner['name'], 'address': partner['address'] ?? '',
-        'corporate_number': partner['corporate_number'] ?? '', 'representative_name': partner['representative_name'] ?? '', 'phone':partner['phone']??''},
+        'corporate_number': partner['corporate_number'] ?? '', 'representative_name': partner['representative_name'] ?? '', 'phone':partner['phone']??'','fax':partner['fax']??''},
       'template': Map<String, dynamic>.from(template['payload'] as Map),
       'company_seal_snapshot': seal, 'company_seal_enabled': company['company_seal_enabled'] == true};
   }
