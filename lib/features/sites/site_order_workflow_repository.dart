@@ -376,32 +376,36 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
   }
 
   @override
-  Future<Map<String, dynamic>> refuse(String id, String requestId) async {
+  Future<Map<String, dynamic>> refuse(
+    String packageId,
+    String requestId,
+  ) async {
     await verify();
-    if (!_savedId(id) || !_savedId(requestId)) {
+    if (!_savedId(packageId) || !_savedId(requestId)) {
       throw StateError('注文を確認できません。');
     }
-    if (await hasPendingApproval(id) || await hasPendingRefusal(id)) {
+    if (await hasPendingApproval(packageId) ||
+        await hasPendingRefusal(packageId)) {
       throw const SiteOrderResultUnknown();
     }
-    await _refusalJournal.begin(_actor, _company!, id, requestId);
+    await _refusalJournal.begin(_actor, _company!, packageId, requestId);
     try {
       final result = _map(
         _map(
           await _call({
             'action': 'refuse',
             'confirmed': true,
-            'package_id': id,
+            'package_id': packageId,
             'request_id': requestId,
           }, write: true),
         )['result'],
       );
-      if (result['package_id'] != id ||
+      if (result['package_id'] != packageId ||
           result['request_id'] != requestId ||
           result['status'] != 'rejected') {
         throw const SiteOrderResultUnknown();
       }
-      await _refusalJournal.resolve(_actor, _company!, id, requestId);
+      await _refusalJournal.resolve(_actor, _company!, packageId, requestId);
       return result;
     } catch (_) {
       throw const SiteOrderResultUnknown();

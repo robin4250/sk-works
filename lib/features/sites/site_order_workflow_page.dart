@@ -408,11 +408,12 @@ class _SiteOrderPackagePageState extends State<SiteOrderPackagePage> {
       setState(() => _message = '注文を辞退し、注文元の要通知へ保存しました。');
       await _load();
     } on SiteOrderResultUnknown {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _unknown = true;
           _message = '辞退の保存結果を確認できません。再送せず、保存状態を確認してください。';
         });
+      }
     } catch (_) {
       if (mounted) setState(() => _error = '辞退の結果を確認できません。保存状態を確認してください。');
     } finally {
