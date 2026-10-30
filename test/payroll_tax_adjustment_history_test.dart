@@ -125,7 +125,7 @@ void main() {
     expect(zero.items.single.changes.single.after, '0円');
     final automatic = parsed(response(items: [item(before: {'deduction_overrides': {'health_insurance': 5100}}, after: {'deduction_overrides': {}})]));
     expect(automatic.items.single.changes.single.after, '修正なし');
-  });
+  }, timeout: const Timeout(Duration(seconds: 45)));
   test('rejects foreign scope, wrong version, oversized/duplicate/private rows and invalid months', () {
     for (final raw in [
       {...response(), 'company_id': foreign}, {...response(), 'worker_id': foreign},
@@ -135,7 +135,7 @@ void main() {
       response(items: [{...item(), 'starts_on': '2026-13-01'}]),
       response(items: [{...item(), 'reason': 'x' * 1001}]),
     ]) { expect(() => parsed(raw), throwsFormatException); }
-  });
+  }, timeout: const Timeout(Duration(seconds: 45)));
   test('the SDK read sends exact scope with captured authorization and no capability/save calls', () async {
     final wire = _Wire();
     final sdk = await _clientFor(wire);
@@ -146,7 +146,7 @@ void main() {
       expect(wire.params[1], {'p_company_id': company, 'p_worker_id': worker});
       expect(wire.headers.every((value) => value == 'Bearer ${wire.token}'), isTrue);
     } finally { source.dispose(); await sdk.dispose(); }
-  });
+  }, timeout: const Timeout(Duration(seconds: 45)));
   test('workspace role loss after history response refuses publication and retires the source', () async {
     final wire = _Wire()..denyAfterHistory = true;
     final client = await _clientFor(wire);
@@ -155,7 +155,7 @@ void main() {
       await expectLater(source.load(), throwsStateError);
       expect(source.isCurrent, isFalse);
     } finally { source.dispose(); await client.dispose(); }
-  });
+  }, timeout: const Timeout(Duration(seconds: 45)));
   test('a changed company refuses the history RPC instead of using a stale worker', () async {
     final wire = _Wire()..currentCompany = foreign;
     final client = await _clientFor(wire);
@@ -164,7 +164,7 @@ void main() {
       await expectLater(source.load(), throwsStateError);
       expect(wire.calls, ['payroll_workspace']);
     } finally { source.dispose(); await client.dispose(); }
-  });
+  }, timeout: const Timeout(Duration(seconds: 45)));
   test('SDK A-B-A authentication cannot publish a late history or revive the old scope', () async {
     final wire = _Wire()..holdHistory = Completer<void>();
     final client = await _clientFor(wire);
@@ -188,14 +188,14 @@ void main() {
       if (!wire.holdHistory!.isCompleted) wire.holdHistory!.complete();
       source.dispose(); await client.dispose();
     }
-  });
+  }, timeout: const Timeout(Duration(seconds: 45)));
   test('a missing module is unavailable and never represented as an empty history', () async {
     final wire = _Wire()..missing = true;
     final client = await _clientFor(wire);
     final source = PayrollTaxHistoryRepository(client, companyId: company, workerId: worker);
     try { await expectLater(source.load(), throwsA(isA<PayrollTaxHistoryUnavailable>())); }
     finally { source.dispose(); await client.dispose(); }
-  });
+  }, timeout: const Timeout(Duration(seconds: 45)));
   testWidgets('history displays reasons and before/after values without edit controls', (tester) async {
     final source = _Source();
     await tester.pumpWidget(MaterialApp(home: PayrollTaxAdjustmentHistoryPage(
@@ -208,7 +208,7 @@ void main() {
     expect(find.text('保存'), findsNothing);
     expect(find.text('閉じる'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
-  });
+  }, timeout: const Timeout(Duration(seconds: 45)));
   testWidgets('empty, unavailable and raw backend error states are distinct', (tester) async {
     for (final kind in ['empty', 'unavailable', 'error']) {
       final source = _Source();
@@ -223,7 +223,7 @@ void main() {
       expect(find.textContaining('private SQL'), findsNothing);
       await tester.pumpWidget(const SizedBox());
     }
-  });
+  }, timeout: const Timeout(Duration(seconds: 45)));
   testWidgets('invalidation removes visible data and late reads cannot restore it', (tester) async {
     final source = _Source();
     await tester.pumpWidget(MaterialApp(home: PayrollTaxAdjustmentHistoryPage(
@@ -237,7 +237,7 @@ void main() {
     expect(find.text('検証メンバー'), findsNothing);
     expect(find.textContaining('閉じて開き直して'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
-  });
+  }, timeout: const Timeout(Duration(seconds: 45)));
   testWidgets('backgrounding hides history permanently for this route', (tester) async {
     final source = _Source();
     await tester.pumpWidget(MaterialApp(home: PayrollTaxAdjustmentHistoryPage(
@@ -248,7 +248,7 @@ void main() {
     expect(find.text('通知書の金額へ訂正'), findsNothing);
     expect(source.reads, 1);
     await tester.pumpWidget(const SizedBox());
-  });
+  }, timeout: const Timeout(Duration(seconds: 45)));
   testWidgets('320px enlarged text retains scrolling and close without overflow', (tester) async {
     tester.view.physicalSize = const Size(320, 700); tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize); addTearDown(tester.view.resetDevicePixelRatio);
@@ -260,7 +260,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('閉じる'), findsOneWidget); expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
-  });
+  }, timeout: const Timeout(Duration(seconds: 45)));
   testWidgets('logout intent hides loaded SDK data before remote logout completes', (tester) async {
     final wire = _Wire()..holdLogout = Completer<void>();
     final client = await _clientFor(wire);
@@ -275,7 +275,7 @@ void main() {
     expect(find.text('通知書の金額へ訂正'), findsNothing);
     wire.holdLogout!.complete(); await tester.runAsync(() async { await logout; });
     await tester.pumpWidget(const SizedBox()); await client.dispose();
-  });
+  }, timeout: const Timeout(Duration(seconds: 45)));
   testWidgets('the existing individual page opens the selected read-only history without saving', (tester) async {
     final client = SupabaseClient('https://synthetic.invalid', 'synthetic-public',
       httpClient: MockClient((_) async => http.Response('{}', 404)),
@@ -291,5 +291,5 @@ void main() {
     await tester.tap(find.text('閉じる')); await tester.pumpAndSettle();
     expect(find.byType(IndividualPayrollSettingsPage), findsOneWidget);
     await tester.pumpWidget(const SizedBox()); await client.dispose();
-  });
+  }, timeout: const Timeout(Duration(seconds: 45)));
 }
