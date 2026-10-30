@@ -182,7 +182,7 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
       sites.putIfAbsent(dailyReportDestinationKey(entry), () => []).add(entry);
     }
     final selected = _siteKey == null ? _pending :
-        _pending.where((entry) => dailyReportDestinationKey(entry) == _siteKey).toList();
+        sites[_siteKey] ?? const <DailyReportMonthEntry>[];
     return RefreshIndicator(onRefresh: _loadPending, child: ListView(
       physics: const AlwaysScrollableScrollPhysics(), padding: const EdgeInsets.all(12), children: [
         Text('責任者サイン待ち ${selected.length}件', key: const ValueKey('daily-report-pending-heading'),

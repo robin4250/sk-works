@@ -38,15 +38,25 @@ class _Routes extends NavigatorObserver {
 }
 
 void main() {
+  late SupabaseClient client;
+  late _Reports reports;
+  late _Routes routes;
+  setUp(() {
+    // Create SDK resources outside the widget FakeAsync zone, matching the
+    // existing calendar fixtures. Their asynchronous disposal needs real time.
+    client = SupabaseClient('https://example.invalid', 'synthetic-public',
+      authOptions: const AuthClientOptions(autoRefreshToken: false));
+    reports = _Reports(client);
+    routes = _Routes();
+  });
+  tearDown(() async {
+    await client.dispose().timeout(const Duration(seconds: 5));
+  });
   testWidgets('phone filters retain one header and site-card hierarchy without hiding older pending reports', (tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    final client = SupabaseClient('https://example.invalid', 'synthetic-public',
-      authOptions: const AuthClientOptions(autoRefreshToken: false));
-    addTearDown(client.dispose);
-    final reports = _Reports(client), routes = _Routes();
     String? opened;
     await tester.pumpWidget(MaterialApp(navigatorObservers: [routes],
       builder: (context, child) => MediaQuery(data: MediaQuery.of(context).copyWith(
@@ -104,5 +114,8 @@ void main() {
     final inputTile = tester.widget<ListTile>(find.byKey(const ValueKey('daily-report-site-site:input-site')));
     expect((inputTile.title! as Text).style, savedStyle);
     expect(tester.takeException(), isNull);
-  });
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+    debugPrint('Daily list style: all phone layout, scope and navigation assertions completed.');
+  }, timeout: const Timeout(Duration(minutes: 2)));
 }
