@@ -63,7 +63,7 @@ its official hash. Node coordinator tests: 6 passed. Real Dart subprocess tests:
 4 order/acceptance schema-1/2 PDFs plus 5 rejection boundaries passed. Each PDF is
 A4 two pages and contains all 22 confirmed legal articles. Existing consent/API
 SQL -> frozen job -> actual Dart PDF -> immutable private original/receipt ->
-exact retry and OFF refusal succeeded in disposable PGlite. Existing 42 private
+exact retry and OFF refusal succeeded in disposable PGlite. Existing 43 private
 registration, 238 consent and 18 confirmed-terms checks ran unchanged as the
 necessary fixture dependency, not as new live-Auth proof.
 
@@ -92,3 +92,10 @@ cover both branches. New original/job tables also reject TRUNCATE, including
 CASCADE, in addition to UPDATE/DELETE. This is defense against accidental
 internal operations, not a claim that a PostgreSQL superuser cannot disable a
 trigger or drop a schema.
+
+The new original/job triggers also pin the existing immutable trigger function's
+body MD5 `73660d9947f20d6f99c59d8451078e7e`, owner, search path, client EXEC and
+SECURITY INVOKER attribute. A deliberately changed dependency is rejected before
+new-schema creation in the disposable fixture, with the original definition
+restored by transaction rollback. No dependency body or attributes are changed
+by the real candidate.

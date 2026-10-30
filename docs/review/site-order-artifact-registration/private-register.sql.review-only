@@ -15,14 +15,15 @@ do $$ declare item record; proc pg_proc; begin
   raise exception 'site_artifact_namespace_already_present_review_required';
  end if;
  for item in select * from (values
-  ('trade_document_confirmation_api_private.actor()','42329b7b0775eec0aad5ac018233011d'),
-  ('trade_document_consent_private.require_actor(uuid)','672a165b2b721befce37aa706626be7c'),
-  ('trade_document_consent_private.lock_pair(uuid,uuid)','a37ce3e8230a7efd5534fa879ad1b5b0'),
-  ('trade_document_consent_private.render_approved(uuid,integer,uuid,boolean)','b53668611851ab0bc211660e6f6d1f86'),
-  ('private.require_trade_documents_master_feature()','0dc45a5f0611ccbd832b77a03c0beb1a')
- ) v(signature,source_md5) loop
+  ('trade_document_confirmation_api_private.actor()','42329b7b0775eec0aad5ac018233011d',true),
+  ('trade_document_consent_private.require_actor(uuid)','672a165b2b721befce37aa706626be7c',true),
+  ('trade_document_consent_private.lock_pair(uuid,uuid)','a37ce3e8230a7efd5534fa879ad1b5b0',true),
+  ('trade_document_consent_private.render_approved(uuid,integer,uuid,boolean)','b53668611851ab0bc211660e6f6d1f86',true),
+  ('private.require_trade_documents_master_feature()','0dc45a5f0611ccbd832b77a03c0beb1a',true),
+  ('trade_document_consent_private.immutable()','73660d9947f20d6f99c59d8451078e7e',false)
+ ) v(signature,source_md5,expected_definer) loop
   select * into proc from pg_proc where oid=to_regprocedure(item.signature);
-  if md5(proc.prosrc) is distinct from item.source_md5 or not proc.prosecdef
+  if md5(proc.prosrc) is distinct from item.source_md5 or proc.prosecdef is distinct from item.expected_definer
    or pg_get_userbyid(proc.proowner)<>'postgres'
    or proc.proconfig is distinct from array['search_path=""']::text[]
    or has_function_privilege('anon',proc.oid,'EXECUTE')

@@ -26,12 +26,20 @@ export async function verifySiteOrderArtifactRegistration(db,c) {
  'trade_document_consent_private.require_actor(uuid)'::regprocedure,
  'trade_document_consent_private.lock_pair(uuid,uuid)'::regprocedure,
  'trade_document_consent_private.render_approved(uuid,integer,uuid,boolean)'::regprocedure,
- 'private.require_trade_documents_master_feature()'::regprocedure])`);
+ 'private.require_trade_documents_master_feature()'::regprocedure,'trade_document_consent_private.immutable()'::regprocedure])`);
  const beforeFunctions=await protectedFunctions();
  const financial=()=>q(`select jsonb_build_object('invoices',(select jsonb_agg(to_jsonb(i)order by id)from public.invoices i),
  'payment_certificates',(select jsonb_agg(to_jsonb(p)order by id)from public.payment_certificates p)) v`);
  const beforeFinancial=await financial();
- await db.exec(await fs.readFile('docs/review/site-order-artifact-registration/private-register.sql.review-only','utf8'));
+ const candidate=await fs.readFile('docs/review/site-order-artifact-registration/private-register.sql.review-only','utf8');
+ // A legitimate dependency change must stop installation before any new schema.
+ // This deliberate mutation is inside a disposable fixture transaction only.
+ await deny(async()=>{
+  await db.exec(`begin; create or replace function trade_document_consent_private.immutable()
+   returns trigger language plpgsql set search_path='' as $$begin return null;end $$;`);
+  try {await db.exec(candidate);} finally {await db.exec('rollback');}
+ },/site_artifact_guard_changed: trade_document_consent_private.immutable/);
+ await db.exec(candidate);
  const site=id(9301),foreignSite=id(9302),doc=id(9303),request=id(9304);
  await db.query('insert into public.sites values($1,$2,\'合成工事\'),($3,$4,\'別会社現場\')',[site,A,foreignSite,B]);
  await db.query("insert into private.master_feature_settings values('site_order_documents',true)");
