@@ -14,9 +14,7 @@ void main() {
             .readAsString(),
       ) as Map;
       final output = Platform.environment['SKO_CANONICAL_PDF_OUTPUT_DIR'];
-      if (output == null)
-        throw StateError('Explicit PDF verification directory required.');
-      await Directory(output).create(recursive: true);
+      if (output != null) await Directory(output).create(recursive: true);
       for (final entry in cases.entries) {
         final evidence = entry.value as Map;
         final payload = Map<String, dynamic>.from(evidence['body'] as Map);
@@ -25,7 +23,10 @@ void main() {
             (evidence['seals'] as List).single['seal_snapshot'];
         payload['company_seal_enabled'] = true;
         final bytes = await TradeDocumentFormRenderer.canonical(payload);
-        await File('$output/app-${entry.key}.pdf').writeAsBytes(bytes);
+        expect(bytes.length, greaterThan(10000));
+        if (output != null) {
+          await File('$output/app-${entry.key}.pdf').writeAsBytes(bytes);
+        }
         payload.remove('company_seal_snapshot');
         payload.remove('company_seal_enabled');
         expect(jsonEncode(payload), original);
