@@ -29,6 +29,7 @@ test('modified signature is rejected by real JWT verifier before DB connect',asy
 });
 function database({unknown=false}={}){const calls=[];return {calls,async query(sql,args){calls.push({sql,args});
  if(sql==='select session_user as role')return {rows:[{role:'postgres'}]};
+ if(sql.includes('archive_original'))return {rows:[{result:new TextEncoder().encode('%PDF-fixed immutable original')}]};
  if(sql.includes('package_status'))return {rows:[{result:{package_id:id,approved:true}}]};
  if(sql==='commit'&&unknown)throw Error('private payroll detail must not escape');return {rows:[]};},async end(){calls.push({sql:'end'});}};}
 test('HTTP fixed status command installs verified claims LOCAL inside same dedicated TX',async()=>{
@@ -49,4 +50,11 @@ test('lost COMMIT ACK is UNKNOWN, closed and never rolled back or automatically 
  const r=await handler(request(await token(),{action:'status',package_id:id}));assert.equal(r.status,409);
  assert.deepEqual(await r.json(),{error:'result_unknown',retry_automatically:false});
  assert.equal(db.calls.filter(x=>x.sql==='commit').length,1);assert.equal(db.calls.some(x=>x.sql==='rollback'),false);assert.equal(db.calls.at(-1).sql,'end');
+});
+
+test('archive uses the locked Dart SDK binary response type and preserves PDF bytes',async()=>{
+ const db=database(),handler=createSiteOrderHandler({verify,connect:async()=>db,render:()=>{throw Error('no');}});
+ const r=await handler(request(await token(),{action:'archive',package_id:id,kind:'order'}));
+ assert.equal(r.status,200);assert.equal(r.headers.get('content-type'),'application/octet-stream');
+ assert.equal(new TextDecoder().decode(await r.arrayBuffer()),'%PDF-fixed immutable original');
 });
