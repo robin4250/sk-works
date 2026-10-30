@@ -79,7 +79,21 @@ void main() {
           find.byType(InteractiveViewer).first,
           const Offset(-600, 0),
         );
-        await tester.pumpAndSettle();
+        await tester.pump(const Duration(milliseconds: 500));
+        // Raster decoding runs outside the fake widget clock. Wait for the
+        // second bitmap explicitly instead of settling its loading animation.
+        for (
+          var n = 0;
+          n < 100 &&
+              find.byType(CircularProgressIndicator).evaluate().isNotEmpty;
+          n++
+        ) {
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 10)),
+          );
+          await tester.pump(const Duration(milliseconds: 16));
+        }
+        expect(find.byType(CircularProgressIndicator), findsNothing);
         expect(
           find.descendant(of: find.byType(AppBar), matching: find.text('現場2')),
           findsOneWidget,
