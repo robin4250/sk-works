@@ -28,13 +28,15 @@ class SiteOrderPrice {
     'unit_price_yen': unitPriceYen, 'unit': unit};
 }
 
+enum SiteOrderArtifactKind { order, acceptance }
+
 /// A *server-issued* immutable artifact. Construction is not authorization:
 /// adapters must verify this record on the server again before every operation.
 class SiteOrderArtifact {
   SiteOrderArtifact({required this.id, required this.companyId,
     required this.siteId, required this.revision, required this.pdfSha256,
     required this.title, required this.startsOn, required this.endsOn,
-    required this.sealVersionId, required List<SiteOrderPrice> prices})
+    required this.sealVersionId, required this.kind, required List<SiteOrderPrice> prices})
     : prices = List.unmodifiable(prices) {
     if ([id, companyId, siteId, sealVersionId, title].any((s) => s.trim().isEmpty) ||
         revision < 1 || !RegExp(r'^[a-f0-9]{64}$').hasMatch(pdfSha256) ||
@@ -46,10 +48,11 @@ class SiteOrderArtifact {
   final String id, companyId, siteId, pdfSha256, title, startsOn, endsOn,
     sealVersionId;
   final int revision;
+  final SiteOrderArtifactKind kind;
   final List<SiteOrderPrice> prices;
   String get period => '$startsOn ～ $endsOn';
   String get fingerprint => jsonEncode({'id': id, 'company_id': companyId,
-    'site_id': siteId, 'revision': revision, 'pdf_sha256': pdfSha256,
+    'site_id': siteId, 'revision': revision, 'pdf_sha256': pdfSha256, 'kind': kind.name,
     'seal_version_id': sealVersionId, 'title': title,
     'starts_on': startsOn, 'ends_on': endsOn,
     'prices': prices.map((p) => p.toJson()).toList()});
@@ -110,7 +113,8 @@ class SiteOrderSendWorkflow {
     required this.currentScope, required this.isArtifactCurrent,
     required this.isRecipientCurrent, required this.newRequestId,
     required this.persistIntent}) {
-    if (!scope.valid || artifact.companyId != scope.companyId || artifact.siteId != scope.siteId) {
+    if (!scope.valid || artifact.kind != SiteOrderArtifactKind.order ||
+        artifact.companyId != scope.companyId || artifact.siteId != scope.siteId) {
       throw StateError('注文書の会社・現場が一致しません。');
     }
     _verify();
@@ -124,14 +128,16 @@ class SiteOrderSendWorkflow {
   /// Must finish durable, actor-scoped recovery storage *before* the network
   /// mutation starts. An in-memory callback is not a production adapter.
   final Future<void> Function(SiteOrderDeliveryIntent) persistIntent;
-  SiteOrderSendState state = SiteOrderSendState.selecting;
+  SiteOrderSendState _state = SiteOrderSendState.selecting;
+  SiteOrderSendState get state => _state;
   SiteOrderRecipient? _recipient;
   SiteOrderDeliveryIntent? _intent;
-  SiteOrderDeliveryReceipt? receipt;
+  SiteOrderDeliveryReceipt? _receipt;
+  SiteOrderDeliveryReceipt? get receipt => _receipt;
   SiteOrderDeliveryIntent? get pendingIntent => _intent;
 
   void verify() => _verify();
-  void retire() { state = SiteOrderSendState.retired; }
+  void retire() { _state = SiteOrderSendState.retired; }
 
   void _verify() {
     if (state == SiteOrderSendState.retired) throw StateError('開き直してください。');
@@ -139,7 +145,7 @@ class SiteOrderSendWorkflow {
     try { valid = scope.sameAs(currentScope()) && isArtifactCurrent(artifact); }
     catch (_) { valid = false; }
     if (!valid) {
-      state = SiteOrderSendState.retired;
+      _state = SiteOrderSendState.retired;
       throw StateError('ログイン・会社・注文書の状態が変わりました。開き直してください。');
     }
   }
@@ -167,15 +173,17 @@ class SiteOrderSendWorkflow {
     final intent = SiteOrderDeliveryIntent(requestId: id, scope: scope,
       artifact: artifact, recipient: recipient);
     _intent = intent;
-    state = SiteOrderSendState.confirming;
+    _state = SiteOrderSendState.confirming;
     return intent;
   }
 
   void returnToEditor() {
     _verify();
     if (!const [SiteOrderSendState.selecting, SiteOrderSendState.confirming]
-        .contains(state)) throw StateError('送信結果を確認してから戻ってください。');
-    state = SiteOrderSendState.retired;
+        .contains(state)) {
+      throw StateError('送信結果を確認してから戻ってください。');
+    }
+    _state = SiteOrderSendState.retired;
   }
 
   Future<void> send(Future<SiteOrderDeliveryReceipt> Function(
@@ -186,26 +194,29 @@ class SiteOrderSendWorkflow {
         !isRecipientCurrent(intent.recipient)) {
       throw StateError('送信先・注文書を確認し直してください。');
     }
-    state = SiteOrderSendState.preparing;
+    _state = SiteOrderSendState.preparing;
     try {
       await persistIntent(intent);
       _verify();
       if (!isRecipientCurrent(intent.recipient)) throw StateError('送信先を選び直してください。');
     } catch (_) {
-      if (state != SiteOrderSendState.retired) state = SiteOrderSendState.confirming;
+      if (state != SiteOrderSendState.retired) {
+        _state = SiteOrderSendState.selecting;
+        _intent = null; // No network mutation has started; confirm afresh.
+      }
       rethrow;
     }
-    state = SiteOrderSendState.sending;
+    _state = SiteOrderSendState.sending;
     try {
       final result = await operation(intent);
       _verify();
       if (!isRecipientCurrent(intent.recipient) || !result.matches(intent)) {
         throw StateError('共有送信の保存結果を確認できません。');
       }
-      receipt = result;
-      state = SiteOrderSendState.sent;
+      _receipt = result;
+      _state = SiteOrderSendState.sent;
     } catch (_) {
-      if (state != SiteOrderSendState.retired) state = SiteOrderSendState.outcomeUnknown;
+      if (state != SiteOrderSendState.retired) _state = SiteOrderSendState.outcomeUnknown;
       rethrow;
     }
   }
@@ -224,7 +235,7 @@ class SiteOrderSendWorkflow {
     if (!isRecipientCurrent(intent.recipient) || !result.matches(intent)) {
       throw StateError('共有送信の保存結果が一致しません。');
     }
-    receipt = result;
-    state = SiteOrderSendState.sent;
+    _receipt = result;
+    _state = SiteOrderSendState.sent;
   }
 }

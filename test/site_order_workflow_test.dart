@@ -6,7 +6,7 @@ const scope = SiteOrderScope(actorId: 'actor', companyId: 'own', sessionId: 'ses
 const recipient = SiteOrderRecipient(tradeCompanyId: 'trade', companyId: 'other',
   name: '協力会社', connectionVersion: 3);
 SiteOrderArtifact artifact({int revision = 2}) => SiteOrderArtifact(
-  id: 'order', companyId: 'own', siteId: 'site', revision: revision,
+  id: 'order', companyId: 'own', siteId: 'site', revision: revision, kind: SiteOrderArtifactKind.order,
   pdfSha256: 'a' * 64, title: '工事名称', startsOn: '2026-10-01',
   endsOn: '2026-10-31', sealVersionId: 'registered-seal',
   prices: [SiteOrderPrice(item: 'とび工', unitPriceYen: 32000, unit: '人日')]);
@@ -112,13 +112,24 @@ void main() {
     await expectLater(workflow.send((i) async { calls++; return receipt(i); }), throwsStateError);
     persistedGate.complete(); await first; expect(calls, 1);
   });
+  test('failed durable persistence has no mutation and can be confirmed afresh', () async {
+    var persistCalls=0,sendCalls=0;
+    workflow = SiteOrderSendWorkflow(scope:scope,artifact:artifact(),currentScope:()=>scope,
+      isArtifactCurrent:(_)=>true,isRecipientCurrent:(_)=>true,newRequestId:()=> 'request-$persistCalls',
+      persistIntent:(_)async {persistCalls++;if(persistCalls==1)throw StateError('disk');});
+    confirm();
+    await expectLater(workflow.send((i)async{sendCalls++;return receipt(i);}),throwsStateError);
+    expect(sendCalls,0);expect(workflow.state,SiteOrderSendState.selecting);
+    confirm();await workflow.send((i)async{sendCalls++;return receipt(i);});
+    expect(sendCalls,1);expect(persistCalls,2);
+  });
   test('return to input retires the confirmed artifact', () {
     confirm(); workflow.returnToEditor();
     expect(workflow.state, SiteOrderSendState.retired);
     expect(() => workflow.confirm(), throwsStateError);
   });
   test('invalid calendar day/hash/missing seal/negative price rejected', () {
-    expect(() => SiteOrderArtifact(id: 'order', companyId: 'own', siteId: 'site', revision: 1,
+    expect(() => SiteOrderArtifact(id: 'order', companyId: 'own', siteId: 'site', revision: 1, kind: SiteOrderArtifactKind.order,
       pdfSha256: 'a' * 64, title: 'test', startsOn: '2026-02-30', endsOn: '2026-03-01',
       sealVersionId: 'seal', prices: [SiteOrderPrice(item: 'item', unitPriceYen: 1, unit: '人日')]),
       throwsFormatException);

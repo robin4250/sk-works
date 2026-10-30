@@ -7,7 +7,7 @@ import 'package:sk_works/features/sites/site_order_send_page.dart';
 import 'package:sk_works/features/sites/site_order_workflow.dart';
 
 SiteOrderArtifact order(String title, {String id='order'}) => SiteOrderArtifact(
-  id: id, companyId: 'own', siteId: 'site', revision: 1, pdfSha256: 'a'*64,
+  id: id, companyId: 'own', siteId: 'site', revision: 1, pdfSha256: 'a'*64, kind: SiteOrderArtifactKind.order,
   title: title, startsOn: '2026-10-01', endsOn: '2026-10-31',
   sealVersionId: 'seal', prices: [
     SiteOrderPrice(item: 'とび工',unitPriceYen:32000,unit:'人日'),

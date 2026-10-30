@@ -11,6 +11,7 @@ create table site_order_private.artifacts (
   revision bigint not null check (revision > 0),
   company_id uuid not null,
   source_site_id uuid not null,
+  kind text not null check (kind in ('order','acceptance')),
   work_name text not null check (length(trim(work_name)) between 1 and 240),
   starts_on date not null,
   ends_on date not null check (ends_on >= starts_on),
@@ -27,7 +28,8 @@ create table site_order_private.artifacts (
   created_by uuid not null,
   created_at timestamptz not null default clock_timestamp(),
   primary key (id, revision),
-  unique (company_id, id, revision)
+  unique (company_id, id, revision),
+  unique (company_id, id, revision, source_site_id, kind)
 );
 alter table site_order_private.artifacts enable row level security;
 
@@ -44,11 +46,12 @@ create table site_order_private.deliveries (
   site_share_data_item_id uuid not null unique,
   artifact_id uuid not null,
   artifact_revision bigint not null,
+  artifact_kind text not null default 'order' check (artifact_kind='order'),
   sent_by uuid not null,
   sent_session_id uuid not null,
   sent_at timestamptz not null default clock_timestamp(),
-  foreign key (sender_company_id, artifact_id, artifact_revision)
-    references site_order_private.artifacts(company_id,id,revision),
+  foreign key (sender_company_id, artifact_id, artifact_revision,source_site_id,artifact_kind)
+    references site_order_private.artifacts(company_id,id,revision,source_site_id,kind),
   unique (sender_company_id, sent_by, request_id),
   unique (id, recipient_company_id),
   unique (id, sender_company_id, recipient_company_id)
@@ -64,13 +67,15 @@ create table site_order_private.acceptance_outbox (
   recipient_company_id uuid not null,
   artifact_id uuid not null,
   artifact_revision bigint not null,
+  source_site_id uuid not null,
+  artifact_kind text not null default 'acceptance' check (artifact_kind='acceptance'),
   decision text not null default 'accepted' check (decision='accepted'),
   created_at timestamptz not null default clock_timestamp(),
   foreign key (approval_delivery_id,recipient_company_id,sender_company_id)
     references site_order_private.deliveries(id,sender_company_id,recipient_company_id),
-  foreign key (sender_company_id,artifact_id,artifact_revision)
-    references site_order_private.artifacts(company_id,id,revision),
-  unique (approval_delivery_id,sender_company_id,id)
+  foreign key (sender_company_id,artifact_id,artifact_revision,source_site_id,artifact_kind)
+    references site_order_private.artifacts(company_id,id,revision,source_site_id,kind),
+  unique (approval_delivery_id,sender_company_id,source_site_id,id)
 );
 alter table site_order_private.acceptance_outbox enable row level security;
 
@@ -87,8 +92,8 @@ create table site_order_private.responses (
   check ((decision = 'accepted') = (acceptance_outbox_id is not null)),
   foreign key (delivery_id, recipient_company_id)
     references site_order_private.deliveries(id,recipient_company_id),
-  foreign key (delivery_id,recipient_company_id,acceptance_outbox_id)
-    references site_order_private.acceptance_outbox(approval_delivery_id,sender_company_id,id),
+  foreign key (delivery_id,recipient_company_id,accepted_site_id,acceptance_outbox_id)
+    references site_order_private.acceptance_outbox(approval_delivery_id,sender_company_id,source_site_id,id),
   unique (delivery_id,decision)
 );
 alter table site_order_private.responses enable row level security;
@@ -96,6 +101,32 @@ alter table site_order_private.acceptance_outbox add constraint accepted_respons
   foreign key (approval_delivery_id,decision)
   references site_order_private.responses(delivery_id,decision)
   deferrable initially deferred;
+
+-- Minimal event envelope only; prices, PDF URLs and company snapshots do not
+-- belong in attention-center rows. A trusted adapter resolves the target.
+create table site_order_private.notification_outbox (
+  id uuid primary key,
+  delivery_id uuid not null,
+  original_sender_company_id uuid not null,
+  original_recipient_company_id uuid not null,
+  audience_company_id uuid not null,
+  event_kind text not null check (event_kind in ('order_received',
+    'approval_required','order_accepted','order_rejected','acceptance_received',
+    'acceptance_delivery_pending')),
+  response_decision text generated always as (case
+    when event_kind in ('order_accepted','acceptance_received','acceptance_delivery_pending') then 'accepted'
+    when event_kind='order_rejected' then 'rejected' else null end) stored,
+  created_at timestamptz not null default clock_timestamp(),
+  foreign key (delivery_id,original_sender_company_id,original_recipient_company_id)
+    references site_order_private.deliveries(id,sender_company_id,recipient_company_id),
+  foreign key (delivery_id,response_decision)
+    references site_order_private.responses(delivery_id,decision),
+  check (audience_company_id = case
+    when event_kind in ('order_received','approval_required','acceptance_delivery_pending')
+      then original_recipient_company_id else original_sender_company_id end),
+  unique (delivery_id,event_kind,audience_company_id)
+);
+alter table site_order_private.notification_outbox enable row level security;
 
 create function site_order_private.immutable() returns trigger
 language plpgsql set search_path='' as $$
@@ -110,6 +141,8 @@ for each row execute function site_order_private.immutable();
 create trigger immutable_response before update or delete on site_order_private.responses
 for each row execute function site_order_private.immutable();
 create trigger immutable_acceptance_outbox before update or delete on site_order_private.acceptance_outbox
+for each row execute function site_order_private.immutable();
+create trigger immutable_notification_outbox before update or delete on site_order_private.notification_outbox
 for each row execute function site_order_private.immutable();
 revoke all on all tables in schema site_order_private from public, anon, authenticated;
 revoke all on all functions in schema site_order_private from public, anon, authenticated;

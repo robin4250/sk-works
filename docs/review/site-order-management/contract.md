@@ -14,6 +14,16 @@
   ページを開き、注文書・返送請書・過去履歴をまとめる。現場別表示と会社別表示は
   同じ正規原本を参照する。
 - 受信、承認待ち、承認・拒否の結果、返送請書の受信は既存の「要通知」に届く。
+- 後続訂正：現場に関する新しい注文書の作成は現場管理で行う。協力会社個別ページは
+  注文書・請書・過去履歴の閲覧をまとめる入口で、作成ボタンは設けない。
+  協力会社登録詳細の重複「注文書生成」ボタンを除去する候補を追加した。
+- 最新指定は、取引会社登録の「注文請書生成」も会社詳細から移動し、独立した
+  「注文・請書」ページに「注文書生成」「請書生成」の2操作を置く。
+  管理者・サブ管理者が利用する。会社登録/編集は残す。単独生成は既存正式editorを
+  再利用し、現場archiveの未接続と切り分ける。hubにもmaster ON/OFFを適用する。
+- 注文書・請書統合にはマスター限定ON/OFF。初期OFF、欠落/取得失敗もOFF。
+  管理者/サブ管理者からtoggleしない。OFF時は新作成・編集・共有・承認による
+  自動請書返送を停止し、保存済み原本・履歴の閲覧を既存権限で維持する。
 
 ## 現在の実物
 
@@ -43,11 +53,17 @@ eaaf95001。既存 `site_share_approval_page.dart` と `site_cloud_repository.da
 - private archive の構造候補 SQL。全テーブル RLS、クライアント grant なし、
   原本・配送・応答は append-only。SQL末尾は ROLLBACK。
 - 会社個別注文書ページの候補。未接続の保管機能は準備中と表示し、
-  従来の会社情報編集・既存帳票生成へのボタンを保持する。現在の会社名タップは
+  従来の会社情報編集等へのボタンを保持する。現在の会社名タップは
   従来どおりであり、未完成ページに差し替えていない。
+- 原本会社/現場/帳票種別をcompound FKで検証する構造候補、承認と請書の元sender返信
+  intent DTO、価格やURLを含まない通知envelopeのstrict mapper、通知event宛先/重複検証。
+- master capability はarchive閲覧とmutationを分離し、必要なserver各契約版が全部1の
+  ときだけ新操作を許可する。DTOの一致は実認証・実権限を証明するものではない。
 
 **これらは本番ルートから未接続。受信保存・送信が完成したという意味ではない。**
 API不在をスタブ成功に変換せず、既存サイト共有や会社情報を変更していない。
+Draft PRはmerge blocked。新しい独立hub/現場管理の作成経路が未接続なまま、会社登録の
+旧入口除去候補だけをmainへ統合・実機配布してはならない。
 
 ## サーバー接続に必須の残作業
 
@@ -95,6 +111,14 @@ API不在をスタブ成功に変換せず、既存サイト共有や会社情�
     package受信/承認待ち/承認拒否結果/請書受信を immutable event outbox に保存し、
     unique event ID・宛先で重複通知を防ぐ。既存site_share_approvalとは別契約であるため、
     新機能を旧キーへ偽装して部分承認を誘発しない。
+11. master側の既存 `MasterFeatureControlsRepository` /
+    `current_master_feature_flags` / `set_master_feature_enabled_with_proof` を再利用する。
+    新keyは暫定 `site_order_documents`。実際のregistry CHECK・supported key・proof
+    検証定義を照合したguarded拡張が必要。`private.require_master_optional_feature`
+    はvehicle/route専用で欠落行=ONという旧契約なので、そのまま転用しない。
+    mutation APIと配送workerは同じlive master gateを確認する。既にqueue済みの
+    請書はOFFで消去せず保留を記録し、ON後も同じoutbox IDで照合・再開する。
+    actor権限撤回/設定変更の競合試験、配送中の結果不明と未配送の区別が必要。
 
 ## 検証状態と本番条件
 
@@ -107,7 +131,8 @@ adapter の一覧 pagination が未完了なら「全履歴閲覧完成」と報
 置き換えたfixtureだけで live authorization 成功とはしない。
 本番DML/DDL/RLS/Auth・配信・実機更新は未実施。個別書類免除はOFFを維持する。
 
-2026-10-30 オフライン PGlite: `verify_site_order_archive_schema.mjs` は **20 checks
+2026-10-30 オフライン PGlite: `verify_site_order_archive_schema.mjs` は **29 checks
 passed**。正規の注文→自社請書outboxと承認の整合、元の取引会社以外への返送拒否、
-別会社artifact参照拒否、request ID重複拒否、原本更新/削除拒否、RLSと無grantを確認。
+別会社artifact/別現場参照拒否、request ID重複拒否、原本更新/削除拒否、RLSと無grant、
+通知宛先/応答整合/重複拒否を確認。
 このSQLは構造候補であり、trusted issuer・RPC・live session・実配送は試験対象外。

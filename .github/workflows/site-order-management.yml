@@ -26,8 +26,8 @@ jobs:
       - run: flutter pub get --enforce-lockfile
       - name: Parse Dart source
         run: dart format --output=none lib/features/sites/site_order_*.dart test/site_order_*.dart
-      - run: flutter analyze lib/features/sites/site_order_workflow.dart lib/features/sites/site_order_company_page.dart lib/features/sites/site_order_send_page.dart lib/features/sites/site_order_history_page.dart lib/features/companies/trade_company_page.dart test/site_order_workflow_test.dart test/site_order_pages_test.dart
-      - run: flutter test --reporter expanded test/site_order_workflow_test.dart test/site_order_pages_test.dart test/trade_company_save_completion_test.dart test/trade_company_detail_edit_delete_contract_test.dart test/trade_company_master_contract_test.dart test/trade_company_dialog_test.dart
+      - run: flutter analyze lib/features/sites/site_order_workflow.dart lib/features/sites/site_order_company_page.dart lib/features/sites/site_order_send_page.dart lib/features/sites/site_order_history_page.dart lib/features/sites/site_order_approval_contract.dart lib/features/companies/trade_company_page.dart test/site_order_workflow_test.dart test/site_order_pages_test.dart test/site_order_approval_contract_test.dart
+      - run: flutter test --reporter expanded test/site_order_workflow_test.dart test/site_order_pages_test.dart test/site_order_approval_contract_test.dart test/trade_document_generator_routing_test.dart test/trade_company_save_completion_test.dart test/trade_company_detail_edit_delete_contract_test.dart test/trade_company_master_contract_test.dart test/trade_company_dialog_test.dart
       - run: git diff --exit-code -- pubspec.yaml pubspec.lock
   archive-structure:
     runs-on: ubuntu-latest

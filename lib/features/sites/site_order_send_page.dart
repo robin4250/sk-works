@@ -43,7 +43,10 @@ class _SiteOrderSendPageState extends State<SiteOrderSendPage> {
     try {
       widget.workflow.returnToEditor();
       Navigator.of(context).pop(false);
-    } catch (error) { setState(() => _error = error.toString()); }
+    } catch (_) { setState(() {
+      _retired = widget.workflow.state == SiteOrderSendState.retired;
+      _error = '送信状態を確認してから入力画面に戻ってください。';
+    }); }
   }
 
   Future<void> _share() async {
@@ -78,10 +81,13 @@ class _SiteOrderSendPageState extends State<SiteOrderSendPage> {
       await widget.workflow.send(widget.send);
       if (!mounted) return;
       setState(() {});
-    } catch (error) {
-      if (mounted) setState(() => _error = _unknown
+    } catch (_) {
+      if (mounted) { setState(() {
+        _retired = widget.workflow.state == SiteOrderSendState.retired;
+        _error = _unknown
         ? '送信結果を確認できません。同じ送信の保存結果を照合してください。'
-        : error.toString());
+        : '共有送信を開始できませんでした。内容と送信先を確認して再度お試しください。';
+      }); }
     } finally { if (mounted) setState(() => _busy = false); }
   }
 
@@ -90,10 +96,13 @@ class _SiteOrderSendPageState extends State<SiteOrderSendPage> {
     setState(() { _busy = true; _error = null; });
     try {
       await widget.workflow.resolve(widget.lookupReceipt);
-      if (mounted) setState(() => _error = _unknown
-        ? 'まだ送信結果が確定していません。新しい送信は行わず、再度照合してください。' : null);
-    } catch (error) {
-      if (mounted) setState(() => _error = error.toString());
+      if (mounted) { setState(() => _error = _unknown
+        ? 'まだ送信結果が確定していません。新しい送信は行わず、再度照合してください。' : null); }
+    } catch (_) {
+      if (mounted) setState(() {
+        _retired = widget.workflow.state == SiteOrderSendState.retired;
+        _error = '送信結果の照合を完了できません。時間をおいて再度確認してください。';
+      });
     } finally { if (mounted) setState(() => _busy = false); }
   }
 
