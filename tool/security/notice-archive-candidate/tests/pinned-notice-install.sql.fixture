@@ -1,0 +1,209 @@
+-- REVIEW-ONLY isolated candidate. Never execute against production without a
+-- reviewed backup, catalog guard, independent policy review and rollout plan.
+begin;
+create schema security_observation_notice_private;
+revoke all on schema security_observation_notice_private from public,anon,authenticated,service_role;
+create table security_observation_notice_private.config (
+ singleton boolean primary key default true check(singleton),
+ enabled boolean not null default false,
+ collector_id uuid, company_id uuid, master_id uuid,
+ revision bigint not null default 1 check(revision>0),
+ check(not enabled or (collector_id is not null and company_id is not null and master_id is not null))
+);
+insert into security_observation_notice_private.config(singleton) values(true);
+create table security_observation_notice_private.outbox (
+ event_id uuid primary key, collector_id uuid not null,
+ company_id uuid not null, recipient_id uuid not null, config_revision bigint not null,
+ state text not null default 'pending' check(state in ('pending','available','held_binding','held_evidence')),
+ created_at timestamptz not null default clock_timestamp(), updated_at timestamptz not null default clock_timestamp()
+);
+create table security_observation_notice_private.inbox (
+ event_id uuid primary key, company_id uuid not null, recipient_id uuid not null,
+ event_kind text not null check(event_kind in ('current_lure_touched','retired_lure_touched')),
+ generation integer not null, occurred_at timestamptz not null,
+ available_at timestamptz not null default clock_timestamp(), read_at timestamptz,
+ review_state text not null default 'unreviewed' check(review_state in ('unreviewed','investigating','false_positive','resolved')),
+ review_reason text, revision bigint not null default 1 check(revision>0)
+);
+-- A single persistent loss counter avoids unbounded per-event gap rows.
+-- 1000 matches the existing decoy runtime's bounded event/outbox capacity.
+create table security_observation_notice_private.coverage (
+ singleton boolean primary key default true check(singleton),
+ capacity_gaps bigint not null default 0 check(capacity_gaps>=0),
+ last_gap_at timestamptz
+);
+insert into security_observation_notice_private.coverage(singleton) values(true);
+create table security_observation_notice_private.audit (
+ audit_id bigint generated always as identity primary key,
+ event_id uuid not null, action text not null check(action in ('queued','available','held_binding','held_evidence','read','investigating','false_positive','resolved')),
+ actor_id uuid, session_id uuid, reason text, command_id uuid unique, before_revision bigint, after_revision bigint, occurred_at timestamptz not null default clock_timestamp()
+);
+alter table security_observation_notice_private.config enable row level security;
+alter table security_observation_notice_private.outbox enable row level security;
+alter table security_observation_notice_private.inbox enable row level security;
+alter table security_observation_notice_private.audit enable row level security;
+alter table security_observation_notice_private.coverage enable row level security;
+revoke all on all tables in schema security_observation_notice_private from public,anon,authenticated,service_role;
+revoke all on all sequences in schema security_observation_notice_private from public,anon,authenticated,service_role;
+-- This executes only on insertion of already MAC-authenticated evidence inside
+-- the original collector transaction. A rejected evidence row rolls this back.
+create function security_observation_notice_private.queue_evidence() returns trigger language plpgsql security definer set search_path='' as $$
+declare cfg security_observation_notice_private.config%rowtype;
+begin
+ select * into cfg from security_observation_notice_private.config where singleton for share;
+ if not found or not cfg.enabled then return new; end if;
+ if new.collector_id is distinct from cfg.collector_id or private.verify_collector_event_evidence(new.event_id) is not true then
+  raise exception 'observation_notice_untrusted' using errcode='42501';
+ end if;
+ -- Serialize capacity checks across distinct event IDs. The evidence is
+ -- retained in Collector even when notice capacity is exhausted; the gap is
+ -- recorded explicitly and must be shown by future operations monitoring.
+ perform pg_advisory_xact_lock(hashtextextended('sko-observation-notice-capacity',0));
+ if (select count(*) from security_observation_notice_private.outbox)>=1000 then
+  update security_observation_notice_private.coverage set capacity_gaps=capacity_gaps+1,last_gap_at=clock_timestamp() where singleton;
+  return new;
+ end if;
+ insert into security_observation_notice_private.outbox(event_id,collector_id,company_id,recipient_id,config_revision)
+ values(new.event_id,cfg.collector_id,cfg.company_id,cfg.master_id,cfg.revision) on conflict(event_id) do nothing;
+ if found then insert into security_observation_notice_private.audit(event_id,action) values(new.event_id,'queued'); end if;
+ return new;
+end $$;
+revoke all on function security_observation_notice_private.queue_evidence() from public,anon,authenticated,service_role;
+create trigger observation_notice_evidence_insert after insert on private.security_collector_evidence
+ for each row execute function security_observation_notice_private.queue_evidence();
+-- In-DB publication is atomic and idempotent. This does not send push/email.
+create function security_observation_notice_private.publish(p_event_id uuid) returns text language plpgsql security definer set search_path='' as $$
+declare o security_observation_notice_private.outbox%rowtype; e private.security_collector_events%rowtype; cfg security_observation_notice_private.config%rowtype; outcome text; master_valid boolean; membership_valid boolean;
+begin
+ if auth.role() is distinct from 'service_role' then raise exception 'notice_denied' using errcode='42501'; end if;
+ select * into o from security_observation_notice_private.outbox where event_id=p_event_id for update;
+ if not found then raise exception 'notice_not_found' using errcode='42501';end if;
+ if o.state<>'pending' then return o.state; end if;
+ select * into cfg from security_observation_notice_private.config where singleton for share;
+ perform 1 from private.master_admins where user_id=o.recipient_id and enabled for share; master_valid:=found;
+ perform 1 from public.company_members where company_id=o.company_id and user_id=o.recipient_id and role::text in ('owner','admin') for share; membership_valid:=found;
+ if cfg.singleton is null or not cfg.enabled or cfg.revision<>o.config_revision or cfg.collector_id<>o.collector_id or cfg.company_id<>o.company_id or cfg.master_id<>o.recipient_id or
+    not master_valid or not membership_valid then
+  outcome:='held_binding';
+ elsif private.verify_collector_event_evidence(o.event_id) is not true then outcome:='held_evidence';
+ else
+  select * into strict e from private.security_collector_events where event_id=o.event_id;
+  insert into security_observation_notice_private.inbox(event_id,company_id,recipient_id,event_kind,generation,occurred_at)
+  values(o.event_id,o.company_id,o.recipient_id,e.event_kind,e.generation,e.occurred_at) on conflict(event_id) do nothing;
+  outcome:='available';
+ end if;
+ update security_observation_notice_private.outbox set state=outcome,updated_at=clock_timestamp() where event_id=o.event_id;
+ insert into security_observation_notice_private.audit(event_id,action) values(o.event_id,outcome);
+ return outcome;
+end $$;
+revoke all on function security_observation_notice_private.publish(uuid) from public,anon,authenticated,service_role;
+-- A fixed service-only POST may move a previously authenticated observation
+-- into the pinned Master inbox. It cannot choose a recipient or edit content.
+create function public.publish_security_observation_notice(p_event_id uuid) returns text language plpgsql security definer set search_path='' as $$
+begin
+ if current_setting('request.method',true) is distinct from 'POST' then raise sqlstate 'PT405' using message='post_required';end if;
+ if auth.role() is distinct from 'service_role' then raise exception 'notice_denied' using errcode='42501';end if;
+ return security_observation_notice_private.publish(p_event_id);
+end $$;
+revoke all on function public.publish_security_observation_notice(uuid) from public,anon,authenticated,service_role;
+grant execute on function public.publish_security_observation_notice(uuid) to service_role;
+-- Only caller's own currently enabled Master and company membership may read.
+-- The existing collector-specific one-use proof is consumed in this transaction.
+create function public.read_security_observation_notices(p_proof text) returns jsonb language plpgsql security definer set search_path='' as $$
+declare actor uuid:=auth.uid(); sid uuid; cfg security_observation_notice_private.config%rowtype; result jsonb;
+begin
+ if current_setting('request.method',true) is distinct from 'POST' then raise sqlstate 'PT405' using message='post_required';end if;
+ sid:=private.require_reauthentication_session();
+ if actor is null or sid is null or private.account_access_allowed() is not true or public.is_current_user_master_admin() is not true then
+  raise exception 'notice_denied' using errcode='42501';end if;
+ select * into cfg from security_observation_notice_private.config where singleton for share;
+ if not found or not cfg.enabled or cfg.master_id is distinct from actor then raise exception 'notice_denied' using errcode='42501';end if;
+ perform 1 from private.master_admins where user_id=actor and enabled for share;
+ if not found then raise exception 'notice_denied' using errcode='42501';end if;
+ perform 1 from public.company_members where company_id=cfg.company_id and user_id=actor and role::text in ('owner','admin') for share;
+ if not found then raise exception 'notice_denied' using errcode='42501';end if;
+ perform private.consume_reauthentication_proof('master.security_collector.read','{"scope":"decoy_collector"}'::jsonb,p_proof);
+ if exists(select 1 from security_observation_notice_private.inbox i
+  left join private.security_collector_events e on e.event_id=i.event_id
+  where i.company_id=cfg.company_id and i.recipient_id=actor and
+   (e.event_id is null or e.collector_id is distinct from cfg.collector_id or
+    e.event_kind is distinct from i.event_kind or e.generation is distinct from i.generation or
+    e.occurred_at is distinct from i.occurred_at or private.verify_collector_event_evidence(i.event_id) is not true)) then
+  raise exception 'notice_evidence_invalid' using errcode='55000';end if;
+ select coalesce(jsonb_agg(x order by x.occurred_at desc,x.event_id),'[]'::jsonb) into result from (
+  select event_id,event_kind,generation,occurred_at,available_at,read_at,review_state,review_reason,revision,
+   'decoy_generation_only'::text as scope,'observed'::text as state
+  from security_observation_notice_private.inbox
+  where company_id=cfg.company_id and recipient_id=actor
+  order by occurred_at desc,event_id limit 100
+ ) x;
+ return jsonb_build_object('version',1,'coverage','collector_observations_only','attack_confirmed',false,'capacity_gaps',(select capacity_gaps from security_observation_notice_private.coverage where singleton),'events',result);
+end $$;
+revoke all on function public.read_security_observation_notices(text) from public,anon,service_role;
+grant execute on function public.read_security_observation_notices(text) to authenticated;
+-- Explicit read/review action, safe same-command retry after lost ACK.
+-- Existing proof is consumed only on a new command; exact retry still checks
+-- current session, role, config, immutable command content and evidence.
+create function public.update_security_observation_notice(p_event_id uuid,p_action text,p_reason text,p_expected_revision bigint,p_command_id uuid,p_proof text)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare actor uuid:=auth.uid(); sid uuid; cfg security_observation_notice_private.config%rowtype; item security_observation_notice_private.inbox%rowtype; prior security_observation_notice_private.audit%rowtype; v_reason text; new_revision bigint;
+begin
+ if current_setting('request.method',true) is distinct from 'POST' then raise sqlstate 'PT405' using message='post_required';end if;
+ sid:=private.require_reauthentication_session();
+ if actor is null or sid is null or private.account_access_allowed() is not true or public.is_current_user_master_admin() is not true then raise exception 'notice_denied' using errcode='42501';end if;
+ if p_command_id is null or p_event_id is null or p_action is null or p_expected_revision is null or p_expected_revision<1 or p_action not in ('read','investigating','false_positive','resolved') then raise exception 'notice_command_invalid' using errcode='22023';end if;
+ v_reason:=nullif(btrim(p_reason),'');
+ if (p_action='read' and v_reason is not null) or (p_action<>'read' and (v_reason is null or char_length(v_reason)>500)) then raise exception 'notice_reason_invalid' using errcode='22023';end if;
+ select * into cfg from security_observation_notice_private.config where singleton for share;
+ if not found or not cfg.enabled or cfg.master_id is distinct from actor then raise exception 'notice_denied' using errcode='42501';end if;
+ perform 1 from private.master_admins where user_id=actor and enabled for share;
+ if not found then raise exception 'notice_denied' using errcode='42501';end if;
+ perform 1 from public.company_members where company_id=cfg.company_id and user_id=actor and role::text in ('owner','admin') for share;
+ if not found then raise exception 'notice_denied' using errcode='42501';end if;
+ select * into item from security_observation_notice_private.inbox where event_id=p_event_id and company_id=cfg.company_id and recipient_id=actor for update;
+ if not found or private.verify_collector_event_evidence(p_event_id) is not true or not exists(select 1 from private.security_collector_events e where e.event_id=item.event_id and e.collector_id=cfg.collector_id and e.event_kind=item.event_kind and e.generation=item.generation and e.occurred_at=item.occurred_at) then raise exception 'notice_evidence_invalid' using errcode='55000';end if;
+ select * into prior from security_observation_notice_private.audit where command_id=p_command_id;
+ if found then
+  if prior.event_id is distinct from p_event_id or prior.actor_id is distinct from actor or prior.session_id is distinct from sid or prior.action is distinct from p_action or prior.reason is distinct from v_reason or prior.before_revision is distinct from p_expected_revision then raise exception 'notice_command_conflict' using errcode='23505';end if;
+  return jsonb_build_object('event_id',p_event_id,'revision',prior.after_revision,'replayed',true);
+ end if;
+ if item.revision<>p_expected_revision then raise exception 'notice_changed_reload' using errcode='40001';end if;
+ -- Keep retained audit bounded per pinned observation. At the limit refuse
+ -- further changes; never drop history to make space or claim completion.
+ if (select count(*) from security_observation_notice_private.audit where event_id=p_event_id)>=22 then
+  raise exception 'notice_audit_capacity_reached' using errcode='55000';end if;
+
+ if p_action='read' and item.read_at is not null then raise exception 'notice_already_read_reload' using errcode='40001';end if;
+ perform private.consume_reauthentication_proof('master.security_collector.read','{"scope":"decoy_collector"}'::jsonb,p_proof);
+ update security_observation_notice_private.inbox set read_at=case when p_action='read' then clock_timestamp() else read_at end,
+  review_state=case when p_action='read' then review_state else p_action end,
+  review_reason=case when p_action='read' then review_reason else v_reason end,revision=revision+1
+ where event_id=p_event_id returning revision into new_revision;
+ insert into security_observation_notice_private.audit(event_id,action,actor_id,session_id,reason,command_id,before_revision,after_revision)
+ values(p_event_id,p_action,actor,sid,v_reason,p_command_id,p_expected_revision,new_revision);
+ return jsonb_build_object('event_id',p_event_id,'revision',new_revision,'replayed',false);
+end $$;
+revoke all on function public.update_security_observation_notice(uuid,text,text,bigint,uuid,text) from public,anon,service_role;
+grant execute on function public.update_security_observation_notice(uuid,text,text,bigint,uuid,text) to authenticated;
+-- Existing seven-day purge skips only still-pinned evidence. Install must be
+-- reviewed against the exact current original definition and ACL first.
+-- Collector's table lock serializes this selection with evidence INSERT.
+do $pin_purge$
+declare src text; needle text:='where received_at<cutoff order by received_at,event_id limit 1000'; repl text:='where received_at<cutoff and not exists(select 1 from security_observation_notice_private.outbox pinned where pinned.event_id=security_collector_events.event_id) order by received_at,event_id limit 1000';
+begin
+ select pg_get_functiondef(to_regprocedure('private.purge_expired_security_collector_events()')) into src;
+ if src is null or (length(src)-length(replace(src,needle,'')))/length(needle)<>1 then
+  raise exception 'collector_retention_contract_changed' using errcode='55000';end if;
+ execute replace(src,needle,repl);
+end $pin_purge$;
+create function security_observation_notice_private.retention_status() returns jsonb language sql stable security definer set search_path='' as $$
+ select jsonb_build_object('pinned_notices',(select count(*) from security_observation_notice_private.outbox),
+  'capacity_limit',1000,'capacity_gaps',(select capacity_gaps from security_observation_notice_private.coverage where singleton),
+  'last_gap_at',(select last_gap_at from security_observation_notice_private.coverage where singleton),
+  'signed_independent_archive_ready',false,'automated_unpin_available',false)
+$$;
+revoke all on function security_observation_notice_private.retention_status() from public,anon,authenticated,service_role;
+-- No trusted archive, unpin, or public retention-status endpoint exists here.
+-- Publication is service-only and not scheduled or configured by this candidate.
+-- Hosted endpoint, independent key lifecycle, deadlines and real delivery require review.
+commit;
