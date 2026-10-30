@@ -40,7 +40,7 @@ company membership mutation, client-writable authorization GUC or public upload.
 
 ## Verification
 
-Disposable PGlite: 46 checks passed, including both manager order and acceptance
+Disposable PGlite: 49 checks passed, including both manager order and acceptance
 prepare → registered own seal consent → job → actual Dart PDF → original receipt.
 The original global helper still rejects manager. Foreign site/company/document,
 wrong registered direction, changed fingerprint, no registry, financial-parent
@@ -76,8 +76,7 @@ body/job contract. No worker payroll rate or customer billing revenue rate is
 copied into an outgoing supplier purchase order. Received order conditions are
 preserved; missing prices remain null, without zero/total-division guessing.
 
-Still pending: receive/approve/site/intent atomic coordinator, purpose-scoped
-manager Node registration dispatch, actual internal runner/authenticated route,
+Still pending: receive/approve/site/intent atomic coordinator, actual internal runner/authenticated route,
 reply recovery/history/notifications, production prerequisites/installer and
 phone verification. The existing invoice/financial approval rights are not
 expanded. Production HOLD, new feature OFF and document exemption OFF remain.
@@ -99,3 +98,20 @@ preparation and borrowing an owner-created alternate-registration job are
 rejected. The fixture keeps the duplicate directory row but removes its test-only
 second financial-parent mapping, so the separate legitimate-owner financial
 re-association regression can use the existing unique financial-link contract.
+
+## Fixed internal Node purpose dispatch
+
+`registerManagerCanonicalSiteOrderJob` is an explicit internal export. It shares
+one private RC/job-lock/fresh-original/unknown-COMMIT coordinator with the legacy
+owner export, using fixed SQL constants only. It calls C's exact actor base,
+locks only an original job joined to its complete saved site/trade/fingerprint
+reservation and actor/SID/current company membership, repeats the scoped actor
+check, and registers through the generated manager primitive. No SQL, purpose
+or authorizer is accepted as request data. The old owner export retains its
+original policy and still rejects manager at the original private registration.
+
+Six new Node contract tests and the six existing owner coordinator boundaries
+pass. The real SQL fixture also calls the manager export, checks canonical DB
+evidence reaches the renderer, stores the actual PDF and retries without any
+new render. This closes internal purpose dispatch, not authenticated endpoint,
+background approval/reply delivery or production deployment.

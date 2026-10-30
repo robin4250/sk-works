@@ -1,5 +1,5 @@
 import fs from 'node:fs/promises';
-import {createCanonicalSiteOrderRenderer} from './site_order_canonical_renderer.mjs';
+import {createCanonicalSiteOrderRenderer,registerManagerCanonicalSiteOrderJob} from './site_order_canonical_renderer.mjs';
 export async function verifySiteOrderManagerAdapter(db,c){
  const {id,A,B,C,UA,UB,actor,q,openNativePeer}=c;let checks=0;
  const check=(a,b)=>{if(JSON.stringify(a)!==JSON.stringify(b))throw Error('manager fixture mismatch');checks++;};
@@ -59,7 +59,12 @@ export async function verifySiteOrderManagerAdapter(db,c){
  const render=await createCanonicalSiteOrderRenderer({dartExecutable:process.env.SKO_CANONICAL_DART,repositoryRoot:process.cwd()});
  const bytes=await render(evidence);
  const save=()=>q('select site_order_manager_private.register_canonical_pdf($1,$2) v',[job.job_id,bytes]);
- const receipt=await save();check(receipt.job_id,job.job_id);check(receipt.pdf_byte_length,bytes.length);check(await save(),receipt);
+ const nodeReceipt=await registerManagerCanonicalSiteOrderJob(db,job.job_id,async value=>{
+  check(value,evidence);return bytes;
+ });
+ const nodeRetry=await registerManagerCanonicalSiteOrderJob(db,job.job_id,()=>{throw Error('No manager original regeneration');});
+ check(nodeRetry,nodeReceipt);
+ const receipt=await save();check(receipt,nodeReceipt);check(receipt.job_id,job.job_id);check(receipt.pdf_byte_length,bytes.length);check(await save(),receipt);
  await db.query("update company_members set role='owner' where user_id=$1",[UA]);
  const ownerAlternateJob=await q('select site_order_artifact_private.prepare_job($1,$2,$3,1,$4,$5) v',[A,site,doc,id(10802),duplicateTrade]);
  await db.query("update company_members set role='manager' where user_id=$1",[UA]);

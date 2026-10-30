@@ -4,6 +4,8 @@ on:
     paths:
       - 'docs/review/site-order-manager-purpose/**'
       - 'tool/site_order_manager_adapter_fixture.mjs'
+      - 'tool/site_order_manager_renderer.test.mjs'
+      - 'tool/site_order_canonical_renderer.mjs'
       - 'tool/verify_site_order_manager_adapter.mjs'
       - 'tool/fixtures/site_order_scoped_actor.fixture.sql'
       - '.github/workflows/site-order-manager-purpose.yml'
@@ -36,6 +38,7 @@ jobs:
       - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts
       - run: node --check tool/site_order_manager_adapter_fixture.mjs
       - run: node --check tool/verify_site_order_manager_adapter.mjs
+      - run: node --test tool/site_order_manager_renderer.test.mjs tool/site_order_canonical_renderer.test.mjs
       - name: Real guarded SQL and actual canonical PDFs for both manager directions
         env:
           SKO_CONFIRMED_TERMS_HOOK: content-v1
