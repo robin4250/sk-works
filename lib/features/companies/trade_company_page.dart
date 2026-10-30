@@ -362,14 +362,6 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
             icon: const Icon(Icons.rule_outlined),
             label: const Text('計算元を確認・変更'),
           ),
-          OutlinedButton.icon(
-            onPressed: () =>
-                Navigator.of(dialogContext).pop(_CompanyAction.document),
-            icon: const Icon(Icons.description_outlined),
-            label: Text(
-              widget.mode == TradeCompanyPageMode.customer ? '注文請書生成' : '注文書生成',
-            ),
-          ),
           if (item.linkStatus == 'linked')
             OutlinedButton.icon(
               onPressed: () => Navigator.of(dialogContext).pop(_CompanyAction.receivedDocuments),
