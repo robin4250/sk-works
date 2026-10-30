@@ -54,11 +54,12 @@ class _ArchivedOrderPdfState extends State<_ArchivedOrderPdf> {
       if (images.isEmpty) throw StateError('注文書を表示できません。');
       if (mounted) setState(() => _images = images);
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _images = null;
           _error = '注文書を表示できません。一覧から開き直してください。';
         });
+      }
     }
   }
 
@@ -71,8 +72,9 @@ class _ArchivedOrderPdfState extends State<_ArchivedOrderPdf> {
   @override
   Widget build(BuildContext context) {
     if (_error != null) return Center(child: Text(_error!));
-    if (_images == null)
+    if (_images == null) {
       return const Center(child: CircularProgressIndicator());
+    }
     return Column(
       children: [
         if (_zoomed)
@@ -185,8 +187,9 @@ class _SiteOrderSavedPreviewPagerState
     widget.scopeChanges.addListener(_check);
     _check();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && !_retired && _more && _index == _entries.length - 1)
+      if (mounted && !_retired && _more && _index == _entries.length - 1) {
         _next();
+      }
     });
   }
 
@@ -210,8 +213,9 @@ class _SiteOrderSavedPreviewPagerState
       widget.requireScope();
       if (!mounted || _retired) return;
       final known = _entries.map((e) => e.packageId).toSet();
-      if (values.any((e) => !known.add(e.packageId)))
+      if (values.any((e) => !known.add(e.packageId))) {
         throw StateError('履歴の保存版が変わりました。');
+      }
       setState(() {
         _entries.addAll(values);
         _more = values.length == 50;

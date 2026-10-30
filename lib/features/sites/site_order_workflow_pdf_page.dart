@@ -68,8 +68,9 @@ class _SiteOrderWorkflowPdfPageState extends State<SiteOrderWorkflowPdfPage>
   Future<void> _load() async {
     try {
       final bytes = await widget.api.original(widget.packageId, widget.kind);
-      if (mounted && !widget.api.invalidated && !_viewRetired)
+      if (mounted && !widget.api.invalidated && !_viewRetired) {
         setState(() => _bytes = bytes);
+      }
     } catch (_) {
       if (mounted) setState(() => _error = '保存済み原本を確認できません。閉じて開き直してください。');
     }
@@ -133,8 +134,9 @@ class _SiteOrderWorkflowPdfPageState extends State<SiteOrderWorkflowPdfPage>
         );
       }
       await widget.api.verify();
-      if (!mounted || !identical(_bytes, original))
+      if (!mounted || !identical(_bytes, original)) {
         throw StateError('原本が変わりました。');
+      }
       _exportBytes = output;
       _print.begin(output);
       if (share) {

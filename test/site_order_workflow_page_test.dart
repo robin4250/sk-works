@@ -182,6 +182,18 @@ void main() {
       await tester.tap(find.byTooltip('閉じる'));
       await tester.pumpAndSettle();
       expect(find.text('保存結果を確認できません。再送せず「保存状態を確認」を押してください。'), findsOneWidget);
+      await tester.tap(find.text('保存状態を確認'));
+      await tester.pumpAndSettle();
+      expect(find.text('結果はまだ確定できません。再送せず、保存状態を再確認してください。'), findsOneWidget);
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.widgetWithText(FilledButton, '内容と自社印を確認して承認'),
+            )
+            .onPressed,
+        isNull,
+      );
+      expect(api.previews, 1);
       api.hold!.complete({
         'result': {'status': 'recipient_stored'},
       });

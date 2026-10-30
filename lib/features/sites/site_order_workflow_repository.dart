@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -58,8 +57,9 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
   }
   static SiteOrderWorkflowRepository? maybeCreate() {
     if (!SupabaseBackend.isInitialized ||
-        SupabaseBackend.client.auth.currentSession?.isExpired != false)
+        SupabaseBackend.client.auth.currentSession?.isExpired != false) {
       return null;
+    }
     try {
       return SiteOrderWorkflowRepository(SupabaseBackend.client);
     } on StateError {
@@ -134,8 +134,9 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
     } on FunctionException catch (error) {
       await verify();
       if (error.status == 409 ||
-          (write && (error.status == 0 || error.status >= 500)))
+          (write && (error.status == 0 || error.status >= 500))) {
         throw const SiteOrderResultUnknown();
+      }
       throw StateError('注文・請書を確認できません。状態を確認して開き直してください。');
     } on TimeoutException {
       if (write) throw const SiteOrderResultUnknown();
@@ -201,16 +202,18 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
     if (value['package_id'] != id ||
         !_savedId(value['preview_id']) ||
         value['body_hash'] is! String ||
-        !RegExp(r'^[a-f0-9]{64}$').hasMatch(value['body_hash'] as String))
+        !RegExp(r'^[a-f0-9]{64}$').hasMatch(value['body_hash'] as String)) {
       throw StateError('確認する注文の保存版が変わりました。');
+    }
     return value;
   }
 
   Map<String, dynamic> _writeOutcome(Object? raw, Object? expectedPackage) {
     try {
       final envelope = _map(raw), result = _map(envelope['result']);
-      if (result['package_id'] != expectedPackage)
+      if (result['package_id'] != expectedPackage) {
         throw const SiteOrderResultUnknown();
+      }
       final terminal =
           result['status'] == 'recipient_stored' &&
           _savedId(result['original_receipt_id']) &&

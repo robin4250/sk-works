@@ -51,11 +51,12 @@ class _SiteOrderWorkflowPageState extends State<SiteOrderWorkflowPage> {
   Future<void> _load({bool more = false}) async {
     final api = _api;
     if (api == null) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _loading = false;
           _error = 'ログイン状態を確認してください。';
         });
+      }
       return;
     }
     setState(() {
@@ -236,6 +237,7 @@ class _SiteOrderPackagePageState extends State<SiteOrderPackagePage> {
   Map<String, dynamic>? _detail;
   bool _busy = true, _unknown = false;
   String? _error, _message;
+  final Map<String, dynamic> _uncertainOperation = {};
   @override
   void initState() {
     super.initState();
@@ -244,11 +246,12 @@ class _SiteOrderPackagePageState extends State<SiteOrderPackagePage> {
   }
 
   void _scopeChanged() {
-    if (widget.api.invalidated && mounted)
+    if (widget.api.invalidated && mounted) {
       setState(() {
         _detail = null;
         _error = 'ログイン・会社の状態が変わりました。開き直してください。';
       });
+    }
   }
 
   Future<void> _load() async {
@@ -259,12 +262,22 @@ class _SiteOrderPackagePageState extends State<SiteOrderPackagePage> {
     });
     try {
       final value = await widget.api.detail(widget.packageId);
-      if (mounted && !widget.api.invalidated)
+      if (mounted && !widget.api.invalidated) {
         setState(() {
           _detail = value;
-          _unknown = false;
-          if (recovering) _message = '保存された状態を更新しました。';
+          // A negative read can race an earlier request still committing.
+          // Only the final recipient receipt resolves an uncertain operation.
+          _unknown = recovering && value['reply_recipient_stored'] != true;
+          if (recovering) {
+            _message = _unknown
+                ? '結果はまだ確定できません。再送せず、保存状態を再確認してください。'
+                : '相手の保管先への保存を確認しました。';
+            if (!_unknown) {
+              _uncertainOperation.clear();
+            }
+          }
         });
+      }
     } catch (_) {
       if (mounted) setState(() => _error = '保存状態を確認できません。画面を開き直してください。');
     } finally {
@@ -311,6 +324,10 @@ class _SiteOrderPackagePageState extends State<SiteOrderPackagePage> {
       if (outcome['unknown'] == true || (!terminal && !pending)) {
         setState(() {
           _unknown = true;
+          _uncertainOperation.addAll({
+            'request_id': outcome['request_id'],
+            'preview_id': outcome['preview_id'],
+          });
           _message = '保存結果を確認できません。再送せず「保存状態を確認」を押してください。';
         });
       } else {
@@ -322,8 +339,9 @@ class _SiteOrderPackagePageState extends State<SiteOrderPackagePage> {
         await _load();
       }
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         setState(() => _error = '承認内容を確認できません。取引会社の登録と保存状態を確認してください。');
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -337,17 +355,19 @@ class _SiteOrderPackagePageState extends State<SiteOrderPackagePage> {
     try {
       final outcome = await widget.api.resume(widget.packageId);
       final saved = outcome['result'];
-      if (saved is! Map || saved['status'] != 'recipient_stored')
+      if (saved is! Map || saved['status'] != 'recipient_stored') {
         throw const SiteOrderResultUnknown();
+      }
       if (!mounted) return;
       setState(() => _message = '請書の保管先を更新しました。');
       await _load();
     } on SiteOrderResultUnknown {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _unknown = true;
           _message = '送信結果を確認できません。保存状態を確認してください。';
         });
+      }
     } catch (_) {
       if (mounted) setState(() => _error = '請書の処理を再開できません。保存状態を確認してください。');
     } finally {
@@ -507,16 +527,18 @@ class _ApprovalReviewPageState extends State<_ApprovalReviewPage> {
     if (mounted) setState(() {});
   }
 
+  Map<String, dynamic> _unknownOutcome() => {
+    'unknown': true,
+    'request_id': _requestId,
+    'preview_id': widget.preview['preview_id'],
+  };
+
   void _close() {
     if (_closing) return;
     final unknown = _sending;
     setState(() => _closing = true);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted)
-        Navigator.pop(
-          context,
-          unknown ? <String, dynamic>{'unknown': true} : null,
-        );
+      if (mounted) Navigator.pop(context, unknown ? _unknownOutcome() : null);
     });
   }
 
@@ -527,14 +549,14 @@ class _ApprovalReviewPageState extends State<_ApprovalReviewPage> {
       final result = await widget.api.approve(widget.preview, _requestId);
       if (mounted && !_closing) Navigator.pop(context, result);
     } on SiteOrderResultUnknown {
-      if (mounted && !_closing)
-        Navigator.pop(context, <String, dynamic>{'unknown': true});
+      if (mounted && !_closing) Navigator.pop(context, _unknownOutcome());
     } catch (_) {
-      if (mounted && !_closing)
+      if (mounted && !_closing) {
         setState(() {
           _error = '承認を確認できません。閉じて保存状態を確認してください。';
           _sending = false;
         });
+      }
     }
   }
 

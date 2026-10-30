@@ -70,13 +70,14 @@ class _Wire extends http.BaseClient {
         request: request,
       );
     }
-    if (malformedSuccess)
+    if (malformedSuccess) {
       return http.StreamedResponse(
         Stream.value(utf8.encode('{"result":{"status":"recipient_stored"}}')),
         200,
         headers: {'content-type': 'application/json'},
         request: request,
       );
+    }
     return http.StreamedResponse(
       Stream.value(utf8.encode('%PDF-exact saved original')),
       200,
@@ -86,7 +87,7 @@ class _Wire extends http.BaseClient {
   }
 }
 
-Future<(SupabaseClient, SiteOrderWorkflowRepository)> fixture(
+Future<(SupabaseClient, SiteOrderWorkflowRepository)> _fixture(
   _Wire wire,
 ) async {
   final client = SupabaseClient(
@@ -106,7 +107,7 @@ void main() {
         .handleAppLifecycleStateChanged(AppLifecycleState.resumed),
   );
   test('restored pinned SDK session reads exact binary with captured token and manager membership', () async {
-    final wire = _Wire(), f = await fixture(wire);
+    final wire = _Wire(), f = await _fixture(wire);
     addTearDown(f.$1.dispose);
     addTearDown(f.$2.dispose);
     final bytes = await f.$2.original(package, 'order');
@@ -118,7 +119,7 @@ void main() {
     final wire = _Wire()
       ..hold = Completer<void>()
       ..started = Completer<void>();
-    final f = await fixture(wire);
+    final f = await _fixture(wire);
     addTearDown(f.$1.dispose);
     addTearDown(f.$2.dispose);
     final pending = f.$2.original(package, 'order');
@@ -135,7 +136,7 @@ void main() {
       'write status $status is UNKNOWN and the SDK request is never automatically retried',
       () async {
         final wire = _Wire()..functionStatus = status;
-        final f = await fixture(wire);
+        final f = await _fixture(wire);
         addTearDown(f.$1.dispose);
         addTearDown(f.$2.dispose);
         await expectLater(
@@ -148,7 +149,7 @@ void main() {
   }
   test('a malformed success body cannot claim recipient storage', () async {
     final wire = _Wire()..malformedSuccess = true;
-    final f = await fixture(wire);
+    final f = await _fixture(wire);
     addTearDown(f.$1.dispose);
     addTearDown(f.$2.dispose);
     await expectLater(
