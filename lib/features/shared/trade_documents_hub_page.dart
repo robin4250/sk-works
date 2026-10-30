@@ -117,36 +117,43 @@ class _TradeDocumentsHubPageState extends State<TradeDocumentsHubPage> {
 class TradeDocumentsOperationLease extends ChangeNotifier
     implements StandaloneTradeDocumentOperationGate {
   TradeDocumentsOperationLease({required this.repository, required this.companyId,
-    required this.tradeCompanyId, required this.acceptance}) {
+    required this.tradeCompanyId, required this.acceptance, Stopwatch? stopwatch})
+    : _freshness = stopwatch ?? Stopwatch() {
     repository.addListener(_changed);
   }
   final TradeDocumentsHubRepository repository;
   @override final String companyId, tradeCompanyId;
   @override final bool acceptance;
   bool _retired = false, _disposed = false;
-  DateTime? _expires;
+  final Stopwatch _freshness;
   Timer? _timer;
   Future<void>? _refreshing;
+  bool get _expired => _freshness.isRunning &&
+    _freshness.elapsed >= const Duration(seconds: 15);
   void _retire() {
-    if (!_retired && !_disposed) { _retired = true; notifyListeners(); }
+    if (!_retired && !_disposed) {
+      _retired = true; _timer?.cancel(); _freshness.stop(); notifyListeners();
+    }
   }
   void _changed() {
     try { repository.requireOperation(companyId, tradeCompanyId, acceptance); }
     catch (_) { _retire(); }
   }
   @override void requireCurrent() {
-    if (_retired || _disposed || _expires == null || !DateTime.now().isBefore(_expires!)) {
+    if (_retired || _disposed || !_freshness.isRunning || _expired) {
       _retire(); throw StateError('注文・請書の確認期限が切れました。開き直してください。');
     }
     repository.requireOperation(companyId, tradeCompanyId, acceptance);
   }
   @override Future<void> refresh() => _refreshing ??= _refresh().whenComplete(() => _refreshing = null);
   Future<void> _refresh() async {
-    if (_retired || _disposed) { throw StateError('注文・請書を開き直してください。'); }
+    if (_retired || _disposed || _expired) {
+      _retire(); throw StateError('注文・請書を開き直してください。');
+    }
     try {
       await repository.refreshOperation(companyId, tradeCompanyId, acceptance);
-      if (_retired || _disposed) { throw StateError('注文・請書を開き直してください。'); }
-      _expires = DateTime.now().add(const Duration(seconds: 15));
+      if (_retired || _disposed || _expired) { throw StateError('注文・請書を開き直してください。'); }
+      _freshness..reset()..start();
       _timer ??= Timer.periodic(const Duration(seconds: 5), (_) {
         unawaited(refresh().catchError((Object _) { _retire(); }));
       });
@@ -155,7 +162,7 @@ class TradeDocumentsOperationLease extends ChangeNotifier
   }
   @override void dispose() {
     if (_disposed) { return; }
-    _disposed = true; _retired = true; _timer?.cancel();
+    _disposed = true; _retired = true; _timer?.cancel(); _freshness.stop();
     repository.removeListener(_changed); super.dispose();
   }
 }

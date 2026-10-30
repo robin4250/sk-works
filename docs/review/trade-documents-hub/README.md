@@ -21,7 +21,7 @@ preferences and the individual-document-exemption flag are unchanged.
 ## Server contract
 
 `master-and-standalone-context.sql.review-only` is **not deployed**. It guards
-seven captured deployed functions by source MD5, owner, security, volatility,
+eight captured deployed functions by source MD5, owner, security, volatility,
 search path and ACL. Existing master read/proof setter are replaced in place;
 their complete `pg_proc` attributes/OIDs are checked unchanged except source.
 Existing owner-only profile and seal APIs are **not** broadened.
@@ -94,11 +94,22 @@ pending receipt. That worker behavior belongs to the site module, not this hub.
 
 ## Actual verification and remaining scope
 
-Local PGlite: **44 checks passed**, using seven captured deployed function bodies,
+Local PGlite: **48 checks passed**, using eight captured deployed function bodies,
 the actual live-session/proof-consumption bodies, calls under `authenticated`, and
 synthetic JWT/policy setup. The bank acknowledgement adapter is synthetic because
 that optional module is absent from the captured catalog. This is **not live
 GoTrue, a production master operation, a signed PDF proof or iPhone verification**.
+
+The predecessor’s 44 checks also passed on CI PostgreSQL 17.6 and PGlite at initial head
+`9c4f41b0982bfaf5f065f11562e7c67d3715850e`. The hub client/SDK/UI suite passed
+42 tests with a clean analyzer at `3767bcbddf82270bfcf46cb9622956a5df499bb1`.
+Those head-specific results do not imply success of a later edited head.
+
+`verify_trade_documents_deployment_order.mjs` additionally ran the inherited
+formal fixture with C installed first, followed by the formal V1 prerequisite
+and V2. **49 checks passed locally**, preserving the existing negative/financial/
+signed assertions, C function identities and attributes, manager context after
+the V2 FAX change and OFF denial. Its JWT/policy setup remains synthetic.
 
 Native PostgreSQL and Flutter/SDK/UI tests run in the dedicated workflow; their
 results must be checked on the final exact head. No local Flutter SDK is installed.

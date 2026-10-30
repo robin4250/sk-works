@@ -49,7 +49,7 @@ void main(){
  });
  test('issuer registered seal is tied to exact company, name and known metadata',(){
   for(final patch in [<String,dynamic>{'company_id':trade},{'name':'Other issuer'},{'extra':true},{'version':3}]){
-   final p=receipt();p['company_seal_snapshot'].addAll(patch);expect(()=>parse(p),throwsStateError);
+   final p=receipt();p['company_seal_snapshot']=Map<String,dynamic>.from(p['company_seal_snapshot'])..addAll(patch);expect(()=>parse(p),throwsStateError);
   }
  });
  test('optional bank requires explicit availability and exact canonical supplier scope',(){
@@ -71,13 +71,13 @@ void main(){
    final calls=<String>[];final jwt=token();
    final transport=MockClient((r)async{
     if(r.url.path.endsWith('/auth/v1/token')){return http.Response(jsonEncode({'access_token':jwt,'refresh_token':'synthetic-refresh','expires_in':3600,'token_type':'bearer',
-     'user':{'id':actor,'aud':'authenticated','role':'authenticated','created_at':'2026-01-01T00:00:00Z'}}),200,headers:{'content-type':'application/json'});}
+     'user':{'id':actor,'aud':'authenticated','role':'authenticated','created_at':'2026-01-01T00:00:00Z'}}),200,headers:{'content-type':'application/json'},request:r);}
     calls.add(r.url.path);expect(r.url.path,endsWith('/rpc/standalone_trade_document_registration_context'));
     expect(jsonDecode(r.body),{'p_trade_company_id':trade,'p_acceptance':false});
     expect(r.headers['Authorization']??r.headers['authorization'],'Bearer $jwt');
-    if(failure!=null&&failure!='wrong_sid')return http.Response(jsonEncode({'code':failure,'message':'Synthetic denial'}),failure=='PGRST202'?404:403,headers:{'content-type':'application/json'});
+    if(failure!=null&&failure!='wrong_sid')return http.Response(jsonEncode({'code':failure,'message':'Synthetic denial'}),failure=='PGRST202'?404:403,headers:{'content-type':'application/json'},request:r);
     final v=receipt();if(failure=='wrong_sid')v['session_id']='90000000-0000-4000-8000-000000000001';
-    return http.Response(jsonEncode(v),200,headers:{'content-type':'application/json'});
+    return http.Response(jsonEncode(v),200,headers:{'content-type':'application/json'},request:r);
    });
    final client=SupabaseClient('https://synthetic.invalid','synthetic-public',httpClient:transport,authOptions:const AuthClientOptions(autoRefreshToken:false));
    TradeDocumentFormSession? scope;StandaloneTradeDocumentRepository? repository;

@@ -1,5 +1,5 @@
 -- Isolated fixture only. Auth JWT settings and policy configuration are synthetic.
--- Seven captured deployed function bodies/attributes are reproduced exactly.
+-- Eight captured deployed function bodies/attributes are reproduced exactly.
 create role anon;create role authenticated;create role service_role;
 create schema auth;create schema private;create schema extensions;
 grant usage on schema private,auth to authenticated;
@@ -11,7 +11,7 @@ create function private.account_deletion_barrier_key(uuid) returns bigint langua
 create table private.account_deletion_access_restrictions(user_id uuid);
 create table private.master_admins(user_id uuid,enabled boolean);
 create function private.reauthentication_scope(text) returns text language sql immutable as $$select case when $1='master.feature.set' then 'master_feature' end$$;
-create function private.reauthentication_required(text) returns boolean language sql stable as $$select $1='master_feature'$$;
+create function private.reauthentication_required(text) returns boolean language sql stable as $$select $1='master_feature' and current_setting('fixture.reauth_required',true) is distinct from 'false'$$;
 create function extensions.digest(text,text) returns bytea language sql immutable as $$select sha256(convert_to($1,'UTF8')) where $2='sha256'$$;
 create table private.reauthentication_proofs(proof_hash text primary key,actor_id uuid,session_id uuid,operation text,target jsonb,secondary_credential_fingerprint text,consumed_at timestamptz,expires_at timestamptz);
 create table public.user_secondary_credentials(user_id uuid,password_hash text);
@@ -202,3 +202,25 @@ revoke all on function public.set_master_feature_enabled_with_proof(text,boolean
 grant execute on function public.set_master_feature_enabled_with_proof(text,boolean,text) to postgres;
 grant execute on function public.set_master_feature_enabled_with_proof(text,boolean,text) to authenticated;
 grant execute on function public.set_master_feature_enabled_with_proof(text,boolean,text) to service_role;
+CREATE OR REPLACE FUNCTION public.set_master_feature_enabled(p_feature_key text, p_enabled boolean)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+begin
+ if auth.uid() is null or not public.is_current_user_master_admin() or not private.account_access_allowed() then
+  raise sqlstate '42501' using message='master_administrator_access_required';
+ end if;
+ if private.reauthentication_required('master_feature') then raise sqlstate '42501' using message='reauthentication_required'; end if;
+ if p_feature_key is null or p_feature_key not in ('vehicle_management','route_assignment','traffic_nearest_station','traffic_train_transfer','traffic_bus_stop') then
+  raise exception 'unsupported master feature';
+ end if;
+ insert into private.master_feature_settings(feature_key,enabled,updated_at,updated_by)
+ values(p_feature_key,p_enabled,now(),auth.uid()) on conflict(feature_key) do update
+ set enabled=excluded.enabled,updated_at=excluded.updated_at,updated_by=excluded.updated_by;
+ return public.current_master_feature_flags();
+end $function$
+;
+revoke all on function public.set_master_feature_enabled(text,boolean) from public,anon,authenticated,service_role;
+grant execute on function public.set_master_feature_enabled(text,boolean) to postgres,authenticated,service_role;

@@ -6,11 +6,20 @@ set local statement_timeout='30s';
 create temporary table trade_hub_existing_proc_before on commit drop as
  select p.oid,to_jsonb(p)-'prosrc' as attrs,p.prosrc from pg_proc p
  join pg_namespace n on n.oid=p.pronamespace
- where n.nspname='public' and p.proname in ('current_master_feature_flags','set_master_feature_enabled_with_proof');
+ where n.nspname='public' and p.proname in ('current_master_feature_flags','set_master_feature_enabled_with_proof','set_master_feature_enabled');
+create temporary table trade_hub_existing_table_before on commit drop as
+ select oid,relowner,relrowsecurity,relforcerowsecurity,relacl from pg_class where oid='private.master_feature_settings'::regclass;
 do $guard$
 declare e jsonb;p record;
 begin
- for e in select value from jsonb_array_elements($expected$[{"schema":"public","name":"current_master_feature_flags","arguments":"","md5":"0f2cbe837823fc973519f87e67423fcf","owner":"postgres","prosecdef":true,"provolatile":"s","proconfig":["search_path=\"\""],"acl":"{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"},{"schema":"public","name":"set_master_feature_enabled_with_proof","arguments":"p_feature_key text, p_enabled boolean, p_proof text","md5":"f63cff90341b538bdf5ce813c5b712ca","owner":"postgres","prosecdef":true,"provolatile":"v","proconfig":["search_path=\"\""],"acl":"{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"},{"schema":"private","name":"require_reauthentication_session","arguments":"","md5":"b5c8e2f259a99b3c69694ad0640080e5","owner":"postgres","prosecdef":true,"provolatile":"v","proconfig":["search_path=\"\""],"acl":"{postgres=X/postgres}"},{"schema":"private","name":"account_access_allowed","arguments":"","md5":"aeca25db212c043c472334026bd98724","owner":"postgres","prosecdef":true,"provolatile":"s","proconfig":["search_path=\"\""],"acl":"{postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}"},{"schema":"private","name":"consume_reauthentication_proof","arguments":"p_operation text, p_target jsonb, p_proof text","md5":"31a65249b835b7e11e7e011c384886aa","owner":"postgres","prosecdef":true,"provolatile":"v","proconfig":["search_path=\"\""],"acl":"{postgres=X/postgres}"},{"schema":"public","name":"is_current_user_master_admin","arguments":"","md5":"efbc31721e3fb604059228badaef0139","owner":"postgres","prosecdef":true,"provolatile":"s","proconfig":["search_path=public, private, pg_temp"],"acl":"{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"},{"schema":"private","name":"partner_company_profile_value","arguments":"p_company_id uuid","md5":"06ce79748602c8ca5aebda226bc7f742","owner":"postgres","prosecdef":true,"provolatile":"s","proconfig":["search_path=\"\""],"acl":"{postgres=X/postgres}"}]$expected$::jsonb) loop
+ if not exists(select 1 from pg_class c where c.oid='private.master_feature_settings'::regclass
+  and c.relkind='r' and pg_get_userbyid(c.relowner)='postgres' and c.relrowsecurity
+  and not c.relforcerowsecurity)
+  or has_table_privilege('authenticated','private.master_feature_settings','INSERT,UPDATE,DELETE,TRUNCATE')
+  or has_table_privilege('anon','private.master_feature_settings','INSERT,UPDATE,DELETE,TRUNCATE') then
+  raise exception 'master feature table security changed';
+ end if;
+ for e in select value from jsonb_array_elements($expected$[{"schema":"public","name":"current_master_feature_flags","arguments":"","md5":"0f2cbe837823fc973519f87e67423fcf","owner":"postgres","prosecdef":true,"provolatile":"s","proconfig":["search_path=\"\""],"acl":"{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"},{"schema":"public","name":"set_master_feature_enabled_with_proof","arguments":"p_feature_key text, p_enabled boolean, p_proof text","md5":"f63cff90341b538bdf5ce813c5b712ca","owner":"postgres","prosecdef":true,"provolatile":"v","proconfig":["search_path=\"\""],"acl":"{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"},{"schema":"private","name":"require_reauthentication_session","arguments":"","md5":"b5c8e2f259a99b3c69694ad0640080e5","owner":"postgres","prosecdef":true,"provolatile":"v","proconfig":["search_path=\"\""],"acl":"{postgres=X/postgres}"},{"schema":"private","name":"account_access_allowed","arguments":"","md5":"aeca25db212c043c472334026bd98724","owner":"postgres","prosecdef":true,"provolatile":"s","proconfig":["search_path=\"\""],"acl":"{postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}"},{"schema":"private","name":"consume_reauthentication_proof","arguments":"p_operation text, p_target jsonb, p_proof text","md5":"31a65249b835b7e11e7e011c384886aa","owner":"postgres","prosecdef":true,"provolatile":"v","proconfig":["search_path=\"\""],"acl":"{postgres=X/postgres}"},{"schema":"public","name":"is_current_user_master_admin","arguments":"","md5":"efbc31721e3fb604059228badaef0139","owner":"postgres","prosecdef":true,"provolatile":"s","proconfig":["search_path=public, private, pg_temp"],"acl":"{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"},{"schema":"private","name":"partner_company_profile_value","arguments":"p_company_id uuid","md5":"06ce79748602c8ca5aebda226bc7f742","owner":"postgres","prosecdef":true,"provolatile":"s","proconfig":["search_path=\"\""],"acl":"{postgres=X/postgres}"},{"schema":"public","name":"set_master_feature_enabled","arguments":"p_feature_key text, p_enabled boolean","md5":"e8aa57848946bd19461e4479038ae799","owner":"postgres","prosecdef":true,"provolatile":"v","proconfig":["search_path=\"\""],"acl":"{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"}]$expected$::jsonb) loop
   select q.*,pg_get_userbyid(q.proowner) as owner_name into p from pg_proc q join pg_namespace n on n.oid=q.pronamespace
    where n.nspname=e->>'schema' and q.proname=e->>'name' and pg_get_function_identity_arguments(q.oid)=e->>'arguments';
   if not found or md5(p.prosrc)<>e->>'md5' or p.owner_name<>e->>'owner'
@@ -226,8 +235,15 @@ grant execute on function public.standalone_trade_document_registration_context(
 do $attrs$
 begin
  if exists(select 1 from trade_hub_existing_proc_before b left join pg_proc p on p.oid=b.oid
-  where p.oid is null or (to_jsonb(p)-'prosrc') is distinct from b.attrs) then
+  where p.oid is null or (to_jsonb(p)-'prosrc') is distinct from b.attrs
+   or (p.proname='set_master_feature_enabled' and p.prosrc is distinct from b.prosrc)) then
   raise exception 'existing function identity/attributes changed';
+ end if;
+ if exists(select 1 from trade_hub_existing_table_before b left join pg_class c on c.oid=b.oid
+  where c.oid is null or c.relowner is distinct from b.relowner
+   or c.relrowsecurity is distinct from b.relrowsecurity
+   or c.relforcerowsecurity is distinct from b.relforcerowsecurity or c.relacl is distinct from b.relacl) then
+  raise exception 'existing master table identity/security changed';
  end if;
 end $attrs$;
 commit;

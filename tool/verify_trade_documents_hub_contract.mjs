@@ -34,7 +34,16 @@ async function denied(sql,code='42501') {
 }
 try {
   await db.exec(readFileSync('docs/review/trade-documents-hub/base-fixture.sql','utf8'));
-  await db.exec(readFileSync('docs/review/trade-documents-hub/master-and-standalone-context.sql.review-only','utf8'));
+  const candidate=readFileSync('docs/review/trade-documents-hub/master-and-standalone-context.sql.review-only','utf8');
+  for(const drift of ['grant update on private.master_feature_settings to authenticated','alter table private.master_feature_settings disable row level security']) {
+    await db.exec(drift);let blocked;
+    try{await db.exec(candidate);}catch(error){blocked=error;}
+    await db.exec('rollback');
+    assert(blocked?.message==='master feature table security changed','preflight rejects unsafe master table grant/RLS drift');
+    await db.exec('revoke update on private.master_feature_settings from authenticated;alter table private.master_feature_settings enable row level security');
+  }
+  await db.exec(candidate);
+  assert((await query("select relrowsecurity and not has_table_privilege('authenticated',oid,'INSERT,UPDATE,DELETE,TRUNCATE') safe from pg_class where oid='private.master_feature_settings'::regclass"))[0].safe,'master table RLS and client no-DML preserved');
   await db.exec('begin');
   await db.exec(`insert into auth.users(id) values('${id(1)}'),('${id(2)}'),('${id(3)}');
    insert into auth.sessions values('${id(201)}','${id(1)}',null),('${id(202)}','${id(2)}',null),('${id(203)}','${id(3)}',null);
@@ -53,6 +62,9 @@ try {
   await denied(`select public.standalone_trade_document_registration_context('${id(301)}',false)`);
   await denied(`select public.set_master_feature_enabled_with_proof('site_order_documents',true,'${'a'.repeat(64)}')`);
   await actor(3);
+  await db.exec("select set_config('fixture.reauth_required','false',true)");
+  await denied("select public.set_master_feature_enabled('site_order_documents',true)",'P0001');
+  await db.exec("select set_config('fixture.reauth_required','true',true)");
   await denied(`select public.set_master_feature_enabled_with_proof('site_order_documents',true,null)`);
   await db.exec(`insert into private.reauthentication_proofs values(encode(sha256(convert_to('${'a'.repeat(64)}','UTF8')),'hex'),'${id(3)}','${id(203)}','master.feature.set','{"feature_key":"site_order_documents","enabled":true}',null,null,now()+interval '5 minutes')`);
   flags=(await query(`select public.set_master_feature_enabled_with_proof('site_order_documents',true,'${'a'.repeat(64)}') v`))[0].v;

@@ -12,6 +12,7 @@ on:
       - 'test/master_feature*'
       - 'docs/review/trade-documents-hub/**'
       - 'tool/verify_trade_documents_hub_contract.mjs'
+      - 'tool/verify_trade_documents_deployment_order.mjs'
       - '.github/workflows/trade-documents-hub.yml'
 permissions: {contents: read}
 jobs:
@@ -35,6 +36,8 @@ jobs:
       - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
       - run: node tool/verify_trade_documents_hub_contract.mjs '${{ matrix.runtime }}'
         env: {SKO_TRADE_HUB_FIXTURE_URL: 'postgres://postgres:fixture-only@127.0.0.1:5432/sko_trade_hub_fixture'}
+      - if: matrix.runtime == 'pglite'
+        run: node tool/verify_trade_documents_deployment_order.mjs "$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
       - run: git diff --exit-code -- tool/security/fixture_dependencies/package-lock.json
   client:
     runs-on: ubuntu-latest
