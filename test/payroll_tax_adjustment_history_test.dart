@@ -263,7 +263,7 @@ void main() {
   }, timeout: const Timeout(Duration(seconds: 45)));
   testWidgets('logout intent hides loaded SDK data before remote logout completes', (tester) async {
     final wire = _Wire()..holdLogout = Completer<void>();
-    final client = await _clientFor(wire);
+    final client = (await tester.runAsync(() => _clientFor(wire)))!;
     final source = PayrollTaxHistoryRepository(client, companyId: company, workerId: worker);
     await tester.pumpWidget(MaterialApp(home: PayrollTaxAdjustmentHistoryPage(companyId: company,
       workerId: worker, workerName: '検証メンバー', sourceOverride: source)));
@@ -274,7 +274,7 @@ void main() {
     await tester.pump();
     expect(find.text('通知書の金額へ訂正'), findsNothing);
     wire.holdLogout!.complete(); await tester.runAsync(() async { await logout; });
-    await tester.pumpWidget(const SizedBox()); await client.dispose();
+    await tester.pumpWidget(const SizedBox()); await tester.runAsync(() => client.dispose());
   }, timeout: const Timeout(Duration(seconds: 45)));
   testWidgets('the existing individual page opens the selected read-only history without saving', (tester) async {
     final client = SupabaseClient('https://synthetic.invalid', 'synthetic-public',
@@ -290,6 +290,6 @@ void main() {
     expect(repository.writes, 0);
     await tester.tap(find.text('閉じる')); await tester.pumpAndSettle();
     expect(find.byType(IndividualPayrollSettingsPage), findsOneWidget);
-    await tester.pumpWidget(const SizedBox()); await client.dispose();
+    await tester.pumpWidget(const SizedBox()); await tester.runAsync(() => client.dispose());
   }, timeout: const Timeout(Duration(seconds: 45)));
 }
