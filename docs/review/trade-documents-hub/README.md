@@ -125,3 +125,13 @@ required managed gate for all three management roles and uses only the new
 strict server registration context. That composition still needs final-head
 Flutter/native verification and independent review before integration. Server
 installation/feature ON/iPhone proof remain separate incomplete stages.
+
+## Transition preservation and recovery rehearsal
+
+The latest forward keeps both legacy registration-detail generation actions until
+verified transition readiness. Its routing test opens the actual prior action
+and checks the selected registration ID, document type and unchanged null-gate
+route. The protected hub still has no owner-only fallback. The recovery fixture
+now passes 56 PGlite checks, including source drift refusal and exact two-body
+restoration with OFF row/additive functions/constraint/RLS retained. Final-head
+Flutter/native CI and fresh production recovery capture remain distinct.

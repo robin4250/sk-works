@@ -34,6 +34,9 @@ async function denied(sql,code='42501') {
 }
 try {
   await db.exec(readFileSync('docs/review/trade-documents-hub/base-fixture.sql','utf8'));
+  const recoveryTargets = "n.nspname='public' and p.proname in ('current_master_feature_flags','set_master_feature_enabled_with_proof')";
+  const originalPublic = (await db.query(`select p.oid,to_jsonb(p)-'prosrc' attrs,p.prosrc,pg_get_functiondef(p.oid) definition from pg_proc p join pg_namespace n on n.oid=p.pronamespace where ${recoveryTargets} order by p.oid`)).rows;
+  assert(originalPublic.length===2,'capture exactly the two original public functions');
   const candidate=readFileSync('docs/review/trade-documents-hub/master-and-standalone-context.sql.review-only','utf8');
   for(const drift of ['grant update on private.master_feature_settings to authenticated','alter table private.master_feature_settings disable row level security']) {
     await db.exec(drift);let blocked;
@@ -43,6 +46,17 @@ try {
     await db.exec('revoke update on private.master_feature_settings from authenticated;alter table private.master_feature_settings enable row level security');
   }
   await db.exec(candidate);
+  const installedPublic = (await db.query(`select p.oid,to_jsonb(p)-'prosrc' attrs,p.prosrc from pg_proc p join pg_namespace n on n.oid=p.pronamespace where ${recoveryTargets} order by p.oid`)).rows;
+  assert(installedPublic.length===2,'capture exact installed recovery identity');
+  const guardedRestore = async () => {
+    await db.exec('begin');
+    try {
+      const observed=(await db.query(`select p.oid,to_jsonb(p)-'prosrc' attrs,p.prosrc from pg_proc p join pg_namespace n on n.oid=p.pronamespace where ${recoveryTargets} order by p.oid`)).rows;
+      if(JSON.stringify(observed)!==JSON.stringify(installedPublic))throw new Error('Recovery identity changed; stop');
+      for(const row of originalPublic)await db.exec(row.definition+';');
+      await db.exec('commit');
+    }catch(error){await db.exec('rollback');throw error;}
+  };
   assert((await query("select relrowsecurity and not has_table_privilege('authenticated',oid,'INSERT,UPDATE,DELETE,TRUNCATE') safe from pg_class where oid='private.master_feature_settings'::regclass"))[0].safe,'master table RLS and client no-DML preserved');
   await db.exec('begin');
   await db.exec(`insert into auth.users(id) values('${id(1)}'),('${id(2)}'),('${id(3)}');
@@ -135,6 +149,21 @@ try {
   assert((await query("select count(*)::int n from private.trade_document_templates"))[0].n===2,'templates untouched');
   assert((await query("select count(*)::int n from pg_proc p join pg_namespace n on n.oid=p.pronamespace where p.proname like '%standalone_trade_document%' and has_function_privilege('anon',p.oid,'execute')"))[0].n===0,'no anonymous new RPC execution');
   await db.exec('rollback');
+  // Recovery is rehearsed only after all fixture writers have stopped. Keep
+  // additive constraints/functions and an OFF row; never contract/delete data.
+  await db.exec("insert into private.master_feature_settings(feature_key,enabled) values('site_order_documents',false)");
+  let recoveryRejected=false;
+  await db.exec("create or replace function public.current_master_feature_flags() returns jsonb language sql stable security definer set search_path='' as $$select '{}'::jsonb$$");
+  try{await guardedRestore();}catch(error){recoveryRejected=error.message==='Recovery identity changed; stop';}
+  assert(recoveryRejected,'later public source change refuses restoration');
+  await db.exec(candidate.slice(candidate.indexOf('CREATE OR REPLACE FUNCTION public.current_master_feature_flags()'),candidate.indexOf('CREATE OR REPLACE FUNCTION public.set_master_feature_enabled_with_proof')));
+  await guardedRestore();
+  const recovered=(await db.query(`select p.oid,to_jsonb(p)-'prosrc' attrs,p.prosrc,pg_get_functiondef(p.oid) definition from pg_proc p join pg_namespace n on n.oid=p.pronamespace where ${recoveryTargets} order by p.oid`)).rows;
+  assert(JSON.stringify(recovered)===JSON.stringify(originalPublic),'two original definitions/OIDs/attributes restored exactly');
+  assert((await db.query("select enabled from private.master_feature_settings where feature_key='site_order_documents'")).rows[0].enabled===false,'OFF flag row retained without delete or enable');
+  assert((await db.query("select count(*)::int n from pg_proc p join pg_namespace n on n.oid=p.pronamespace where (n.nspname='private' and p.proname in ('require_trade_documents_master_feature','require_standalone_trade_document_access','standalone_trade_document_registration_context')) or (n.nspname='public' and p.proname in ('standalone_trade_document_access','standalone_trade_document_registration_context'))")).rows[0].n===5,'additive guarded functions retained');
+  assert((await db.query("select pg_get_constraintdef(oid) v from pg_constraint where conrelid='private.master_feature_settings'::regclass and conname='master_feature_settings_feature_key_check'")).rows[0].v.includes('site_order_documents'),'additive key constraint retained');
+  assert((await db.query("select relrowsecurity and not has_table_privilege('authenticated',oid,'INSERT,UPDATE,DELETE,TRUNCATE') safe from pg_class where oid='private.master_feature_settings'::regclass")).rows[0].safe,'recovery preserves RLS and no client DML');
   console.log(JSON.stringify({engine,checks,status:'passed',scope:'isolated SQL fixture; actual captured deployed function bodies; synthetic JWT/policy setup, no live GoTrue or production activation'}));
 } catch(error) {
   console.error(JSON.stringify({engine,checks,status:'failed',message:error.message,code:error.code,position:error.position}));

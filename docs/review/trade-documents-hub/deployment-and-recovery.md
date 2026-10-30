@@ -65,9 +65,13 @@ writer operation: verify no in-flight/new calls and no later dependent source,
 compare the exact installed function/catalog identity, and restore only the two
 captured original public function bodies while preserving OIDs/attributes. Leave
 the additive CHECK and new guarded functions in place, OFF. This restores the old
-public source surface; it is not a full uninstall or a data undo. Recovery SQL
-and its isolated PostgreSQL rehearsal must be prepared from the fresh private
-capture before approving that operation. Such rehearsal is not yet claimed.
+public source surface; it is not a full uninstall or a data undo. A source-only recovery generated from the original fixture capture was rehearsed
+in PGlite: later-source drift is refused; both original function bodies, OIDs and
+attributes return exactly; the OFF row, additive constraint/functions and table
+security remain. The full suite passed 56 checks. Native PostgreSQL runs in CI.
+The final production recovery must still be generated and pinned from the fresh
+private capture before approving that operation; fixture rehearsal does not
+authorize restoration against an unknown live state.
 
 ## Entry migration readiness
 
