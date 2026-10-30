@@ -2562,7 +2562,10 @@ class _DailyReportPageState extends State<DailyReportPage> {
       : report.responsibleSignerName ?? report.signerName ?? '';
     final height = (MediaQuery.sizeOf(context).height * .4).clamp(80.0, 220.0).toDouble();
 
-    await showDialog<void>(
+    final target = _approvedEditTarget;
+    final canBeginApprovedEdit = _signed && !_visitReport && _approvedEditAvailable &&
+        _sharedContext?.requiresAttendanceManagement != true && !_managementHold;
+    final beginEdit = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         scrollable: true,
@@ -2572,6 +2575,12 @@ class _DailyReportPageState extends State<DailyReportPage> {
             child: SignaturePreview(strokes: strokes, height: height,
               canvasSize: SignatureResult.sizeFromJson(signature)))),
         actions: [
+          if (canBeginApprovedEdit) TextButton.icon(
+            key: const ValueKey('daily-report-signature-preview-begin-edit'),
+            onPressed: _saving ? null : () => Navigator.pop(dialogContext, true),
+            icon: _saving ? const SizedBox(width: 16, height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.edit_outlined),
+            label: Text(_saving ? '処理中…' : '編集を開始してサインを取り直す')),
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
             child: Text(SkoLanguageController.tr('閉じる')),
@@ -2579,6 +2588,9 @@ class _DailyReportPageState extends State<DailyReportPage> {
         ],
       ),
     );
+    if (beginEdit == true && mounted && target == _approvedEditTarget && !_saving && !_managementHold) {
+      await _beginApprovedEdit();
+    }
   }
 
   static const _helpText = '①作業内容を入力します（必須）。②メンバー別の勤務区分と、該当する早出・残業・手当を確認します。勤務区分は会社の判定設定と実際の出勤記録から初期入力し、必要時は修正できます。会社設定がない場合は勤務区分を選んでください。早出・残業・手当は該当なしなら飛ばせます。時間単位の給与・手当がある場合は、休憩を除いた実勤務時間を入力してください。打刻の差から実勤務時間を推測しません。\n\n③報告者本人がサインすると自動で仮保存します。作業内容と報告者サインの保存に成功するまでは日報の作成を続けます。通信が失敗しても退勤し直さず、保存状態を再確認してください。仮保存に成功したら他の画面へ移動でき、アプリを閉じた後も保存済みの日報から再開できます。\n\n④当日その現場に出勤した対象メンバーなら誰でも、仮保存の日報を開き、責任者本人にサインしてもらえます。報告者サインからそのまま続けても、後から取得してもかまいません。⑤「保存して確定」を押して初めて確定し、「確定済み」と表示します。サインを保存しただけでは⑤の完了ではありません。\n\n給与・請求への反映は、最終退勤の日報の⑤が成功したときに一度だけ行います。途中現場の日報も①〜⑤で確定しますが、その現場の文書の確定です。途中現場の日報だけでは給与・請求に反映せず、最終退勤の日報で反映します。確定済みの給与・請求書は勝手に書き換えません。設定不足などで反映できない場合は成功扱いにせず、画面の案内に従って確認してください。\n\n一人の現場は退勤後そのまま日報へ進みます。複数人なら「日報を作成する／退勤のみ」を選びます。最初に退勤した人を自動で日報担当にはしません。全員が退勤のみでも日報未作成を残し、後から対象メンバーが作成できます。同じ勤務の日報を重複して作成しません。\n\n②の「手当を選ぶ」から、会社に登録された適用可能な手当を選びます。手当名や単価の入力し直しは不要です。月単位の手当は個別給料設定で確認します。選択は登録IDと版を付けて保存し、保存済みの名称や調整額を自動で置き換えません。任意の「入力途中を保存」は確定ではなく、報告者サインの代わりにもなりません。\n\n確定前の作業内容・早出・残業・手当を変える場合は「手直し」から進みます。以前の日報とサインは履歴に残し、変更後の内容へ必要なサインを取り直します。古いサインを変更後の承認に流用しません。確定後の修正には正規の編集承認を使います。管理者の勤怠管理では権限を確認したうえで編集・削除・サイン登録ができ、変更履歴を残します。管理者が本人に代わって勤務実績を確認するときは理由が必要です。\n\n勤怠・現場記録は下部の参照情報です。保存済み写真を見る操作は日報の手順の番号には含めません。日報件数は面表紙のある日報だけを数え、写真ページは数えません。GPSの退勤確認通知は自動退勤ではなく、本人の退勤操作が必要です。';
@@ -3026,8 +3038,9 @@ class _DailyReportPageState extends State<DailyReportPage> {
                             FilledButton.icon(
                               key: const ValueKey('daily-report-begin-approved-edit'),
                               onPressed: _managementHold || _saving ? null : _beginApprovedEdit,
-                              icon: const Icon(Icons.edit_outlined),
-                              label: Text(SkoLanguageController.tr('承認済みの編集を開始')),
+                              icon: _saving ? const SizedBox(width: 18, height: 18,
+                                child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.edit_outlined),
+                              label: Text(SkoLanguageController.tr(_saving ? '処理中…' : '承認済みの編集を開始')),
                             ),
                           if (_signed && !_visitReport && _sharedContext?.requiresAttendanceManagement != true && !_approvedEditAvailable)
                             FilledButton.tonalIcon(

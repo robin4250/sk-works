@@ -60,6 +60,30 @@ void main() {
     await tester.scrollUntilVisible(finder, 250, scrollable: scrollable, maxScrolls: 40);
     await tester.ensureVisible(finder); await tester.pumpAndSettle();
   }
+  for (final approved in [false, true]) {
+    testWidgets('saved signature preview exposes only an approved explicit edit entrance approved=$approved', (tester) async {
+      final reports = EditableReports(client)..approved = approved
+        ..responsible = {'strokes': [[{'x': 0.1, 'y': 0.1}]]};
+      await tester.pumpWidget(MaterialApp(home: DailyReportPage(initialDate: DateTime(2026, 10, 15),
+        initialSiteId: 'site-a', initialReportId: 'report-a', repositoryForTesting: reports)));
+      await tester.pumpAndSettle();
+      final responsible = find.ancestor(of: find.text('責任者サイン'), matching: find.byType(ListTile));
+      await reveal(tester, responsible); await tester.tap(responsible); await tester.pumpAndSettle();
+      expect(reports.saves, 0); expect(reports.signed, isTrue);
+      final edit = find.byKey(const ValueKey('daily-report-signature-preview-begin-edit'));
+      expect(edit, approved ? findsOneWidget : findsNothing);
+      if (approved) {
+        await tester.tap(edit); await tester.pumpAndSettle();
+        expect(find.text('編集を開始').last, findsOneWidget);
+        expect(reports.saves, 0); expect(reports.signed, isTrue);
+        await tester.tap(find.text('キャンセル').last); await tester.pumpAndSettle();
+        expect(reports.saves, 0); expect(reports.signed, isTrue);
+      } else {
+        await tester.tap(find.text('閉じる').last); await tester.pumpAndSettle();
+      }
+      expect(tester.takeException(), isNull);
+    });
+  }
   for (final mode in ['success', 'denied', 'lost-reply']) {
     final denied = mode == 'denied';
     testWidgets('stranded approval resumes explicitly without a second application mode=$mode', (tester) async {
@@ -89,8 +113,8 @@ void main() {
         expect((await DailyReportEditSessionStore().load('owner', 'report-a'))?.confirmed, isFalse);
         // An observed unsigned draft is not silently a success. The same exact
         // approved-session action remains available for an authoritative retry.
-        expect(start, findsOneWidget);
-        await reveal(tester, start); await tester.tap(start); await tester.pumpAndSettle();
+        await reveal(tester, start);
+        expect(start, findsOneWidget); await tester.tap(start); await tester.pumpAndSettle();
         await tester.tap(find.text('編集を再開').last); await tester.pumpAndSettle();
         expect(shared.resumeCalls, 2); expect(reports.saves, 0);
       }
