@@ -37,6 +37,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('佐藤'), findsWidgets);
       await tester.enterText(find.byType(TextField), '  佐藤 太郎  ');
+      await tester.testTextInput.receiveAction(TextInputAction.done); await tester.pump();
       final canvas = find.byWidgetPredicate(
       (widget) => widget is GestureDetector && widget.onPanStart != null,
     );
@@ -63,6 +64,7 @@ void main() {
         findsNothing,
       );
       await tester.enterText(find.byType(TextField), '');
+      await tester.testTextInput.receiveAction(TextInputAction.done); await tester.pump();
       await tester.tap(find.text('サインを確定'));
       await tester.pump();
       expect(find.text('現場責任者名を入力してください'), findsOneWidget);

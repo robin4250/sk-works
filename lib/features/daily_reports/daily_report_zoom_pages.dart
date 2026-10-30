@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
+import 'daily_report_photo_hit_target.dart';
 
 /// Pinch works immediately, without Printing's double-tap zoom mode.
 class DailyReportZoomPages extends StatefulWidget {
-  const DailyReportZoomPages({super.key, required this.pages, this.onZoomChanged});
+  const DailyReportZoomPages({super.key, required this.pages, this.onZoomChanged, this.photoTargets = const [], this.photoHitBuilder});
   final List<PdfPreviewPageData> pages;
   final ValueChanged<bool>? onZoomChanged;
+  final List<DailyReportPhotoHitTarget> photoTargets;
+  final Widget Function(BuildContext, int)? photoHitBuilder;
 
   @override
   State<DailyReportZoomPages> createState() => _DailyReportZoomPagesState();
@@ -42,11 +45,19 @@ class _DailyReportZoomPagesState extends State<DailyReportZoomPages> {
     maxScale: 5,
     child: ListView(
       padding: const EdgeInsets.all(8),
-      children: [for (final page in widget.pages)
+      children: [for (final (pageIndex, page) in widget.pages.indexed)
         Padding(padding: const EdgeInsets.only(bottom: 8),
           child: AspectRatio(aspectRatio: page.aspectRatio,
             child: ColoredBox(color: Colors.white,
-              child: Image(image: page.image, fit: BoxFit.contain)))),
+              child: LayoutBuilder(builder: (context, constraints) => Stack(fit: StackFit.expand, children: [
+                Image(image: page.image, fit: BoxFit.contain),
+                if (widget.photoHitBuilder != null)
+                  for (final target in widget.photoTargets.where((target) => target.pageIndex == pageIndex))
+                    Positioned.fromRect(rect: Rect.fromLTWH(target.bounds.left * constraints.maxWidth,
+                      target.bounds.top * constraints.maxHeight, target.bounds.width * constraints.maxWidth,
+                      target.bounds.height * constraints.maxHeight),
+                      child: widget.photoHitBuilder!(context, target.photoIndex)),
+              ]))))),
       ],
     ),
   );

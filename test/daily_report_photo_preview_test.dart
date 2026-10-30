@@ -2,10 +2,14 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:printing/printing.dart';
+import 'package:sk_works/features/daily_reports/daily_report_zoom_pages.dart';
+import 'package:sk_works/features/daily_reports/daily_report_photo_hit_target.dart';
 import 'package:sk_works/features/daily_reports/daily_report_pdf_evidence.dart';
 import 'package:sk_works/features/daily_reports/daily_report_photo_pages.dart';
 import 'package:sk_works/features/daily_reports/daily_report_photo_preview.dart';
 import 'package:sk_works/features/daily_reports/daily_report_repository.dart';
+import 'package:sk_works/features/shared/resource_registration_card.dart';
 
 void main() {
   DailyReportPdfEvidence item(
@@ -51,24 +55,69 @@ void main() {
         item('先の失敗', 9, failed: true),
         item('写真の本人', 10),
       ]);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      final signal = ValueNotifier<int>(0);
+      var active = true;
+      final gallery = ResourceAttachmentGallery(source: Object(), workerId: 'synthetic-actor',
+        companyId: 'synthetic-company', isCurrent: () => active, signal: signal,
+        entries: dailyReportPhotoAttachments(photos, validateAccess: () async {
+          if (!active) throw StateError('retired');
+        }));
       await tester.pumpWidget(
         MaterialApp(
-          home: Scaffold(body: DailyReportPhotoPreview(photos: photos)),
+          home: Scaffold(body: DailyReportPhotoPreview(photos: photos, gallery: gallery)),
         ),
       );
+      await tester.pumpAndSettle();
       expect(find.byType(Image), findsOneWidget);
       await tester.tap(
-        find.byKey(const ValueKey('daily-report-photo-thumbnail')),
+        find.byKey(const ValueKey('daily-report-photo-thumbnail-1')),
       );
       await tester.pumpAndSettle();
       expect(find.byType(PageView), findsOneWidget);
-      expect(find.text('2/2 写真の本人'), findsOneWidget);
-      expect(find.textContaining('2026/10/11 10:00'), findsOneWidget);
+      expect(find.text('2/2'), findsOneWidget);
+      expect(find.textContaining('写真の本人 /'), findsOneWidget);
+      expect(find.byIcon(Icons.close), findsOneWidget);
       await tester.drag(find.byType(PageView), const Offset(700, 0));
       await tester.pumpAndSettle();
-      expect(find.text('1/2 先の失敗'), findsOneWidget);
-      expect(find.text('写真未登録・送信失敗'), findsOneWidget);
+      expect(find.text('1/2'), findsOneWidget);
+      expect(find.textContaining('先の失敗 /'), findsOneWidget);
+      expect(find.text('添付を表示できませんでした。'), findsOneWidget);
+      await tester.tap(find.byIcon(Icons.close));
+      await tester.pumpAndSettle();
+      expect(find.byType(PageView), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('daily-report-photo-thumbnail-1')));
+      await tester.pumpAndSettle();
+      active = false; signal.value++;
+      await tester.pumpAndSettle();
+      expect(find.byType(PageView), findsNothing, reason: 'retired scope closes saved private bytes');
+      await tester.pumpWidget(const SizedBox.shrink());
+      signal.dispose();
       expect(tester.takeException(), isNull);
     },
   );
+  testWidgets('exact raster cover hit opens corresponding authorized photo and always closes', (tester) async {
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    final photos = [for (var i = 0; i < 12; i++) item('写真$i', 8 + i)];
+    final gallery = ResourceAttachmentGallery(source: Object(), workerId: 'actor', companyId: 'company',
+      isCurrent: () => true, entries: dailyReportPhotoAttachments(photos, validateAccess: () async {}));
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: DailyReportZoomPages(
+      pages: [PdfPreviewPageData(image: MemoryImage(photos.first.photoBytes!), width: 600, height: 800)],
+      photoTargets: [const DailyReportPhotoHitTarget(pageIndex: 0, photoIndex: 7,
+        bounds: Rect.fromLTWH(.2, .3, .15, .1))],
+      photoHitBuilder: (_, index) => Opacity(opacity: 0, child: FittedBox(fit: BoxFit.fill,
+        child: ResourceAttachmentThumbnail(key: ValueKey('cover-$index'),
+          attachment: gallery.entries[index], gallery: gallery, requireGalleryScope: true))),
+    ))));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('cover-7')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('写真7 /'), findsOneWidget);
+    expect(find.text('8/12'), findsOneWidget);
+    expect(find.byIcon(Icons.close), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.close)); await tester.pumpAndSettle();
+    expect(find.byType(PageView), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
 }

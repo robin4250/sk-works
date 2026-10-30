@@ -96,6 +96,8 @@ class _PayrollPendingAttendancePanelState extends State<PayrollPendingAttendance
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       child: ExpansionTile(
+        dense: true,
+        tilePadding: const EdgeInsets.symmetric(horizontal: 4),
         leading: const Icon(Icons.pending_actions_outlined),
         title: Text(_error ?? '未確定の勤務 ${pending!.dates.length}日'),
         children: [
