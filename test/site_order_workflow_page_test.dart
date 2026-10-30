@@ -11,7 +11,8 @@ const package = '00000000-0000-0000-0000-000000000001';
 
 class _Api extends SiteOrderWorkflowApi {
   bool expired = false, enabled = true, approved = false, stored = false;
-  int approvals = 0, previews = 0;
+  int approvals = 0, previews = 0, reconciliations = 0;
+  bool pendingApproval = false;
   Completer<Map<String, dynamic>>? hold;
   @override
   bool get invalidated => expired;
@@ -35,12 +36,27 @@ class _Api extends SiteOrderWorkflowApi {
     'approved': approved,
     'reply_recipient_stored': stored,
     'reply_original_registered': stored,
+    'site_projection': {
+      'name': '共有現場',
+      'address': '確認用住所',
+      'notes': '非公開金額99999',
+    },
     'body': {
       'work_name': '確認現場',
       'period_start': '2026-10-01',
       'period_end': '2026-10-31',
     },
   };
+  @override
+  Future<bool> hasPendingApproval(String id) async => pendingApproval;
+  @override
+  Future<String?> reconcileApproval(String id) async {
+    if (!pendingApproval) return null;
+    reconciliations++;
+    pendingApproval = false;
+    return 'cancelled';
+  }
+
   @override
   Future<List<Map<String, dynamic>>> history({
     String? before,
@@ -136,6 +152,39 @@ void main() {
       await tester.tap(find.byTooltip('閉じる'));
       await tester.pumpAndSettle();
       expect(find.text('注文書を見る'), findsOneWidget);
+      expect(api.approvals, 0);
+    },
+  );
+  testWidgets(
+    'reopened pending approval remains blocked until the explicit exact-operation barrier',
+    (tester) async {
+      final api = _Api()..pendingApproval = true;
+      await tester.pumpWidget(_app(api));
+      await tester.pumpAndSettle();
+      expect(find.text('住所：確認用住所'), findsOneWidget);
+      expect(find.textContaining('99999'), findsNothing);
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.widgetWithText(FilledButton, '内容と自社印を確認して承認'),
+            )
+            .onPressed,
+        isNull,
+      );
+      expect(api.previews, 0);
+      expect(api.reconciliations, 0);
+      await tester.tap(find.text('保存状態を確認'));
+      await tester.pumpAndSettle();
+      expect(api.reconciliations, 1);
+      expect(find.text('前の承認は受け付けられていません。内容を確認して承認し直せます。'), findsOneWidget);
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.widgetWithText(FilledButton, '内容と自社印を確認して承認'),
+            )
+            .onPressed,
+        isNotNull,
+      );
       expect(api.approvals, 0);
     },
   );

@@ -58,3 +58,16 @@ test('archive uses the locked Dart SDK binary response type and preserves PDF by
  assert.equal(r.status,200);assert.equal(r.headers.get('content-type'),'application/octet-stream');
  assert.equal(new TextDecoder().decode(await r.arrayBuffer()),'%PDF-fixed immutable original');
 });
+
+test('approval reconciliation is a fixed authenticated barrier, never an arbitrary cancellation or renderer',async()=>{
+ const calls=[],handler=createSiteOrderHandler({verify,connect:async()=>({async query(sql,args){calls.push({sql,args});
+  if(sql==='select session_user as role')return {rows:[{role:'postgres'}]};
+  if(sql.includes('reconcile_approval'))return {rows:[{result:{package_id:id,preview_id:id,request_id:sid,operation_state:'cancelled'}}]};
+  return {rows:[]};},async end(){calls.push({sql:'end'});}}),render:()=>{throw Error('must not render');}});
+ const r=await handler(request(await token(),{action:'reconcile_approval',package_id:id,preview_id:id,request_id:sid}));
+ assert.equal(r.status,200);assert.equal((await r.json()).result.operation_state,'cancelled');
+ const query=calls.find(x=>x.sql.includes('reconcile_approval'));
+ assert.equal(query.sql,'select site_order_package_private.reconcile_approval($1,$2,$3) as result');
+ assert.deepEqual(query.args,[id,id,sid]);assert.equal(calls.at(-1).sql,'end');
+ assert.equal(calls.some(x=>x.sql.includes('approve_operation')),false);
+});

@@ -21,7 +21,7 @@ begin
  select evidence->'body' into body from site_order_artifact_private.render_jobs where id=p.source_job_id;
  select enabled into flag from private.master_feature_settings where feature_key='site_order_documents';
  return site_order_package_private.package_status(p.id)||site_order_package_private.delivery_status(p.id)
- ||jsonb_build_object('body',body,'is_sender',cid=p.sender_company_id,'is_recipient',cid=p.recipient_company_id,
+ ||jsonb_build_object('body',body,'site_projection',p.site_projection,'is_sender',cid=p.sender_company_id,'is_recipient',cid=p.recipient_company_id,
  'can_write',coalesce(flag,false),'created_at',p.created_at);
 end $$;
 create function site_order_package_private.package_list(p_before timestamptz,p_before_id uuid,p_limit integer)
