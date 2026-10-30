@@ -22,7 +22,7 @@ void main(){
    expect(fields['progress_cutoff_day'],'month_end');expect(fields['invoice_cutoff_day'],10);
    expect(fields['cash_ratio_percent'],'100');expect(fields['payment_month_offset'],2);expect(fields['payment_day'],5);
    expect(fields['supplies'],'仮設材他');expect(p['notes'],tradeDocumentDefaultNotes);
-   for(final key in ['advance','partial','completion'])expect(fields['payments'][key],{'choice':'no','date':null,'amount_yen':null});
+   for(final key in ['advance','partial','completion']) {expect(fields['payments'][key],{'choice':'no','date':null,'amount_yen':null});}
    expect(fields['rows'][0],{'item':'とび工　安全施設・足場組立解体作業（一般作業員）','quantity':'1','unit':'人日','unit_price_yen':null,'amount_yen':null,'note':''});
    expect((fields['rows'] as List).skip(1).every((row)=>row['item']==''),isTrue);
    expect(p['total_amount_yen'],110000);expect(p['tax_amount_yen'],10000);expect(jsonEncode(source),before);
@@ -46,7 +46,7 @@ void main(){
  });
  test('v2 schema only allows exact month-end sentinel and never aliases day 31',(){
   final fields=TradeDocumentFormDraft.fromPayload(formBody(),allowAmountEditing:false,initializeDefaults:true,initializeExtendedFields:true).payload['form_fields'] as Map<String,dynamic>;
-  for(final bad in ['末日','31','monthEnd',0,32])expect(()=>TradeDocumentFormFields.fromJson({...fields,'progress_cutoff_day':bad}),throwsFormatException);
+  for(final bad in ['末日','31','monthEnd',0,32]) {expect(()=>TradeDocumentFormFields.fromJson({...fields,'progress_cutoff_day':bad}),throwsFormatException);}
   expect(()=>TradeDocumentFormFields.fromJson({...fields,'invoice_cutoff_day':'month_end'}),throwsFormatException);
  });
  test('complete schema and nine rows are added only to the private working copy',(){
