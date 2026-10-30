@@ -44,6 +44,8 @@ import '../daily_reports/daily_report_page.dart';
 import '../attendance/attendance_correction_approvals_page.dart';
 import '../sites/site_map_notification_page.dart';
 import '../sites/site_share_approval_page.dart';
+import '../sites/site_order_workflow_page.dart';
+import '../sites/site_order_workflow_repository.dart';
 import '../sites/site_information_approvals_page.dart';
 import '../operations/vehicle_route_page.dart';
 import '../people/people_cloud_page.dart';
@@ -172,6 +174,17 @@ class _NotificationsPageState extends State<NotificationsPage> {
             final key = record?.actionKey ?? item.actionKey;
             final id = record?.actionId ?? item.actionId;
             if (!notificationTargetIsValid(key, id)) return false;
+            if (key == 'site_order_package') {
+              final reader = SiteOrderWorkflowRepository.maybeCreate();
+              if (reader == null || id == null) return false;
+              try {
+                await reader.detail(id);
+                session.requireCurrent();
+                return true;
+              } finally {
+                reader.dispose();
+              }
+            }
             if (SourceNotificationTarget.supports(key)) return true;
             if (record != null && record.kind == 'resident_tax_reminder') {
               if (key != 'payroll_settings' || id == null) return false;
@@ -313,6 +326,16 @@ class _NotificationsPageState extends State<NotificationsPage> {
         } else {
           destination = DailyReportApprovalsPage(initialRequestId: target.actionId);
         }
+      } else if (target.actionKey == 'site_order_package') {
+        final reader = SiteOrderWorkflowRepository.maybeCreate();
+        if (reader == null || target.actionId == null) throw StateError('注文・請書を確認できません');
+        try {
+          await reader.detail(target.actionId!);
+          _session?.requireCurrent();
+        } finally {
+          reader.dispose();
+        }
+        destination = SiteOrderWorkflowPage(initialPackageId: target.actionId);
       } else if (SourceNotificationTarget.supports(target.actionKey)) {
         final repository = _notifications;
         if (repository == null) {
@@ -567,6 +590,7 @@ Widget? notificationDestination(
     initialInviteId: item.actionId ?? '',
   ),
   'site_map' => SiteMapNotificationPage(verificationId: item.actionId ?? ''),
+  'site_order_package' => SiteOrderWorkflowPage(initialPackageId: item.actionId),
   'site_share_approval' => SiteShareApprovalPage(
     initialRequestId: item.actionId,
   ),

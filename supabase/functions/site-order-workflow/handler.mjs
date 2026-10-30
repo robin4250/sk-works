@@ -2,9 +2,10 @@ import {registerManagerCanonicalSiteOrderJob,processCanonicalSiteOrderReply} fro
 const uuid=/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/;
 const commands={
  detail:{keys:['package_id'],sql:'select site_order_package_private.package_detail($1) as result'},
- list:{keys:['before','before_id','limit'],sql:'select site_order_package_private.package_list($1,$2,$3) as result'},
+ list:{keys:['before','before_id','limit'],sql:'select site_order_package_private.history_entries($1,$2,$3) as result'},
  recipient_targets:{keys:['package_id'],sql:'select site_order_package_private.recipient_targets($1) as result'},
  status:{keys:['package_id'],sql:'select site_order_package_private.package_status($1) as result'},
+ archive_payload:{keys:['package_id','kind'],sql:'select site_order_package_private.archive_payload($1,$2) as result'},
  archive:{keys:['package_id','kind'],sql:'select site_order_package_private.archive_original($1,$2) as result',pdf:true},
  preview_approval:{keys:['package_id','trade_id','connection_fingerprint','request_id'],sql:'select site_order_package_private.preview_approval($1,$2,$3,$4) as result'},
  approve:{keys:['preview_id','body_hash','seal_hash','confirmed','request_id'],sql:`with approved as materialized(select site_order_package_private.approve_with_consent($1,$2,$3,$4,$5) as result) select result||jsonb_build_object('notifications',site_order_package_private.dispatch_notifications((result->>'package_id')::uuid)) as result from approved`},
