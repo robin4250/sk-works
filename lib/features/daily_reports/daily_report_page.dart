@@ -198,6 +198,10 @@ class _DailyReportPageState extends State<DailyReportPage> {
   bool _loading = true;
   bool _saving = false;
   bool _approvedEditAvailable = false;
+  String? _approvedEditStartFailure;
+  Object? _approvedEditFailureTarget;
+  Object get _approvedEditTarget => (_repository?.currentActorId, _report?.companyId,
+    _report?.id, _date, _siteId, _routeAssignmentId);
   final _editSessions = DailyReportEditSessionStore();
   DailyReportEditSession? _editSession;
   bool _editSessionUnverified = false;
@@ -1308,7 +1312,12 @@ class _DailyReportPageState extends State<DailyReportPage> {
 
   Future<String?> _saveDraft({bool ownsBusyState = true,
       DailyReportEditSession? approvedReset, bool quiet = false}) async {
-    if (_sharedContext?.financialTransitionPending == true) { return _preparedFinancialReportId(); }
+    if (_sharedContext?.financialTransitionPending == true) {
+      if (approvedReset != null) {
+        throw StateError('勤務実績の確認・再サインが進行中のため、編集を開始できません。日報を再読み込みし、勤務実績とサインの状態を管理者に確認してください。');
+      }
+      return _preparedFinancialReportId();
+    }
     if (_managementHold) return null;
     if (ownsBusyState && _saving) return null;
     final resettingApprovedReport = approvedReset != null && !_visitReport &&
@@ -1342,6 +1351,9 @@ class _DailyReportPageState extends State<DailyReportPage> {
     );
     if (!_visitReport && !_partialSharedDraftAllowed && missingOdometer.isNotEmpty) {
       final names = missingOdometer.map((worker) => worker.workerName).join('、');
+      if (approvedReset != null) {
+        throw StateError('$names の退勤時走行距離を確認できないため、編集を開始できません。管理者に車両記録を確認してもらってください。');
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -1399,6 +1411,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
       return id;
     } catch (error) {
       _rememberManagementHold(error);
+      if (approvedReset != null) rethrow;
       if (!mounted) return null;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('${SkoLanguageController.tr('登録できませんでした')}: ${dailyReportActionErrorMessage(error)}'),
@@ -1967,7 +1980,11 @@ class _DailyReportPageState extends State<DailyReportPage> {
         !report.signed || !_approvedEditAvailable || actor == null) {
       return;
     }
-    setState(() => _saving = true);
+    setState(() {
+      _saving = true;
+      _approvedEditStartFailure = null;
+      _approvedEditFailureTarget = null;
+    });
     try {
       final confirmed = await showDialog<bool>(
         context: context,
@@ -2024,9 +2041,10 @@ class _DailyReportPageState extends State<DailyReportPage> {
       )));
     } catch (error) {
       if (mounted && repository.currentActorId == actor) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('編集を開始できませんでした: $error')),
-        );
+        setState(() {
+          _approvedEditFailureTarget = _approvedEditTarget;
+          _approvedEditStartFailure = dailyReportActionErrorMessage(error);
+        });
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -2814,6 +2832,18 @@ class _DailyReportPageState extends State<DailyReportPage> {
                           if (_documentComplete)
                             const Padding(padding: EdgeInsets.symmetric(vertical: 8),
                               child: Text('日報のサインは保存済みです。給与・請求への反映には、勤務実績の確認と新しいサインが必要です。')),
+                          if (_approvedEditStartFailure != null && _approvedEditFailureTarget == _approvedEditTarget)
+                            Card(key: const ValueKey('daily-report-approved-edit-start-failure'),
+                              child: Padding(padding: const EdgeInsets.all(12),
+                                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                                  const Text('編集開始を確認できません', style: TextStyle(fontWeight: FontWeight.w800)),
+                                  const SizedBox(height: 8),
+                                  Text(_approvedEditStartFailure!),
+                                  const SizedBox(height: 8),
+                                  const Text('サインが残る間は変更できません。日報を再読み込みし、保存済みの内容とサインを確認してください。'),
+                                  TextButton.icon(onPressed: _saving ? null : _loadSelectedSite,
+                                    icon: const Icon(Icons.refresh), label: const Text('日報を再読み込み')),
+                                ]))),
                           if (_signed && !_visitReport && _approvedEditAvailable)
                             FilledButton.icon(
                               key: const ValueKey('daily-report-begin-approved-edit'),

@@ -1,0 +1,48 @@
+name: Approved edit failure visibility
+on:
+  pull_request:
+    paths:
+      - 'lib/features/daily_reports/daily_report_page.dart'
+      - 'test/daily_report_approved_edit_failure_visibility_test.dart'
+      - '.github/workflows/approved-edit-failure-visibility.yml'
+permissions:
+  contents: read
+jobs:
+  visibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/daily_reports/daily_report_page.dart test/daily_report_approved_edit_failure_visibility_test.dart
+      - name: Exact installed-source failure remains grey without a persistent reason
+        shell: bash
+        run: |
+          set -euo pipefail
+          page=lib/features/daily_reports/daily_report_page.dart
+          cp "$page" /tmp/approved-edit-fixed.dart
+          trap 'cp /tmp/approved-edit-fixed.dart "$page"' EXIT
+          git show 67d1a1960e5f59662457ee23c34d2cbacc9e12aa:"$page" > "$page"
+          if flutter test --reporter expanded test/daily_report_approved_edit_failure_visibility_test.dart > /tmp/approved-edit-old.log 2>&1; then
+            cat /tmp/approved-edit-old.log
+            exit 1
+          fi
+          cat /tmp/approved-edit-old.log
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('/tmp/approved-edit-old.log').read_text()
+          assert 'daily-report-approved-edit-start-failure' in s and 'Found 0 widgets' in s
+          assert 'Failed to load' not in s and 'Compilation failed' not in s
+          PY
+          cp /tmp/approved-edit-fixed.dart "$page"
+          git diff --exit-code -- "$page"
+      - run: flutter test --reporter expanded test/daily_report_approved_edit_failure_visibility_test.dart test/daily_report_approved_edit_start_test.dart test/daily_report_common_allowance_names_test.dart
+      - run: git diff --exit-code -- pubspec.yaml pubspec.lock
