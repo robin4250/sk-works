@@ -311,6 +311,53 @@ class _PayrollStatementPreviewPageState
     );
   }
 
+  void _showPreviewHelp() {
+    showModalBottomSheet<void>(context: context, showDragHandle: true,
+      builder: (context) => SafeArea(child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text(SkoLanguageController.isEnglish ? 'Preview help' : 'プレビューの使い方',
+            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
+          const SizedBox(height: 12),
+          Text(SkoLanguageController.isEnglish
+            ? 'Pinch to zoom. Drag to move while zoomed.'
+            : '2本指で拡大・縮小／拡大後はドラッグで移動'),
+          if (widget.allowFinalization) ...[
+            const SizedBox(height: 12),
+            const Text(PayrollFinalizationPanel.helpText),
+          ],
+          const SizedBox(height: 12),
+          TextButton(onPressed: () => Navigator.pop(context), child: Text(SkoLanguageController.tr('閉じる'))),
+        ]),
+      )));
+  }
+
+  void _showConfirmationDetails() {
+    final status = _confirmation;
+    if (status == null) return;
+    showModalBottomSheet<void>(context: context, showDragHandle: true,
+      builder: (context) => SafeArea(child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text(SkoLanguageController.trParams('確認 {confirmed}/{required}名',
+            {'confirmed': status.confirmedCount, 'required': status.requiredCount}),
+            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
+          for (final reviewer in status.reviewers) Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Text(SkoLanguageController.trParams('{name}：{status}',
+              {'name': reviewer.name, 'status': SkoLanguageController.tr(reviewer.confirmed ? '確認済み' : '未確認')})),
+          ),
+          if (status.confirmationOpenDate != null) Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Text(SkoLanguageController.trParams('確認開始：{date}',
+              {'date': '${status.confirmationOpenDate!.month}/${status.confirmationOpenDate!.day}'})),
+          ),
+          const SizedBox(height: 12),
+          TextButton(onPressed: () => Navigator.pop(context), child: Text(SkoLanguageController.tr('閉じる'))),
+        ]),
+      )));
+  }
+
   final TransformationController _zoomController = TransformationController();
 
   @override
@@ -331,6 +378,11 @@ class _PayrollStatementPreviewPageState
         ),
         actions: [
           IconButton(
+            tooltip: SkoLanguageController.isEnglish ? 'Preview help' : 'プレビューの使い方',
+            onPressed: _showPreviewHelp,
+            icon: const Icon(Icons.help_outline),
+          ),
+          IconButton(
             tooltip: SkoLanguageController.isEnglish
                 ? 'Reset zoom'
                 : '拡大縮小をリセット',
@@ -343,7 +395,7 @@ class _PayrollStatementPreviewPageState
       body: Column(
         children: [
           if (widget.allowFinalization)
-            PayrollFinalizationPanel(statement: _pdfStatement,
+            PayrollFinalizationPanel(statement: _pdfStatement, showHelp: false,
               statementAvailable: !_sourceLoading && !_statementUnavailable && _confirmationError == null,
               reloadStatement: _loadConfirmation,
               onBusyChanged: (busy) { if (mounted) setState(() => _finalizationBusy = busy); },
@@ -394,17 +446,12 @@ class _PayrollStatementPreviewPageState
                 runSpacing: 4,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  Text(
-                    SkoLanguageController.trParams('確認 {confirmed}/{required}名', {'confirmed': _confirmation!.confirmedCount, 'required': _confirmation!.requiredCount}),
+                  TextButton.icon(
+                    onPressed: _showConfirmationDetails,
+                    icon: const Icon(Icons.fact_check_outlined, size: 18),
+                    label: Text(SkoLanguageController.trParams('確認 {confirmed}/{required}名',
+                      {'confirmed': _confirmation!.confirmedCount, 'required': _confirmation!.requiredCount})),
                   ),
-                  for (final reviewer in _confirmation!.reviewers)
-                    Text(
-                      SkoLanguageController.trParams('{name}：{status}', {'name': reviewer.name, 'status': SkoLanguageController.tr(reviewer.confirmed ? '確認済み' : '未確認')}),
-                    ),
-                  if (_confirmation!.confirmationOpenDate != null)
-                    Text(
-                      SkoLanguageController.trParams('確認開始：{date}', {'date': '${_confirmation!.confirmationOpenDate!.month}/${_confirmation!.confirmationOpenDate!.day}'}),
-                    ),
                   if (_confirmation!.canConfirm)
                     FilledButton(
                       onPressed: _confirmationBusy || _finalizationBusy
@@ -426,16 +473,8 @@ class _PayrollStatementPreviewPageState
               !_finalizationBusy && !_finalizationUncertain && _confirmationError == null)
             PayrollInsuranceEvidenceCard(detail: statement.detail,
               month: '${statement.periodStart.year.toString().padLeft(4, '0')}-${statement.periodStart.month.toString().padLeft(2, '0')}-01'),
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 6),
-            child: Text(
-              SkoLanguageController.isEnglish
-                  ? 'Pinch to zoom. Drag to move while zoomed.'
-                  : '2本指で拡大・縮小／拡大後はドラッグで移動',
-              style: const TextStyle(fontWeight: FontWeight.w700),
-            ),
-          ),
           Expanded(
+            key: const ValueKey('payroll-preview-region'),
             child: _sourceLoading || _confirmationBusy || _finalizationBusy
                 ? const Center(child: CircularProgressIndicator())
                 : _statementUnavailable || _finalizationUncertain || _confirmationError != null

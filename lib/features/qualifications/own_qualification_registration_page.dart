@@ -667,6 +667,38 @@ class _OwnQualificationRegistrationPageState
     );
   }
 
+  String get _photoNotice => _photoError ??
+      (!_photoCapability.available
+          ? '資格証写真の変更申請は準備中です。登録済み写真と資格情報登録は利用できます。'
+          : _photoCapability.uploadAllowed
+          ? '資格証写真の変更は申請し、承認後に反映します。'
+          : '新しい資格証写真の送信は停止中です。登録済み写真の並べ替え・削除申請は利用できます。');
+
+  void _showRegistrationHelp() {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text('資格登録について', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
+              const SizedBox(height: 12),
+              const Text('ログイン中の本人の資格だけを表示します'),
+              const SizedBox(height: 12),
+              Text(_photoNotice),
+              const SizedBox(height: 12),
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる')),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final masterById = {
@@ -697,6 +729,11 @@ class _OwnQualificationRegistrationPageState
         ),
         actions: [
           IconButton(
+            tooltip: '資格登録の説明',
+            onPressed: _showRegistrationHelp,
+            icon: const Icon(Icons.help_outline),
+          ),
+          IconButton(
             tooltip: '再読み込み',
             onPressed: _loading ? null : _load,
             icon: const Icon(Icons.refresh),
@@ -715,68 +752,52 @@ class _OwnQualificationRegistrationPageState
             ? _OwnQualificationError(message: _error!, onRetry: _load)
             : Column(
                 children: [
-                  Card(
-                    margin: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-                    child: ListTile(
-                      leading: const CircleAvatar(
-                        child: Icon(Icons.person_outline),
-                      ),
-                      title: Text(
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                    child: Row(children: [
+                      const Icon(Icons.person_outline, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text(
                         _worker?['name']?.toString() ?? '本人',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: const TextStyle(fontWeight: FontWeight.w900),
-                      ),
-                      subtitle: const Text('ログイン中の本人の資格だけを表示します'),
-                    ),
+                      )),
+                    ]),
                   ),
-                  Card(
-                    margin: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 4,
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Text(
-                            _photoError ??
-                                (!_photoCapability.available
-                                    ? '資格証写真の変更申請は準備中です。登録済み写真と資格情報登録は利用できます。'
-                                    : _photoCapability.uploadAllowed
-                                    ? '資格証写真の変更は申請し、承認後に反映します。'
-                                    : '新しい資格証写真の送信は停止中です。登録済み写真の並べ替え・削除申請は利用できます。'),
-                          ),
-                          if (_pendingPhotos != null) ...[
-                            const SizedBox(height: 8),
-                            const Text(
-                              '送信結果が未確認の写真申請があります。写真を再送せず同じ申請を確認してください。',
-                            ),
-                            OutlinedButton.icon(
-                              onPressed:
-                                  _photoBusy || !_photoCapability.available
-                                  ? null
-                                  : _recoverPhotos,
-                              icon: const Icon(Icons.refresh),
-                              label: const Text('保留中の写真申請を再確認'),
-                            ),
-                            TextButton(
-                              onPressed:
-                                  _photoBusy || !_photoCapability.available
-                                  ? null
-                                  : _cancelPendingPhotos,
-                              child: const Text('未送信の下書きを取り消す'),
-                            ),
+                  if (_photoError != null || _pendingPhotos != null || _photoBusy)
+                    Card(
+                      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            if (_photoError != null) Text(_photoError!),
+                            if (_pendingPhotos != null) ...[
+                              const Text('送信結果が未確認の写真申請があります。写真を再送せず同じ申請を確認してください。'),
+                              OutlinedButton.icon(
+                                onPressed: _photoBusy || !_photoCapability.available ? null : _recoverPhotos,
+                                icon: const Icon(Icons.refresh),
+                                label: const Text('保留中の写真申請を再確認'),
+                              ),
+                              TextButton(
+                                onPressed: _photoBusy || !_photoCapability.available ? null : _cancelPendingPhotos,
+                                child: const Text('未送信の下書きを取り消す'),
+                              ),
+                            ],
+                            if (_photoBusy) const LinearProgressIndicator(),
                           ],
-                          if (_photoBusy) const LinearProgressIndicator(),
-                        ],
+                        ),
                       ),
                     ),
-                  ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
                     child: TextField(
                       controller: _searchController,
                       decoration: const InputDecoration(
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                         prefixIcon: Icon(Icons.search),
                         hintText: '資格種類・証明書番号で検索',
                       ),
