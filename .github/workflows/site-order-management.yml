@@ -1,0 +1,45 @@
+name: Site order management foundation
+on:
+  pull_request:
+    paths:
+      - 'lib/features/sites/site_order_*.dart'
+      - 'lib/features/companies/trade_company_page.dart'
+      - 'test/site_order_*.dart'
+      - 'docs/review/site-order-management/**'
+      - 'tool/verify_site_order_archive_schema.mjs'
+      - '.github/workflows/site-order-management.yml'
+permissions:
+  contents: read
+jobs:
+  interface:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - name: Parse Dart source
+        run: dart format --output=none lib/features/sites/site_order_*.dart test/site_order_*.dart
+      - run: flutter analyze lib/features/sites/site_order_workflow.dart lib/features/sites/site_order_company_page.dart lib/features/sites/site_order_send_page.dart lib/features/sites/site_order_history_page.dart lib/features/companies/trade_company_page.dart test/site_order_workflow_test.dart test/site_order_pages_test.dart
+      - run: flutter test --reporter expanded test/site_order_workflow_test.dart test/site_order_pages_test.dart test/trade_company_save_completion_test.dart test/trade_company_detail_edit_delete_contract_test.dart test/trade_company_master_contract_test.dart test/trade_company_dialog_test.dart
+      - run: git diff --exit-code -- pubspec.yaml pubspec.lock
+  archive-structure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.21.0'
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts
+      - run: node --check tool/verify_site_order_archive_schema.mjs
+      - run: node tool/verify_site_order_archive_schema.mjs
+      - run: git diff --exit-code -- tool/security/fixture_dependencies/package.json tool/security/fixture_dependencies/package-lock.json
