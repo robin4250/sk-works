@@ -4,6 +4,9 @@ on:
     paths:
       - 'lib/features/payroll/payroll_fixed_deductions.dart'
       - 'test/payroll_fixed_deductions_test.dart'
+      - 'test/payroll_insurance_basis_fixed_test.dart'
+      - 'test/payroll_insurance_external_entry_test.dart'
+      - 'test/payroll_insurance_settings_entry_test.dart'
       - '.github/workflows/payroll-deliberate-adjustment.yml'
 permissions:
   contents: read
@@ -43,5 +46,5 @@ jobs:
           grep -F 'Actual: <true>' /tmp/payroll-deliberate-adjustment-red.log
           cp "$preserved" "$source_file"
           test "$(sha256sum "$source_file" | cut -d' ' -f1)" = "$before"
-      - run: flutter test --reporter expanded test/payroll_fixed_deductions_test.dart test/payroll_insurance_basis_fixed_test.dart
+      - run: flutter test --reporter expanded test/payroll_fixed_deductions_test.dart test/payroll_insurance_basis_fixed_test.dart test/payroll_insurance_external_entry_test.dart test/payroll_insurance_settings_entry_test.dart
       - run: git diff --exit-code -- pubspec.yaml pubspec.lock

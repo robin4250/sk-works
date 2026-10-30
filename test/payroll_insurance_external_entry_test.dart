@@ -31,6 +31,7 @@ void main() {
           openConditions: (month) async { opens++; openedMonth = month; average = 330000; },
           rpc: (name, params) async {
             if (name == 'payroll_deduction_overrides_contract_version') return 1;
+            if (name == 'payroll_tax_adjustment_reason_contract_version') return 1;
             reads++; if (state == 'failed') throw StateError('unavailable');
             return response(name.endsWith('_with_insurance_reference'));
           },
@@ -72,7 +73,8 @@ void main() {
       PayrollInsuranceSettingsEntry(controller: controller),
       PayrollFixedDeductions(companyId: 'company', workerId: 'worker', month: '2026-10-01',
         canEdit: true, entryController: controller, openConditions: (_) async { opens++; },
-        rpc: (name, params) async => name == 'payroll_deduction_overrides_contract_version' ? 1 : {
+        rpc: (name, params) async => const ['payroll_deduction_overrides_contract_version',
+          'payroll_tax_adjustment_reason_contract_version'].contains(name) ? 1 : {
           'company_id': 'company', 'worker_id': 'worker', 'can_edit': true,
           'items': [{'starts_on': '2026-10-01', 'version': 1, 'value': {'insurance_mode': 'rates'}}]},
         readStatement: (_, __, ___) async => {'calculation_blocked': false, 'detail': {'tax_calculation': {
@@ -81,6 +83,8 @@ void main() {
     ])))));
     await t.pumpAndSettle();
     final health = find.byKey(const ValueKey('fixed-deduction-health_insurance-amount'));
+    final adjust = find.byKey(const ValueKey('fixed-deduction-health_insurance-begin-adjustment'));
+    await t.ensureVisible(adjust); await t.tap(adjust); await t.pumpAndSettle();
     await t.ensureVisible(health); await t.pumpAndSettle();
     await t.enterText(health, '1200'); t.testTextInput.hide(); await t.pumpAndSettle();
     final button = find.byKey(const ValueKey('insurance-settings-open'));

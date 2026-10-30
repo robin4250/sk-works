@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import '../../data/supabase_backend.dart';
 import 'payroll_tax_conditions_page.dart';
@@ -53,6 +55,8 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
   final _adjusting = <String, ({String text, bool manual})>{};
   final _loadedManual = <String>{};
   final _loadedAmounts = <String, String>{};
+  final _adjustmentReason = TextEditingController();
+  bool _reasonContractAvailable = false;
   final _automatic = <String, int?>{};
   Map<String, dynamic>? _profile;
   String? _conditionsStart;
@@ -70,7 +74,7 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
   bool get _hasPendingInput => _dirty || _residentEditing || _adjusting.isNotEmpty;
 
   bool _canAdjust(String key) => key != 'child_support' && widget.canEdit &&
-      _allowed && !_busy && !_uncertain &&
+      _allowed && _reasonContractAvailable && !_busy && !_uncertain &&
       (key == 'income_tax' || const ['rates', 'manual'].contains(_profile?['insurance_mode']));
 
   bool _needsAdjustmentAction(String key) => key == 'income_tax' ||
@@ -143,6 +147,7 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
       _savedSnapshot.clear();
       _manual.clear();
       _adjusting.clear();
+      _adjustmentReason.clear();
       _automatic.clear();
       for (final controller in _controllers.values) { controller.clear(); }
     });
@@ -164,6 +169,7 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
       _savedSnapshot.clear();
       _manual.clear();
       _adjusting.clear();
+      _adjustmentReason.clear();
       for (final c in _controllers.values) { c.clear(); }
       _load();
     } else if (oldWidget.refreshRevision != widget.refreshRevision && !_hasPendingInput) {
@@ -175,6 +181,7 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
   void dispose() {
     widget.entryController?.detach(this);
     for (final c in _controllers.values) { c.dispose(); }
+    _adjustmentReason.dispose();
     super.dispose();
   }
 
@@ -241,10 +248,23 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
           _yen(e.value) == null)) {
         throw const FormatException('控除の修正額を確認できません');
       }
+      var reasonAvailable = false;
+      if (supported == 1 && raw['can_edit'] == true && widget.canEdit && profile != null) {
+        try {
+          reasonAvailable = await _rpc('payroll_tax_adjustment_reason_contract_version', {}) == 1;
+          _checkActor();
+        } catch (_) {
+          _checkActor();
+          // Missing/newer server capability disables only manual adjustments.
+          // Keep the existing settings and saved calculation readable.
+        }
+      }
+      if (!mounted || generation != _generation) return;
       final statement = await widget.readStatement(widget.companyId, widget.workerId, _month);
       _checkActor();
       if (!mounted || generation != _generation) return;
       _profile = profile;
+      _reasonContractAvailable = reasonAvailable;
       _conditionsStart = rows.isEmpty ? null : rows.first['starts_on'] as String;
       _conditionsKnown = true;
       _basisReference = profile?['insurance_basis_reference'] == null ? null :
@@ -324,7 +344,8 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
   }
 
   Future<void> _save() async {
-    if (!widget.canEdit || !_allowed || _busy || _uncertain || _profile == null) return;
+    if (!widget.canEdit || !_allowed || !_reasonContractAvailable ||
+        _busy || _uncertain || _profile == null) return;
     final overrides = <String, int>{};
     for (final key in _manual) {
       final value = int.tryParse(_controllers[key]!.text.trim());
@@ -352,19 +373,35 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
     }
     final confirmed = await showDialog<bool>(context: context, builder: (context) => AlertDialog(
       title: const Text('税・保険料の修正を保存'),
-      content: Text('${_month.substring(0, 7)}分の修正を保存して給料明細へ反映します。'
+      content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text('${_month.substring(0, 7)}分の修正を保存して給料明細へ反映します。'
           '${manualAmounts == null ? '\n手入力の項目以外は自動計算します。' : '\n保険料は登録した本人負担月額を使います。所得税は設定した計算条件に従います。'}確定済みの給料明細は変更しません。'),
+        const SizedBox(height: 12),
+        TextField(key: const ValueKey('fixed-deduction-adjustment-reason'),
+          controller: _adjustmentReason, minLines: 1, maxLines: 3, maxLength: 1000,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) => FocusManager.instance.primaryFocus?.unfocus(),
+          decoration: const InputDecoration(labelText: '調整理由（必須）',
+            helperText: '自動計算に戻す場合も理由を記録します。', border: OutlineInputBorder())),
+      ])),
       actions: [
         TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('戻る')),
-        FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('確認して保存')),
+        ValueListenableBuilder<TextEditingValue>(valueListenable: _adjustmentReason,
+          builder: (context, value, _) => FilledButton(
+            onPressed: _validAdjustmentReason(value.text) ? () => Navigator.pop(context, true) : null,
+            child: const Text('確認して保存'))),
       ],
     ));
     if (!mounted || generation != _generation || confirmed != true) return;
+    final reason = _adjustmentReason.text.trim();
+    if (!_validAdjustmentReason(reason)) return;
     setState(() { _busy = true; _error = null; });
     try {
-      final result = await _rpc('save_worker_payroll_tax_conditions', {
+      final result = await _rpc('save_worker_payroll_tax_conditions_with_reason', {
         ..._scope, 'p_starts_on': _month, 'p_expected_version': _version,
         'p_value': value, 'p_confirmed': true,
+        'p_reason': reason,
       });
       _checkActor();
       if (!mounted || generation != _generation) return;
@@ -374,9 +411,11 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
             row['starts_on'] == _month && row['version'] == _version + 1 &&
             row['value'] is Map &&
             _sameOverrides((row['value'] as Map)['deduction_overrides'], overrides) &&
-            (expectedManualAmounts == null || _sameOverrides((row['value'] as Map)['manual_insurance_premiums'], expectedManualAmounts)))) {
+            (expectedManualAmounts == null || _sameOverrides((row['value'] as Map)['manual_insurance_premiums'], expectedManualAmounts))) ||
+          !_validAdjustmentReceipt(result['adjustment_receipt'], reason)) {
         throw const FormatException('修正額の保存結果を確認できません');
       }
+      _adjustmentReason.clear();
       await _load();
     } catch (_) {
       if (!mounted || generation != _generation) return;
@@ -390,6 +429,17 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
   bool _sameOverrides(Object? raw, Map<String, int> expected) =>
       raw is Map && raw.length == expected.length &&
       expected.entries.every((e) => raw[e.key] == e.value);
+
+  bool _validAdjustmentReason(String raw) {
+    final reason = raw.trim();
+    return reason.isNotEmpty && reason.runes.length <= 1000 && utf8.encode(reason).length <= 4000;
+  }
+
+  bool _validAdjustmentReceipt(Object? raw, String reason) => raw is Map &&
+      raw['starts_on'] == _month && raw['version'] == _version + 1 &&
+      raw['reason'] == reason && raw['actor_id'] is String &&
+      (raw['actor_id'] as String).isNotEmpty && (_actor == null || raw['actor_id'] == _actor) &&
+      raw['changed_at'] is String && DateTime.tryParse(raw['changed_at'] as String) != null;
 
   String _amountStatus(String key) {
     if (_manual.contains(key)) return '手入力修正';
@@ -526,6 +576,8 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
         const Text('月を切り替える前に修正額の保存・読込の完了を確認してください。'),
       if (_busy) const LinearProgressIndicator(),
       if (_error != null) Text(_error!),
+      if (!_busy && _allowed && !_reasonContractAvailable)
+        const Text('手動調整を利用できません。管理者に確認してください。'),
       if (!_busy && _savedCalculation)
         const Text('保存済み明細の計算結果を表示しています。現在の条件での再計算は行っていません。'),
       if (!_busy && _error == null && _profile == null && !_savedCalculation)
@@ -602,7 +654,7 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
                   const Padding(padding: EdgeInsets.symmetric(vertical: 10),
                     child: Text('自動計算専用')),
                 if (_manual.contains(item.$1) && (_profile?['insurance_mode'] != 'manual' || item.$1 == 'income_tax'))
-                  TextButton(onPressed: widget.canEdit && _allowed && !_busy && !_uncertain ? () => setState(() {
+                  TextButton(onPressed: _canAdjust(item.$1) ? () => setState(() {
                     _manual.remove(item.$1);
                     _adjusting.remove(item.$1);
                     _controllers[item.$1]!.text = _automatic[item.$1]?.toString() ?? '';
@@ -614,7 +666,7 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
         ),
       if (_profile?['insurance_mode'] != 'rates' && _profile?['insurance_mode'] != 'manual' && widget.legacySocialAmount > 0)
         Text('保険料の個別計算条件を設定してください。以前の一括設定${widget.legacySocialAmount.toStringAsFixed(0)}円は保持されています。'),
-      FilledButton(onPressed: widget.canEdit && _allowed && _dirty && !_busy && !_uncertain ? _save : null,
+      FilledButton(onPressed: widget.canEdit && _allowed && _reasonContractAvailable && _dirty && !_busy && !_uncertain ? _save : null,
         child: const Text('税・保険料を登録')),
       TextButton(onPressed: _busy ? null : _load, child: const Text('税・保険料を再読み込み')),
       Card(key: const ValueKey('fixed-deduction-resident_tax'),
