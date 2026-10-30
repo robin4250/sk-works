@@ -52,6 +52,9 @@ void main() {
     final message = protectedAttendanceAllowanceMessage(protected)!;
     expect(message, contains('元の手当を残して'));
     expect(message, contains('日報で手当を変更して再署名'));
+    expect(message, contains('確定済みの日報は権限のある管理者が「勤怠管理」'));
+    expect(message, contains('未確定で編集承認を利用できる日報'));
+    expect(message, contains('「承認済みの編集を開始」'));
     expect(message, contains('この申請は承認せず、却下'));
     expect(message, contains('以前の申請を再承認しないで'));
     expect(message, isNot(contains('PostgrestException')));
