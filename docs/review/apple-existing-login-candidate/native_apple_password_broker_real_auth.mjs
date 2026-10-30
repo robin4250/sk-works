@@ -1,6 +1,8 @@
 // Disposable official GoTrue/PG bridge only. Never a hosted transport or route.
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {createNativeAppleAuthPorts} from './native_apple_auth_port.mjs';
+import {createSuccessorDeliveryAckPorts} from './native_successor_delivery_ack_port.mjs';
 import {createNativeApplePasswordSuccessorBroker} from './native_apple_successor_broker.mjs';
 const dbURL='postgresql://postgres:root@127.0.0.1:5432/postgres';
 const origin='https://ztktgquxvcxcjxtluspu.supabase.co';
@@ -55,6 +57,48 @@ try{
   assert.equal(ledger.rows.length,1);assert.equal(ledger.rows[0].status,'completed');
   assert.equal(ledger.rows[0].intent_sid,input.originalSID);assert.equal(ledger.rows[0].successor_session_id,result.session_id);
   assert.notEqual(ledger.rows[0].original_session_id,input.originalSID,'password SID is distinct and separately recorded');
+  // Reuse the exact candidate verifier and ACK port against official Auth.
+  const auth=createNativeAppleAuthPorts({enabled:true,nativeOnlyReviewed:true,
+   baseUrl:origin,publicKey:'sb_publishable_fixture',fetcher});
+  const ackConfig={enabled:true,reviewed:true,pool,
+   authenticateExactBearer:auth.authenticateExactBearer};
+  const ackInput={request_id:delivered.request_id,exactBearer:delivered.access_token};
+  const ack=createSuccessorDeliveryAckPorts(ackConfig);
+  await assert.rejects(createSuccessorDeliveryAckPorts({...ackConfig,enabled:false}).status(ackInput));
+  await assert.rejects(ack.status({...ackInput,exactBearer:input.originalBearer}));
+  const pieces=delivered.access_token.split('.');
+  pieces[2]=(pieces[2][0]==='a'?'b':'a')+pieces[2].slice(1);
+  await assert.rejects(ack.status({...ackInput,exactBearer:pieces.join('.')}));
+  const pending=await ack.status(ackInput);
+  assert.equal(pending.status,'server_completed');
+  assert.equal(pending.application_adoption_confirmed,false);
+  assert.equal(pending.retry_allowed,false);
+  // Lose a response after actual COMMIT; recover status without enrollment replay.
+  let discardCommit=true;
+  const losingPool={connect:async()=>{const db=await pool.connect();return {
+   release:()=>db.release(),query:async(q,p)=>{const value=await db.query(q,p);
+    if(q==='commit'&&discardCommit){discardCommit=false;throw Error('fixture_lost_commit_response');}
+    return value;}};}};
+  await assert.rejects(createSuccessorDeliveryAckPorts({...ackConfig,pool:losingPool}).acknowledge(ackInput));
+  const acknowledgedAt=(await pool.query('select acknowledged_at from apple_native_enrollment_private.delivery_possession_acks where request_id=$1',[ackInput.request_id])).rows[0]?.acknowledged_at;
+  assert.ok(acknowledgedAt);
+  const recovered=await ack.status(ackInput);
+  assert.equal(recovered.status,'successor_possession_recorded');
+  assert.equal(recovered.application_adoption_confirmed,false);
+  assert.equal(recovered.retry_allowed,false);
+  await ack.acknowledge(ackInput);
+  const ackRows=await pool.query('select acknowledged_at from apple_native_enrollment_private.delivery_possession_acks where request_id=$1',[ackInput.request_id]);
+  assert.equal(ackRows.rows.length,1);
+  assert.equal(ackRows.rows[0].acknowledged_at.getTime(),acknowledgedAt.getTime());
+  // Disposable DB mutations verify live context checks after Auth verification.
+  await pool.query("update public.company_members set role='admin' where user_id=$1",[input.actor]);
+  await assert.rejects(ack.status(ackInput));
+  await pool.query("update public.company_members set role='owner' where user_id=$1",[input.actor]);
+  await pool.query("update auth.sessions set not_after=clock_timestamp()-interval '1 second' where id=$1",[delivered.session_id]);
+  await assert.rejects(ack.status(ackInput));
+  await pool.query('update auth.sessions set not_after=null where id=$1',[delivered.session_id]);
+  assert.equal((await ack.status(ackInput)).status,'successor_possession_recorded');
+  assert.equal(appleCalls,1);assert.equal(deliveries,1);
   let refresh=delivered.refresh_token;
   for(let n=0;n<2;n++){
    const response=await fetcher(origin+'/auth/v1/token?grant_type=refresh_token',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({refresh_token:refresh})});
