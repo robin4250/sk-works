@@ -6,6 +6,22 @@ begin;
 create schema site_order_private;
 revoke all on schema site_order_private from public, anon, authenticated;
 
+create function site_order_private.valid_prices(p_value jsonb) returns boolean
+language sql immutable set search_path='' as $$
+  select case when jsonb_typeof(p_value) is distinct from 'array' then false
+    when jsonb_array_length(p_value) not between 1 and 100 then false
+    else not exists(select 1 from jsonb_array_elements(p_value) line where not (
+      case when jsonb_typeof(line) is distinct from 'object' then false
+      else line ?& array['item','unit_price_yen','unit'] and
+        (select count(*) from jsonb_object_keys(line))=3 and
+        jsonb_typeof(line->'item')='string' and length(trim(line->>'item')) between 1 and 1000 and
+        jsonb_typeof(line->'unit')='string' and length(trim(line->>'unit')) between 1 and 32 and
+        case when jsonb_typeof(line->'unit_price_yen') is distinct from 'number' then false
+        else (line->>'unit_price_yen')::numeric between 0 and 9007199254740991 and
+          trunc((line->>'unit_price_yen')::numeric)=(line->>'unit_price_yen')::numeric end end
+    )) end
+$$;
+
 create table site_order_private.artifacts (
   id uuid not null,
   revision bigint not null check (revision > 0),
@@ -22,9 +38,7 @@ create table site_order_private.artifacts (
   trusted_issuer_receipt_id uuid not null,
   company_snapshot jsonb not null check (jsonb_typeof(company_snapshot) = 'object'),
   seal_version_id uuid not null,
-  canonical_price_lines jsonb not null check (
-    jsonb_typeof(canonical_price_lines) = 'array' and
-    jsonb_array_length(canonical_price_lines) between 1 and 100),
+  canonical_price_lines jsonb not null check (site_order_private.valid_prices(canonical_price_lines)),
   created_by uuid not null,
   created_at timestamptz not null default clock_timestamp(),
   primary key (id, revision),

@@ -17,7 +17,8 @@ class SiteOrderScope {
 class SiteOrderPrice {
   SiteOrderPrice({required this.item, required this.unitPriceYen,
     required this.unit}) {
-    if (item.trim().isEmpty || unit.trim().isEmpty || unitPriceYen < 0 ||
+    if (item.trim().isEmpty || item.length > 1000 || unit.trim().isEmpty ||
+        unit.length > 32 || unitPriceYen < 0 ||
         unitPriceYen > 9007199254740991) {
       throw FormatException('注文書の単価・単位を確認できません。');
     }

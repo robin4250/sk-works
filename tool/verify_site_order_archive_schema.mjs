@@ -9,7 +9,9 @@ if(engine==='postgres') {
     throw new Error('Local dedicated fixture database required');
   }
   const dependency=process.env.SKO_PG_MODULE||resolve('tool/security/fixture_dependencies/node_modules/pg/lib/index.js');
-  const {Client}=await import(pathToFileURL(dependency));
+  const module=await import(pathToFileURL(dependency));
+  const Client=module.Client??module.default?.Client;
+  if(typeof Client!=='function')throw new Error('Pinned pg client export missing');
   const client=new Client({connectionString:url.toString()});await client.connect();
   db={exec:sql=>client.query(sql),query:sql=>client.query(sql),close:()=>client.end()};
 } else if(engine==='pglite') {
@@ -40,6 +42,15 @@ try {
   await db.exec(schema.replace(/rollback;\s*$/i,''));
   await db.exec(artifact(10,1,101));
   await db.exec(artifact(11,2,102,'acceptance'));
+  for(const invalid of ['[]','[null]','[1]',
+    '[{"item":"","unit_price_yen":32000,"unit":"人日"}]',
+    '[{"item":"とび工","unit_price_yen":-1,"unit":"人日"}]',
+    '[{"item":"とび工","unit_price_yen":3.5,"unit":"人日"}]',
+    '[{"item":"とび工","unit_price_yen":"32000","unit":"人日"}]',
+    '[{"item":"とび工","unit_price_yen":32000,"unit":"人日","pdf_url":"secret"}]']) {
+    await denied(artifact(12,1,101).replace(
+      '[{"item":"とび工","unit_price_yen":32000,"unit":"人日"}]',invalid),'23514');
+  }
   const delivery = `insert into site_order_private.deliveries
     (id,sender_company_id,recipient_company_id,registered_trade_company_id,connection_version,
     request_id,source_site_id,site_share_data_item_id,artifact_id,artifact_revision,sent_by,sent_session_id)

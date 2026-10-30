@@ -135,8 +135,8 @@ adapter の一覧 pagination が未完了なら「全履歴閲覧完成」と報
 置き換えたfixtureだけで live authorization 成功とはしない。
 本番DML/DDL/RLS/Auth・配信・実機更新は未実施。個別書類免除はOFFを維持する。
 
-2026-10-30 オフライン PGlite: `verify_site_order_archive_schema.mjs` は **29 checks
+2026-10-30 オフライン PGlite: `verify_site_order_archive_schema.mjs` は **37 checks
 passed**。正規の注文→自社請書outboxと承認の整合、元の取引会社以外への返送拒否、
 別会社artifact/別現場参照拒否、request ID重複拒否、原本更新/削除拒否、RLSと無grant、
-通知宛先/応答整合/重複拒否を確認。
+通知宛先/応答整合/重複拒否、単価明細の型・負数・小数・未知キーの拒否を確認。
 このSQLは構造候補であり、trusted issuer・RPC・live session・実配送は試験対象外。
