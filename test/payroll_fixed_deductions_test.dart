@@ -147,6 +147,7 @@ void main() {
     await startAdjustment(t, 'health_insurance');
     await t.enterText(amount('health_insurance'), '5100');
     FocusManager.instance.primaryFocus?.unfocus();
+    await t.pumpAndSettle();
     final saveButton = find.widgetWithText(FilledButton, '税・保険料を登録');
     await t.ensureVisible(saveButton);
     await t.tap(saveButton);
@@ -190,6 +191,7 @@ void main() {
     await startAdjustment(t, 'income_tax');
     await t.enterText(amount('income_tax'), '1250');
     FocusManager.instance.primaryFocus?.unfocus();
+    await t.pumpAndSettle();
     final saveButton = find.widgetWithText(FilledButton, '税・保険料を登録');
     await t.ensureVisible(saveButton);
     await t.tap(saveButton);
