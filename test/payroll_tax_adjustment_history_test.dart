@@ -95,7 +95,7 @@ class _Wire extends http.BaseClient {
   }
 }
 
-Future<SupabaseClient> clientFor(_Wire wire) async {
+Future<SupabaseClient> _clientFor(_Wire wire) async {
   final client = SupabaseClient('https://synthetic.invalid', 'synthetic-public',
     httpClient: wire, authOptions: const AuthClientOptions(autoRefreshToken: false));
   await client.auth.setInitialSession(jsonEncode(wire.session));
@@ -138,7 +138,7 @@ void main() {
   });
   test('the SDK read sends exact scope with captured authorization and no capability/save calls', () async {
     final wire = _Wire();
-    final sdk = await clientFor(wire);
+    final sdk = await _clientFor(wire);
     final source = PayrollTaxHistoryRepository(sdk, companyId: company, workerId: worker);
     try {
       expect((await source.load()).items.length, 1);
@@ -149,7 +149,7 @@ void main() {
   });
   test('workspace role loss after history response refuses publication and retires the source', () async {
     final wire = _Wire()..denyAfterHistory = true;
-    final client = await clientFor(wire);
+    final client = await _clientFor(wire);
     final source = PayrollTaxHistoryRepository(client, companyId: company, workerId: worker);
     try {
       await expectLater(source.load(), throwsStateError);
@@ -158,7 +158,7 @@ void main() {
   });
   test('a changed company refuses the history RPC instead of using a stale worker', () async {
     final wire = _Wire()..currentCompany = foreign;
-    final client = await clientFor(wire);
+    final client = await _clientFor(wire);
     final source = PayrollTaxHistoryRepository(client, companyId: company, workerId: worker);
     try {
       await expectLater(source.load(), throwsStateError);
@@ -167,7 +167,7 @@ void main() {
   });
   test('SDK A-B-A authentication cannot publish a late history or revive the old scope', () async {
     final wire = _Wire()..holdHistory = Completer<void>();
-    final client = await clientFor(wire);
+    final client = await _clientFor(wire);
     final source = PayrollTaxHistoryRepository(client, companyId: company, workerId: worker);
     try {
       final pending = source.load();
@@ -191,7 +191,7 @@ void main() {
   });
   test('a missing module is unavailable and never represented as an empty history', () async {
     final wire = _Wire()..missing = true;
-    final client = await clientFor(wire);
+    final client = await _clientFor(wire);
     final source = PayrollTaxHistoryRepository(client, companyId: company, workerId: worker);
     try { await expectLater(source.load(), throwsA(isA<PayrollTaxHistoryUnavailable>())); }
     finally { source.dispose(); await client.dispose(); }
@@ -263,7 +263,7 @@ void main() {
   });
   testWidgets('logout intent hides loaded SDK data before remote logout completes', (tester) async {
     final wire = _Wire()..holdLogout = Completer<void>();
-    final client = await clientFor(wire);
+    final client = await _clientFor(wire);
     final source = PayrollTaxHistoryRepository(client, companyId: company, workerId: worker);
     await tester.pumpWidget(MaterialApp(home: PayrollTaxAdjustmentHistoryPage(companyId: company,
       workerId: worker, workerName: '検証メンバー', sourceOverride: source)));
