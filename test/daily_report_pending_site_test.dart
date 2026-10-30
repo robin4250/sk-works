@@ -57,8 +57,12 @@ void main(){
   expect(find.text('責任者サイン待ち 3件'),findsOneWidget);expect(find.text('すべての月・現場別'),findsOneWidget);
   expect(find.byKey(const ValueKey('daily-report-pending-site-site:site-a')),findsOneWidget);
   expect(find.byKey(const ValueKey('daily-report-pending-site-site:site-b')),findsOneWidget);
-  expect(find.textContaining('2025-01-02'),findsOneWidget);expect(find.textContaining('2024-02-01'),findsOneWidget);
-  final text=tester.widget<Text>(find.text('責任者サイン待ち 3件'));expect(text.style!.color,Colors.red.shade900);
+  await tester.tap(find.byKey(const ValueKey('daily-report-pending-site-site:site-b')));await tester.pumpAndSettle();
+  expect(find.textContaining('2024-02-01'),findsOneWidget);
+  await tester.tap(find.byTooltip('現場一覧へ'));await tester.pumpAndSettle();
+  await tester.tap(find.byKey(const ValueKey('daily-report-pending-site-site:site-a')));await tester.pumpAndSettle();
+  expect(find.textContaining('2025-01-02'),findsOneWidget);expect(find.textContaining('2026-03-04'),findsOneWidget);
+  final text=tester.widget<Text>(find.text('責任者サイン待ち 2件'));expect(text.style!.color,Colors.red.shade900);
   await tester.tap(find.descendant(of:find.byKey(const ValueKey('daily-report-pending-entry-old-a')),matching:find.text('サイン')));await tester.pumpAndSettle();
   expect(opened,'old-a');expect(find.text('既存日報 old-a'),findsOneWidget);
   await tester.pageBack();await tester.pumpAndSettle();expect(repo.pendingReads,2);expect(tester.takeException(),isNull);
