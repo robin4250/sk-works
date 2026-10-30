@@ -128,7 +128,7 @@ void main() {
     }
     Future<void> start() async {
       final start = find.byKey(const ValueKey('daily-report-begin-approved-edit'));
-      await reveal(start); await tester.tap(start); await tester.pumpAndSettle();
+      await reveal(start); await tester.tap(start); await tester.pump(); await tester.pump(const Duration(milliseconds: 400));
       await tester.tap(find.text('編集を開始').last); await tester.pumpAndSettle();
     }
     await start();
@@ -165,8 +165,8 @@ void main() {
     final start = find.byKey(const ValueKey('daily-report-begin-approved-edit'));
     final scrollable = find.byWidgetPredicate((widget) => widget is Scrollable && widget.axisDirection == AxisDirection.down).first;
     await tester.scrollUntilVisible(start, 250, scrollable: scrollable, maxScrolls: 40);
-    await tester.ensureVisible(start); await tester.tap(start); await tester.pumpAndSettle();
-    await tester.tap(find.text('編集を開始').last); await tester.pumpAndSettle();
+    await tester.ensureVisible(start); await tester.tap(start); await tester.pump(); await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.text('編集を開始').last); await tester.pump(); await tester.pump(const Duration(milliseconds: 400));
     expect(old.saves, 1);
     final next = BlockedEditReports(client)..reportIdValue = 'report-b'
       ..companyIdValue = 'company-b'..siteIdValue = 'site-b';

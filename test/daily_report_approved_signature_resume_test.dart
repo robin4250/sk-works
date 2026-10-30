@@ -73,7 +73,7 @@ void main() {
       final edit = find.byKey(const ValueKey('daily-report-signature-preview-begin-edit'));
       expect(edit, approved ? findsOneWidget : findsNothing);
       if (approved) {
-        await tester.tap(edit); await tester.pumpAndSettle();
+        await tester.tap(edit); await tester.pump(); await tester.pump(const Duration(milliseconds: 400));
         expect(find.text('編集を開始').last, findsOneWidget);
         expect(reports.saves, 0); expect(reports.signed, isTrue);
         await tester.tap(find.text('キャンセル').last); await tester.pumpAndSettle();

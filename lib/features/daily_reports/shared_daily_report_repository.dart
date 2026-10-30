@@ -401,7 +401,7 @@ class SharedDailyReportRepository {
       reportId: before.reportId,
       workDate: before.workDate,
     );
-    if (after.approvedEditRequestId != requestId ||
+    if (after.isManagementHold || after.approvedEditRequestId != requestId ||
         after.reportStatus != 'draft' ||
         after.reporterSaved ||
         after.supervisorSaved ||

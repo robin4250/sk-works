@@ -2134,6 +2134,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
           target != _approvedEditTarget ||
           repository.currentActorId != session.actorId ||
           _error != null ||
+          _managementHold ||
           _report?.status != 'draft' ||
           _report?.reporterSignatureJson != null ||
           _report?.responsibleSignatureJson != null ||

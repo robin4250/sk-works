@@ -160,7 +160,8 @@ void main() {
     final button = find.byKey(const ValueKey('daily-report-begin-approved-edit'));
     await reveal(tester, button);
     await tester.tap(button);
-    await tester.pumpAndSettle();
+    // The busy indicator intentionally continues while confirmation is open.
+    await tester.pump(); await tester.pump(const Duration(milliseconds: 400));
   }
 
   testWidgets('opening approval never clears signatures; explicit start enables both signatures',

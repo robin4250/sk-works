@@ -11,7 +11,18 @@ assert.equal(original.split(marker).length,2,'Exact old-writer failure observati
 const addition=String.raw`
  phase='resume-old-signatures-without-new-approval';
  await exec('create schema if not exists explicit_report_finalization_private;create table if not exists explicit_report_finalization_private.events(report_id uuid,kind text);create table if not exists explicit_report_finalization_private.management_reports(report_id uuid);');
- await exec(await readFile('docs/review/approved-edit-signature-resume/core.sql','utf8'));
+ const recoveryCore=await readFile('docs/review/approved-edit-signature-resume/core.sql','utf8');
+ await exec('create role fixture_unexpected_function_executor');
+ for(const aclSchema of ['public','shared_report_edit_private']) {
+  await exec('savepoint recovery_custom_acl');
+  await exec('alter default privileges for role postgres in schema '+aclSchema+' grant execute on functions to fixture_unexpected_function_executor');
+  let aclFailure;try{await exec(recoveryCore);}catch(error){aclFailure=error;}
+  await exec('rollback to recovery_custom_acl;release recovery_custom_acl');
+  assert.ok(aclFailure,'Unknown function default ACL must abort the entire install');
+  assert.match(aclFailure.message,/new_function_attributes_differ/);
+  eq(await q("select to_regprocedure('public.resume_approved_daily_report_signatures(uuid,uuid,timestamptz,text)') is null v"),true,'Failed custom ACL installation leaves no public mutation');
+ }
+ await exec(recoveryCore);
  const resumeBefore=await sharedCall(U,id(80),'select public.read_shared_daily_report_context($1) v',[pcRid]);
  const resumeSession=await q('select to_jsonb(s) v from shared_report_edit_private.sessions s where report_id=$1',[pcRid]);
  eq(resumeSession.state,'active','Broken draft retains the existing exact active session');
