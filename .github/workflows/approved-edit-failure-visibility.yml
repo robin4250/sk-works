@@ -5,6 +5,8 @@ on:
       - 'lib/features/daily_reports/daily_report_page.dart'
       - 'test/daily_report_approved_edit_failure_visibility_test.dart'
       - '.github/workflows/approved-edit-failure-visibility.yml'
+      - 'docs/review/approved-edit-allowance-reset/**'
+      - 'tool/verify_approved_edit_allowance_reset.mjs'
 permissions:
   contents: read
 jobs:
@@ -46,3 +48,28 @@ jobs:
           git diff --exit-code -- "$page"
       - run: flutter test --reporter expanded test/daily_report_approved_edit_failure_visibility_test.dart test/daily_report_approved_edit_start_test.dart test/daily_report_common_allowance_names_test.dart
       - run: git diff --exit-code -- pubspec.yaml pubspec.lock
+
+  native-approved-reset:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_checkout_integration_fixture
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --no-audit --no-fund --prefix tool/security/fixture_dependencies
+      - run: node --check tool/verify_approved_edit_allowance_reset.mjs
+      - name: Exact deployed old writer then four-CASE candidate in disposable PostgreSQL
+        env:
+          SKO_CHECKOUT_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_checkout_integration_fixture
+        run: node tool/verify_approved_edit_allowance_reset.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"
