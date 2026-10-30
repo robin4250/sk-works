@@ -70,8 +70,8 @@ void main(){
   test('managed SDK load uses only dedicated RPC, with no legacy fallback ($failure)',()async{
    final calls=<String>[];final jwt=token();
    final transport=MockClient((r)async{
-    if(r.url.path.endsWith('/auth/v1/token'))return http.Response(jsonEncode({'access_token':jwt,'refresh_token':'synthetic-refresh','expires_in':3600,'token_type':'bearer',
-     'user':{'id':actor,'aud':'authenticated','role':'authenticated','created_at':'2026-01-01T00:00:00Z'}}),200,headers:{'content-type':'application/json'});
+    if(r.url.path.endsWith('/auth/v1/token')){return http.Response(jsonEncode({'access_token':jwt,'refresh_token':'synthetic-refresh','expires_in':3600,'token_type':'bearer',
+     'user':{'id':actor,'aud':'authenticated','role':'authenticated','created_at':'2026-01-01T00:00:00Z'}}),200,headers:{'content-type':'application/json'});}
     calls.add(r.url.path);expect(r.url.path,endsWith('/rpc/standalone_trade_document_registration_context'));
     expect(jsonDecode(r.body),{'p_trade_company_id':trade,'p_acceptance':false});
     expect(r.headers['Authorization']??r.headers['authorization'],'Bearer $jwt');

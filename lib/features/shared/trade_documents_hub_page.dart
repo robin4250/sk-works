@@ -6,7 +6,10 @@ import 'trade_documents_hub_contract.dart';
 import 'trade_documents_hub_repository.dart';
 
 class TradeDocumentsHubPage extends StatefulWidget {
-  const TradeDocumentsHubPage({super.key});
+  const TradeDocumentsHubPage({super.key, this.repositoryOverride, this.generatorBuilder});
+  @visibleForTesting final TradeDocumentsHubRepository? repositoryOverride;
+  @visibleForTesting final Widget Function(TradeDocumentsHubParty, bool,
+    StandaloneTradeDocumentOperationGate)? generatorBuilder;
   @override State<TradeDocumentsHubPage> createState() => _TradeDocumentsHubPageState();
 }
 
@@ -17,7 +20,7 @@ class _TradeDocumentsHubPageState extends State<TradeDocumentsHubPage> {
   String? _error;
   @override void initState() {
     super.initState();
-    _repository = TradeDocumentsHubRepository.maybeCreate();
+    _repository = widget.repositoryOverride ?? TradeDocumentsHubRepository.maybeCreate();
     _repository?.addListener(_scopeChanged);
     _load();
   }
@@ -68,8 +71,9 @@ class _TradeDocumentsHubPageState extends State<TradeDocumentsHubPage> {
       await activeLease.refresh();
       if (!mounted) { return; }
       await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) =>
-        StandaloneTradeDocumentPage(tradeCompanyId: party.id,
-          acceptance: acceptance, operationGate: activeLease)));
+        widget.generatorBuilder?.call(party, acceptance, activeLease) ??
+          StandaloneTradeDocumentPage(tradeCompanyId: party.id,
+            acceptance: acceptance, operationGate: activeLease)));
       if (mounted) { await _load(); }
     } catch (_) {
       if (mounted) { setState(() => _error = '生成を開始できません。機能設定・権限・登録会社を確認してください。'); }
@@ -89,7 +93,9 @@ class _TradeDocumentsHubPageState extends State<TradeDocumentsHubPage> {
         tooltip: '再読み込み', icon: const Icon(Icons.refresh))]),
       body: SafeArea(child: _loading ? const Center(child: CircularProgressIndicator())
         : ListView(padding: const EdgeInsets.all(16), children: [
-          Text(value?.availability.enabled == true ? 'マスター設定：ON' : 'マスター設定：OFF',
+          Text(value == null || !value.availability.supported
+              ? '利用設定を確認できません（新規生成は停止）'
+              : value.availability.enabled ? 'マスター設定：ON' : 'マスター設定：OFF',
             style: Theme.of(context).textTheme.titleMedium),
           if (value?.availability.supported != true)
             const Text('注文・請書の接続を準備中です。保存済み書類は既存の一覧から確認できます。'),

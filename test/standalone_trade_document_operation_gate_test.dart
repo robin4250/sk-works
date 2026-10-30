@@ -31,7 +31,7 @@ class _Gate extends ChangeNotifier implements StandaloneTradeDocumentOperationGa
  void revoke(){allowed=false;notifyListeners();}
 }
 class _Repo extends StandaloneTradeDocumentRepository {
- _Repo(super.client,TradeDocumentFormSession scope,{String? managedCompanyId}):super(session:scope,managedCompanyId:managedCompanyId);
+ _Repo(super.client,TradeDocumentFormSession scope,{super.managedCompanyId}):super(session:scope);
  int loads=0;Completer<void>? hold;
  @override Future<Map<String,dynamic>> load({required String tradeCompanyId,required bool acceptance})async{
   loads++;verify();await hold?.future;

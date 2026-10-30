@@ -64,7 +64,7 @@ class TradeDocumentFormSession extends ChangeNotifier with WidgetsBindingObserve
  }
  Future<Object?> readOwnSealCompany(String companyId)async {
   await ready();requireScope();
-  return _receive(_client.from('companies').select('id,name,company_seal_enabled,company_seal_style')
+  return _receive(_client.from('companies').select('id,name,phone,fax,company_seal_enabled,company_seal_style')
    .eq('id',companyId).single().setHeader('Authorization','Bearer $_token').abortSignal(_retired.future).then<Object?>((v)=>v));
  }
  Future<Object?> readPaymentParent({required String id,required String companyId})async {

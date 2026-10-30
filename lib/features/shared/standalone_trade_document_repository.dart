@@ -74,12 +74,21 @@ class StandaloneTradeDocumentRepository {
       throw StateError('自社の会社情報を確認できません。会社データを登録してください。');
     }
     final profile = Map<String, dynamic>.from(profileRaw['profile'] as Map);
-    final companyRaw = _session!=null?await _session.readOwnSealCompany(companyId):await _client.from('companies').select('id,name,company_seal_enabled,company_seal_style')
+    final companyRaw = _session!=null?await _session.readOwnSealCompany(companyId):await _client.from('companies').select('id,name,phone,fax,company_seal_enabled,company_seal_style')
       .eq('id', companyId).single().setHeader('Authorization', 'Bearer $_token');
     verify();
     if(companyRaw is! Map)throw StateError('会社登録を確認できません。');
     final company=companyRaw;
     if (company['id'] != companyId || company['name'] != profile['name']) throw StateError('会社情報が更新されました。開き直してください。');
+    String ownContact(String key){
+      // A missing old helper key may use the same authorized company row.
+      // Explicit saved blank/null remains blank; never overwrite it on load.
+      final value=profile.containsKey(key)?profile[key]:company[key];
+      if(value==null)return '';
+      if(value is! String||value.runes.length>40||RegExp(r'[\x00-\x1f\x7f]').hasMatch(value))throw StateError('登録会社の連絡先を確認してください。');
+      return value;
+    }
+    final ownPhone=ownContact('phone'),ownFax=ownContact('fax');
     Map<String, dynamic> seal = {'version': 1, 'style': company['company_seal_style'] ?? 'legacy',
       'name': company['name'], 'company_id': companyId};
     try {
@@ -136,7 +145,7 @@ class StandaloneTradeDocumentRepository {
       if (partnerId != null) 'partner_company_id': partnerId,
       if (bank != null) 'counterparty_bank': bank,
       'issuer': {'name': profile['name'], 'address': profile['address'] ?? '',
-        'corporate_number': profile['corporate_number'] ?? '', 'representative_name': profile['representative_name'] ?? '', 'phone':profile['phone']??'','fax':profile['fax']??''},
+        'corporate_number': profile['corporate_number'] ?? '', 'representative_name': profile['representative_name'] ?? '', 'phone':ownPhone,'fax':ownFax},
       'counterparty': {'name': partner['name'], 'address': partner['address'] ?? '',
         'corporate_number': partner['corporate_number'] ?? '', 'representative_name': partner['representative_name'] ?? '', 'phone':partner['phone']??'','fax':partner['fax']??''},
       'template': Map<String, dynamic>.from(template['payload'] as Map),

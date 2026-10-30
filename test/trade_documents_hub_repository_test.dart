@@ -34,7 +34,8 @@ class _Http extends http.BaseClient {
     raw=[if(!removeParty){'id':party,'name':'登録会社','trade_role':'both'}];
    }else{throw StateError('Unexpected fixture endpoint');}
   }
-  return http.StreamedResponse(Stream.value(utf8.encode(jsonEncode(raw))),200,headers:{'content-type':'application/json'});
+  return http.StreamedResponse(Stream.value(utf8.encode(jsonEncode(raw))),200,
+    headers:{'content-type':'application/json'},request:r);
  }
 }
 class _Fixture {

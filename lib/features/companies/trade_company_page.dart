@@ -1,5 +1,4 @@
 import '../shared/trade_document_confirmation_dialog.dart';
-import '../shared/standalone_trade_document_page.dart';
 import 'trade_company_dialog.dart';
 import '../../data/supabase_backend.dart';
 import '../referrals/app_referral_page.dart';
@@ -379,16 +378,6 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
     );
     if (!mounted || action == null) return;
     switch (action) {
-      case _CompanyAction.document:
-        await Navigator.of(context).push<void>(
-          MaterialPageRoute(
-            builder: (_) => StandaloneTradeDocumentPage(
-              tradeCompanyId: item.id,
-              acceptance: widget.mode == TradeCompanyPageMode.customer,
-            ),
-          ),
-        );
-
       case _CompanyAction.receivedDocuments:
         await openReceivedTradeDocuments(context, item.id, item.name);
 
@@ -664,7 +653,7 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
   };
 }
 
-enum _CompanyAction { edit, contract, delete, source, invite, document, receivedDocuments }
+enum _CompanyAction { edit, contract, delete, source, invite, receivedDocuments }
 
 class _CompanyDraft {
   const _CompanyDraft({
