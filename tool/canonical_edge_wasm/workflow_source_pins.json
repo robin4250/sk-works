@@ -1,0 +1,12 @@
+{
+  "source_commit": "211c389b90ace6d33b64d69fac89fdd9060d3abb",
+  "wasm_adapter_commit": "3fab7b810091f1909d90d0ce3b878e3e784e1060",
+  "files": {
+    "supabase/functions/site-order-workflow/index.ts": "6ab4143498d67da1224313452524031bf058482494193139d089687f45da622e",
+    "supabase/functions/site-order-workflow/runtime.mjs": "eb423ed8c23d13d31f4fdbec9c03bafca4a0dac041e79a7241f47ffe0ae7ef65",
+    "supabase/functions/site-order-workflow/auth.mjs": "b71378004e878b785836acf6fdc9f616b875e36602d506e91cd1c8b0a4a1f6a8",
+    "supabase/functions/site-order-workflow/handler.mjs": "b01bdcbc4ef3e9fdf5501a3c07c7d65323474ce3f18a9a40aecc778ea528d317",
+    "tool/site_order_canonical_core.mjs": "e1f88ac1432af378d02beb009d7afa4e184018dd6905cea54e07d4531c4d7d3d"
+  },
+  "adapter_sha256": "783a7e5367d4303c6956f839845453bfe99bb27095f088ea679a32767f2b3a86"
+}

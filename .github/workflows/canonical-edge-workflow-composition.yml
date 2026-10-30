@@ -1,0 +1,66 @@
+name: Canonical Edge workflow private composition
+on:
+  pull_request:
+    paths:
+      - 'tool/canonical_edge_wasm/stage_workflow*'
+      - 'tool/canonical_edge_wasm/combined_import_test.mjs'
+      - 'tool/canonical_edge_wasm/workflow_source_pins.json'
+      - 'tool/canonical_edge_wasm/combined-deno.lock'
+      - '.github/workflows/canonical-edge-workflow-composition.yml'
+permissions: {contents: read}
+jobs:
+  actual-combined-deno:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/checkout@v4
+        with:
+          ref: 211c389b90ace6d33b64d69fac89fdd9060d3abb
+          path: .workflow-source
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: 65eb8fcec6af422c6a78269c273ec900db1d0d42
+          path: .wasm-source
+          persist-credentials: false
+      - uses: dart-lang/setup-dart@v1
+        with: {sdk: '3.13.7'}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22.21.0'}
+      - name: Locked renderer dependencies and official pinned Deno
+        run: |
+          dart pub get --enforce-lockfile --directory=.wasm-source/tool/canonical_renderer
+          npm install --prefix tool/canonical_edge_wasm/build/deno146 --ignore-scripts --save-exact @deno/linux-x64-glibc@1.46.3
+          python3 - <<'PY'
+          import json,pathlib
+          p=pathlib.Path('tool/canonical_edge_wasm')
+          pin=json.loads((p/'runtime-pins.json').read_text())['1.46.3']
+          actual=json.loads((p/'build/deno146/package-lock.json').read_text())['packages']['node_modules/@deno/linux-x64-glibc']
+          assert all(actual[k]==pin[k] for k in ('version','resolved','integrity'))
+          exe=p/'build/deno146/node_modules/@deno/linux-x64-glibc/deno'
+          exe.chmod(exe.stat().st_mode|0o100)
+          PY
+      - name: Compile identical pinned canonical renderer without repeating cold/pixel suites
+        run: python3 tool/canonical_edge_wasm/build.py --source-root .wasm-source --dart "$(command -v dart)"
+      - name: Stage exact reviewed HTTP source and private runtime
+        run: |
+          python3 tool/canonical_edge_wasm/stage_workflow_test.py --source-root .workflow-source
+          python3 tool/canonical_edge_wasm/stage_workflow.py --source-root .workflow-source --output /tmp/sko-workflow-private
+      - name: Resolve actual pinned npm specifiers without executing server code
+        run: tool/canonical_edge_wasm/build/deno146/node_modules/@deno/linux-x64-glibc/deno cache --no-config --frozen --lock=tool/canonical_edge_wasm/combined-deno.lock /tmp/sko-workflow-private/supabase/functions/site-order-workflow/runtime.mjs
+      - name: Actual Deno combined import and staged PDF with no network/project credentials
+        env:
+          USER: synthetic-fixture
+          NODE_ENV: test
+          WS_NO_BUFFER_UTIL: '1'
+          WS_NO_UTF_8_VALIDATE: '1'
+        run: |
+          tool/canonical_edge_wasm/build/deno146/node_modules/@deno/linux-x64-glibc/deno run --no-config --cached-only --frozen --lock=tool/canonical_edge_wasm/combined-deno.lock --allow-env=USER,NODE_ENV,WS_NO_BUFFER_UTIL,WS_NO_UTF_8_VALIDATE --allow-read=/tmp/sko-workflow-private,tool/canonical_edge_wasm tool/canonical_edge_wasm/combined_import_test.mjs /tmp/sko-workflow-private
+      - uses: actions/upload-artifact@v4
+        with:
+          name: canonical-workflow-composition-receipts
+          path: |
+            tool/canonical_edge_wasm/combined-deno.lock
+            /tmp/sko-workflow-private/private-composition-manifest.json
