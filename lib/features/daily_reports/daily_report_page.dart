@@ -2059,7 +2059,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
     final target = _approvedEditTarget;
     if (_saving || !_signed || shared?.requiresAttendanceManagement != true ||
         shared?.canManageAttendance != true || shared?.reportId != _report?.id ||
-        shared?.companyId != _report?.companyId || shared?.actorId != _repository?.currentActorId) return;
+        shared?.companyId != _report?.companyId || shared?.actorId != _repository?.currentActorId) { return; }
     await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) =>
       attendanceManagementDestination(initialDate: _date,
         initialWorkerId: _workers.length == 1 ? _workers.single.workerId : null)));
