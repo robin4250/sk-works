@@ -303,8 +303,9 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
         !_savedId(requestId)) {
       throw StateError('承認内容を確認できません。');
     }
-    if (await hasPendingApproval(id as String))
+    if (await hasPendingApproval(id as String)) {
       throw const SiteOrderResultUnknown();
+    }
     await _approvalJournal.begin(
       _actor,
       _company!,

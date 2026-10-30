@@ -71,8 +71,9 @@ class SiteOrderApprovalJournal {
         'preview_id': preview,
         'request_id': request,
       }),
-    ))
+    )) {
       throw StateError('承認前の保存状態を保持できません。');
+    }
   });
 
   Future<void> resolve(
