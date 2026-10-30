@@ -2,7 +2,7 @@ import {createRequire} from 'node:module';
 import {createProjectVerifier} from '../supabase/functions/site-order-workflow/auth.mjs';
 import {createSiteOrderHandler} from '../supabase/functions/site-order-workflow/handler.mjs';
 const require=createRequire(import.meta.url),{createClient}=require('./site_order_edge_dependencies/node_modules/@supabase/supabase-js');
-export async function verifySiteOrderHttpJwt(db,{id,UA,UB,UC,q,check,second,queued,renderer,openNativePeer,processReply=false}){
+export async function verifySiteOrderHttpJwt(db,{id,UA,UB,UC,q,check,second,queued,renderer,openNativePeer,processReply=false,refusal=null}){
  const base='https://isolated-sko-jwt.invalid';
  const keys=await crypto.subtle.generateKey({name:'ECDSA',namedCurve:'P-256'},true,['sign','verify']);
  const jwk={...await crypto.subtle.exportKey('jwk',keys.publicKey),kid:'isolated-pg-'+crypto.randomUUID(),alg:'ES256',use:'sig'};
@@ -34,6 +34,10 @@ export async function verifySiteOrderHttpJwt(db,{id,UA,UB,UC,q,check,second,queu
   check((await post(UB,{action:'register_original',job_id:queued.job_id})).status,403);
   await db.query("update private.master_feature_settings set enabled=true where feature_key='site_order_documents'");
   const rendered=await post(UB,{action:'register_original',job_id:queued.job_id});check(rendered.status,200);check((await rendered.json()).result.job_id,queued.job_id);
+  if(refusal){
+   const decision=await post(UB,{action:'refuse',package_id:refusal.package_id,request_id:refusal.request_id,confirmed:true});check(decision.status,200);check((await decision.json()).result.status,'rejected');
+   const detail=await post(UA,{action:'detail',package_id:refusal.package_id});check(detail.status,200);check((await detail.json()).result.rejected,true);
+  }
   if(processReply){const sent=await post(UB,{action:'process_reply',package_id:second.package_id});check(sent.status,200);check((await sent.json()).result.status,'recipient_stored');}
   const bad=await jwt(UB),parts=bad.split('.');parts[2]=b64(new Uint8Array(64));const before=connections;
   const rejected=await handler(new Request('https://function.invalid',{method:'POST',headers:{authorization:'Bearer '+parts.join('.')},body:JSON.stringify({action:'status',package_id:second.package_id})}));

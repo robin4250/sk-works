@@ -1,10 +1,12 @@
 import {registerManagerCanonicalSiteOrderJob,processCanonicalSiteOrderReply} from '../../../tool/site_order_canonical_core.mjs';
 const uuid=/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/;
 const commands={
- detail:{keys:['package_id'],sql:'select site_order_package_private.package_detail($1) as result'},
+ detail:{keys:['package_id'],sql:'select site_order_package_private.package_decision_detail($1) as result'},
  list:{keys:['before','before_id','limit'],sql:'select site_order_package_private.history_entries($1,$2,$3) as result'},
  recipient_targets:{keys:['package_id'],sql:'select site_order_package_private.recipient_targets($1) as result'},
  reconcile_approval:{keys:['package_id','preview_id','request_id'],sql:'select site_order_package_private.reconcile_approval($1,$2,$3) as result'},
+ reconcile_refusal:{keys:['package_id','request_id'],sql:'select site_order_package_private.reconcile_refusal($1,$2) as result'},
+ refuse:{keys:['package_id','request_id','confirmed'],sql:`with refused as materialized(select site_order_package_private.refuse_order($1,$2,$3) as result) select result||jsonb_build_object('notifications',site_order_package_private.dispatch_refusal_notifications($1)) as result from refused`},
  status:{keys:['package_id'],sql:'select site_order_package_private.package_status($1) as result'},
  archive_payload:{keys:['package_id','kind'],sql:'select site_order_package_private.archive_payload($1,$2) as result'},
  archive:{keys:['package_id','kind'],sql:'select site_order_package_private.archive_original($1,$2) as result',pdf:true},

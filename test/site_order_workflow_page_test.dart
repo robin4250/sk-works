@@ -12,7 +12,8 @@ const package = '00000000-0000-0000-0000-000000000001';
 class _Api extends SiteOrderWorkflowApi {
   bool expired = false, enabled = true, approved = false, stored = false;
   int approvals = 0, previews = 0, reconciliations = 0;
-  bool pendingApproval = false;
+  bool pendingApproval = false, rejected = false;
+  int refusals = 0;
   Completer<Map<String, dynamic>>? hold;
   @override
   bool get invalidated => expired;
@@ -34,6 +35,7 @@ class _Api extends SiteOrderWorkflowApi {
     'is_recipient': true,
     'can_write': enabled,
     'approved': approved,
+    'rejected': rejected,
     'reply_recipient_stored': stored,
     'reply_original_registered': stored,
     'site_projection': {
@@ -97,6 +99,13 @@ class _Api extends SiteOrderWorkflowApi {
   }
 
   @override
+  Future<Map<String, dynamic>> refuse(String id, String request) async {
+    refusals++;
+    rejected = true;
+    return {'package_id': id, 'request_id': request, 'status': 'rejected'};
+  }
+
+  @override
   Future<Map<String, dynamic>> resume(String id) async => {
     'result': {'status': 'recipient_stored'},
   };
@@ -123,6 +132,30 @@ void main() {
     expect(notificationTargetIsValid('site_order_package', 'wrong'), isFalse);
     expect(notificationTargetIsValid('site_order_package', package), isTrue);
   });
+  testWidgets(
+    'recipient refusal requires a separate explicit confirmation and removes approval actions',
+    (tester) async {
+      final api = _Api();
+      await tester.pumpWidget(_app(api));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('注文を辞退'));
+      await tester.tap(find.text('注文を辞退'));
+      await tester.pumpAndSettle();
+      expect(api.refusals, 0);
+      await tester.tap(find.text('戻る'));
+      await tester.pumpAndSettle();
+      expect(api.refusals, 0);
+      await tester.tap(find.text('注文を辞退'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('辞退を送信'));
+      await tester.pumpAndSettle();
+      expect(api.refusals, 1);
+      expect(find.text('辞退済み'), findsOneWidget);
+      expect(find.text('内容と自社印を確認して承認'), findsNothing);
+      expect(find.text('注文を辞退'), findsNothing);
+      expect(api.approvals, 0);
+    },
+  );
   testWidgets(
     'a missing signed-in account shows a closed entry rather than an endless loader',
     (tester) async {

@@ -235,7 +235,7 @@ class SiteOrderPackagePage extends StatefulWidget {
 
 class _SiteOrderPackagePageState extends State<SiteOrderPackagePage> {
   Map<String, dynamic>? _detail;
-  bool _busy = true, _unknown = false;
+  bool _busy = true, _unknown = false, _prompting = false;
   String? _error, _message;
   final Map<String, dynamic> _uncertainOperation = {};
   @override
@@ -262,13 +262,16 @@ class _SiteOrderPackagePageState extends State<SiteOrderPackagePage> {
       _error = null;
     });
     try {
-      pendingApproval = await widget.api.hasPendingApproval(widget.packageId);
+      pendingApproval =
+          await widget.api.hasPendingApproval(widget.packageId) ||
+          await widget.api.hasPendingRefusal(widget.packageId);
       final value = await widget.api.detail(widget.packageId);
       if (mounted && !widget.api.invalidated) {
         setState(() {
           _detail = value;
           // A negative read can race an earlier request still committing.
-          // Only the final recipient receipt resolves an uncertain operation.
+          // A persisted decision requires its exact operation barrier;
+          // only a final recipient receipt resolves an uncertain reply read.
           _unknown =
               pendingApproval ||
               (recovering && value['reply_recipient_stored'] != true);
@@ -294,11 +297,16 @@ class _SiteOrderPackagePageState extends State<SiteOrderPackagePage> {
     setState(() => _busy = true);
     try {
       final state = await widget.api.reconcileApproval(widget.packageId);
+      final refusal = await widget.api.reconcileRefusal(widget.packageId);
       if (!mounted || widget.api.invalidated) return;
-      if (state != null) {
+      if (state != null || refusal != null) {
         setState(() {
           _unknown = false;
-          _message = state == 'accepted'
+          _message = refusal != null
+              ? (refusal == 'accepted'
+                    ? '注文の辞退が保存されています。'
+                    : '前の辞退は受け付けられていません。内容をご確認ください。')
+              : state == 'accepted'
               ? '承認の保存を確認しました。請書の送信状態を確認してください。'
               : '前の承認は受け付けられていません。内容を確認して承認し直せます。';
         });
@@ -373,6 +381,52 @@ class _SiteOrderPackagePageState extends State<SiteOrderPackagePage> {
     }
   }
 
+  Future<void> _refuse() async {
+    if (_busy || _unknown || _prompting) return;
+    setState(() => _prompting = true);
+    try {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('この注文を辞退しますか？'),
+          content: const Text('注文元の会社へ辞退したことを通知します。現場の追加や請書の作成は行いません。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('戻る'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('辞退を送信'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted || widget.api.invalidated) return;
+      setState(() => _busy = true);
+      await widget.api.refuse(widget.packageId, siteOrderRequestId());
+      if (!mounted || widget.api.invalidated) return;
+      setState(() => _message = '注文を辞退し、注文元の要通知へ保存しました。');
+      await _load();
+    } on SiteOrderResultUnknown {
+      if (mounted) {
+        setState(() {
+          _unknown = true;
+          _message = '辞退の保存結果を確認できません。再送せず、保存状態を確認してください。';
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _error = '辞退の結果を確認できません。保存状態を確認してください。');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _prompting = false;
+        });
+      }
+    }
+  }
+
   Future<void> _resume() async {
     setState(() {
       _busy = true;
@@ -432,6 +486,7 @@ class _SiteOrderPackagePageState extends State<SiteOrderPackagePage> {
     final site = projection is Map ? projection : const {};
     final recipient = detail?['is_recipient'] == true;
     final approved = detail?['approved'] == true;
+    final rejected = detail?['rejected'] == true;
     final stored = detail?['reply_recipient_stored'] == true;
     final canWrite = detail?['can_write'] == true;
     final sent = detail?['is_sender'] == true;
@@ -483,7 +538,9 @@ class _SiteOrderPackagePageState extends State<SiteOrderPackagePage> {
                   const SizedBox(height: 12),
                   Chip(
                     label: Text(
-                      stored
+                      rejected
+                          ? '辞退済み'
+                          : stored
                           ? '請書を相手先に保管済み'
                           : approved
                           ? '承認済み・請書の処理を確認'
@@ -509,10 +566,15 @@ class _SiteOrderPackagePageState extends State<SiteOrderPackagePage> {
                       icon: const Icon(Icons.description_outlined),
                       label: const Text('請書を見る'),
                     ),
-                  if (recipient && !approved && canWrite)
+                  if (recipient && !approved && !rejected && canWrite)
                     FilledButton(
                       onPressed: _busy || _unknown ? null : _review,
                       child: const Text('内容と自社印を確認して承認'),
+                    ),
+                  if (recipient && !approved && !rejected && canWrite)
+                    OutlinedButton(
+                      onPressed: _busy || _unknown ? null : _refuse,
+                      child: const Text('注文を辞退'),
                     ),
                   if (recipient && approved && !stored && canWrite)
                     FilledButton(
