@@ -49,7 +49,9 @@ assert.equal(failed?.message,'Installed scope count changed');await db.exec('rol
 for(const old of captured){const now=(await db.query('select to_jsonb(p) attrs,pg_get_functiondef(p.oid) definition from pg_proc p where p.oid=$1',[old.attributes.oid])).rows[0];assert.deepEqual(now.attrs,old.attributes);assert.equal(now.definition,old.definition);}
 assert.equal((await db.query("select to_regprocedure('private.validate_trade_document_form_fields(jsonb)') value")).rows[0].value,null);
 assert.deepEqual(await rowSnapshot(),beforeRows);passed++;
-await db.exec(forward);assert.deepEqual(await rowSnapshot(),beforeRows);passed++;
+const execution=await db.exec(forward);const statements=Array.isArray(execution)?execution:[execution];
+const receipt=statements.find(result=>result.rows?.length===18&&result.rows.every(row=>row.attributes&&row.source_md5));assert.equal(receipt?.rows.length,18);passed++;
+assert.deepEqual(await rowSnapshot(),beforeRows);passed++;
 await identity();
 const cap=await q("select public.trade_document_attachment_workspace('payment_certificate',$1,'1') v",[document]);assert.equal(cap.form_fields_schema_version,2);passed++;
 await deny(()=>q('select public.standalone_trade_document_access() v'),'42501');
@@ -70,7 +72,9 @@ await db.exec("insert into private.master_feature_settings(feature_key,enabled) 
 const installed=(await db.query("select n.nspname schema,p.proname name,pg_get_functiondef(p.oid) definition,to_jsonb(p) attributes from pg_proc p join pg_namespace n on n.oid=p.pronamespace where (n.nspname='private' and p.proname in ('trade_document_source','save_trade_document_attachment','save_trade_document_before_confirmed_terms','save_trade_document_before_form_fields','validate_trade_document_form_fields','partner_company_profile_value','require_trade_documents_master_feature','require_standalone_trade_document_access','standalone_trade_document_registration_context')) or (n.nspname='public' and p.proname in ('current_master_feature_flags','set_master_feature_enabled_with_proof','standalone_trade_document_access','standalone_trade_document_registration_context')) order by n.nspname,p.proname")).rows;
 assert.equal(installed.length,13);
 const restoreTargets=captured.filter(r=>['current_master_feature_flags','set_master_feature_enabled_with_proof','trade_document_source','partner_company_profile_value','save_trade_document_attachment'].includes(r.name));assert.equal(restoreTargets.length,5);
-const restoreCatalog=JSON.stringify(installed);assert.ok(!restoreCatalog.includes('$restore_catalog$'));
+const unchangedAuth=captured.filter(r=>['is_current_user_master_admin','require_reauthentication_session','consume_reauthentication_proof','account_access_allowed','set_master_feature_enabled'].includes(r.name));assert.equal(unchangedAuth.length,5);
+const recoveryScope=[...installed,...unchangedAuth];assert.equal(recoveryScope.length,18);
+const restoreCatalog=JSON.stringify(recoveryScope);assert.ok(!restoreCatalog.includes('$restore_catalog$'));
 const identityGuard="do $restore_identity$ declare e jsonb;p pg_proc;begin for e in select value from jsonb_array_elements($restore_catalog$"+restoreCatalog+"$restore_catalog$::jsonb) loop select q.* into p from pg_proc q where q.oid=(e#>>'{attributes,oid}')::oid;if not found or to_jsonb(p) is distinct from e->'attributes' or pg_get_functiondef(p.oid) is distinct from e->>'definition' then raise exception 'Committed restore identity changed; stop' using errcode='55000';end if;end loop;end $restore_identity$;";
 const stoppedRestore=async()=>{await db.exec(restoreEligibility);await db.exec(identityGuard);for(const target of restoreTargets)await db.exec(target.definition);};
 const beforeRestoreRows=await rowSnapshot();
@@ -83,9 +87,11 @@ assert.deepEqual(await rowSnapshot(),beforeRestoreRows);
 assert.deepEqual((await db.query("select to_jsonb(c) attrs from pg_class c where c.oid='private.master_feature_settings'::regclass")).rows[0].attrs,tableBefore);
 assert.deepEqual((await db.query("select to_jsonb(c) attrs from pg_constraint c where c.conrelid='private.master_feature_settings'::regclass order by c.oid")).rows,constraintsBefore);
 await db.exec('rollback');passed++;
-await db.exec('begin;alter function private.save_trade_document_attachment(text,uuid,text,integer,jsonb) cost 101');
-await assert.rejects(stoppedRestore,error=>error.code==='55000'&&error.message==='Committed restore identity changed; stop');await db.exec('rollback');passed++;
-for(const row of installed)assert.deepEqual((await db.query('select to_jsonb(p) attrs from pg_proc p where p.oid=$1',[row.attributes.oid])).rows[0].attrs,row.attributes);
+for(const driftTarget of ['private.save_trade_document_attachment(text,uuid,text,integer,jsonb)','private.account_access_allowed()']){
+ await db.exec('begin;alter function '+driftTarget+' cost 101');
+ await assert.rejects(stoppedRestore,error=>error.code==='55000'&&error.message==='Committed restore identity changed; stop');await db.exec('rollback');passed++;
+}
+for(const row of recoveryScope)assert.deepEqual((await db.query('select to_jsonb(p) attrs from pg_proc p where p.oid=$1',[row.attributes.oid])).rows[0].attrs,row.attributes);
 
 
 await identity();const form={...fresh(),schema:2,progress_cutoff_day:'month_end',issuer_representative_title:'',amount_description:'下記「施工単価内訳書」による'};
@@ -96,13 +102,13 @@ await assert.rejects(stoppedRestore,error=>error.code==='55000'&&error.message.s
 
 let replay;
 try{await db.exec(forward);}catch(error){replay=error;}assert.equal(replay?.message,'Fresh full function catalog changed; stop');await db.exec('rollback');passed++;
-console.log(JSON.stringify({result:'PASS atomic machine review plan',checks:passed,full_preflight_functions:10,full_postflight_scope:13,atomic_failed_postflight_rollback:true,business_rows_unchanged_by_install:true,master_off:true,receipt_blocks_legacy_restore:true,source_only_restore_rehearsed:true,later_identity_drift_refuses_restore:true,production:false}));
+console.log(JSON.stringify({result:'PASS atomic machine review plan',checks:passed,full_preflight_functions:10,full_postflight_scope:13,atomic_failed_postflight_rollback:true,business_rows_unchanged_by_install:true,master_off:true,receipt_blocks_legacy_restore:true,source_only_restore_rehearsed:true,recovery_receipt_functions:18,committed_receipt_functions:18,later_identity_drift_refuses_restore:true,auth_dependency_drift_refuses_restore:true,production:false}));
 } finally {await db.close();}
 '''
 s=s.replace('__ATOMIC_FIXTURE_OUTPUT__',out.as_posix()).replace('__ATOMIC_MAIN_ROOT__',main.as_posix()).replace('__ATOMIC_HUB_ROOT__',main.as_posix())
 s=s.replace("rootOut+'/build_review_bundle.py'",json.dumps(str(main/'tool/build_trade_document_deployment_review.py')))
 s=s.replace("console.log(JSON.stringify({result:'PASS atomic machine review plan'","const summary={result:'PASS atomic machine review plan'")
-s=s.replace("receipt_blocks_legacy_restore:true,source_only_restore_rehearsed:true,later_identity_drift_refuses_restore:true,production:false}));","receipt_blocks_legacy_restore:true,source_only_restore_rehearsed:true,later_identity_drift_refuses_restore:true,production:false};await fs.writeFile(rootOut+'/atomic-proof.json',JSON.stringify(summary,null,2));console.log(JSON.stringify(summary));")
+s=s.replace("receipt_blocks_legacy_restore:true,source_only_restore_rehearsed:true,recovery_receipt_functions:18,committed_receipt_functions:18,later_identity_drift_refuses_restore:true,auth_dependency_drift_refuses_restore:true,production:false}));","receipt_blocks_legacy_restore:true,source_only_restore_rehearsed:true,recovery_receipt_functions:18,committed_receipt_functions:18,later_identity_drift_refuses_restore:true,auth_dependency_drift_refuses_restore:true,production:false};await fs.writeFile(rootOut+'/atomic-proof.json',JSON.stringify(summary,null,2));console.log(JSON.stringify(summary));")
 (out/'machine-plan-fixture.mjs').write_text(s)
 ordered=(main/'tool/verify_trade_documents_deployment_order.mjs').read_text()
 point=' assert.deepEqual(await hubPin(),hubBefore);passed++;'

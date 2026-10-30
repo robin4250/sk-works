@@ -28,13 +28,16 @@ CI first reuses the existing ordered 49 assertions unchanged to capture only a
 same bundle from its own before-capture, forces a postflight failure after all
 four segments, and verifies the complete rollback. It then executes the correct
 bundle, compares every synthetic business table's rows, checks schema-2 access,
-master-OFF denial, repeated-apply refusal, and restoration eligibility.
+master-OFF denial, repeated-apply refusal, and restoration eligibility. Both affected-function and unchanged-auth-dependency
+attribute drift refuse restoration. Full and body-separated export shapes must
+produce exactly the same guarded SQL; inconsistent body digests are rejected.
 Native PostgreSQL 17.6 and PGlite run the same SQL. Native reset is restricted to
 an explicit loopback fixture database/password and a marker established while
 the database is empty. No arbitrary database URL or production reset is accepted.
 
 After COMMIT, restore is separately reviewed and requires stopped writers,
-completed in-flight calls, an exact committed catalog receipt and no later
+completed in-flight calls, an exact committed catalog receipt (thirteen affected functions plus five
+unchanged authorization dependencies) and no later
 source/dependency change. Feature OFF alone is not a writer-stop guarantee. The
 eligibility SQL is stricter than schema2-only: **any** saved terms/form-fields
 receipt refuses restoring the legacy saver, because that would remove existing
