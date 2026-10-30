@@ -22,16 +22,21 @@ const _assets = <String, String>{
 };
 Directory? _root;
 void configureCanonicalPdfAssets(String root) {
-  if (_root != null) throw StateError('Canonical assets already configured.');
+  if (_root != null) {
+    throw StateError('Canonical assets already configured.');
+  }
   final directory = Directory(root);
-  if (!directory.isAbsolute) throw StateError('Absolute asset root required.');
+  if (!directory.isAbsolute) {
+    throw StateError('Absolute asset root required.');
+  }
   _root = Directory(directory.resolveSymbolicLinksSync());
 }
 
 Future<ByteData> load(String path) async {
   final expected = _assets[path], root = _root;
-  if (expected == null || root == null)
+  if (expected == null || root == null) {
     throw StateError('Unconfigured canonical asset.');
+  }
   final file = File.fromUri(root.uri.resolve(path));
   final resolved = await file.resolveSymbolicLinks();
   if (!resolved.startsWith('${root.path}${Platform.pathSeparator}')) {

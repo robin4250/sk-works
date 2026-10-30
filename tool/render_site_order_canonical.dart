@@ -4,15 +4,24 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+// The standalone package intentionally reuses app source without Flutter SDK dependencies.
+// ignore: avoid_relative_lib_imports
 import '../lib/domain/company_seal_snapshot.dart';
+// The standalone package intentionally reuses app source without Flutter SDK dependencies.
+// ignore: avoid_relative_lib_imports
 import '../lib/domain/trade_document_terms_snapshot.dart';
+// The standalone package intentionally reuses app source without Flutter SDK dependencies.
+// ignore: avoid_relative_lib_imports
 import '../lib/features/shared/company_pdf_assets_io.dart';
+// The standalone package intentionally reuses app source without Flutter SDK dependencies.
+// ignore: avoid_relative_lib_imports
 import '../lib/features/shared/trade_document_form_renderer.dart';
 
 Future<void> main(List<String> arguments) async {
   try {
-    if (arguments.length != 1)
+    if (arguments.length != 1) {
       throw StateError('Canonical asset root required.');
+    }
     configureCanonicalPdfAssets(arguments.single);
     final buffer = BytesBuilder(copy: false);
     await for (final chunk in stdin) {
@@ -60,8 +69,9 @@ Future<void> main(List<String> arguments) async {
       'company_seal_enabled': true,
     };
     final bytes = await TradeDocumentFormRenderer.canonical(payload);
-    if (bytes.length > 20 * 1024 * 1024)
+    if (bytes.length > 20 * 1024 * 1024) {
       throw StateError('Canonical PDF too large.');
+    }
     stdout.add(bytes);
     await stdout.flush();
   } catch (_) {

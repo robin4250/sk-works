@@ -14,7 +14,9 @@ void main() {
             .readAsString(),
       ) as Map;
       final output = Platform.environment['SKO_CANONICAL_PDF_OUTPUT_DIR'];
-      if (output != null) await Directory(output).create(recursive: true);
+      if (output != null) {
+        await Directory(output).create(recursive: true);
+      }
       for (final entry in cases.entries) {
         final evidence = entry.value as Map;
         final payload = Map<String, dynamic>.from(evidence['body'] as Map);
