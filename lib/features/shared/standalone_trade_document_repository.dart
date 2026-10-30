@@ -4,12 +4,16 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../data/supabase_backend.dart';
 import '../../domain/company_seal_snapshot.dart';
 import '../../domain/partner_company_bank_account.dart';
+import '../auth/secondary_reset_session_guard.dart';
+import 'standalone_trade_document_managed_context.dart';
 
 /// Read-only registration context. No financial rows, contract saves or uploads.
 class StandaloneTradeDocumentRepository {
-  StandaloneTradeDocumentRepository(this._client,{TradeDocumentFormSession? session}) : _session=session, _actor = _client.auth.currentUser?.id,
+  StandaloneTradeDocumentRepository(this._client,{TradeDocumentFormSession? session,String? managedCompanyId}) : _session=session, _managedCompanyId=managedCompanyId,
+      _managedIdentity=SecondaryResetSessionGuard.identityOf(_client.auth.currentSession),_actor = _client.auth.currentUser?.id,
       _token = _client.auth.currentSession?.accessToken {
     if(session!=null&&!session.belongsTo(_client))throw ArgumentError('Foreign contract session');
+    if(managedCompanyId!=null&&session==null)throw ArgumentError('Managed registration requires a bound contract session');
     _auth = _client.auth.onAuthStateChange.listen((_) {
       if (!_same) invalidate();
     }, onError: (_) => invalidate(), onDone: invalidate);
@@ -18,7 +22,9 @@ class StandaloneTradeDocumentRepository {
     SupabaseBackend.client.auth.currentSession != null ? StandaloneTradeDocumentRepository(SupabaseBackend.client) : null;
   final SupabaseClient _client;
   final TradeDocumentFormSession? _session;
+  final String? _managedCompanyId,_managedIdentity;
   bool isBoundTo(TradeDocumentFormSession session)=>identical(_session,session);
+  bool isManagedFor(String companyId)=>_managedCompanyId==companyId;
   final String? _actor, _token;
   StreamSubscription<dynamic>? _auth;
   bool _revoked = false;
@@ -27,7 +33,7 @@ class StandaloneTradeDocumentRepository {
     _client.auth.currentUser?.id == _actor && _client.auth.currentSession?.accessToken == _token &&
     _client.auth.currentSession?.isExpired == false;
   void invalidate() { _revoked = true; }
-  void verify() { _session?.requireScope(); if (!_same) { invalidate(); throw StateError('ログイン状態が変わりました。会社詳細から開き直してください。'); } }
+  void verify() { _session?.requireScope(); if (!_same) { invalidate(); throw StateError(_managedCompanyId==null?'ログイン状態が変わりました。会社詳細から開き直してください。':'ログイン状態が変わりました。注文・請書を開き直してください。'); } }
   Future<Object?> _rpc(String action, Map<String, dynamic> params) async {
     verify();
     final raw = _session!=null?await _session.rpc(action,params):await _client.rpc(action, params: params).setHeader('Authorization', 'Bearer $_token');
@@ -36,6 +42,17 @@ class StandaloneTradeDocumentRepository {
   Future<Map<String, dynamic>> load({required String tradeCompanyId, required bool acceptance}) async {
     await _session?.ready();
     verify();
+    if(_managedCompanyId!=null){
+      try{
+        final identity=_managedIdentity;
+        if(identity==null||identity!=SecondaryResetSessionGuard.identityOf(_client.auth.currentSession))throw StateError('本人確認済みのセッションを確認できません。');
+        final raw=await _rpc('standalone_trade_document_registration_context',{
+          'p_trade_company_id':tradeCompanyId,'p_acceptance':acceptance});
+        final context=managedTradeDocumentContext(raw,actorId:_actor!,sessionIdentity:identity,
+          companyId:_managedCompanyId,tradeCompanyId:tradeCompanyId,acceptance:acceptance);
+        verify();return context;
+      }catch(_){invalidate();rethrow;}
+    }
     final membershipsRaw = _session!=null?await _session.readOwnMemberships():await _client.from('company_members').select('company_id,role')
       .eq('user_id', _actor!).setHeader('Authorization', 'Bearer $_token');
     verify();

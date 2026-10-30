@@ -31,7 +31,7 @@ class _Gate extends ChangeNotifier implements StandaloneTradeDocumentOperationGa
  void revoke(){allowed=false;notifyListeners();}
 }
 class _Repo extends StandaloneTradeDocumentRepository {
- _Repo(super.client,TradeDocumentFormSession scope):super(session:scope);
+ _Repo(super.client,TradeDocumentFormSession scope,{String? managedCompanyId}):super(session:scope,managedCompanyId:managedCompanyId);
  int loads=0;Completer<void>? hold;
  @override Future<Map<String,dynamic>> load({required String tradeCompanyId,required bool acceptance})async{
   loads++;verify();await hold?.future;
@@ -59,7 +59,7 @@ class _Fixture {
  Future<void> mount(WidgetTester t,{_Gate? gate})async{
   t.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
   await t.runAsync(()=>client.auth.signInWithPassword(email:'synthetic@example.invalid',password:'synthetic-password'));
-  scope=TradeDocumentFormSession(client);repo=_Repo(client,scope!);
+  scope=TradeDocumentFormSession(client);repo=_Repo(client,scope!,managedCompanyId:gate?.companyId);
   await t.pumpWidget(MaterialApp(home:StandaloneTradeDocumentPage(tradeCompanyId:_trade,acceptance:false,
    clientOverride:client,sessionOverride:scope,repositoryOverride:repo,operationGate:gate)));
   await t.pumpAndSettle();
