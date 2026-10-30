@@ -51,6 +51,7 @@ subprocess.run([a.dart,'compile','wasm','--no-source-maps','-o',str(P/'build/mai
 receipt={'verified_renderer_and_dependency_files':len(verified),'verified_assets':len(assets),'asset_encoding':a.asset_encoding,'source_unchanged':True,'hook':hook,'hook_sha256':hashlib.sha256(loader.encode()).hexdigest(),'entry_sha256':hashlib.sha256((P/'edge_entry.dart.template').read_bytes()).hexdigest(),'outputs':{}}
 for f in sorted((P/'build').glob('main.*')):
  if f.is_file():receipt['outputs'][f.name]={'bytes':f.stat().st_size,'sha256':hashlib.sha256(f.read_bytes()).hexdigest()}
+(P/'build/edge_adapter.mjs').write_text((P/'edge_adapter.mjs.in').read_text())
 wasm_sha=receipt['outputs']['main.wasm']['sha256']
 (P/'build/runtime.mjs').write_text((P/'runtime.mjs.in').read_text().replace('@WASM_SHA256@',wasm_sha))
 receipt['outputs']['runtime.mjs']={'bytes':(P/'build/runtime.mjs').stat().st_size,'sha256':hashlib.sha256((P/'build/runtime.mjs').read_bytes()).hexdigest()}

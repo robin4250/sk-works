@@ -29,6 +29,11 @@ jobs:
         run: |
           python3 tool/canonical_edge_wasm/measure.py
           tool/canonical_edge_wasm/build/deno146/node_modules/@deno/linux-x64-glibc/deno run --no-remote --allow-read=tool/canonical_edge_wasm/build tool/canonical_edge_wasm/negative_deno.mjs
+      - name: Private Edge renderer port and static staging without deployment
+        run: |
+          tool/canonical_edge_wasm/build/deno146/node_modules/@deno/linux-x64-glibc/deno run --no-remote --allow-read=tool/canonical_edge_wasm/build tool/canonical_edge_wasm/edge_adapter_test.mjs
+          python3 tool/canonical_edge_wasm/stage_static.py --output /tmp/sko-private-wasm-stage
+          if python3 tool/canonical_edge_wasm/stage_static.py --output /tmp/sko-private-wasm-stage; then exit 1; fi
       - name: Actual native Dart reference
         working-directory: .wasm-source
         env:
