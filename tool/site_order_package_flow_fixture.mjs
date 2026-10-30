@@ -87,5 +87,37 @@ export async function verifySiteOrderPackageFlow(db,c){
   await db.exec('set role '+role);await deny(()=>q('select site_order_package_private.send_order($1,$2,$3) v',[source.job,source.receipt,id(12005)]),/permission denied/);await db.exec('reset role');
  }
  await deny(()=>db.exec('truncate site_order_package_private.packages cascade'),/immutable/);
- console.log(JSON.stringify({status:'passed',checks,scope:'canonical original + nonfinancial legacy item atomic receive; prepared legacy approval guard; ordinary legacy OFF unchanged',production_applied:false,real_auth:false}));
+ await db.exec(await fs.readFile('docs/review/site-order-package-flow/approval.sql.review-only','utf8'));
+ await signed(UB);await db.query("update private.master_feature_settings set enabled=true where feature_key='site_order_documents'");
+ const recipientTrade=id(12200);
+ await db.query("insert into trade_companies select (jsonb_populate_record(null::trade_companies,to_jsonb(t)||jsonb_build_object('id',$1::uuid,'company_id',$2::uuid,'linked_company_id',$3::uuid,'trade_role','customer'))).* from trade_companies t where id=$4",[recipientTrade,B,A,id(2100)]);
+ const recipientPeer=await q("select site_order_manager_private.counterparty_context($1,$2,'acceptance') v",[B,recipientTrade]);
+ const approve=(request=id(12201),fp=recipientPeer.connection_fingerprint)=>q('select site_order_package_private.approve_order($1,$2,$3,$4) v',[received.package_id,recipientTrade,fp,request]);
+ await deny(()=>approve(id(12201),'0'.repeat(64)),/exact_sender_connection/);
+ const beforeApproval=await q('select count(*)::int v from sites');
+ // A late reply-intent failure must roll back the site and inbox together.
+ await db.exec("create function pg_temp.reject_reply()returns trigger language plpgsql as $$begin raise exception 'fixture_late_reply_failure';end$$;create trigger fixture_late_reply before insert on site_order_package_private.reply_intents for each row execute function pg_temp.reject_reply()");
+ await deny(()=>approve(),/fixture_late_reply_failure/);
+ check(await q('select count(*)::int v from sites'),beforeApproval);
+ check(await q('select status v from private.site_share_inbox where data_item_id=$1',[packet]),'pending');
+ await db.exec('drop trigger fixture_late_reply on site_order_package_private.reply_intents');
+ const approved=await approve();check(approved.status,'approved_reply_awaiting_consent');
+ check(await approve(),approved);check(await q('select count(*)::int v from sites'),beforeApproval+1);
+ const actualSite=await q('select to_jsonb(s) v from sites s where id=$1',[approved.site_id]);
+ check(actualSite.company_id,B);check(actualSite.notes,null);
+ check(await q('select accepted_site_id v from private.site_share_inbox where data_item_id=$1',[packet]),approved.site_id);
+ const reply=await q('select to_jsonb(i) v from site_order_package_private.reply_intents i where id=$1',[approved.reply_intent_id]);
+ const originalBody=await q("select evidence->'body' v from site_order_artifact_private.render_jobs where id=$1",[source.job]);
+ check(await q('select count(*)::int v from site_order_package_private.approval_notice_intents'),2);
+ check(reply.body.kind,'acceptance');check(reply.body.issuer_company_id,B);check(reply.body.counterparty_company_id,A);
+ check(reply.body.issuer,originalBody.counterparty);check(reply.body.counterparty,originalBody.issuer);
+ const terms=b=>Object.fromEntries(Object.entries(b).filter(([k])=>!['kind','transaction_id','issuer_company_id','counterparty_company_id','issuer','counterparty'].includes(k)));
+ check(terms(reply.body),terms(originalBody));check(reply.status,'awaiting_explicit_consent');
+ await deny(()=>approve(id(12202)),/approval_request_changed/);
+ await signed(UC);await deny(()=>approve(),/received_package_not_found/);
+ await signed(UB);await db.query("update private.master_feature_settings set enabled=false where feature_key='site_order_documents'");
+ await deny(()=>approve(),/master_feature_disabled/);
+ check(await q('select count(*)::int v from site_order_package_private.reply_intents'),1);
+
+ console.log(JSON.stringify({status:'passed',checks,scope:'canonical original + sanitized receive + real site/acceptance intent approval atomicity; prepared legacy guard; ordinary legacy OFF unchanged',production_applied:false,real_auth:false}));
 }
