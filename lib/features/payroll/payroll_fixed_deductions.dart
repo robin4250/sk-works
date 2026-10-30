@@ -345,7 +345,7 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
 
   Future<void> _save() async {
     if (!widget.canEdit || !_allowed || !_reasonContractAvailable ||
-        _busy || _uncertain || _profile == null) return;
+        _busy || _uncertain || _profile == null) { return; }
     final overrides = <String, int>{};
     for (final key in _manual) {
       final value = int.tryParse(_controllers[key]!.text.trim());
