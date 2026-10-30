@@ -103,6 +103,9 @@ Draft PRはmerge blocked。新しい独立hub/現場管理の作成経路が未�
 8. durable intent は端末の既存保護ストレージへ送信開始前に保存し、再起動時に
    current actor/SID の pending だけを照合する。logout・他会社へ情報を持ち越さない。
    画面内state machineだけでは再起動後の recovery は完成しない。
+   未解決intentがある同じactor/会社/現場/原本/相手への新しいmutationをadapterで
+   拒否し、既存request IDの照合へ案内する。「閉じて後で確認」は画面だけを閉じ、
+   durable intentを消去しない。画面を開き直して新request IDで再送する迂回を防ぐ。
 9. admin現場詳細へのボタン、受信箱と全履歴、既存プレビューeditorからartifact保存
    →協力会社選択へのreturn値を接続する。正式帳票共通ファイルは別担当へ一本化。
 10. `trade_company_page.dart` の協力会社名タップは専用ページの候補を準備した段階。

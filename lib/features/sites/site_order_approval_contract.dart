@@ -83,7 +83,8 @@ class SiteOrderNoticeTarget {
     if (value is! Map || value.length != 7 ||
         !const {'notification_id','event_id','company_id','package_id',
           'package_revision','kind','contract_version'}.every(value.containsKey) ||
-        value['contract_version'] != 1 || value['package_revision'] is! int) {
+        value['contract_version'] is! int || value['contract_version'] != 1 ||
+        value['package_revision'] is! int) {
       throw FormatException('通知の保存結果を確認できません。');
     }
     final rawKind = value['kind'];

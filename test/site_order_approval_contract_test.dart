@@ -53,6 +53,7 @@ void main(){
     expect(()=>SiteOrderNoticeTarget.fromJson({...notice(),'pdf_url':'secret'},expectedCompanyId:uuid(3)),throwsFormatException);
     expect(()=>SiteOrderNoticeTarget.fromJson({...notice(),'notification_id':'name'},expectedCompanyId:uuid(3)),throwsFormatException);
     expect(()=>SiteOrderNoticeTarget.fromJson({...notice(),'kind':'unknown'},expectedCompanyId:uuid(3)),throwsFormatException);
+    expect(()=>SiteOrderNoticeTarget.fromJson({...notice(),'contract_version':1.0},expectedCompanyId:uuid(3)),throwsFormatException);
   });
   test('absent, off and incomplete master deployment do not authorize mutation',(){
     expect(SiteOrderAvailability.fromJson(null).canMutate,isFalse);

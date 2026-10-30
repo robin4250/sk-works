@@ -80,6 +80,32 @@ void main() {
     expect(find.text('開き直してください。'),findsOneWidget);
   });
 
+  testWidgets('unknown send can close without deleting durable intent or exposing lookup error', (tester) async {
+    final changes=ChangeNotifier(); addTearDown(changes.dispose);
+    final persisted=<SiteOrderDeliveryIntent>[];
+    var sends=0;
+    final flow=SiteOrderSendWorkflow(scope:scope,artifact:order('現場A'),currentScope:()=>scope,
+      isArtifactCurrent:(_)=>true,isRecipientCurrent:(_)=>true,newRequestId:()=> 'one-request',
+      persistIntent:(i)async {persisted.add(i);});
+    await tester.pumpWidget(MaterialApp(home:Builder(builder:(context)=>Scaffold(body:
+      TextButton(onPressed:()=>Navigator.push(context,MaterialPageRoute<void>(builder:(_)=>
+        SiteOrderSendPage(workflow:flow,recipients:const[recipient],scopeChanges:changes,
+          send:(_)async{sends++;throw StateError('private/storage/path');},
+          lookupReceipt:(_)async=>throw StateError('private/storage/path')))),child:const Text('開く'))))));
+    await tester.tap(find.text('開く'));await tester.pumpAndSettle();
+    await tester.tap(find.byType(DropdownButtonFormField<String>));await tester.pumpAndSettle();
+    await tester.tap(find.text('協力会社A').last);await tester.pumpAndSettle();
+    await tester.tap(find.text('共有送信'));await tester.pumpAndSettle();
+    await tester.tap(find.text('確認して共有送信'));await tester.pumpAndSettle();
+    expect(flow.state,SiteOrderSendState.outcomeUnknown);expect(sends,1);expect(persisted.length,1);
+    expect(find.textContaining('private/storage/path'),findsNothing);
+    await tester.tap(find.text('この送信の保存結果を確認'));await tester.pumpAndSettle();
+    expect(find.textContaining('private/storage/path'),findsNothing);
+    await tester.tap(find.text('閉じて後で確認'));await tester.pumpAndSettle();
+    expect(find.text('開く'),findsOneWidget);expect(persisted.length,1);
+    expect(flow.pendingIntent,same(persisted.single));expect(flow.state,SiteOrderSendState.retired);
+  });
+
   testWidgets('archive viewer keeps close, swipes work names and rejects wrong PDF hash', (tester) async {
     final changes=ChangeNotifier(); addTearDown(changes.dispose);
     await tester.pumpWidget(MaterialApp(home:SiteOrderArchivePreviewPage(

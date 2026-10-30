@@ -106,6 +106,16 @@ class _SiteOrderSendPageState extends State<SiteOrderSendPage> {
     } finally { if (mounted) setState(() => _busy = false); }
   }
 
+  Future<void> _closePending() async {
+    if (_busy || !_unknown) return;
+    // The required durable intent remains available to the recovery adapter.
+    // Retiring this presentation never deletes it or marks delivery successful.
+    widget.workflow.retire();
+    setState(() => _retired = true);
+    await WidgetsBinding.instance.endOfFrame;
+    if (mounted) Navigator.of(context).pop(false);
+  }
+
   @override
   Widget build(BuildContext context) => PopScope(
     canPop: _retired || (!_busy && !_unknown),
@@ -127,8 +137,12 @@ class _SiteOrderSendPageState extends State<SiteOrderSendPage> {
         if (_error != null) Text(_error!, key: const Key('site-order-send-error')),
         if (_sent) ...[const Text('共有送信の保存を確認しました。'),
           FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('閉じる'))]
-        else if (_unknown) FilledButton(onPressed: _busy ? null : _resolve,
-          child: const Text('この送信の保存結果を確認'))
+        else if (_unknown) ...[
+          FilledButton(onPressed: _busy ? null : _resolve,
+            child: const Text('この送信の保存結果を確認')),
+          TextButton(onPressed: _busy ? null : _closePending,
+            child: const Text('閉じて後で確認')),
+        ]
         else ...[
           FilledButton(onPressed: _busy || _selected == null ? null : _share,
             child: const Text('共有送信')),
