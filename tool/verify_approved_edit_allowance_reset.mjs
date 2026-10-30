@@ -29,6 +29,7 @@ const unit=String.raw`
  const pcReportBefore=await q('select to_jsonb(r) v from daily_reports r where id=$1',[pcRid]);
  const pcRosterBefore=await q('select jsonb_agg(to_jsonb(w) order by worker_id) v from daily_report_workers w where report_id=$1',[pcRid]);
  const pcReceiptsBefore=await q('select jsonb_agg(to_jsonb(r) order by id) v from company_checkout_allowance_private.receipts r where report_id=$1',[pcRid]);
+ assert.ok(pcReceiptsBefore?.some(receipt=>receipt.snapshot.items.some(item=>item.name==='PC')),'Actual v2 report has a captured PC receipt before reset');
  eq(pcReportBefore.status,'signed','Unchanged PC baseline is fully signed');
  assert.ok(pcReportBefore.representative_signature_json&&pcReportBefore.supervisor_signature_json);
  const pcSave=()=>sharedCall(U,id(80),"select public.save_daily_report_destination_draft($1,$2,null,$3,$4,$5::jsonb) v",[pcRid,SITE,pcDate,pcDescription,pcRows]);
