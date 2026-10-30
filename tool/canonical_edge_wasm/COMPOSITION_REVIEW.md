@@ -1,7 +1,7 @@
 # Fixed site-order HTTP and private canonical renderer composition — HOLD
 
 `stage_workflow.py` fills the previous hand-copy gap. It verifies the five
-reviewed HTTP/coordinator files at `e84fc59681282136187d20bb80760c2b339d6895`
+reviewed HTTP/coordinator files at `211c389b90ace6d33b64d69fac89fdd9060d3abb`
 against `workflow_source_pins.json`, verifies the generated canonical runtime
 receipt against the retained reviewed `build-proof.json`, and stages exactly ten
 source/runtime files into a new private tree.
@@ -21,11 +21,14 @@ comparison suites were not repeated for this composition-only change.
 After the unchanged locked canonical build:
 
 ```sh
-python3 tool/canonical_edge_wasm/stage_workflow_test.py
-python3 tool/canonical_edge_wasm/stage_workflow.py --source-root . --output /new/private/site-order-tree
+python3 tool/canonical_edge_wasm/stage_workflow_test.py --source-root /path/to/reviewed-211-source
+python3 tool/canonical_edge_wasm/stage_workflow.py --source-root /path/to/reviewed-211-source --output /new/private/site-order-tree
 ```
 
-The new staging tests verify ten exact files, byte/hash/mode receipts, refusal to
+The dedicated workflow checks out the fixed `211c389` workflow source separately
+from the unchanged `65eb8fc` canonical renderer closure. The preparation branch
+does not modify or implicitly merge those product sources. The new staging tests
+verify ten exact files, byte/hash/mode receipts, refusal to
 overwrite an existing destination, source drift/source symlink and output-parent
 symlink refusal before any destination is created. No `.env`, project config, customer seal/original, runtime
 credential, node_modules or previous release is copied.
@@ -65,7 +68,7 @@ Preserve existing static entries, JWT verification and every other project
 setting. The staging script deliberately does not write or copy this fragment.
 Use the installed official CLI's `--help` before forming commands. A local
 Docker/CLI serve/bundle and its complete resulting bundle size are still needed;
-the 14,362,129 bytes of staged source/static files exclude npm dependency and
+the 14,362,708 bytes of staged source/static files exclude npm dependency and
 bundling overhead. This is below the documented CLI 20 MB ceiling but does not
 prove that the complete bundle fits. API/static deployment is not supported by
 the documented path; do not switch to an API upload or weaken JWT verification.

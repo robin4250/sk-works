@@ -1,5 +1,6 @@
 """Exercise only the new composition boundary against actual compiled files."""
 import contextlib
+import argparse
 import hashlib
 import importlib.util
 import io
@@ -12,7 +13,9 @@ P = pathlib.Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location('stage_workflow', P / 'stage_workflow.py')
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
-source = P.parents[1]
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--source-root', type=pathlib.Path, default=P.parents[1])
+source = parser.parse_args().source_root.resolve(strict=True)
 pins = json.loads((P / 'workflow_source_pins.json').read_text())
 
 with tempfile.TemporaryDirectory(prefix='sko-workflow-composition-') as temp:
