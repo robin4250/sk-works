@@ -88,6 +88,8 @@ void main() {
       expect(find.byKey(const ValueKey('daily-report-begin-approved-edit')), findsNothing);
       expect(find.text('編集・修正を申請'), findsNothing);
       final panel = find.byKey(const ValueKey('daily-report-finalized-management-only'));
+      final reportScroll = find.byWidgetPredicate((widget) => widget is Scrollable && widget.axisDirection == AxisDirection.down).first;
+      await tester.scrollUntilVisible(panel, 250, scrollable: reportScroll, maxScrolls: 40);
       expect(panel, findsOneWidget);
       final management = find.byKey(const ValueKey('daily-report-open-attendance-management'));
       expect(management, manager ? findsOneWidget : findsNothing);
