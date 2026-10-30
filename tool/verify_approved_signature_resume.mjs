@@ -54,6 +54,10 @@ const addition=String.raw`
  await sharedCall(U,id(80),"select public.save_daily_report_signature($1,'representative','新しい報告者',$2::jsonb) v",[pcRid,signature]);
  await recoveryReject(()=>recoveryCall(U,id(80),resumeSql,resumeArgs),/new_signature_present|basis_changed/);
  const newReporter=await q('select representative_signature_json v from daily_reports where id=$1',[pcRid]);
+ const resumedReady=await sharedCall(U,id(80),'select public.read_shared_daily_report_context($1) v',[pcRid]);
+ const resumedFinal=await sharedCall(U,id(80),'select public.collect_approved_shared_report_supervisor_signature($1,$2,$3,$4::jsonb,$5::timestamptz,$6) v',[pcRid,pcRequest,'新しい責任者',signature,resumedReady.report_updated_at,resumedReady.signature_scope_fingerprint]);
+ eq(resumedFinal.supervisor_saved,true,'The same request reaches a new responsible signature through the existing approved route');
+ eq(await q('select status v from daily_reports where id=$1',[pcRid]),'signed','Recovery finishes through the existing audited finalization');
  assert.ok(newReporter,'New signature is not erased by a stale recovery action');
  eq(await q("select has_function_privilege('anon','public.resume_approved_daily_report_signatures(uuid,uuid,timestamp with time zone,text)','execute') v"),false,'Anonymous recovery denied');
  eq(await q("select has_function_privilege('service_role','public.resume_approved_daily_report_signatures(uuid,uuid,timestamp with time zone,text)','execute') v"),false,'Service role cannot bypass the human live-session route');

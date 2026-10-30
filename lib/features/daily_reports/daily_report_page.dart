@@ -98,6 +98,10 @@ String dailyReportActionErrorMessage(Object error) {
     'explicit_shared_worker_category_required': '勤務区分（日勤・夜勤など）を選んでください。',
     'company allowance registration changed': '選択済み手当と現在の登録・給与区分が一致しません。適用手当を選び直してください。',
     'paid_hours_input_conflict': '勤務原本が更新されました。入力内容を確認して再読み込みしてください。',
+    'approved_signature_resume_exact_session_required': 'この承認済み編集のログイン状態を確認できません。元のログインで日報を開き直してください。',
+    'approved_signature_resume_original_basis_changed': '編集開始後に日報の内容が変わっています。現在の内容とサインを消さず、管理者に確認してください。',
+    'approved_signature_resume_new_signature_present': '新しいサインが登録されています。上書きせず、日報を再読み込みしてください。',
+    'approved_signature_resume_legacy_envelope_present': '保存済み日報の状態を確認できません。原本を変更せず、管理者に確認してください。',
     'shared_report_signature_scope_changed': '日報またはサインの対象が更新されました。日報を開き直してください。',
     'shared_report_reporter_signature_required': '先に報告者サインを登録してください。',
     'shared_report_supervisor_not_ready': '全員の退勤と勤務実績の確認がそろってから責任者サインへ進んでください。',
@@ -215,7 +219,9 @@ class _DailyReportPageState extends State<DailyReportPage> {
 
   bool get _editingApprovedReport => !_visitReport && _editSession?.confirmed == true &&
       _editSession!.actorId == _repository?.currentActorId &&
-      _editSession!.reportId == _report?.id;
+      _editSession!.companyId == _report?.companyId &&
+      _editSession!.reportId == _report?.id &&
+      (_sharedContext?.enabled != true || _sharedContext?.approvedEditRequestId == _editSession!.requestId);
 
   bool get _canResumeApprovedSignatures =>
       !_visitReport &&
@@ -228,8 +234,8 @@ class _DailyReportPageState extends State<DailyReportPage> {
       _editSession!.reportId == _report?.id &&
       _sharedContext?.approvedEditRequestId == _editSession!.requestId &&
       _sharedContext?.requiresAttendanceManagement != true &&
-      _report?.reporterSignatureJson != null &&
-      _report?.responsibleSignatureJson != null;
+      ((_report?.reporterSignatureJson != null && _report?.responsibleSignatureJson != null) ||
+       (_report?.reporterSignatureJson == null && _report?.responsibleSignatureJson == null));
 
   void _invalidatePendingSignature() {
     if (_pendingResponsibleSignature == null) {
@@ -2077,8 +2083,9 @@ class _DailyReportPageState extends State<DailyReportPage> {
         !_canResumeApprovedSignatures ||
         session == null ||
         repository == null ||
-        sharedRepository == null)
+        sharedRepository == null) {
       return;
+    }
     final target = _approvedEditTarget;
     final accepted = await showDialog<bool>(
       context: context,
@@ -2100,8 +2107,9 @@ class _DailyReportPageState extends State<DailyReportPage> {
     if (accepted != true ||
         !mounted ||
         target != _approvedEditTarget ||
-        !_canResumeApprovedSignatures)
+        !_canResumeApprovedSignatures) {
       return;
+    }
     setState(() => _saving = true);
     try {
       final before = await _readSharedContext(reportId: session.reportId);
@@ -2153,11 +2161,12 @@ class _DailyReportPageState extends State<DailyReportPage> {
           repository.currentActorId == session.actorId &&
           target == _approvedEditTarget) {
         await _loadSelectedSite();
-        if (mounted && target == _approvedEditTarget)
+        if (mounted && target == _approvedEditTarget) {
           setState(() {
             _approvedEditFailureTarget = target;
             _approvedEditStartFailure = dailyReportActionErrorMessage(error);
           });
+        }
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -2971,9 +2980,9 @@ class _DailyReportPageState extends State<DailyReportPage> {
                                 '承認済みの編集を再開してください',
                                 style: TextStyle(fontWeight: FontWeight.w800),
                               ),
-                              const Text(
-                                '前のサインが残っています。再申請せず、編集を再開して新しいサインを登録します。',
-                              ),
+                              Text(_report?.reporterSignatureJson == null
+                                ? '編集開始の結果を確認します。再申請せず、編集を再開してください。'
+                                : '前のサインが残っています。再申請せず、編集を再開して新しいサインを登録します。'),
                               FilledButton.icon(
                                 key: const ValueKey(
                                   'daily-report-resume-approved-signatures',

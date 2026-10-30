@@ -13,7 +13,7 @@ class _ResumeShared implements SharedDailyReportRepository {
   _ResumeShared(this.reports);
   final EditableReports reports;
   int resumeCalls = 0;
-  bool deny = false;
+  bool deny = false, commitThenThrow = false;
   String request = 'request-a';
   SharedDailyReportContext get state => SharedDailyReportContext(
     actorId: reports.currentActorId!, companyId: 'company-a', reportId: 'report-a',
@@ -36,6 +36,7 @@ class _ResumeShared implements SharedDailyReportRepository {
     expect(requestId, 'request-a'); expect(before.approvedEditRequestId, requestId);
     if (deny) throw StateError('編集を再開できません');
     reports.reporterSigned = false; reports.reporter = null; reports.responsible = null;
+    if (commitThenThrow) { commitThenThrow = false; throw StateError('応答消失'); }
     return state;
   }
   @override dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -59,11 +60,12 @@ void main() {
     await tester.scrollUntilVisible(finder, 250, scrollable: scrollable, maxScrolls: 40);
     await tester.ensureVisible(finder); await tester.pumpAndSettle();
   }
-  for (final denied in [false, true]) {
-    testWidgets('stranded approval resumes explicitly without a second application denied=$denied', (tester) async {
+  for (final mode in ['success', 'denied', 'lost-reply']) {
+    final denied = mode == 'denied';
+    testWidgets('stranded approval resumes explicitly without a second application mode=$mode', (tester) async {
       final reports = EditableReports(client)..signed = false..approved = false..reporterSigned = true
         ..responsible = {'strokes': [[{'x': 0.1, 'y': 0.1}]]};
-      final shared = _ResumeShared(reports)..deny = denied;
+      final shared = _ResumeShared(reports)..deny = denied..commitThenThrow = mode == 'lost-reply';
       await DailyReportEditSessionStore().remember(const DailyReportEditSession(
         actorId: 'owner', companyId: 'company-a', reportId: 'report-a', requestId: 'request-a'));
       await tester.pumpWidget(MaterialApp(home: DailyReportPage(initialDate: DateTime(2026, 10, 15),
@@ -82,6 +84,16 @@ void main() {
       await reveal(tester, start); await tester.tap(start); await tester.pumpAndSettle();
       await tester.tap(find.text('編集を再開').last); await tester.pumpAndSettle();
       expect(shared.resumeCalls, 1); expect(reports.saves, 0); expect(reports.approved, isFalse);
+      if (mode == 'lost-reply') {
+        expect(reports.responsible, isNull);
+        expect((await DailyReportEditSessionStore().load('owner', 'report-a'))?.confirmed, isFalse);
+        // An observed unsigned draft is not silently a success. The same exact
+        // approved-session action remains available for an authoritative retry.
+        expect(start, findsOneWidget);
+        await reveal(tester, start); await tester.tap(start); await tester.pumpAndSettle();
+        await tester.tap(find.text('編集を再開').last); await tester.pumpAndSettle();
+        expect(shared.resumeCalls, 2); expect(reports.saves, 0);
+      }
       final session = await DailyReportEditSessionStore().load('owner', 'report-a');
       expect(session?.confirmed, !denied);
       if (denied) {

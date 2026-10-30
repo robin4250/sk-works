@@ -275,5 +275,232 @@
       "default": null,
       "nullable": "NO"
     }
+  ],
+  "direct_helper_catalog": [
+    {
+      "schema": "shared_daily_report_private",
+      "proname": "signature_scope",
+      "identity": "rid uuid",
+      "source_md5": "198639193f4268fb15cc2e45bb55f452",
+      "attributes": {
+        "oid": "33175",
+        "proacl": [
+          "postgres=X/postgres"
+        ],
+        "probin": null,
+        "procost": 100,
+        "prokind": "f",
+        "prolang": "13619",
+        "proname": "signature_scope",
+        "prorows": 0,
+        "pronargs": 1,
+        "proowner": "16388",
+        "proconfig": [
+          "search_path=\"\""
+        ],
+        "proretset": false,
+        "prosecdef": true,
+        "prorettype": "3802",
+        "prosqlbody": null,
+        "prosupport": "-",
+        "proargmodes": null,
+        "proargnames": [
+          "rid"
+        ],
+        "proargtypes": [
+          "2950"
+        ],
+        "proisstrict": false,
+        "proparallel": "u",
+        "protrftypes": null,
+        "provariadic": "0",
+        "provolatile": "s",
+        "proleakproof": false,
+        "pronamespace": "33130",
+        "proallargtypes": null,
+        "proargdefaults": null,
+        "pronargdefaults": 0
+      }
+    },
+    {
+      "schema": "shared_daily_report_private",
+      "proname": "read_context",
+      "identity": "rid uuid",
+      "source_md5": "037f6756f797e5828f2eb88c0d63d231",
+      "attributes": {
+        "oid": "33191",
+        "proacl": [
+          "postgres=X/postgres"
+        ],
+        "probin": null,
+        "procost": 100,
+        "prokind": "f",
+        "prolang": "13619",
+        "proname": "read_context",
+        "prorows": 0,
+        "pronargs": 1,
+        "proowner": "16388",
+        "proconfig": [
+          "search_path=\"\""
+        ],
+        "proretset": false,
+        "prosecdef": true,
+        "prorettype": "3802",
+        "prosqlbody": null,
+        "prosupport": "-",
+        "proargmodes": null,
+        "proargnames": [
+          "rid"
+        ],
+        "proargtypes": [
+          "2950"
+        ],
+        "proisstrict": false,
+        "proparallel": "u",
+        "protrftypes": null,
+        "provariadic": "0",
+        "provolatile": "s",
+        "proleakproof": false,
+        "pronamespace": "33130",
+        "proallargtypes": null,
+        "proargdefaults": null,
+        "pronargdefaults": 0
+      }
+    },
+    {
+      "schema": "shared_report_edit_private",
+      "proname": "current_session",
+      "identity": "rid uuid, closed_allowed boolean",
+      "source_md5": "2372c276ead1583ccc0ec1eb642c0ad9",
+      "attributes": {
+        "oid": "33516",
+        "proacl": [
+          "postgres=X/postgres"
+        ],
+        "probin": null,
+        "procost": 100,
+        "prokind": "f",
+        "prolang": "13619",
+        "proname": "current_session",
+        "prorows": 0,
+        "pronargs": 2,
+        "proowner": "16388",
+        "proconfig": [
+          "search_path=\"\""
+        ],
+        "proretset": false,
+        "prosecdef": true,
+        "prorettype": "3802",
+        "prosqlbody": null,
+        "prosupport": "-",
+        "proargmodes": null,
+        "proargnames": [
+          "rid",
+          "closed_allowed"
+        ],
+        "proargtypes": [
+          "2950",
+          "16"
+        ],
+        "proisstrict": false,
+        "proparallel": "u",
+        "protrftypes": null,
+        "provariadic": "0",
+        "provolatile": "s",
+        "proleakproof": false,
+        "pronamespace": "33499",
+        "proallargtypes": null,
+        "proargdefaults": "({CONST :consttype 16 :consttypmod -1 :constcollid 0 :constlen 1 :constbyval true :constisnull false :location -1 :constvalue 1 [ 0 0 0 0 0 0 0 0 ]})",
+        "pronargdefaults": 1
+      }
+    },
+    {
+      "schema": "shared_report_edit_private",
+      "proname": "evidence",
+      "identity": "rid uuid, request uuid",
+      "source_md5": "3fcd21a761da64a5e543c1977a1348f9",
+      "attributes": {
+        "oid": "33524",
+        "proacl": [
+          "postgres=X/postgres"
+        ],
+        "probin": null,
+        "procost": 100,
+        "prokind": "f",
+        "prolang": "13619",
+        "proname": "evidence",
+        "prorows": 0,
+        "pronargs": 2,
+        "proowner": "16388",
+        "proconfig": [
+          "search_path=\"\""
+        ],
+        "proretset": false,
+        "prosecdef": true,
+        "prorettype": "3802",
+        "prosqlbody": null,
+        "prosupport": "-",
+        "proargmodes": null,
+        "proargnames": [
+          "rid",
+          "request"
+        ],
+        "proargtypes": [
+          "2950",
+          "2950"
+        ],
+        "proisstrict": false,
+        "proparallel": "u",
+        "protrftypes": null,
+        "provariadic": "0",
+        "provolatile": "s",
+        "proleakproof": false,
+        "pronamespace": "33499",
+        "proallargtypes": null,
+        "proargdefaults": null,
+        "pronargdefaults": 0
+      }
+    },
+    {
+      "schema": "checkout_report_registration_private",
+      "proname": "current_actor",
+      "identity": "",
+      "source_md5": "9ca270fa06ff48883705cea5d18a8f2f",
+      "attributes": {
+        "oid": "32608",
+        "proacl": [
+          "postgres=X/postgres"
+        ],
+        "probin": null,
+        "procost": 100,
+        "prokind": "f",
+        "prolang": "13619",
+        "proname": "current_actor",
+        "prorows": 0,
+        "pronargs": 0,
+        "proowner": "16388",
+        "proconfig": [
+          "search_path=\"\""
+        ],
+        "proretset": false,
+        "prosecdef": false,
+        "prorettype": "2950",
+        "prosqlbody": null,
+        "prosupport": "-",
+        "proargmodes": null,
+        "proargnames": null,
+        "proargtypes": [],
+        "proisstrict": false,
+        "proparallel": "u",
+        "protrftypes": null,
+        "provariadic": "0",
+        "provolatile": "s",
+        "proleakproof": false,
+        "pronamespace": "32594",
+        "proallargtypes": null,
+        "proargdefaults": null,
+        "pronargdefaults": 0
+      }
+    }
   ]
 }

@@ -7,6 +7,7 @@ on:
       - 'lib/features/daily_reports/daily_report_page.dart'
       - 'lib/features/daily_reports/shared_daily_report_repository.dart'
       - 'test/daily_report_approved_signature_resume_test.dart'
+      - 'test/shared_report_finalization_rpc_test.dart'
       - '.github/workflows/approved-signature-resume.yml'
   workflow_dispatch:
 jobs:
@@ -24,7 +25,7 @@ jobs:
           cache: true
       - run: flutter pub get
       - run: flutter analyze lib/features/daily_reports/daily_report_page.dart lib/features/daily_reports/shared_daily_report_repository.dart test/daily_report_approved_signature_resume_test.dart
-      - run: flutter test --reporter expanded test/daily_report_approved_signature_resume_test.dart test/daily_report_approved_edit_start_test.dart test/daily_report_approved_edit_failure_visibility_test.dart test/signature_blank_keyboard_test.dart test/signature_point_only_regression_test.dart
+      - run: flutter test --reporter expanded test/daily_report_approved_signature_resume_test.dart test/daily_report_approved_edit_start_test.dart test/daily_report_approved_edit_failure_visibility_test.dart test/signature_blank_keyboard_test.dart test/signature_point_only_regression_test.dart test/shared_report_finalization_rpc_test.dart
       - run: git diff --exit-code -- pubspec.yaml pubspec.lock
   native-resume:
     runs-on: ubuntu-latest
