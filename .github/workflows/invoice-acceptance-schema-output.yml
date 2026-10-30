@@ -1,0 +1,61 @@
+name: Invoice acceptance schema output
+on:
+  pull_request:
+    paths:
+      - 'lib/features/invoices/invoice_acceptance_resolver.dart'
+      - 'lib/features/invoices/invoice_pdf_service.dart'
+      - 'lib/features/invoices/invoice_order_acceptance_pdf.dart'
+      - 'lib/features/shared/trade_document_form_pdf*.dart'
+      - 'lib/domain/trade_document_form_draft.dart'
+      - 'test/invoice_acceptance_schema_pdf_test.dart'
+      - 'docs/review/invoice-new-form/**'
+      - '.github/workflows/invoice-acceptance-schema-output.yml'
+permissions:
+  contents: read
+jobs:
+  output:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: '3.47.5', channel: stable, cache: true}
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze test/invoice_acceptance_schema_pdf_test.dart
+      - run: flutter test test/invoice_acceptance_schema_pdf_test.dart
+        env: {INVOICE_SCHEMA_PDF_OUTPUT_DIR: /tmp/invoice-schema-output}
+      - run: python -m pip install PyMuPDF==1.26.6
+      - name: Inspect schema distinction, original preservation and page order
+        run: |
+          python - <<'PY'
+          import fitz
+          from pathlib import Path
+          root=Path('/tmp/invoice-schema-output')
+          compact=lambda s:''.join(s.split())
+          docs={p.stem:fitz.open(p) for p in root.glob('*.pdf')}
+          assert set(docs)=={'missing-capability','current-capability','saved-original'}
+          current,old,saved=(docs[k] for k in ('current-capability','missing-capability','saved-original'))
+          assert len(current)==len(old)==4
+          assert len(saved)==3
+          for doc in docs.values():
+              assert '工事35' in compact(doc[0].get_text())
+              assert '工事36' in compact(doc[1].get_text())
+              assert '39,600' in compact(doc[1].get_text())
+              assert '請書' in compact(doc[2].get_text())
+          for doc in (current,old):
+              assert '工事請負契約条項' in compact(doc[3].get_text())
+          front=compact(current[2].get_text())
+          for value in ('末日','とび工事','仮設材他','03-3333-4444','施工単価内訳書'):
+              assert value in front,(value,front)
+          assert '末日' not in compact(old[2].get_text())
+          assert '工事請負契約条項' not in compact(saved[2].get_text())
+          for page in range(2):
+              expected=current[page].get_pixmap().samples
+              assert old[page].get_pixmap().samples==expected
+              assert saved[page].get_pixmap().samples==expected
+          print('Fresh capability-dependent form and unchanged legacy original distinguished; all invoice pages retained')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: invoice-schema-output, path: /tmp/invoice-schema-output}
+      - run: git diff --exit-code -- pubspec.yaml pubspec.lock
