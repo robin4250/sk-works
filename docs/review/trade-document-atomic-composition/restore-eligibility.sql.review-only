@@ -1,0 +1,13 @@
+-- REVIEW ONLY: no restoration statements. Require an independently stopped
+-- writer window and reconcile exact committed source/catalog receipt first.
+-- This check is intentionally stricter than schema2-only: restoring the old
+-- saver would also remove protection of any saved terms/form-fields namespace.
+do $eligibility$ begin
+ if current_setting('sko.function_restore_writers_stopped',true) is distinct from 'verified-no-inflight' then
+  raise exception 'Stopped writers and completed inflight operations must be independently verified' using errcode='55000';
+ end if;
+ if exists(select 1 from private.trade_document_attachments
+   where payload ? 'contract_terms' or payload ? 'form_fields') then
+  raise exception 'Saved terms/form receipt exists; retain guarded saver and repair forward' using errcode='55000';
+ end if;
+end $eligibility$;

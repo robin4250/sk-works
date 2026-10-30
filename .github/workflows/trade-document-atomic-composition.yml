@@ -1,0 +1,65 @@
+name: Atomic trade document deployment review
+on:
+  pull_request:
+    paths:
+      - 'tool/build_trade_document_deployment_review.py'
+      - 'tool/prepare_trade_document_atomic_review_fixture.py'
+      - 'tool/reset_trade_document_atomic_fixture.mjs'
+      - 'tool/verify_trade_documents_deployment_order.mjs'
+      - 'docs/review/trade-document-atomic-composition/**'
+      - 'docs/review/trade-documents-hub/master-and-standalone-context.sql.review-only'
+      - 'docs/review/trade-document-terms/save-guard.sql.review-only'
+      - 'docs/review/trade-document-form-input/server-save.sql.review-only'
+      - 'docs/review/trade-document-month-end/server-upgrade.sql.review-only'
+      - '.github/workflows/trade-document-atomic-composition.yml'
+permissions:
+  contents: read
+jobs:
+  atomic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix: {runtime: [pglite, postgres]}
+    services:
+      database:
+        image: postgres:17.6
+        env: {POSTGRES_USER: postgres, POSTGRES_PASSWORD: fixture-only, POSTGRES_DB: partner_bank_fixture}
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      PARTNER_BANK_TEST_DATABASE_URL: postgres://postgres:fixture-only@127.0.0.1:5432/partner_bank_fixture
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22.14.0'}
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
+      - run: python -m py_compile tool/build_trade_document_deployment_review.py tool/prepare_trade_document_atomic_review_fixture.py
+      - run: python tool/prepare_trade_document_atomic_review_fixture.py --root "$GITHUB_WORKSPACE" --output "$RUNNER_TEMP/atomic-review"
+      - if: matrix.runtime == 'postgres'
+        run: node tool/reset_trade_document_atomic_fixture.mjs initialize
+      - name: Capture disposable expected catalog through unchanged ordered assertions
+        run: |
+          if [ '${{ matrix.runtime }}' = 'pglite' ]; then
+            module="$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
+          else
+            module="$GITHUB_WORKSPACE/docs/review/partner-company-bank-order/native-db.mjs"
+          fi
+          node "$RUNNER_TEMP/atomic-review/capture-ordered-fixture.mjs" "$module"
+      - if: matrix.runtime == 'postgres'
+        run: node tool/reset_trade_document_atomic_fixture.mjs reset
+      - name: Execute atomic full-catalog, rollback and receipt protection checks
+        run: |
+          if [ '${{ matrix.runtime }}' = 'pglite' ]; then
+            module="$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
+          else
+            module="$GITHUB_WORKSPACE/docs/review/partner-company-bank-order/native-db.mjs"
+          fi
+          node "$RUNNER_TEMP/atomic-review/machine-plan-fixture.mjs" "$module" core
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: atomic-review-${{ matrix.runtime }}-proof
+          path: ${{ runner.temp }}/atomic-review/atomic-proof.json
+      - run: git diff --exit-code -- tool/security/fixture_dependencies/package-lock.json pubspec.yaml pubspec.lock
