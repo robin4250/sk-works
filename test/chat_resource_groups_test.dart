@@ -34,7 +34,9 @@ void main() {
             status = classificationStatus;
           } else if (request.url.path.endsWith('/communication_groups')) {
             expect(request.url.queryParameters['company_id'], 'eq.company');
-            expect(request.url.queryParameters['order'], 'name.asc');
+            // Preserve the existing repository order; pinned PostgREST defaults
+            // to descending with nulls last when ascending is not specified.
+            expect(request.url.queryParameters['order'], 'name.desc.nullslast');
             data = [
               {'id': 'analysis', 'name': '過去履歴分析：original.zip', 'group_type': 'company'},
               {'id': 'site', 'name': '江戸川', 'group_type': 'site'},
