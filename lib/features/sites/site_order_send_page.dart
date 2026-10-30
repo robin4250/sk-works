@@ -99,10 +99,10 @@ class _SiteOrderSendPageState extends State<SiteOrderSendPage> {
       if (mounted) { setState(() => _error = _unknown
         ? 'まだ送信結果が確定していません。新しい送信は行わず、再度照合してください。' : null); }
     } catch (_) {
-      if (mounted) setState(() {
+      if (mounted) { setState(() {
         _retired = widget.workflow.state == SiteOrderSendState.retired;
         _error = '送信結果の照合を完了できません。時間をおいて再度確認してください。';
-      });
+      }); }
     } finally { if (mounted) setState(() => _busy = false); }
   }
 
