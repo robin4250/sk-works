@@ -11,7 +11,11 @@ The generated forward contains one transaction, with the original four pinned
 segments' outer transaction wrappers removed mechanically. Before any change it
 compares every `pg_proc` field (including the source body) for ten captured
 functions, complete master `pg_class`, and every original constraint. Shared
-profile captures must match each other. The original component guards remain.
+profile captures must match each other. The original component guards remain. The fixture reproduces the observed
+postgres/public default EXECUTE privileges for anon, authenticated and service_role
+before C installation. The corrected C source explicitly revokes service_role
+from its new public RPCs and checks their exact ACL; old master RPCs keep their
+original ACL. Unknown extra grants fail closed without widening permissions.
 Afterwards thirteen affected functions' complete attributes are compared with
 the disposable expected catalog, resolving cluster-local owner/language/schema
 OIDs. Existing source/profile/master-public OIDs remain; the original saver OID

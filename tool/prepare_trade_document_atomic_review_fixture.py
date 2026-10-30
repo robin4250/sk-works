@@ -12,6 +12,7 @@ prefix="import {spawnSync} from 'node:child_process';\n"+prefix
 ordered=(hub/'tool/verify_trade_documents_deployment_order.mjs').read_text();setup=re.search(r'const setup=`([\s\S]*?)`;\nconst inject=',ordered)[1]
 base=(hub/'docs/review/trade-documents-hub/base-fixture.sql').read_text();functions=base[base.index('CREATE OR REPLACE FUNCTION private.account_access_allowed()'):]
 s=prefix+'\ntry {\nawait db.exec('+json.dumps(setup)+');\nawait db.exec('+json.dumps(functions)+');\n'
+s+='await db.exec(\"alter default privileges for role postgres in schema public grant execute on functions to anon,authenticated,service_role\");\n'
 s+='''
 const rootOut='__ATOMIC_FIXTURE_OUTPUT__';
 const targets=['current_master_feature_flags','is_current_user_master_admin','require_reauthentication_session','consume_reauthentication_proof','set_master_feature_enabled_with_proof','account_access_allowed','partner_company_profile_value','set_master_feature_enabled','trade_document_source','save_trade_document_attachment'];
@@ -102,13 +103,13 @@ await assert.rejects(stoppedRestore,error=>error.code==='55000'&&error.message.s
 
 let replay;
 try{await db.exec(forward);}catch(error){replay=error;}assert.equal(replay?.message,'Fresh full function catalog changed; stop');await db.exec('rollback');passed++;
-console.log(JSON.stringify({result:'PASS atomic machine review plan',checks:passed,full_preflight_functions:10,full_postflight_scope:13,atomic_failed_postflight_rollback:true,business_rows_unchanged_by_install:true,master_off:true,receipt_blocks_legacy_restore:true,source_only_restore_rehearsed:true,recovery_receipt_functions:18,committed_receipt_functions:18,later_identity_drift_refuses_restore:true,auth_dependency_drift_refuses_restore:true,production:false}));
+console.log(JSON.stringify({result:'PASS atomic machine review plan',checks:passed,full_preflight_functions:10,full_postflight_scope:13,atomic_failed_postflight_rollback:true,business_rows_unchanged_by_install:true,master_off:true,receipt_blocks_legacy_restore:true,source_only_restore_rehearsed:true,recovery_receipt_functions:18,committed_receipt_functions:18,actual_public_default_privileges:true,later_identity_drift_refuses_restore:true,auth_dependency_drift_refuses_restore:true,production:false}));
 } finally {await db.close();}
 '''
 s=s.replace('__ATOMIC_FIXTURE_OUTPUT__',out.as_posix()).replace('__ATOMIC_MAIN_ROOT__',main.as_posix()).replace('__ATOMIC_HUB_ROOT__',main.as_posix())
 s=s.replace("rootOut+'/build_review_bundle.py'",json.dumps(str(main/'tool/build_trade_document_deployment_review.py')))
 s=s.replace("console.log(JSON.stringify({result:'PASS atomic machine review plan'","const summary={result:'PASS atomic machine review plan'")
-s=s.replace("receipt_blocks_legacy_restore:true,source_only_restore_rehearsed:true,recovery_receipt_functions:18,committed_receipt_functions:18,later_identity_drift_refuses_restore:true,auth_dependency_drift_refuses_restore:true,production:false}));","receipt_blocks_legacy_restore:true,source_only_restore_rehearsed:true,recovery_receipt_functions:18,committed_receipt_functions:18,later_identity_drift_refuses_restore:true,auth_dependency_drift_refuses_restore:true,production:false};await fs.writeFile(rootOut+'/atomic-proof.json',JSON.stringify(summary,null,2));console.log(JSON.stringify(summary));")
+s=s.replace("receipt_blocks_legacy_restore:true,source_only_restore_rehearsed:true,recovery_receipt_functions:18,committed_receipt_functions:18,actual_public_default_privileges:true,later_identity_drift_refuses_restore:true,auth_dependency_drift_refuses_restore:true,production:false}));","receipt_blocks_legacy_restore:true,source_only_restore_rehearsed:true,recovery_receipt_functions:18,committed_receipt_functions:18,actual_public_default_privileges:true,later_identity_drift_refuses_restore:true,auth_dependency_drift_refuses_restore:true,production:false};await fs.writeFile(rootOut+'/atomic-proof.json',JSON.stringify(summary,null,2));console.log(JSON.stringify(summary));")
 (out/'machine-plan-fixture.mjs').write_text(s)
 ordered=(main/'tool/verify_trade_documents_deployment_order.mjs').read_text()
 point=' assert.deepEqual(await hubPin(),hubBefore);passed++;'

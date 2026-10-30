@@ -7,13 +7,16 @@ Production HOLD and the individual-document-exemption OFF state remain in force.
 
 Target: SK WORKS project `ztktgquxvcxcjxtluspu`, one transaction containing
 `master-and-standalone-context.sql.review-only`, SHA256
-`dffcc373801fb2d4b56d0c128e406b8fbe8c9b0d7929087a4fd29e38b655c706`.
+`7796c2e7bcc7a9eca78f1b79ce8cfc87fcd978c1dc4a4ddb7a5a8ced17b597e5`.
 
 The transaction extends the existing private master-key CHECK with
 `site_order_documents`; replaces only `public.current_master_feature_flags()` and
 `public.set_master_feature_enabled_with_proof(text,boolean,text)`; creates the
 private live master gate, private management access/context functions and their
-two public security-invoker wrappers. Explicit EXECUTE grants expose only the
+two public security-invoker wrappers. New public wrappers explicitly revoke
+service_role as well as PUBLIC/anon, overriding observed public default grants;
+unknown additional inherited grants abort the transaction. Existing master
+function ACLs remain unchanged. Explicit EXECUTE grants expose only the
 scoped access/context RPCs to authenticated callers. Private authorization,
 live SID, sole management membership and selected company checks remain mandatory.
 Existing table RLS, owner and ACL are checked unchanged. It inserts no feature row,

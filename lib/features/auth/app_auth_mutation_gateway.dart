@@ -42,6 +42,37 @@ class _LogoutSignal implements AppLogoutQuarantineSignal {
   }
 }
 
+/// Exclusive inspection of the captured existing SDK session. Contains no
+/// credentials and never writes/adopts a session. Logout may retire it at once.
+abstract interface class AppAuthSessionInspection {
+  bool get isCurrent;
+  Future<void> get invalidated;
+  void release();
+}
+
+class _SessionInspection implements AppAuthSessionInspection {
+  _SessionInspection(this._current, this._release);
+  bool Function()? _current;
+  void Function()? _release;
+  final _invalidated = Completer<void>();
+  @override
+  bool get isCurrent {
+    if (_current?.call() == true) return true;
+    release();
+    return false;
+  }
+  @override
+  Future<void> get invalidated => _invalidated.future;
+  @override
+  void release() {
+    final release = _release;
+    _current = null;
+    _release = null;
+    release?.call();
+    if (!_invalidated.isCompleted) _invalidated.complete();
+  }
+}
+
 class AppAuthMutationGateway {
   AppAuthMutationGateway._(this._client) {
     final baseline = SdkSessionReplayBaseline(_client.auth.currentSession);
@@ -49,7 +80,10 @@ class AppAuthMutationGateway {
       // A recovered initialSession may be a distinct, byte-equivalent SDK
       // object. Every subsequent live event still advances the revision.
       final cached = baseline.consume(event, _client.auth.currentSession);
-      if (!cached) _externalRevision++;
+      if (!cached) {
+        _externalRevision++;
+        _inspection?.release();
+      }
     }, onError: (Object _) => _closeExternalHistory(), onDone: _closeExternalHistory);
     _externalReady = Future<void>.value().then((_) { baseline.close(); });
   }
@@ -60,6 +94,7 @@ class AppAuthMutationGateway {
   void _closeExternalHistory() {
     _externalClosed = true;
     _externalRevision++;
+    _inspection?.release();
     final subscription = _externalHistory;
     _externalHistory = null;
     if (subscription != null) {
@@ -82,6 +117,7 @@ class AppAuthMutationGateway {
   final SupabaseClient _client;
   AppLogoutPersistenceFence? _persistence;
   Completer<void>? _active;
+  _SessionInspection? _inspection;
   Future<void>? _logout;
   int _generation = 0;
   final _quarantine = _LogoutSignal();
@@ -99,6 +135,40 @@ class AppAuthMutationGateway {
     return _externalFlowEpoch;
   }
   bool isExternalFlowCurrent(int epoch) => _externalFlowEpoch == epoch;
+
+  /// Reserve app-owned Auth writes during isolated successor inspection.
+  /// Existing SDK callbacks/refresh are observed rather than owned: any live
+  /// event retires this lease. This is not global SDK compare-and-swap/adoption.
+  Future<AppAuthSessionInspection> inspectCurrentSession() async {
+    if (_active != null || _logout != null || _externalClosed ||
+        _quarantine.state != AppLogoutQuarantineState.clear) {
+      throw StateError('Authentication operation already in progress.');
+    }
+    final captured = _client.auth.currentSession;
+    if (captured == null || captured.isExpired || _binding(captured) == null) {
+      throw StateError('Authentication required.');
+    }
+    final generation = _generation, revision = _externalRevision;
+    final completion = Completer<void>();
+    late final _SessionInspection inspection;
+    inspection = _SessionInspection(() =>
+      identical(_inspection, inspection) && identical(_active, completion) &&
+      generation == _generation && revision == _externalRevision && !_externalClosed &&
+      _logout == null && _quarantine.state == AppLogoutQuarantineState.clear &&
+      identical(captured, _client.auth.currentSession) && !captured.isExpired,
+      () {
+        if (identical(_inspection, inspection)) _inspection = null;
+        if (identical(_active, completion)) _active = null;
+        if (!completion.isCompleted) completion.complete();
+      });
+    _active = completion;
+    _inspection = inspection;
+    await _externalReady;
+    if (!inspection.isCurrent) {
+      throw StateError('Authentication changed before inspection.');
+    }
+    return inspection;
+  }
 
   AppleSessionNavigationBinding? _binding(Session? session) =>
       AppleSessionNavigationBinding.fromSession(session);
@@ -210,6 +280,7 @@ class AppAuthMutationGateway {
     // Invalidate pending callers and quarantine UI before awaiting any SDK work.
     _generation++;
     _externalRevision++;
+    _inspection?.release();
     final completion = Completer<void>();
     _logout = completion.future;
     _quarantine._set(AppLogoutQuarantineState.pending);

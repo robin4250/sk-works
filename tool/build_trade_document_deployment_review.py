@@ -56,7 +56,7 @@ assert len(before)==10
 expected=[normalize(r) for r in read_json(a.expected_fixture)]
 assert len(expected)==13
 pins=[
- ('C',pathlib.Path(a.hub_root)/'docs/review/trade-documents-hub/master-and-standalone-context.sql.review-only','dffcc373801fb2d4b56d0c128e406b8fbe8c9b0d7929087a4fd29e38b655c706'),
+ ('C',pathlib.Path(a.hub_root)/'docs/review/trade-documents-hub/master-and-standalone-context.sql.review-only','7796c2e7bcc7a9eca78f1b79ce8cfc87fcd978c1dc4a4ddb7a5a8ced17b597e5'),
  ('terms',pathlib.Path(a.formal_root)/'docs/review/trade-document-terms/save-guard.sql.review-only','e5967ad6b5d54f413ba7db94887423f1f5c98057cafae6c1abed318ce171da5a'),
  ('v1',pathlib.Path(a.formal_root)/'docs/review/trade-document-form-input/server-save.sql.review-only','d57918a806b72e0d52299a3e175c9841258eaa71ce18f2abaab0a7877bd62178'),
  ('v2',pathlib.Path(a.formal_root)/'docs/review/trade-document-month-end/server-upgrade.sql.review-only','bc53ac3daa85452c032d2e2880ca334fe1ce4aee4601cf9cc0be9c6d09818a79')]
