@@ -41,6 +41,11 @@ void main() {
       SharedDailyReportContext.parse(value, actorId: actor,
         companyId: company, workerId: worker, sourceClockInId: source,
         reportId: report, workDate: DateTime(2026, 10, 25));
+  test('explicit managed-only metadata is parsed and malformed metadata never becomes an edit grant', () {
+    expect(parse(row()).requiresAttendanceManagement, isFalse);
+    expect(parse(row()..['explicit_finalization_managed_only'] = true).requiresAttendanceManagement, isTrue);
+    expect(() => parse(row()..['explicit_finalization_managed_only'] = 'true'), throwsFormatException);
+  });
   Map<String, dynamic> documentRow() => row()..addAll({
     'document_only': true, 'document_complete': false, 'document_editable': true,
     'financial_confirmation_required': true,

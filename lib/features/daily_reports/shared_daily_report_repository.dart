@@ -34,6 +34,7 @@ class SharedDailyReportContext {
     this.managementHoldReason, this.approvedEditRequestId,
     this.explicitFinalizationRequired = false, this.explicitFinalizationReady = false,
     this.explicitFinalizationCompleted = false, this.explicitFinalizationEditable = false,
+    this.explicitFinalizationManagedOnly = false,
     this.pendingWorkerIds = const [], this.supervisorPendingReasons = const [],
   });
   final String actorId, companyId, state, reporterName;
@@ -46,6 +47,8 @@ class SharedDailyReportContext {
   final Map<String, dynamic>? documentBasis;
   final bool supervisorReady;
   final bool explicitFinalizationRequired, explicitFinalizationReady, explicitFinalizationCompleted, explicitFinalizationEditable;
+  final bool explicitFinalizationManagedOnly;
+  bool get requiresAttendanceManagement => explicitFinalizationManagedOnly || explicitFinalizationCompleted;
   bool get canFinalize => enabled && explicitFinalizationRequired && explicitFinalizationReady &&
       !explicitFinalizationCompleted && reporterSaved && supervisorSaved &&
       reportId != null && expectedUpdatedAt != null && signatureScopeFingerprint != null;
@@ -120,7 +123,7 @@ class SharedDailyReportContext {
     for (final key in ['enabled', 'can_manage_attendance', 'reporter_saved', 'supervisor_saved', 'source_attached', 'supervisor_ready', 'first_reporter_covers_work_only', 'management_hold']) {
       if (row[key] is! bool) { invalid(); }
     }
-    for (final key in ['document_only', 'document_complete', 'document_editable', 'financial_confirmation_required', 'financial_resigning_supported', 'financial_transition_valid', 'new_actual_reporter_and_supervisor_signatures_required']) {
+    for (final key in ['document_only', 'document_complete', 'document_editable', 'financial_confirmation_required', 'financial_resigning_supported', 'financial_transition_valid', 'new_actual_reporter_and_supervisor_signatures_required', 'explicit_finalization_managed_only']) {
       if (row.containsKey(key) && row[key] is! bool) { invalid(); }
     }
     const finalizationKeys = ['explicit_finalization_required', 'explicit_finalization_ready', 'explicit_finalization_completed'];
@@ -304,6 +307,7 @@ class SharedDailyReportContext {
       explicitFinalizationRequired: row['explicit_finalization_required'] == true,
       explicitFinalizationReady: row['explicit_finalization_ready'] == true,
       explicitFinalizationCompleted: row['explicit_finalization_completed'] == true,
+      explicitFinalizationManagedOnly: row['explicit_finalization_managed_only'] == true,
       explicitFinalizationEditable: row['explicit_finalization_editable'] == true,
       financialResigningSupported: row['financial_resigning_supported'] == true,
       financialTransitionId: transitionId as int?, financialTransitionValid: row['financial_transition_valid'] == true,

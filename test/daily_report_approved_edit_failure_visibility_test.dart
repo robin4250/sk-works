@@ -8,8 +8,24 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sk_works/features/daily_reports/daily_report_page.dart';
 import 'package:sk_works/features/daily_reports/daily_report_repository.dart';
 import 'package:sk_works/features/daily_reports/daily_report_company_allowance_selection.dart';
+import 'package:sk_works/features/daily_reports/shared_daily_report_repository.dart';
+import 'package:sk_works/features/auth/secondary_protected_page.dart';
 import 'package:sk_works/features/shared/company_allowance_label_repository.dart';
-import 'daily_report_approved_edit_start_test.dart' show EditableReports;
+import 'daily_report_approved_edit_start_test.dart' show EditableReports, ApprovedSharedReports;
+
+class FinalizedSharedReports extends ApprovedSharedReports {
+  FinalizedSharedReports(super.reports, this.manager);
+  final bool manager;
+  @override SharedDailyReportContext get state => SharedDailyReportContext(
+    actorId: 'owner', companyId: 'company-a', reportId: 'report-a',
+    workDate: DateTime(2026, 10, 15), state: 'supervisor_saved', enabled: true,
+    canManageAttendance: manager, reporterSaved: true, supervisorSaved: true,
+    sourceAttached: false, reportStatus: 'signed',
+    explicitFinalizationRequired: true, explicitFinalizationCompleted: true,
+    explicitFinalizationManagedOnly: true,
+    workBasis: {'report': {'site_id': 'site-a', 'route_assignment_id': null,
+      'work_description': '保存済み内容'}, 'roster': <Map<String, dynamic>>[]});
+}
 
 class BlockedEditReports extends EditableReports {
   BlockedEditReports(super.client);
@@ -62,6 +78,37 @@ void main() {
       authOptions: const AuthClientOptions(autoRefreshToken: false));
   });
   tearDown(() async { await client.dispose(); });
+  for (final manager in [false, true]) {
+    testWidgets('finalized report routes to protected management instead of approved reset manager=$manager', (tester) async {
+      final repo = EditableReports(client);
+      await tester.pumpWidget(MaterialApp(home: DailyReportPage(initialDate: DateTime(2026, 10, 15),
+        initialSiteId: 'site-a', initialReportId: 'report-a', repositoryForTesting: repo,
+        sharedReportRepositoryForTesting: FinalizedSharedReports(repo, manager))));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('daily-report-begin-approved-edit')), findsNothing);
+      expect(find.text('編集・修正を申請'), findsNothing);
+      final panel = find.byKey(const ValueKey('daily-report-finalized-management-only'));
+      expect(panel, findsOneWidget);
+      final management = find.byKey(const ValueKey('daily-report-open-attendance-management'));
+      expect(management, manager ? findsOneWidget : findsNothing);
+      expect(repo.saves, 0);
+      expect(repo.approved, isTrue);
+      expect(repo.signed, isTrue);
+      if (manager) {
+        final scrollable = find.byWidgetPredicate((widget) => widget is Scrollable && widget.axisDirection == AxisDirection.down).first;
+        await tester.scrollUntilVisible(management, 250, scrollable: scrollable, maxScrolls: 40);
+        await tester.ensureVisible(management); await tester.tap(management); await tester.pumpAndSettle();
+        expect(find.byType(SecondaryProtectedPage), findsOneWidget);
+        expect(repo.saves, 0);
+      }
+      expect(tester.takeException(), isNull);
+    });
+  }
+  test('finalized edit rejection directs to management without raw server details', () {
+    final message = dailyReportActionErrorMessage(StateError('explicit_report_finalized_edit_requires_attendance_management'));
+    expect(message, contains('勤怠管理'));
+    expect(message, isNot(contains('StateError')));
+  });
   testWidgets('failed approved start explains grey controls and successful retry permits saved PC removal', (tester) async {
     final repo = BlockedEditReports(client);
     await tester.pumpWidget(MaterialApp(home: DailyReportPage(initialDate: DateTime(2026, 10, 15),
