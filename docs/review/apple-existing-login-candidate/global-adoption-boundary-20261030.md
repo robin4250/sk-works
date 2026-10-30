@@ -1,0 +1,101 @@
+# Global Apple session adoption: concrete ownership boundary
+
+Production Auth and Apple enrollment remain OFF/HOLD. This change adds actual
+pinned-SDK regression evidence, not an unconnected persistence helper, alternative
+Auth owner, global `setSession` implementation or secure-storage migration.
+
+## Current source and reproducible boundary
+
+Reviewed main: `92b48951d3a1e499eb35b13b47b4dbffe7630e47`.
+The app constructs the single existing client in
+`lib/data/supabase_backend.dart::initializeIfConfigured`. It passes
+`AppAuthLogoutPersistence.forProject` as Flutter SDK LocalStorage, then binds the
+existing `AppAuthMutationGateway`. That storage uses the current SDK key and
+acknowledged SharedPreferences readback. This proves neither Keychain-backed
+credential storage nor atomic app-wide session adoption.
+
+The gateway reserves repository writes and observes SDK events. The existing
+Google launcher obtains external admission, but the SDK callback and refresh
+writer still live outside the gateway. `inspectCurrentSession` fails closed on
+identity/history changes; it cannot cancel a `setSession` operation already
+waiting for `getUser` inside the SDK. The private owned coordinator is deliberately
+a separate memory client and must not be relabelled as this application client.
+
+`test/apple_global_adoption_boundary_test.dart` uses the pinned real SDK plus
+synthetic HTTP replies. It holds `getUser` after raw `setSession`, completes normal
+gateway logout or an external account switch, then releases the response. The
+unsafe baseline demonstrates that the SDK can still save the late session. The
+inspection remains invalid. A separate safe boundary case refuses continuation
+before any network/adoption call. These are boundary tests, not production code or
+a claim that automatic callback handling has been repaired. No real JWT/provider,
+company data or remote Auth service is used.
+
+## Minimum adoption that can be connected
+
+Adoption must be added to the **existing gateway**, only after its ownership starts
+before SDK initialization. A candidate cannot rely on a public boolean declaring
+exclusive ownership, an observer-only revision, or a stale preflight check.
+
+1. At the existing backend construction boundary, SDK callback parsing, background
+   refresh and restore must be delegated to the same owner before any automatic
+   writer starts. Exact supported options must be checked against the pinned SDK,
+   not current/latest documentation. Preserve existing Google PKCE recovery,
+   password/phone flow, password recovery and session persistence semantics.
+2. Route callback recovery, refresh, repository mutation and signout through that
+   owner. Logout must synchronously retire pending transition generation. An SDK
+   network operation must not save a late session after retirement: use an owned
+   isolated preparation/client-retirement design or a vendor-supported guarded
+   save primitive, not a compensation logout that can erase a newer login.
+3. Transfer the existing isolated preparation to a private owner capability while
+   retaining its lease; no public successor/session/refresh-token getter. Recheck
+   UID, SID, Google identity, Apple subject and memberships at the single commit
+   boundary. Preserve the exact original request and successor ACK-only retry.
+4. Persist the successor through the same owner with durable failure quarantine.
+   Do not expose app navigation until acknowledged secure write/readback and
+   matching live SDK session are established. A crash/unknown write must never
+   restore the earlier token automatically. ACK possession alone does not prove
+   persistence, app adoption or successful restart.
+5. On cold start, reconcile the durable transition state before SDK restore or
+   navigation, verify the same UID/SID/identity/company evidence using the existing
+   server contract, and stop safely on unknown/incomplete state. Release quarantine
+   only after those checks; no forced signout of an independently newer login.
+
+These are prerequisites for a safe concrete adoption patch. This candidate does
+not close them or create placeholders pretending to do so. Whole SDK replacement
+and enabling Apple are not part of this change.
+
+## Secure persistence scope to review before implementation
+
+No `flutter_secure_storage` dependency exists in the reviewed lock. Existing
+`local_auth` checks local biometric access; it does not provide a credential vault.
+A minimal future choice is either an exact pinned maintained secure-storage plugin
+(`pubspec.yaml` + `pubspec.lock` + generated iOS dependency lock) or a narrowly
+reviewed native Keychain adapter in the existing Runner target. Do not add both.
+A native choice would touch only the existing channel registration/adapter Swift
+file and target membership, plus the existing LocalStorage delegate under the
+same gateway; no server schema/RLS or provider configuration change is needed for
+local storage. No broad Keychain access group or backup/synchronization entitlement
+should be added without an actual requirement. Existing storage migration cannot
+silently delete the current session or force a data reset.
+
+Before selecting either implementation, inventory the real Xcode target and
+entitlements on latest main. Define exact service/account keys, non-synchronizing
+accessibility policy, locked-device/error behavior, acknowledged write/readback,
+logout removal and rollback. This document does not assume a particular Keychain
+policy is already supported or tested on the owner's phone.
+
+Owner iPhone validation must include Release overwrite without app deletion,
+existing login/Google callback/recovery/Face ID flow preservation, secure write
+failure and locked device, kill before/after write/ACK, cold restart with each
+pending state, logout during verification, concurrent refresh/callback, membership
+change and no stale-token restoration. Source/CI success is separate from each
+real-device result. No Keychain, manifest, dependency or app runtime is modified
+by this boundary fixture.
+
+Primary references checked 2026-10-30:
+- https://supabase.com/docs/reference/dart/auth-setsession
+- https://github.com/supabase/supabase-flutter (use repository-locked versions for implementation)
+- The existing pinned `supabase_flutter` 2.17.2 / `gotrue` 2.27.2 actual SDK regression.
+
+Current primary docs now describe newer SDK APIs. They are not evidence that this
+app's locked version has a new atomic CAS/persistence hook.
