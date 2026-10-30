@@ -68,6 +68,10 @@ try {
  // before any reason save, and retained as the separate table receipt.
  const receipt={functions:committedFunctionReceipt,reason_table:committedReasonTableReceipt};
  await fixtureWrite(out+'/pause-receipt.json',JSON.stringify(receipt));
+ const incomplete={...receipt,functions:receipt.functions.filter(row=>row.name!=='payroll_tax_adjustment_reason_contract_version')};
+ await fixtureWrite(out+'/incomplete-pause-receipt.json',JSON.stringify(incomplete));
+ const badPause=fixtureSpawn('python3',[${JSON.stringify(resolve('tool/build_payroll_tax_reason_pause.py'))},'--receipt',out+'/incomplete-pause-receipt.json','--output',out+'/bad-pause.sql'],{encoding:'utf8'});
+ assert.notEqual(badPause.status,0);assert.ok(badPause.stderr.includes('Complete additive reason function receipt required'));groups++;
  const paused=fixtureSpawn('python3',[${JSON.stringify(resolve('tool/build_payroll_tax_reason_pause.py'))},'--receipt',out+'/pause-receipt.json','--output',out+'/pause.sql.review-only'],{encoding:'utf8'});assert.equal(paused.status,0,paused.stderr);
  const pause=await fixtureRead(out+'/pause.sql.review-only','utf8');
  await assert.rejects(db.exec(pause),/Independently stopped reason writers/);await db.exec('rollback');groups++;
