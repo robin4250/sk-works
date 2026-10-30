@@ -16,7 +16,11 @@ Future<void> _open(WidgetTester tester, void Function(SignatureResult?) complete
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
+  tester.view.viewPadding = const FakeViewPadding(bottom: 21);
+  tester.view.padding = const FakeViewPadding(bottom: 21);
   addTearDown(tester.view.resetViewInsets);
+  addTearDown(tester.view.resetViewPadding);
+  addTearDown(tester.view.resetPadding);
   await tester.pumpWidget(MaterialApp(home: Builder(builder: (context) => Scaffold(
     body: TextButton(onPressed: () async {
       completed(await Navigator.of(context).push<SignatureResult>(MaterialPageRoute(
@@ -63,6 +67,7 @@ void main() {
       final before = tester.getRect(_surface);
       await tester.enterText(find.byType(TextField), '入力した本人');
       tester.view.viewInsets = const FakeViewPadding(bottom: 180);
+      tester.view.padding = const FakeViewPadding();
       await tester.pump();
       expect(tester.getRect(_surface), before);
       expect(find.byKey(const ValueKey('signature-name-done')), findsOneWidget);
@@ -70,6 +75,7 @@ void main() {
       expect(completed, isFalse);
       expect(_painter(tester).strokes, isEmpty);
       tester.view.viewInsets = const FakeViewPadding();
+      tester.view.padding = const FakeViewPadding(bottom: 21);
       await tester.pumpAndSettle();
       await tester.tap(_confirm); await tester.pump();
       expect(completed, isFalse);
@@ -82,11 +88,13 @@ void main() {
     await _open(tester, (_) { completed = true; });
     await tester.enterText(find.byType(TextField), '変更した本人');
     tester.view.viewInsets = const FakeViewPadding(bottom: 180);
+      tester.view.padding = const FakeViewPadding();
     await tester.pump();
     await tester.dragFrom(tester.getCenter(_surface), const Offset(70, 20));
     await tester.pump();
     expect(_painter(tester).strokes, isEmpty);
     tester.view.viewInsets = const FakeViewPadding();
+      tester.view.padding = const FakeViewPadding(bottom: 21);
     await tester.pumpAndSettle();
     await tester.tap(_confirm); await tester.pump();
     expect(completed, isFalse);

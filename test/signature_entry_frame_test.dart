@@ -105,6 +105,12 @@ void main() {
       expect(confirm.hitTestable(), findsOneWidget);
       expect(t.takeException(), isNull);
       await t.tap(confirm); await t.pumpAndSettle();
+      // A keyboard-open tap only completes name input, never signs.
+      expect(saved, isNull);
+      expect(find.byType(SignatureCapturePage), findsOneWidget);
+      t.view.viewInsets = const FakeViewPadding();
+      await t.pumpAndSettle();
+      await t.tap(confirm); await t.pumpAndSettle();
       expect(saved?.signerName, '記入者'); expect(saved?.strokes, isNotEmpty);
       expect(find.byType(SignatureCapturePage), findsNothing);
       expect(t.takeException(), isNull);

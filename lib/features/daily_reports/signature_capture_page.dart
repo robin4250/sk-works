@@ -263,7 +263,8 @@ class _SignatureCapturePageState extends State<SignatureCapturePage> {
           ),
         ],
       ),
-      body: SafeArea(child: LayoutBuilder(builder: (context, bodyConstraints) => Column(
+      body: SafeArea(maintainBottomViewPadding: true,
+        child: LayoutBuilder(builder: (context, bodyConstraints) => Column(
         children: [
           ConstrainedBox(
             constraints: BoxConstraints(maxHeight: bodyConstraints.maxHeight * .35),

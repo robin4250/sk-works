@@ -17,6 +17,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
       - uses: subosito/flutter-action@v2
         with: {flutter-version: '3.47.5', channel: stable, cache: true}
       - run: flutter pub get --enforce-lockfile
@@ -61,6 +62,7 @@ jobs:
           test/signature_blank_keyboard_test.dart
           test/signature_confirm_return_test.dart
           test/signature_capture_member_names_test.dart
+          test/signature_entry_frame_test.dart
           test/signature_orientation_guidance_test.dart
           test/signature_ink_frame_test.dart
           test/daily_report_signature_aspect_test.dart
