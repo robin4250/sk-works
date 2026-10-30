@@ -19,6 +19,7 @@ class _RpcFixture {
   bool explicit = false, document = false, complete = false, route = false, switchAba = false;
   bool stageReporterSaved = true, managedContext = false;
   String loginUid = _actor;
+  String? approvedRequest;
   int generation = 0;
   final calls = <String>[];
   final requests = <Map<String, dynamic>>[];
@@ -60,6 +61,7 @@ class _RpcFixture {
     'explicit_finalization_completed': complete, 'report_updated_at': _stamp.toIso8601String(),
     'signature_scope_fingerprint': _scope};
   Map<String, dynamic> response() => {'schema': 1, 'actor_id': _actor, 'company_id': _company,
+    'approved_edit_request_id': approvedRequest,
     'worker_id': managedContext ? null : _worker, 'source_clock_in_id': managedContext ? null : _source, 'report_id': _report, 'work_date': '2026-10-26',
     'state': complete ? 'supervisor_saved' : document || !stageReporterSaved ? 'reporter_required' : 'reporter_saved_waiting_supervisor',
     'enabled': true, 'can_manage_attendance': managedContext, 'reporter_saved': !document && stageReporterSaved,
@@ -82,7 +84,7 @@ class _RpcFixture {
     sourceClockInId: managedContext ? null : _source,
     workDate: DateTime(2026, 10, 26), state: 'reporter_required', enabled: true,
     canManageAttendance: managedContext, reporterSaved: ready || provisional, supervisorSaved: ready, sourceAttached: !managedContext,
-    reportStatus: 'draft', firstReporterCoversWorkOnly: true,
+    reportStatus: 'draft', firstReporterCoversWorkOnly: true, approvedEditRequestId: approvedRequest,
     expectedUpdatedAt: _stamp, signatureScopeFingerprint: _scope, supervisorReady: true,
     explicitFinalizationRequired: explicit, explicitFinalizationReady: ready,
     documentOnly: document, financialConfirmationRequired: document);
@@ -93,6 +95,27 @@ Map<String, dynamic> _workerInput() => {'worker_id': _worker, 'overtime_hours': 
   'work_category': 'night', 'confirmed_hours': 7.5, 'confirmation_reason': null};
 
 void main() {
+  test('approved signature resume sends exact request and CAS and accepts only unsigned acknowledgement', () async {
+    final fixture = _RpcFixture()..approvedRequest = _source..stageReporterSaved = false;
+    addTearDown(fixture.client.dispose); await fixture.login();
+    final after = await fixture.repository.resumeApprovedSignatures(before: fixture.before(), requestId: _source);
+    expect(fixture.calls, ['resume_approved_daily_report_signatures']);
+    expect(fixture.requests.single, {'p_report_id': _report, 'p_request_id': _source,
+      'p_expected_updated_at': _stamp.toIso8601String(), 'p_expected_signature_scope': _scope});
+    expect(after.reporterSaved, isFalse); expect(after.supervisorSaved, isFalse);
+  });
+  test('different approved request cannot invoke resume mutation', () async {
+    final fixture = _RpcFixture()..approvedRequest = _source;
+    addTearDown(fixture.client.dispose); await fixture.login();
+    await expectLater(fixture.repository.resumeApprovedSignatures(before: fixture.before(), requestId: _report), throwsStateError);
+    expect(fixture.calls, isEmpty);
+  });
+  test('actor ABA while signature resume is pending invalidates its result', () async {
+    final fixture = _RpcFixture()..approvedRequest = _source..stageReporterSaved = false..switchAba = true;
+    addTearDown(fixture.client.dispose); await fixture.login();
+    await expectLater(fixture.repository.resumeApprovedSignatures(before: fixture.before(), requestId: _source), throwsStateError);
+  });
+
   for (final explicit in [false, true]) {
     test('submit sends only the advertised legacy or explicit worker contract: $explicit', () async {
       final fixture = _RpcFixture()..explicit = explicit;

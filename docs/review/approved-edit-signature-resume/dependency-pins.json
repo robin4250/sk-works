@@ -1,0 +1,559 @@
+{
+  "captured_read_only": true,
+  "application_rows_read": false,
+  "functions": [
+    {
+      "schema": "shared_report_edit_private",
+      "name": "current_session",
+      "identity": "rid uuid, closed_allowed boolean",
+      "source_md5": "2372c276ead1583ccc0ec1eb642c0ad9",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "config": [
+        "search_path=\"\""
+      ],
+      "security_definer": true,
+      "volatility": "s"
+    },
+    {
+      "schema": "shared_report_edit_private",
+      "name": "evidence",
+      "identity": "rid uuid, request uuid",
+      "source_md5": "3fcd21a761da64a5e543c1977a1348f9",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "config": [
+        "search_path=\"\""
+      ],
+      "security_definer": true,
+      "volatility": "s"
+    },
+    {
+      "schema": "shared_daily_report_private",
+      "name": "guard_report",
+      "identity": "",
+      "source_md5": "943f215ce9e2f5f568cf0d6522fed660",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "config": [
+        "search_path=\"\""
+      ],
+      "security_definer": true,
+      "volatility": "v"
+    }
+  ],
+  "columns": [
+    {
+      "type": "uuid",
+      "table": "sessions",
+      "column": "report_id",
+      "schema": "shared_report_edit_private",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "uuid",
+      "table": "sessions",
+      "column": "request_id",
+      "schema": "shared_report_edit_private",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "uuid",
+      "table": "sessions",
+      "column": "company_id",
+      "schema": "shared_report_edit_private",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "uuid",
+      "table": "sessions",
+      "column": "actor_id",
+      "schema": "shared_report_edit_private",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "uuid",
+      "table": "sessions",
+      "column": "session_id",
+      "schema": "shared_report_edit_private",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "bigint",
+      "table": "sessions",
+      "column": "consumed_txid",
+      "schema": "shared_report_edit_private",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "sessions",
+      "column": "state",
+      "schema": "shared_report_edit_private",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "jsonb",
+      "table": "sessions",
+      "column": "old_report",
+      "schema": "shared_report_edit_private",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "jsonb",
+      "table": "sessions",
+      "column": "old_roster",
+      "schema": "shared_report_edit_private",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "jsonb",
+      "table": "sessions",
+      "column": "old_annex",
+      "schema": "shared_report_edit_private",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "sessions",
+      "column": "opened_at",
+      "schema": "shared_report_edit_private",
+      "default": "clock_timestamp()",
+      "nullable": "NO"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "sessions",
+      "column": "closed_at",
+      "schema": "shared_report_edit_private",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "bigint",
+      "table": "events",
+      "column": "id",
+      "schema": "explicit_report_finalization_private",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "uuid",
+      "table": "events",
+      "column": "report_id",
+      "schema": "explicit_report_finalization_private",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "uuid",
+      "table": "events",
+      "column": "company_id",
+      "schema": "explicit_report_finalization_private",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "bigint",
+      "table": "events",
+      "column": "revision",
+      "schema": "explicit_report_finalization_private",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "events",
+      "column": "kind",
+      "schema": "explicit_report_finalization_private",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "uuid",
+      "table": "events",
+      "column": "actor_id",
+      "schema": "explicit_report_finalization_private",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "uuid",
+      "table": "events",
+      "column": "session_id",
+      "schema": "explicit_report_finalization_private",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "events",
+      "column": "reason",
+      "schema": "explicit_report_finalization_private",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "jsonb",
+      "table": "events",
+      "column": "before_state",
+      "schema": "explicit_report_finalization_private",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "events",
+      "column": "expected_at",
+      "schema": "explicit_report_finalization_private",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "events",
+      "column": "expected_scope",
+      "schema": "explicit_report_finalization_private",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "events",
+      "column": "created_at",
+      "schema": "explicit_report_finalization_private",
+      "default": "clock_timestamp()",
+      "nullable": "NO"
+    },
+    {
+      "type": "uuid",
+      "table": "management_reports",
+      "column": "report_id",
+      "schema": "explicit_report_finalization_private",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "uuid",
+      "table": "management_reports",
+      "column": "company_id",
+      "schema": "explicit_report_finalization_private",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "uuid",
+      "table": "management_reports",
+      "column": "operation_id",
+      "schema": "explicit_report_finalization_private",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "uuid",
+      "table": "management_reports",
+      "column": "actor_id",
+      "schema": "explicit_report_finalization_private",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "uuid",
+      "table": "management_reports",
+      "column": "session_id",
+      "schema": "explicit_report_finalization_private",
+      "default": null,
+      "nullable": "NO"
+    }
+  ],
+  "direct_helper_catalog": [
+    {
+      "schema": "shared_daily_report_private",
+      "proname": "signature_scope",
+      "identity": "rid uuid",
+      "source_md5": "198639193f4268fb15cc2e45bb55f452",
+      "attributes": {
+        "oid": "33175",
+        "proacl": [
+          "postgres=X/postgres"
+        ],
+        "probin": null,
+        "procost": 100,
+        "prokind": "f",
+        "prolang": "13619",
+        "proname": "signature_scope",
+        "prorows": 0,
+        "pronargs": 1,
+        "proowner": "16388",
+        "proconfig": [
+          "search_path=\"\""
+        ],
+        "proretset": false,
+        "prosecdef": true,
+        "prorettype": "3802",
+        "prosqlbody": null,
+        "prosupport": "-",
+        "proargmodes": null,
+        "proargnames": [
+          "rid"
+        ],
+        "proargtypes": [
+          "2950"
+        ],
+        "proisstrict": false,
+        "proparallel": "u",
+        "protrftypes": null,
+        "provariadic": "0",
+        "provolatile": "s",
+        "proleakproof": false,
+        "pronamespace": "33130",
+        "proallargtypes": null,
+        "proargdefaults": null,
+        "pronargdefaults": 0
+      }
+    },
+    {
+      "schema": "shared_daily_report_private",
+      "proname": "read_context",
+      "identity": "rid uuid",
+      "source_md5": "037f6756f797e5828f2eb88c0d63d231",
+      "attributes": {
+        "oid": "33191",
+        "proacl": [
+          "postgres=X/postgres"
+        ],
+        "probin": null,
+        "procost": 100,
+        "prokind": "f",
+        "prolang": "13619",
+        "proname": "read_context",
+        "prorows": 0,
+        "pronargs": 1,
+        "proowner": "16388",
+        "proconfig": [
+          "search_path=\"\""
+        ],
+        "proretset": false,
+        "prosecdef": true,
+        "prorettype": "3802",
+        "prosqlbody": null,
+        "prosupport": "-",
+        "proargmodes": null,
+        "proargnames": [
+          "rid"
+        ],
+        "proargtypes": [
+          "2950"
+        ],
+        "proisstrict": false,
+        "proparallel": "u",
+        "protrftypes": null,
+        "provariadic": "0",
+        "provolatile": "s",
+        "proleakproof": false,
+        "pronamespace": "33130",
+        "proallargtypes": null,
+        "proargdefaults": null,
+        "pronargdefaults": 0
+      }
+    },
+    {
+      "schema": "shared_report_edit_private",
+      "proname": "current_session",
+      "identity": "rid uuid, closed_allowed boolean",
+      "source_md5": "2372c276ead1583ccc0ec1eb642c0ad9",
+      "attributes": {
+        "oid": "33516",
+        "proacl": [
+          "postgres=X/postgres"
+        ],
+        "probin": null,
+        "procost": 100,
+        "prokind": "f",
+        "prolang": "13619",
+        "proname": "current_session",
+        "prorows": 0,
+        "pronargs": 2,
+        "proowner": "16388",
+        "proconfig": [
+          "search_path=\"\""
+        ],
+        "proretset": false,
+        "prosecdef": true,
+        "prorettype": "3802",
+        "prosqlbody": null,
+        "prosupport": "-",
+        "proargmodes": null,
+        "proargnames": [
+          "rid",
+          "closed_allowed"
+        ],
+        "proargtypes": [
+          "2950",
+          "16"
+        ],
+        "proisstrict": false,
+        "proparallel": "u",
+        "protrftypes": null,
+        "provariadic": "0",
+        "provolatile": "s",
+        "proleakproof": false,
+        "pronamespace": "33499",
+        "proallargtypes": null,
+        "proargdefaults": "({CONST :consttype 16 :consttypmod -1 :constcollid 0 :constlen 1 :constbyval true :constisnull false :location -1 :constvalue 1 [ 0 0 0 0 0 0 0 0 ]})",
+        "pronargdefaults": 1
+      }
+    },
+    {
+      "schema": "shared_report_edit_private",
+      "proname": "evidence",
+      "identity": "rid uuid, request uuid",
+      "source_md5": "3fcd21a761da64a5e543c1977a1348f9",
+      "attributes": {
+        "oid": "33524",
+        "proacl": [
+          "postgres=X/postgres"
+        ],
+        "probin": null,
+        "procost": 100,
+        "prokind": "f",
+        "prolang": "13619",
+        "proname": "evidence",
+        "prorows": 0,
+        "pronargs": 2,
+        "proowner": "16388",
+        "proconfig": [
+          "search_path=\"\""
+        ],
+        "proretset": false,
+        "prosecdef": true,
+        "prorettype": "3802",
+        "prosqlbody": null,
+        "prosupport": "-",
+        "proargmodes": null,
+        "proargnames": [
+          "rid",
+          "request"
+        ],
+        "proargtypes": [
+          "2950",
+          "2950"
+        ],
+        "proisstrict": false,
+        "proparallel": "u",
+        "protrftypes": null,
+        "provariadic": "0",
+        "provolatile": "s",
+        "proleakproof": false,
+        "pronamespace": "33499",
+        "proallargtypes": null,
+        "proargdefaults": null,
+        "pronargdefaults": 0
+      }
+    },
+    {
+      "schema": "checkout_report_registration_private",
+      "proname": "current_actor",
+      "identity": "",
+      "source_md5": "9ca270fa06ff48883705cea5d18a8f2f",
+      "attributes": {
+        "oid": "32608",
+        "proacl": [
+          "postgres=X/postgres"
+        ],
+        "probin": null,
+        "procost": 100,
+        "prokind": "f",
+        "prolang": "13619",
+        "proname": "current_actor",
+        "prorows": 0,
+        "pronargs": 0,
+        "proowner": "16388",
+        "proconfig": [
+          "search_path=\"\""
+        ],
+        "proretset": false,
+        "prosecdef": false,
+        "prorettype": "2950",
+        "prosqlbody": null,
+        "prosupport": "-",
+        "proargmodes": null,
+        "proargnames": null,
+        "proargtypes": [],
+        "proisstrict": false,
+        "proparallel": "u",
+        "protrftypes": null,
+        "provariadic": "0",
+        "provolatile": "s",
+        "proleakproof": false,
+        "pronamespace": "32594",
+        "proallargtypes": null,
+        "proargdefaults": null,
+        "pronargdefaults": 0
+      }
+    }
+  ],
+  "default_acl": [
+    {
+      "oid": 16494,
+      "attributes": {
+        "oid": "16494",
+        "defaclacl": [
+          "postgres=rwU/postgres",
+          "anon=rwU/postgres",
+          "authenticated=rwU/postgres",
+          "service_role=rwU/postgres"
+        ],
+        "defaclrole": "16388",
+        "defaclobjtype": "S",
+        "defaclnamespace": "2200"
+      },
+      "owner": "postgres",
+      "schema": "public"
+    },
+    {
+      "oid": 16493,
+      "attributes": {
+        "oid": "16493",
+        "defaclacl": [
+          "postgres=X/postgres",
+          "anon=X/postgres",
+          "authenticated=X/postgres",
+          "service_role=X/postgres"
+        ],
+        "defaclrole": "16388",
+        "defaclobjtype": "f",
+        "defaclnamespace": "2200"
+      },
+      "owner": "postgres",
+      "schema": "public"
+    },
+    {
+      "oid": 16492,
+      "attributes": {
+        "oid": "16492",
+        "defaclacl": [
+          "postgres=arwdDxtm/postgres",
+          "anon=arwdDxtm/postgres",
+          "authenticated=arwdDxtm/postgres",
+          "service_role=arwdDxtm/postgres"
+        ],
+        "defaclrole": "16388",
+        "defaclobjtype": "r",
+        "defaclnamespace": "2200"
+      },
+      "owner": "postgres",
+      "schema": "public"
+    }
+  ]
+}
