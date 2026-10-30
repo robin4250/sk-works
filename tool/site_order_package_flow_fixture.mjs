@@ -221,5 +221,24 @@ export async function verifySiteOrderPackageFlow(db,c){
  const nextPage=await q('select site_order_package_private.package_list($1,$2,1) v',[firstPage[0].created_at,firstPage[0].package_id]);
  check(nextPage.length,1);check(nextPage[0].package_id===firstPage[0].package_id,false);
  await signed(UC);await deny(()=>q('select site_order_package_private.package_detail($1) v',[second.package_id]),/archive_not_found/);
+
+ await db.exec(await fs.readFile('docs/review/site-order-package-flow/archive-payload.sql.review-only','utf8'));
+ await signed(UA);
+ const frozen=await q("select site_order_package_private.archive_payload($1,'acceptance') v",[second.package_id]);
+ check(frozen.issuer_company_id,B);check(frozen.work_name,originalBody.work_name);check(frozen.company_seal_enabled,true);
+ await db.exec('begin');
+ try{
+ await db.query("update companies set name='変更後の会社名' where id=$1",[B]);
+ const again=await q("select site_order_package_private.archive_payload($1,'acceptance') v",[second.package_id]);
+ check(again,frozen);
+ }finally{await db.exec('rollback');}
+ await signed(UC);await deny(()=>q("select site_order_package_private.archive_payload($1,'acceptance') v",[second.package_id]),/archive_not_found/);
+
+ await signed(UA);
+ const historyHashes=await q('select site_order_package_private.history_entries(null,null,50) v');
+ check(historyHashes.length>=2,true);
+ for(const e of historyHashes){
+ check(e.pdf_sha256,await q('select r.pdf_sha256 v from site_order_package_private.packages p join site_order_artifact_private.pdf_records r on r.job_id=p.source_job_id and r.receipt_id=p.original_receipt_id where p.id=$1',[e.package_id]));
+ }
  console.log(JSON.stringify({status:'passed',checks,scope:'canonical original + sanitized receive + real site/acceptance intent approval atomicity; prepared legacy guard; ordinary legacy OFF unchanged',production_applied:false,real_auth:false}));
 }
