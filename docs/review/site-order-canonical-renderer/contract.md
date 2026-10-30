@@ -41,7 +41,9 @@ the existing private registration function. That function rechecks current
 actor/SID/company/site/counterparty/link/approved evidence/master and calculates
 the original PDF hash from actual bytes. An existing original is reused exactly
 instead of regenerating timestamps. A COMMIT response loss is UNKNOWN, never
-success and never an automatic retry. Recovery must use the same job/request.
+success and never an automatic retry. Recovery must use the same job/request. The caller must discard that dedicated
+connection after a COMMIT transport error and must not return it to a pool.
+Raw SQL/render exception causes are not retained in the returned error.
 
 The Dart subprocess has a 30-second deadline and bounded input/output, no shell,
 no inherited secrets or network configuration, and no per-document files. The
@@ -61,7 +63,7 @@ its official hash. Node coordinator tests: 6 passed. Real Dart subprocess tests:
 4 order/acceptance schema-1/2 PDFs plus 5 rejection boundaries passed. Each PDF is
 A4 two pages and contains all 22 confirmed legal articles. Existing consent/API
 SQL -> frozen job -> actual Dart PDF -> immutable private original/receipt ->
-exact retry and OFF refusal succeeded in disposable PGlite. Existing 40 private
+exact retry and OFF refusal succeeded in disposable PGlite. Existing 42 private
 registration, 238 consent and 18 confirmed-terms checks ran unchanged as the
 necessary fixture dependency, not as new live-Auth proof.
 
@@ -71,3 +73,22 @@ That CI, native PostgreSQL/real-JWT server route, approved reply dispatch,
 notifications/restart recovery, deployment and phone behavior remain separately
 verifiable stages. Do not call site-order sharing complete from this candidate.
 Production HOLD/default OFF/individual document exemption OFF remain unchanged.
+
+## Review corrections
+
+Recovered local recipient-binding WIP was newer than PR1632/bdc's published
+five-argument prepare function. The first runtime CI therefore failed at the
+six-argument fixture call even though local tests used that recovered WIP.
+The forward candidate explicitly includes the recipient-bound SQL, fixture and
+driver source. Success from that mismatched head is not adopted as final proof;
+all changed blobs and the rendering dependency closure must match the published
+tree before accepting latest CI.
+
+A disposable actual-SQL RED reproduced first registration of a stale job after
+the document current revision changed. The corrected private function checks
+current approved revision for a first registration, while preserving exact
+historical-original receipts for already registered bytes. Regression tests
+cover both branches. New original/job tables also reject TRUNCATE, including
+CASCADE, in addition to UPDATE/DELETE. This is defense against accidental
+internal operations, not a claim that a PostgreSQL superuser cannot disable a
+trigger or drop a schema.

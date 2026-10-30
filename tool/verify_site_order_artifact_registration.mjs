@@ -1,6 +1,7 @@
 // Reuse the exact protected canonical fixture without changing its source pin.
 // Only a private temporary module receives this additional review hook.
 import fs from 'node:fs/promises';
+import {rmSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createHash,randomUUID} from 'node:crypto';
@@ -30,4 +31,4 @@ try {
    {cwd:root,env:process.env,stdio:'inherit'});
  if(outcome.error)throw outcome.error;
  if(outcome.status!==0)throw Error('Artifact fixture child failed: '+(outcome.status??outcome.signal));
-} finally { await fs.rm(temp,{force:true}); }
+} finally { rmSync(temp,{force:true}); }

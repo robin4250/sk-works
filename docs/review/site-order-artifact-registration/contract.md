@@ -45,6 +45,13 @@ private関数はクライアントへgrantせず、内部renderer commandが実�
 availabilityはOFFのままにする。これは新しい外部鍵を要求する問題ではなく、既存正式
 rendererを実行するサーバーadapterが不足しているという一つの接続課題である。
 
+原本の受注会社ID・正式名・発行側登録trade ID・実際の接続状態のopaque fingerprintを
+ジョブとreceiptへ固定する。company_connectionsには整数version列がないので仮の1を
+発行しない。指定された正規trade IDと承認原本の相手ID・役割・linked状態、一意accepted
+会社接続を再照合し、接続rowと登録リンク/正式名のserver側SHA-256を版として返す。
+会社名や登録先・接続状態が変わった後の旧jobの新登録を拒否し、旧原本は書き換えない。
+user操作はdraft確定→相手選択→その宛先入り最終原本prepare→単価/会社/版の再確認→共有。
+
 オフラインfixtureは既存の実際のconsent候補SQLと合成Auth/sessionを利用する。
 テスト用PDF bytesによるhash/不変性の試験を、正式PDFの視覚一致や本番JWT、
 実サーバーrenderer、実配送の証明に読み替えない。
@@ -73,7 +80,7 @@ sealフラグは受け取らない。登録PDFのhashはDBがbyteaの実内容�
 
 ## 実測
 
-2026-10-30 PGliteで新しい登録fixture **23 checks passed**。
+2026-10-30 PGliteで初期登録fixture **23 checks passed**。
 同時に既存consent **238 checks**、採用原文save **18 checks** が成功。
 対象は原本hash・同request再実行・別bytes拒否・別actor/site/SID拒否・session削除拒否・
 masterOFF拒否・client/service EXEC拒否・原本更新削除拒否・既存guard属性/金融値不変。

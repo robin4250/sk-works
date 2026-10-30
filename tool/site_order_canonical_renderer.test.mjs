@@ -37,7 +37,7 @@ test('client/service connection is rejected before loading evidence',async()=>{
 });
 test('registration recheck refusal rolls back and never reports success',async()=>{
  const db=database({renderDenied:true});
- await assert.rejects(()=>registerCanonicalSiteOrderJob(db,id,async()=>pdf),/registration_rejected/);
+ await assert.rejects(()=>registerCanonicalSiteOrderJob(db,id,async()=>pdf),error=>error.message==='canonical_registration_rejected'&&!('cause' in error));
  assert.equal(db.calls.at(-1).sql,'rollback');
  assert.equal(db.calls.some(c=>c.sql==='commit'),false);
 });

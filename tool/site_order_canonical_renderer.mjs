@@ -58,8 +58,9 @@ export async function registerCanonicalSiteOrderJob(db,jobId,render) {
   commitStarted=true;
   await db.query('commit');committed=true;
   return receipt;
- } catch(error) {
+ } catch {
   if(!commitStarted)await db.query('rollback').catch(()=>{});
-  throw Error(commitStarted&&!committed?'canonical_commit_result_unknown':'canonical_registration_rejected',{cause:error});
+  // Retain only the fixed classification, never a raw SQL/render cause.
+  throw Error(commitStarted&&!committed?'canonical_commit_result_unknown':'canonical_registration_rejected');
  }
 }
