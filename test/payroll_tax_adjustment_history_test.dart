@@ -281,24 +281,19 @@ void main() {
     await tester.pumpWidget(const SizedBox()); await tester.runAsync(() => client.dispose());
   }, timeout: const Timeout(Duration(seconds: 45)));
   testWidgets('the existing individual page opens the selected read-only history without saving', (tester) async {
-    final client = SupabaseClient('https://synthetic.invalid', 'synthetic-public',
+    final client = (await tester.runAsync(() async => SupabaseClient('https://synthetic.invalid', 'synthetic-public',
       httpClient: MockClient((_) async => http.Response('{}', 404)),
-      authOptions: const AuthClientOptions(autoRefreshToken: false));
+      authOptions: const AuthClientOptions(autoRefreshToken: false))))!;
     final repository = _ParentRepository(client);
-    debugPrint('history-parent: mounting');
     await tester.pumpWidget(MaterialApp(home: IndividualPayrollSettingsPage(repository: repository)));
     await tester.pumpAndSettle();
-    debugPrint('history-parent: loaded');
     final entry = find.byKey(const ValueKey('payroll-tax-adjustment-history-open'));
     await tester.ensureVisible(entry); await tester.tap(entry); await tester.pumpAndSettle();
-    debugPrint('history-parent: opened');
     final page = tester.widget<PayrollTaxAdjustmentHistoryPage>(find.byType(PayrollTaxAdjustmentHistoryPage));
     expect(page.companyId, company); expect(page.workerId, worker); expect(page.workerName, '検証メンバー');
     expect(repository.writes, 0);
     await tester.tap(find.text('閉じる')); await tester.pumpAndSettle();
-    debugPrint('history-parent: closed');
     expect(find.byType(IndividualPayrollSettingsPage), findsOneWidget);
-    await tester.pumpWidget(const SizedBox()); debugPrint('history-parent: disposing'); await tester.runAsync(() => client.dispose());
-    debugPrint('history-parent: disposed');
+    await tester.pumpWidget(const SizedBox()); await tester.runAsync(() => client.dispose());
   }, timeout: const Timeout(Duration(seconds: 45)));
 }
