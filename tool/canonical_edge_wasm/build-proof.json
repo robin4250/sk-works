@@ -1,0 +1,27 @@
+{
+  "verified_renderer_and_dependency_files": 25,
+  "verified_assets": 6,
+  "asset_encoding": "gzip",
+  "source_unchanged": true,
+  "hook": "lib/features/shared/company_pdf_assets_io.dart",
+  "hook_sha256": "e2e42853557a1bf4c9392fc4845ec9733c368f717a45ff72e408c3d69404d778",
+  "entry_sha256": "85490124675e76fbf681de96ac83686dfd7fac38be4a7e6239b4f3cfa663ac48",
+  "outputs": {
+    "main.mjs": {
+      "bytes": 12802,
+      "sha256": "0599364b1dfc59e2063cf2a7bf83e0c46c6e03b20d0a4296de6405e8e6755c93"
+    },
+    "main.support.js": {
+      "bytes": 200,
+      "sha256": "9b329fbb5f775a8c37a85ede978db00aa0e9543edbadb520c2f1fb0aac403140"
+    },
+    "main.wasm": {
+      "bytes": 14332197,
+      "sha256": "eb8b1da6adb2804df16a5e078338cf3effdceb27d365bdc724d7cfd13e5b8359"
+    },
+    "runtime.mjs": {
+      "bytes": 1446,
+      "sha256": "188e09cacbf51947a4952e3d6e94fd624d1c331eda46bfdf2b8298ba6a0be1a7"
+    }
+  }
+}
