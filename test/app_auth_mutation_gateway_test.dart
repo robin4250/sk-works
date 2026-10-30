@@ -269,7 +269,9 @@ void main() {
     inspection.release();
     expect(inspection.isCurrent,isFalse);
     await w.legacy.signIn(email:'fixture@example.invalid',password:'synthetic');
-    expect(w.calls,hasLength(1));
+    expect(w.calls.where((r)=>r.method=='POST' && r.url.path.endsWith('/token')),hasLength(1));
+    expect(w.calls.where((r)=>r.method=='GET' && r.url.path.endsWith('/company_members')),hasLength(1));
+    expect(w.calls,hasLength(2));
   });
   test('released inspection cannot release a newer owner',() async {
     await w.seed();
