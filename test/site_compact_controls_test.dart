@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/sites/site_compact_controls.dart';
+import 'package:sk_works/branding/sko_theme.dart';
 
 void main() {
   for (final scale in [1.0, 2.0]) {
@@ -12,7 +13,7 @@ void main() {
       var opened = 0;
       var mapped = 0;
       var selected = false;
-      await tester.pumpWidget(MaterialApp(home: MediaQuery(
+      await tester.pumpWidget(MaterialApp(theme: SkoTheme.light(SkoTheme.palettes.first), home: MediaQuery(
         data: MediaQueryData(size: const Size(390, 844), textScaler: TextScaler.linear(scale)),
         child: Scaffold(body: Builder(builder: (context) {
           final height = siteControlHeight(context);

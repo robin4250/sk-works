@@ -29,6 +29,7 @@ class SiteCompactCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Card(
+    margin: EdgeInsets.zero,
     clipBehavior: Clip.antiAlias,
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
     child: InkWell(
