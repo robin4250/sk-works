@@ -75,7 +75,7 @@ const unit=String.raw`
  eq(await q('select to_jsonb(s) v from shared_report_edit_private.sessions s where report_id=$1',[pcRid]),pcSession,'Retry cannot consume another request or replace the old signature history');
  eq(await q("select to_jsonb(p)-'prosrc' v from pg_proc p where oid='public.save_daily_report_destination_draft(uuid,uuid,uuid,date,text,jsonb)'::regprocedure"),fixedAttrs,'Ownership grants and security attributes remain unchanged');
  for(const f of resetSource.history_functions)eq(await q('select md5(prosrc) v from pg_proc where oid=$1::regprocedure',
-  [f.schema_name+'.'+f.proname+'('+f.identity_arguments.split(',').map(x=>x.trim().split(' ').slice(1).join(' ')).join(',')+')']),
+  [f.schema_name+'.'+f.proname+(f.proname==='begin_reset'?'(jsonb,jsonb)':'()')]),
   md5(dbBody(f.definition)),'Exact deployed history capture/reset guard is unchanged');
  // Legacy non-protocol draft: ordinary unchanged PC saves still retain an
  // already collected reporter signature. The patch is NOT a global clear.
