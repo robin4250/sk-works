@@ -1,0 +1,28 @@
+name: Compact site controls
+on:
+  pull_request:
+    paths:
+      - 'lib/features/sites/site_cloud_page.dart'
+      - 'lib/features/sites/site_compact_controls.dart'
+      - 'test/site_compact_controls_test.dart'
+      - 'test/device_review_batch_contract_test.dart'
+      - '.github/workflows/compact-site-controls.yml'
+permissions:
+  contents: read
+jobs:
+  compact-site-controls:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/sites/site_cloud_page.dart lib/features/sites/site_compact_controls.dart test/site_compact_controls_test.dart
+      - run: flutter test --reporter expanded test/site_compact_controls_test.dart test/registered_site_search_test.dart test/device_review_batch_contract_test.dart
+      - run: git diff --exit-code -- pubspec.yaml pubspec.lock

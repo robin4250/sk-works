@@ -35,7 +35,7 @@ class _Reports implements DailyReportRepository {
   String savedAllowanceLabel = '';
   int savedAdjustment = 0;
   List<Map<String, Object?>>? savedWorkerPayload;
-  bool emptySavedInk = false, malformedSavedInk = false;
+  bool emptySavedInk = false, malformedSavedInk = false, pointOnlySavedInk = false;
   String description = '保存済みの作業';
   bool get persistedSupervisor => supervisorSaved && !staleSupervisorRead;
   int draftWrites = 0, ordinaryReporterWrites = 0, anchorReads = 0;
@@ -60,9 +60,9 @@ class _Reports implements DailyReportRepository {
       date: date, siteId: _site, siteName: '対象現場', workDescription: description,
       status: (explicitMode ? finalized : persistedSupervisor && !documentMode) ? 'signed' : 'draft', workers: workers,
       reporterSignerName: reporterSaved ? '最初の報告者' : null,
-      reporterSignatureJson: reporterSaved ? {'strokes': emptySavedInk ? [] : malformedSavedInk ? [[{'x': 'invalid', 'y': 0.2}]] : [[{'x': 0.1, 'y': 0.2, 'canvas_width': 800, 'canvas_height': 200}]]} : null,
+      reporterSignatureJson: reporterSaved ? {'strokes': emptySavedInk ? [] : malformedSavedInk ? [[{'x': 'invalid', 'y': 0.2}]] : pointOnlySavedInk ? [[{'x': 0.1, 'y': 0.2}], [{'x': 0.3, 'y': 0.4}]] : [[{'x': 0.1, 'y': 0.2, 'canvas_width': 800, 'canvas_height': 200}, {'x': 0.2, 'y': 0.3, 'canvas_width': 800, 'canvas_height': 200}]]} : null,
       responsibleSignerName: persistedSupervisor ? '責任者' : null,
-      responsibleSignatureJson: persistedSupervisor ? {'strokes': emptySavedInk ? [] : malformedSavedInk ? [[{'x': 0.7, 'y': -0.8}]] : [[{'x': 0.7, 'y': 0.8, 'canvas_width': 600, 'canvas_height': 180}]]} : null);
+      responsibleSignatureJson: persistedSupervisor ? {'strokes': emptySavedInk ? [] : malformedSavedInk ? [[{'x': 0.7, 'y': -0.8}]] : pointOnlySavedInk ? [[{'x': 0.7, 'y': 0.8}], [{'x': 0.5, 'y': 0.6}]] : [[{'x': 0.7, 'y': 0.8, 'canvas_width': 600, 'canvas_height': 180}, {'x': 0.8, 'y': 0.9, 'canvas_width': 600, 'canvas_height': 180}]]} : null);
   @override Future<List<DailyReportEvidenceRecord>> loadAttendanceEvidence({String? reportId,
     required DateTime date, String? siteId, String? routeAssignmentId}) async => [];
   @override Future<List<DailyReportWorkerDraft>> loadAnchoredWorkers({required String anchorId,
@@ -334,7 +334,7 @@ void main() {
       expect(find.byType(AlertDialog), findsOneWidget);
       expect(find.text(role == 'reporter' ? '報告者サイン：最初の報告者' : '責任者サイン：責任者'), findsOneWidget);
       final preview = tester.widget<SignaturePreview>(find.byType(SignaturePreview));
-      expect(preview.strokes.single.single, role == 'reporter' ? const Offset(.1, .2) : const Offset(.7, .8));
+      expect(preview.strokes.single.first, role == 'reporter' ? const Offset(.1, .2) : const Offset(.7, .8));
       expect(preview.canvasSize, role == 'reporter' ? const Size(800, 200) : const Size(600, 180));
       expect(find.byType(InteractiveViewer), findsOneWidget);
       expect(find.byType(SignatureCapturePage), findsNothing);
@@ -372,6 +372,23 @@ void main() {
     }
     expect(tester.takeException(), isNull);
     } finally { semantics.dispose(); }
+  });
+  testWidgets('point-only finalized signatures need review without rewriting original or enabling finalization', (tester) async {
+    final reports = _Reports()..reporterSaved = true..supervisorSaved = true..pointOnlySavedInk = true;
+    final shared = _Shared(reports);
+    await open(tester, reports, _Hours(), shared);
+    await reveal(tester, '報告者サイン');
+    expect(find.byKey(const ValueKey('daily-report-reporter-saved')), findsNothing);
+    expect(find.byKey(const ValueKey('daily-report-supervisor-saved')), findsNothing);
+    expect(find.text('要確認'), findsNWidgets(2));
+    expect(find.textContaining('保存済みサインの筆跡を確認できません'), findsNWidgets(2));
+    expect(reports.finalized, isFalse);
+    expect(reports.draftWrites, 0);
+    expect(reports.ordinaryReporterWrites, 0);
+    expect(find.byKey(const ValueKey('daily-report-finalize')), findsNothing,
+      reason: 'Server-signed record stays locked; do not clear original status');
+    expect(reports.pointOnlySavedInk, isTrue);
+    expect(tester.takeException(), isNull);
   });
   testWidgets('reopened signature reset removes both saved labels', (tester) async {
     final reports = _Reports()..reporterSaved = true..supervisorSaved = true;
@@ -708,7 +725,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(SignatureCapturePage), findsOneWidget); expect(reports.draftWrites, 0);
     Navigator.of(tester.element(find.byType(SignatureCapturePage))).pop(
-      const SignatureResult(signerName: '新たな報告者', strokes: [[Offset(0.2, 0.3)]]));
+      const SignatureResult(signerName: '新たな報告者', strokes: [[Offset(0.2, 0.3), Offset(0.4, 0.5)]]));
     await tester.pumpAndSettle();
     expect(shared.freshReporterWrites, 1); expect(reports.reporterSaved, isTrue);
     expect(reports.supervisorSaved, isFalse); expect(reports.draftWrites, 0);
@@ -717,7 +734,7 @@ void main() {
     await tester.tap(find.text('この内容で責任者サインへ')); await tester.pumpAndSettle();
     expect(find.byType(SignatureCapturePage), findsOneWidget);
     Navigator.of(tester.element(find.byType(SignatureCapturePage))).pop(
-      const SignatureResult(signerName: '新たな現場責任者', strokes: [[Offset(0.3, 0.4)]]));
+      const SignatureResult(signerName: '新たな現場責任者', strokes: [[Offset(0.3, 0.4), Offset(0.5, 0.6)]]));
     await tester.pumpAndSettle();
     expect(shared.supervisorWrites, 1); expect(reports.supervisorSaved, isTrue);
     expect(shared.prepared, isFalse); expect(shared.financialPreparations, 1);
@@ -793,7 +810,7 @@ void main() {
       expect(reports.draftWrites, 0);
       expect(find.byTooltip('サインする日報を確認'), findsOneWidget);
       Navigator.of(tester.element(find.byType(SignatureCapturePage))).pop(
-        const SignatureResult(signerName: '責任者', strokes: [[Offset(0.1, 0.2)]]));
+        const SignatureResult(signerName: '責任者', strokes: [[Offset(0.1, 0.2), Offset(0.3, 0.4)]]));
       await tester.pumpAndSettle();
       expect(shared.supervisorWrites, 1);
       expect(find.text('責任者サインを保存し、日報が完了しました'), stale ? findsNothing : findsOneWidget);
@@ -1023,7 +1040,7 @@ void main() {
       expect(find.byType(SignatureCapturePage), findsOneWidget);
       // Synthetic isolated UI result only; no production signature is created.
       Navigator.of(tester.element(find.byType(SignatureCapturePage))).pop(
-        const SignatureResult(signerName: '責任者', strokes: [[Offset(0.1, 0.2)]]));
+        const SignatureResult(signerName: '責任者', strokes: [[Offset(0.1, 0.2), Offset(0.3, 0.4)]]));
       await tester.pumpAndSettle();
       expect(shared.supervisorWrites, 1);
       expect(reports.draftWrites, 0);

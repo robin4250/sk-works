@@ -13,11 +13,13 @@ class PayrollInsuranceEvidenceCard extends StatelessWidget {
     return Card(margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       child: ExpansionTile(
         key: const ValueKey('payroll-insurance-calculation-evidence'),
+        dense: true,
         title: const Text('保険料の計算根拠'),
-        subtitle: const Text('保存済みの対象期間・料率・本人負担額'),
         children: [ConstrainedBox(constraints: const BoxConstraints(maxHeight: 220),
           child: SingleChildScrollView(padding: const EdgeInsets.all(12),
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              const Text('保存済みの対象期間・料率・本人負担額'),
+              const SizedBox(height: 6),
               Text(evidence.referenceText),
               const SizedBox(height: 6),
               Text(evidence.provenanceText, style: Theme.of(context).textTheme.bodySmall),

@@ -6,9 +6,13 @@ import 'dart:typed_data';
 import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
 import '../shared/pdf_bytes_cache.dart';
+import '../shared/trade_document_form_session.dart';
+import '../shared/resource_registration_card.dart';
+import '../../data/supabase_backend.dart';
 import 'daily_report_pdf_evidence.dart';
 import 'daily_report_photo_pages.dart';
 import 'daily_report_photo_preview.dart';
+import 'daily_report_photo_hit_target.dart';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -267,13 +271,28 @@ class _DailyReportPageState extends State<DailyReportPage> {
 
   bool _savedSignatureHasInk(Object? signature) {
     try {
-      final points = SignatureResult.fromJson(signature).expand((stroke) => stroke).toList();
-      return points.isNotEmpty && points.every((point) => point.dx.isFinite && point.dy.isFinite &&
-        point.dx >= 0 && point.dx <= 1 && point.dy >= 0 && point.dy <= 1);
+      return signatureHasDrawableInk(SignatureResult.fromJson(signature),
+        canvasSize: SignatureResult.sizeFromJson(signature));
     } catch (_) {
       return false;
     }
   }
+
+  bool _savedSignatureNeedsReview(Object? signature) {
+    try {
+      final strokes = SignatureResult.fromJson(signature);
+      final points = strokes.expand((stroke) => stroke).toList();
+      return points.isNotEmpty && !signatureHasDrawableInk(strokes,
+        canvasSize: SignatureResult.sizeFromJson(signature)) &&
+        points.every((point) => point.dx.isFinite && point.dy.isFinite &&
+          point.dx >= 0 && point.dx <= 1 && point.dy >= 0 && point.dy <= 1);
+    } catch (_) { return false; }
+  }
+
+  bool get _reporterSignatureNeedsReview =>
+      _savedSignatureNeedsReview(_report?.reporterSignatureJson);
+  bool get _supervisorSignatureNeedsReview =>
+      _savedSignatureNeedsReview(_report?.responsibleSignatureJson ?? _report?.signatureJson);
 
   RoundedRectangleBorder get _stepCardShape => RoundedRectangleBorder(
     borderRadius: BorderRadius.circular(12),
@@ -1595,6 +1614,9 @@ class _DailyReportPageState extends State<DailyReportPage> {
         ),
       );
       if (result == null || !mounted) return;
+      if (!result.hasDrawableInk || result.signerName.trim().isEmpty) {
+        throw const FormatException('氏名と、線で書いたサインを確認してください。');
+      }
       checkSigningContext();
       if (_report?.id != reportId) throw StateError('対象日報が変わりました');
       final repository = _repository;
@@ -1771,6 +1793,9 @@ class _DailyReportPageState extends State<DailyReportPage> {
         ),
       );
       if (result == null || !mounted) return;
+      if (!result.hasDrawableInk || result.signerName.trim().isEmpty) {
+        throw const FormatException('氏名と、線で書いたサインを確認してください。');
+      }
       checkSigningContext();
       if (_report?.id != reportId) throw StateError('対象日報が変わりました');
       final repository = _repository;
@@ -1852,7 +1877,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
     final visit = widget.routeVisitContext;
     final actor = repository?.currentActorId;
     if (_saving || repository == null || before == null || visit == null || actor == null ||
-        !before.canFinalizeVisit) { return; }
+        !before.canFinalizeVisit || !_reporterSignatureSaved || !_supervisorSignatureSaved) { return; }
     FocusScope.of(context).unfocus();
     setState(() => _saving = true);
     try {
@@ -1904,7 +1929,8 @@ class _DailyReportPageState extends State<DailyReportPage> {
     final before = _sharedContext;
     if (_saving || _managementHold || repository == null || before == null ||
         !before.canFinalize || before.reportId != _report?.id ||
-        before.actorId != _repository?.currentActorId) { return; }
+        before.actorId != _repository?.currentActorId ||
+        !_reporterSignatureSaved || !_supervisorSignatureSaved) { return; }
     FocusScope.of(context).unfocus();
     setState(() => _saving = true);
     try {
@@ -2037,6 +2063,10 @@ class _DailyReportPageState extends State<DailyReportPage> {
     setState(() => _saving = true);
     try {
       checkContext();
+      if (!signature.hasDrawableInk || signature.signerName.trim().isEmpty ||
+          !_savedSignatureHasInk(report.reporterSignatureJson)) {
+        throw const FormatException('報告者・責任者のサインの筆跡を確認してください。');
+      }
       if (_pendingSignatureFingerprint != _draftFingerprint() ||
           _savedDraftFingerprint != _draftFingerprint() ||
           _pendingReporterFingerprint != _signatureFingerprint(report.reporterSignatureJson)) {
@@ -2370,7 +2400,9 @@ class _DailyReportPageState extends State<DailyReportPage> {
 
   Future<void> _showSignature({bool reporter = false}) async {
     final report = _report;
-    if (report == null || (reporter ? !_reporterSignatureSaved : !_supervisorSignatureSaved)) { return; }
+    if (report == null || (reporter
+        ? !(_reporterSignatureSaved || _reporterSignatureNeedsReview)
+        : !(_supervisorSignatureSaved || _supervisorSignatureNeedsReview))) { return; }
     final signature = reporter ? report.reporterSignatureJson
       : report.responsibleSignatureJson ?? report.signatureJson;
     final strokes = SignatureResult.fromJson(signature);
@@ -2382,7 +2414,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         scrollable: true,
-        title: Text('${reporter ? '報告者サイン' : '責任者サイン'}：$signerName'),
+        title: Text('${reporter ? '報告者サイン' : '責任者サイン'}：$signerName${(reporter ? _reporterSignatureNeedsReview : _supervisorSignatureNeedsReview) ? '（要確認）' : ''}'),
         content: SizedBox(width: 460, height: height,
           child: InteractiveViewer(minScale: 1, maxScale: 4,
             child: SignaturePreview(strokes: strokes, height: height,
@@ -2667,17 +2699,18 @@ class _DailyReportPageState extends State<DailyReportPage> {
                               horizontalTitleGap: 8, minLeadingWidth: 40,
                               leading: _ReportStepBadge(_dailyStep(3)),
                               title: _stepTitle('報告者サイン', step: 'reporter', complete: _reporterSignatureSaved,
-                                status: _reporterSignatureSaved ? 'サイン済み' : '未サイン',
+                                status: _reporterSignatureSaved ? 'サイン済み' : _reporterSignatureNeedsReview ? '要確認' : '未サイン',
                                 onSavedTap: _reporterSignatureSaved ? () => _showSignature(reporter: true) : null),
-                              subtitle: _reporterSignatureSaved ? Text(
-                                _report?.reporterSignerName ?? SkoLanguageController.tr('報告者サイン済み'))
+                              subtitle: _reporterSignatureSaved || _reporterSignatureNeedsReview ? Text(
+                                '${_report?.reporterSignerName ?? SkoLanguageController.tr('報告者サイン済み')}${_reporterSignatureNeedsReview ? '\n保存済みサインの筆跡を確認できません。編集・修正を申請してください。' : ''}')
                                 : SignatureEntryFrame(role: '報告者',
                                   signerName: _report?.reporterSignerName ??
                                     (_workers.length == 1 ? _workers.single.workerName : '出勤メンバーから選択')),
-                              trailing: _managementHold || _signed || _visitReporterLocked || _sharedFactsReadOnly
+                              trailing: !_reporterSignatureNeedsReview && (_managementHold || _signed || _visitReporterLocked || _sharedFactsReadOnly)
                                   ? null
                                   : const Icon(Icons.chevron_right),
-                              onTap: _managementHold || _saving || _signed || _visitReporterLocked || _sharedFactsReadOnly ? null : _signReporter,
+                              onTap: _reporterSignatureNeedsReview ? () => _showSignature(reporter: true)
+                                : _managementHold || _saving || _signed || _visitReporterLocked || _sharedFactsReadOnly ? null : _signReporter,
                             ),
                           ),
                           const SizedBox(height: 8),
@@ -2690,13 +2723,13 @@ class _DailyReportPageState extends State<DailyReportPage> {
                                 horizontalTitleGap: 8, minLeadingWidth: 40,
                                 leading: _ReportStepBadge(_dailyStep(4)),
                                 title: _stepTitle('責任者サイン', step: 'supervisor', complete: _supervisorSignatureSaved,
-                                  status: _supervisorSignatureSaved ? 'サイン済み' : '未サイン',
+                                  status: _supervisorSignatureSaved ? 'サイン済み' : _supervisorSignatureNeedsReview ? '要確認' : '未サイン',
                                   onSavedTap: _supervisorSignatureSaved ? () => _showSignature() : null),
                                 subtitle: Text(
-                                  _report?.responsibleSignerName ?? _report?.signerName ?? SkoLanguageController.tr('責任者サイン済み'),
+                                  '${_report?.responsibleSignerName ?? _report?.signerName ?? SkoLanguageController.tr('責任者サイン済み')}${_supervisorSignatureNeedsReview ? '\n保存済みサインの筆跡を確認できません。編集・修正を申請してください。' : ''}',
                                 ),
                                 trailing: const Icon(Icons.chevron_right),
-                                onTap: _supervisorSignatureSaved ? () => _showSignature() : null,
+                                onTap: _supervisorSignatureSaved || _supervisorSignatureNeedsReview ? () => _showSignature() : null,
                               ),
                             )
                           else
@@ -2707,7 +2740,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
                                 horizontalTitleGap: 8, minLeadingWidth: 40,
                                 leading: _ReportStepBadge(_dailyStep(4)),
                                 title: _stepTitle('責任者サイン', step: 'supervisor', complete: _supervisorSignatureSaved,
-                                  status: _supervisorSignatureSaved ? 'サイン済み' : '未サイン',
+                                  status: _supervisorSignatureSaved ? 'サイン済み' : _supervisorSignatureNeedsReview ? '要確認' : '未サイン',
                                   onSavedTap: _supervisorSignatureSaved ? () => _showSignature() : null),
                                 subtitle: SignatureEntryFrame(role: '責任者',
                                   signerName: _report?.responsibleSignerName ?? _report?.signerName ?? _responsibleFrameName ?? '現場責任者名を確認'),
@@ -2726,7 +2759,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
                               const SizedBox(height: 8),
                               if (!_signed) FilledButton.icon(
                                 key: const ValueKey('daily-report-finalize'),
-                                onPressed: _saving || _managementHold || (_visitReport
+                                onPressed: _saving || _managementHold || !_reporterSignatureSaved || !_supervisorSignatureSaved || (_visitReport
                                     ? _report?.canFinalizeVisit != true : _sharedContext?.canFinalize != true)
                                   ? null : _visitReport ? _finalizeVisitReport : _finalizeReport,
                                 icon: const Icon(Icons.check_circle_outline),
@@ -3733,6 +3766,66 @@ class _DailyReportPrintPreviewPageState extends State<DailyReportPrintPreviewPag
   bool _printingPhotos = false;
   String? _fingerprint;
 
+  TradeDocumentFormSession? _photoSession;
+  bool _photoScopeReady = false;
+  Object? get _photoTarget => !SupabaseBackend.isInitialized ? null :
+    (SupabaseBackend.client.auth.currentUser?.id, widget.report?.companyId,
+      widget.report?.id, widget.date, widget.siteName);
+
+  @override void initState() { super.initState(); _preparePhotoScope(); }
+  Future<void> _preparePhotoScope() async {
+    final report = widget.report;
+    if (!SupabaseBackend.isInitialized || report?.companyId?.isNotEmpty != true || report?.id.isNotEmpty != true) return;
+    try {
+      final scope = TradeDocumentFormSession(SupabaseBackend.client,
+        target: _photoTarget, currentTarget: () => _photoTarget);
+      _photoSession = scope;
+      scope.addListener(_photoScopeChanged);
+      await scope.ready();
+      if (mounted && identical(scope, _photoSession)) setState(() => _photoScopeReady = scope.isCurrent);
+    } catch (_) { if (mounted) setState(() => _photoScopeReady = false); }
+  }
+  void _photoScopeChanged() {
+    if (mounted && _photoSession?.isCurrent != true) {
+      setState(() { _photoScopeReady = false; _resolvedEvidence = null; });
+    }
+  }
+  @override void didUpdateWidget(covariant DailyReportPrintPreviewPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.report?.id != widget.report?.id || oldWidget.report?.companyId != widget.report?.companyId ||
+        oldWidget.date != widget.date || oldWidget.siteName != widget.siteName) {
+      _photoSession?.removeListener(_photoScopeChanged); _photoSession?.dispose();
+      _photoSession = null; _photoScopeReady = false; _resolvedEvidence = null;
+      _preparePhotoScope();
+    }
+  }
+  @override void dispose() {
+    _photoSession?.removeListener(_photoScopeChanged); _photoSession?.dispose();
+    super.dispose();
+  }
+
+  List<DailyReportPhotoHitTarget> _photoTargets = [];
+  List<DailyReportPdfEvidence> _previewPhotos = [];
+  int _previewGeneration = 0;
+  ResourceAttachmentGallery _gallery(List<DailyReportPdfEvidence> photos, TradeDocumentFormSession scope) =>
+    ResourceAttachmentGallery(source: scope,
+      workerId: SupabaseBackend.client.auth.currentUser!.id, companyId: widget.report!.companyId!,
+      isCurrent: () => mounted && _photoScopeReady && identical(scope, _photoSession) && scope.isCurrent,
+      signal: scope, entries: dailyReportPhotoAttachments(photos,
+        validateAccess: () async { await scope.ready(); scope.requireScope(); }));
+
+  Widget _photoHit(BuildContext context, int index) {
+    final scope = _photoSession;
+    if (!_photoScopeReady || scope == null || !scope.isCurrent || index < 0 || index >= _previewPhotos.length) {
+      return const SizedBox.shrink();
+    }
+    final gallery = _gallery(_previewPhotos, scope);
+    return Opacity(opacity: 0, alwaysIncludeSemantics: true,
+      child: FittedBox(fit: BoxFit.fill, child: ResourceAttachmentThumbnail(
+        key: ValueKey('daily-report-cover-photo-hit-$index'), attachment: gallery.entries[index],
+        gallery: gallery, requireGalleryScope: true, recordTitle: _previewPhotos[index].record.workerName)));
+  }
+
   Future<List<DailyReportPdfEvidence>> _loadEvidence() async {
     if (!widget.includePhotos) return const [];
     if (widget.resolvedEvidence != null) return widget.resolvedEvidence!;
@@ -3751,10 +3844,18 @@ class _DailyReportPrintPreviewPageState extends State<DailyReportPrintPreviewPag
 
   // Keep the LayoutCallback identity stable across zoom state updates. Printing
   // resets its InteractiveViewer mode whenever the callback changes.
-  Future<Uint8List> _buildPreviewPdf(PdfPageFormat _) => _pdfBytes.get(() async =>
-    DailyReportPdfService.buildPdf(date: widget.date, siteName: widget.siteName,
+  Future<Uint8List> _buildPreviewPdf(PdfPageFormat _) => _pdfBytes.get(() async {
+    final generation = _previewGeneration;
+    final evidence = await _savedEvidence();
+    final targets = <DailyReportPhotoHitTarget>[];
+    final bytes = await DailyReportPdfService.buildPdf(date: widget.date, siteName: widget.siteName,
       workers: widget.workers, workDescription: widget.workDescription,
-      report: widget.report, evidence: await _savedEvidence()));
+      report: widget.report, evidence: evidence, onPhotoLayout: targets.add);
+    if (mounted && generation == _previewGeneration) {
+      _photoTargets = targets; _previewPhotos = dailyReportPhotoRecords(evidence);
+    }
+    return bytes;
+  });
 
   Future<void> _printReport() async {
     try {
@@ -3810,6 +3911,7 @@ class _DailyReportPrintPreviewPageState extends State<DailyReportPrintPreviewPag
     );
     if (_fingerprint != fingerprint) {
       _fingerprint = fingerprint;
+      _previewGeneration++; _photoTargets = []; _previewPhotos = [];
       _pdfBytes.invalidate();
       _photoPdfBytes.invalidate();
       _resolvedEvidence = null;
@@ -3825,35 +3927,14 @@ class _DailyReportPrintPreviewPageState extends State<DailyReportPrintPreviewPag
         ],
       ),
       body: Column(children: [
-        if (widget.includePhotos) FutureBuilder<List<DailyReportPdfEvidence>>(
-          future: _savedEvidence(),
-          builder: (context, snapshot) {
-            final photos = dailyReportPhotoRecords(snapshot.data ?? const []);
-            return Padding(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6,
-                ),
-              child: Row(children: [
-                Expanded(child: photos.isNotEmpty
-                  ? Align(alignment: Alignment.centerLeft,
-                      child: DailyReportPhotoPreview(photos: photos),
-                            )
-                  : Text(SkoLanguageController.tr(snapshot.connectionState == ConnectionState.done
-                      ? '写真の記録がありません' : '読込中...',
-                              ),
-                            ),
-                    ),
-                TextButton.icon(
-                  key: const ValueKey('print-daily-report-photo-pages'),
-                  onPressed: photos.isEmpty || _printingPhotos ? null : _printPhotoPages,
-                  icon: const Icon(Icons.print_outlined),
-                  label: Text(SkoLanguageController.tr('写真ページのみ印刷')),
-                ),
-              ],
-                ),
-              );
-          },
-        ),
+        if (widget.includePhotos && _photoScopeReady && _photoSession?.isCurrent == true)
+          Align(alignment: Alignment.centerRight, child: TextButton.icon(
+            key: const ValueKey('print-daily-report-photo-pages'),
+            onPressed: _printingPhotos ? null : _printPhotoPages,
+            icon: const Icon(Icons.print_outlined), label: Text(SkoLanguageController.tr('写真ページのみ印刷')))),
         Expanded(child: PdfPreview.builder(initialPageFormat: PdfPageFormat.a4,
-          pagesBuilder: (context, pages) => DailyReportZoomPages(pages: pages, onZoomChanged: widget.onZoomChanged),
+          pagesBuilder: (context, pages) => DailyReportZoomPages(pages: pages, onZoomChanged: widget.onZoomChanged,
+            photoTargets: _photoTargets, photoHitBuilder: _photoHit),
           onZoomChanged: widget.onZoomChanged,
           canChangePageFormat: false, canChangeOrientation: false,
           allowPrinting: true, allowSharing: true,

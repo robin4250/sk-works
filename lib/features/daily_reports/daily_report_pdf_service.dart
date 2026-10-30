@@ -2,7 +2,7 @@
 
 import 'dart:typed_data';
 import 'dart:convert';
-import 'dart:ui' show Offset, Size;
+import 'dart:ui' show Offset, Size, Rect;
 
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -13,6 +13,8 @@ import 'package:printing/printing.dart';
 import 'daily_report_repository.dart';
 import 'daily_report_pdf_evidence.dart';
 import 'daily_report_photo_pages.dart';
+import 'daily_report_cover_layout.dart';
+import 'daily_report_photo_hit_target.dart';
 import 'signature_capture_page.dart';
 
 class DailyReportPdfService {
@@ -38,6 +40,7 @@ class DailyReportPdfService {
     PdfPageFormat format = PdfPageFormat.a4,
     List<DailyReportPdfEvidence> evidence = const [],
     bool photoPagesOnly = false,
+    void Function(DailyReportPhotoHitTarget)? onPhotoLayout,
     pw.Font? regularFont,
     pw.Font? boldFont,
   }) async {
@@ -45,7 +48,9 @@ class DailyReportPdfService {
     if (photoPagesOnly && photos.isEmpty) {
       throw StateError('写真の記録がありません');
     }
-    final coverImage = photos.map(_photoImage).whereType<pw.MemoryImage>().firstOrNull;
+    final layout = DailyReportCoverLayout(photoCount: photos.length, memberCount: workers.length);
+    final coverWorkers = workers.take(layout.coverMembers).toList();
+    final descriptionParts = dailyReportDescriptionParts(workDescription);
     final regular = regularFont ?? await PdfGoogleFonts.notoSansJPRegular();
     final bold = boldFont ?? await PdfGoogleFonts.notoSansJPBold();
     final document = pw.Document(
@@ -164,14 +169,14 @@ class DailyReportPdfService {
             _boxed(
               SkoLanguageController.tr('作業内容'),
               pw.Text(
-                workDescription.trim().isEmpty ? SkoLanguageController.tr('（記載なし）') : workDescription,
+                workDescription.trim().isEmpty ? SkoLanguageController.tr('（記載なし）') : descriptionParts.first,
                 style: const pw.TextStyle(fontSize: 11),
               ),
-              height: 150,
+              height: photos.isEmpty ? 150 : 80,
             ),
             pw.SizedBox(height: 8),
             pw.Text(
-              SkoLanguageController.isEnglish ? 'WORKERS' : '作 業 者 名',
+              SkoLanguageController.isEnglish ? 'MEMBERS' : 'メンバー',
               style: pw.TextStyle(
                 fontSize: 13,
                 fontWeight: pw.FontWeight.bold,
@@ -181,7 +186,7 @@ class DailyReportPdfService {
             pw.TableHelper.fromTextArray(
               headers: [for (final label in ['氏名', '早出', '残業', '夜間', '手当・車両等']) SkoLanguageController.tr(label)],
               data: [
-                for (final worker in workers)
+                for (final worker in coverWorkers)
                   [
                     worker.workerName,
                     worker.earlyHours > 0 ? _number(worker.earlyHours) : '',
@@ -199,7 +204,7 @@ class DailyReportPdfService {
                       if (worker.meterManaged) _meterSummary(worker),
                     ].join(' / '),
                   ],
-                for (var i = workers.length; i < 9; i++)
+                for (var i = coverWorkers.length; i < (photos.isEmpty ? 6 : 4); i++)
                   const ['', '', '', '', ''],
               ],
               headerStyle: pw.TextStyle(
@@ -234,36 +239,85 @@ class DailyReportPdfService {
                 ],
               ],
             ),
+            pw.SizedBox(height: 8),
+            if (photos.isNotEmpty) ...[
+              pw.Text(SkoLanguageController.tr('写真'), style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
+              pw.SizedBox(height: 3),
+              ..._photoGrid(photos.take(layout.coverPhotos).toList(), format: format, onPhotoLayout: onPhotoLayout),
+            ],
             pw.Spacer(),
             pw.Divider(thickness: 0.8),
-            pw.Row(
-              crossAxisAlignment: pw.CrossAxisAlignment.center,
-              children: [
-                pw.Expanded(child: pw.Text(
-                  SkoLanguageController.tr(photos.isEmpty
-                    ? '出勤時の写真・位置情報はSKOアプリ内の日報から確認できます。'
-                    : '勤怠・現場の記録時刻と写真・位置情報は添付ページに記載しています。'),
-                  style: const pw.TextStyle(fontSize: 8.5, color: PdfColors.grey700),
-                )),
-                if (photos.isNotEmpty) ...[
-                  pw.SizedBox(width: 8),
-                  pw.Column(children: [
-                    if (coverImage case final image?)
-                      pw.SizedBox(width: 38, height: 28,
-                        child: pw.Image(image, fit: pw.BoxFit.contain)),
-                    pw.Text('${photos.length} ${SkoLanguageController.tr('写真')}',
-                      style: const pw.TextStyle(fontSize: 7)),
-                  ]),
-                ],
-              ],
-            ),
+            pw.Text(SkoLanguageController.tr(photos.isEmpty
+              ? '出勤時の写真・位置情報はSKOアプリ内の日報から確認できます。'
+              : '保存済みの写真・位置情報です。アプリでは写真を押して拡大できます。'),
+              style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700)),
           ],
         ),
       ),
       );
     }
-    _appendPhotoPages(document, photos, date: date, format: format);
+    if (!photoPagesOnly && descriptionParts.length > 1) {
+      document.addPage(pw.MultiPage(pageFormat: format,
+        margin: const pw.EdgeInsets.all(14 * PdfPageFormat.mm),
+        header: (_) => pw.Text('作業内容（続き）', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+        build: (_) => [for (final part in descriptionParts.skip(1))
+          pw.Text(part, style: const pw.TextStyle(fontSize: 11))]));
+    }
+    if (!photoPagesOnly && layout.remainingMembers > 0) {
+      document.addPage(pw.MultiPage(pageFormat: format,
+        margin: const pw.EdgeInsets.all(14 * PdfPageFormat.mm),
+        build: (_) => [
+          pw.Text('メンバー（続き）', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
+          pw.SizedBox(height: 8),
+          pw.TableHelper.fromTextArray(
+            headers: ['氏名', '早出', '残業', '夜間', '手当・車両等'],
+            data: [for (final worker in workers.skip(layout.coverMembers)) [worker.workerName,
+              _number(worker.earlyHours), _number(worker.overtimeHours), _number(worker.nightHours),
+              [worker.allowanceLabel, worker.vehicleName ?? '', worker.routeName ?? '',
+                if (worker.meterManaged) _meterSummary(worker)].where((v) => v.isNotEmpty).join(' / ')]],
+            cellStyle: const pw.TextStyle(fontSize: 8.5),
+            headerStyle: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold),
+            cellPadding: const pw.EdgeInsets.all(5)),
+        ]));
+    }
+    if (photoPagesOnly) {
+      _appendPhotoPages(document, photos, date: date, format: format);
+    } else if (layout.remainingPhotos > 0) {
+      document.addPage(pw.MultiPage(pageFormat: format,
+        margin: const pw.EdgeInsets.all(14 * PdfPageFormat.mm),
+        header: (_) => pw.Text('写真（続き）', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+        build: (_) => _photoGrid(photos.skip(layout.coverPhotos).toList(), format: format,
+          startIndex: layout.coverPhotos, onPhotoLayout: onPhotoLayout)));
+    }
     return document.save();
+  }
+
+  static List<pw.Widget> _photoGrid(List<DailyReportPdfEvidence> photos, {required PdfPageFormat format,
+    int startIndex = 0, void Function(DailyReportPhotoHitTarget)? onPhotoLayout}) => [
+    for (var start = 0; start < photos.length; start += DailyReportCoverLayout.photoColumns)
+      pw.Padding(padding: const pw.EdgeInsets.only(bottom: 4), child: pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [for (var column = 0; column < DailyReportCoverLayout.photoColumns; column++)
+          pw.Expanded(child: start + column < photos.length
+            ? pw.Annotation(builder: _PhotoAnnotation(index: startIndex + start + column,
+                format: format, onPhotoLayout: onPhotoLayout),
+                child: _coverPhoto(photos[start + column])) : pw.SizedBox())])),
+  ];
+
+  static pw.Widget _coverPhoto(DailyReportPdfEvidence photo) {
+    final image = _photoImage(photo);
+    final location = dailyReportPhotoLocation(photo);
+    return pw.Padding(padding: const pw.EdgeInsets.all(2), child: pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.stretch, children: [
+        pw.SizedBox(height: 43, child: image != null
+          ? pw.Image(image, fit: pw.BoxFit.contain)
+          : pw.Container(color: PdfColors.grey100, alignment: pw.Alignment.center,
+              child: pw.Text(photo.record.storagePath.isEmpty ? photo.record.missingPhotoLabel
+                : '保存済み写真を読み込めませんでした', style: const pw.TextStyle(fontSize: 5.5)))),
+        pw.Text(photo.record.workerName, style: pw.TextStyle(fontSize: 6, fontWeight: pw.FontWeight.bold)),
+        pw.Text(location.isEmpty ? '撮影住所未取得' : location, style: const pw.TextStyle(fontSize: 5.5)),
+        pw.Text(dailyReportPhotoTime(photo), style: const pw.TextStyle(fontSize: 5.5)),
+      ]));
   }
 
   static pw.MemoryImage? _photoImage(DailyReportPdfEvidence item) {
@@ -539,5 +593,20 @@ class DailyReportPdfService {
   static String _number(double value) {
     if (value == value.roundToDouble()) return value.toInt().toString();
     return value.toStringAsFixed(2).replaceFirst(RegExp(r'0+$'), '').replaceFirst(RegExp(r'\.$'), '');
+  }
+}
+
+class _PhotoAnnotation extends pw.AnnotationUrl {
+  _PhotoAnnotation({required this.index, required this.format, required this.onPhotoLayout})
+    : super('sko-photo:$index');
+  final int index;
+  final PdfPageFormat format;
+  final void Function(DailyReportPhotoHitTarget)? onPhotoLayout;
+  @override PdfAnnot build(pw.Context context, PdfRect? box) {
+    final rect = context.localToGlobal(box!);
+    onPhotoLayout?.call(DailyReportPhotoHitTarget(pageIndex: context.pageNumber - 1,
+      photoIndex: index, bounds: Rect.fromLTWH(rect.left / format.width,
+        (format.height - rect.top) / format.height, rect.width / format.width, rect.height / format.height)));
+    return super.build(context, box);
   }
 }

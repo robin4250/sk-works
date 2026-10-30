@@ -3,6 +3,7 @@ import 'package:flutter/widgets.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../auth/app_auth_mutation_gateway.dart';
 import '../auth/secondary_reset_session_guard.dart';
+import '../auth/sdk_session_replay_baseline.dart';
 
 /// A contract operation belongs to one captured SDK session and gateway epoch.
 /// HTTP cancellation is not a promise that an already-started DB TX rolled back.
@@ -12,14 +13,16 @@ class TradeDocumentFormSession extends ChangeNotifier with WidgetsBindingObserve
   if((target==null)!=(currentTarget==null))throw ArgumentError('Complete target binding required');
   final captured=_client.auth.currentSession;
   if(captured==null||SecondaryResetSessionGuard.identityOf(captured)==null)throw StateError('ログイン状態を確認してください。');
+  _captured=captured;
   _token=captured.accessToken;
   _gateway=AppAuthMutationGateway.forClient(_client);_admission=_gateway.externalFlowAdmission();
   _guard=SecondaryResetSessionGuard(currentSession:()=>_client.auth.currentSession,changes:_client.auth.onAuthStateChange,onInvalidated:_invalidate);
-  var first=true;
+  final baseline=SdkSessionReplayBaseline(captured);
   _auth=_client.auth.onAuthStateChange.listen((event){
-   final cached=first&&identical(event.session,captured)&&const [AuthChangeEvent.initialSession,AuthChangeEvent.signedIn,AuthChangeEvent.tokenRefreshed].contains(event.event);
-   first=false;if(!cached)_invalidate();
+   final cached=baseline.consume(event,_client.auth.currentSession)&&const [AuthChangeEvent.initialSession,AuthChangeEvent.signedIn,AuthChangeEvent.tokenRefreshed,AuthChangeEvent.userUpdated].contains(event.event);
+   if(!cached)_invalidate();
   },onError:(Object _)=>_invalidate(),onDone:_invalidate);
+  unawaited(Future<void>.value().then((_)=>baseline.close()));
   _quarantine=_gateway.logoutQuarantine.changes.listen((state){if(state!=AppLogoutQuarantineState.clear)_invalidate();},onError:(Object _)=>_invalidate(),onDone:_invalidate);
   WidgetsBinding.instance.addObserver(this);
   final state=WidgetsBinding.instance.lifecycleState;
@@ -28,6 +31,7 @@ class TradeDocumentFormSession extends ChangeNotifier with WidgetsBindingObserve
  final SupabaseClient _client;
  final Object? _target;
  final Object? Function()? _currentTarget;
+ late final Session _captured;
  late final String _token;
  late final SecondaryResetSessionGuard _guard;
  late final AppAuthMutationGateway _gateway;
@@ -38,7 +42,7 @@ class TradeDocumentFormSession extends ChangeNotifier with WidgetsBindingObserve
  int? _epoch;bool _invalid=false,_disposed=false;
  bool belongsTo(SupabaseClient client)=>identical(client,_client);
  bool get _targetCurrent {try{return _currentTarget==null||_currentTarget()==_target;}catch(_){return false;}}
- bool get isCurrent=>!_invalid&&!_disposed&&_epoch!=null&&_targetCurrent&&_guard.isCurrent&&_client.auth.currentSession?.accessToken==_token&&_gateway.isExternalFlowCurrent(_epoch!);
+ bool get isCurrent=>!_invalid&&!_disposed&&_epoch!=null&&_targetCurrent&&_guard.isCurrent&&identical(_client.auth.currentSession,_captured)&&_client.auth.currentSession?.accessToken==_token&&_gateway.isExternalFlowCurrent(_epoch!);
  void _invalidate(){if(_invalid||_disposed)return;_invalid=true;if(!_retired.isCompleted)_retired.complete();notifyListeners();}
  void requireScope(){if(!isCurrent){_invalidate();throw StateError('ログイン・会社・書類の状態が変わりました。開き直してください。');}}
  Future<void> ready()async {

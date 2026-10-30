@@ -7,6 +7,7 @@ import 'site_detail_page.dart';
 import 'site_map_page.dart';
 import 'site_page.dart';
 import 'registered_site_search.dart';
+import 'site_compact_controls.dart';
 
 class SiteCloudPage extends StatefulWidget {
   const SiteCloudPage({super.key});
@@ -71,6 +72,7 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
   @override
   Widget build(BuildContext context) {
     final filtered = filterRegisteredSites(_sites, query: _query, status: _filter);
+    final controlHeight = siteControlHeight(context);
 
     return Scaffold(
       appBar: AppBar(
@@ -97,8 +99,9 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
           child: Row(
             children: [
               Expanded(
-                child: FloatingActionButton.extended(
-                  heroTag: 'site_map',
+                child: SiteCompactAction(
+                  height: controlHeight,
+                  controlKey: 'site_map',
                   onPressed: _loading
                       ? null
                       : () => Navigator.of(context).push(
@@ -112,8 +115,9 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: FloatingActionButton.extended(
-                  heroTag: 'site_register',
+                child: SiteCompactAction(
+                  height: controlHeight,
+                  controlKey: 'site_register',
                   onPressed: _loading || !_canCreateSites ? null : _add,
                   icon: const Icon(Icons.add_business),
                   label: Text(SkoLanguageController.tr('現場登録')),
@@ -146,14 +150,16 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
                 children: [
-                  ChoiceChip(
+                  SiteCompactFilter(
+                    height: controlHeight,
                     label: Text(SkoLanguageController.tr('すべて')),
                     selected: _filter == null,
                     onSelected: (_) => setState(() => _filter = null),
                   ),
                   const SizedBox(width: 8),
                   for (final status in SiteStatus.values) ...[
-                    ChoiceChip(
+                    SiteCompactFilter(
+                      height: controlHeight,
                       label: Text(status.label),
                       selected: _filter == status,
                       onSelected: (_) => setState(() => _filter = status),
@@ -177,28 +183,20 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
                               separatorBuilder: (_, __) => const SizedBox(height: 8),
                               itemBuilder: (context, index) {
                                 final site = filtered[index];
-                                return Card(
-                                  child: ListTile(
-                                    leading: const CircleAvatar(
-                                      child: Icon(Icons.apartment_outlined),
-                                    ),
-                                    title: Text(
-                                      site.name,
-                                      style: const TextStyle(fontWeight: FontWeight.w700),
-                                    ),
-                                    subtitle: Text([
-                                      site.customerName,
-                                      site.status.label,
-                                      if (site.managerName.isNotEmpty) site.managerName,
-                                    ].join(' / ')),
-                                    trailing: const Icon(Icons.chevron_right),
-                                    onTap: () => Navigator.of(context).push(
-                                      MaterialPageRoute(
-                                        builder: (_) => SiteDetailPage(
-                                          site: site,
-                                          canManage: _canManageSites,
-                                          onComplete: () => _complete(site),
-                                        ),
+                                return SiteCompactCard(
+                                  height: controlHeight,
+                                  name: site.name,
+                                  details: [
+                                    site.customerName,
+                                    site.status.label,
+                                    if (site.managerName.isNotEmpty) site.managerName,
+                                  ].join(' / '),
+                                  onTap: () => Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => SiteDetailPage(
+                                        site: site,
+                                        canManage: _canManageSites,
+                                        onComplete: () => _complete(site),
                                       ),
                                     ),
                                   ),

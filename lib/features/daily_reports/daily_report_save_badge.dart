@@ -11,15 +11,14 @@ class DailyReportSaveBadge extends StatelessWidget {
     final complete = state == DailyReportSaveState.saved;
     final pending = state == DailyReportSaveState.supervisorPending;
     final color = complete ? Colors.green.shade800 : pending ? Colors.red.shade900
-        : Theme.of(context).colorScheme.surfaceContainerHighest;
-    final foreground = complete || pending ? Colors.white
         : Theme.of(context).colorScheme.onSurfaceVariant;
-    final icon = complete ? Icons.check_circle : pending ? Icons.pending_actions
+    final foreground = color;
+    final icon = complete ? Icons.check_circle_outline : pending ? Icons.pending_actions
         : Icons.edit_note;
     return Container(
       key: ValueKey('daily-report-save-badge-${state.name}'),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(color: color, border: Border.all(color: complete || pending ? color : foreground),
+      decoration: BoxDecoration(color: Theme.of(context).colorScheme.surface, border: Border.all(color: color),
         borderRadius: BorderRadius.circular(8)),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         Icon(icon, size: 18, color: foreground),
