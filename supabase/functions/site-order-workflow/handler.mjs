@@ -1,0 +1,64 @@
+import {registerManagerCanonicalSiteOrderJob} from '../../../tool/site_order_canonical_core.mjs';
+const uuid=/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/;
+const commands={
+ status:{keys:['package_id'],sql:'select site_order_package_private.package_status($1) as result'},
+ archive:{keys:['package_id','kind'],sql:'select site_order_package_private.archive_original($1,$2) as result',pdf:true},
+ preview_approval:{keys:['package_id','trade_id','connection_fingerprint','request_id'],sql:'select site_order_package_private.preview_approval($1,$2,$3,$4) as result'},
+ approve:{keys:['preview_id','body_hash','seal_hash','confirmed','request_id'],sql:'select site_order_package_private.approve_with_consent($1,$2,$3,$4,$5) as result'},
+ send_order:{keys:['job_id','original_receipt_id','request_id'],sql:'select site_order_package_private.send_order($1,$2,$3) as result'},
+ register_original:{keys:['job_id'],worker:true},
+};
+function response(data,status=200){return new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store'}});}
+async function body(req){
+ const reader=req.body?.getReader();if(!reader)throw Error('invalid');
+ let size=0;const chunks=[];for(;;){const {done,value}=await reader.read();if(done)break;size+=value.length;
+ if(size>4096){await reader.cancel();throw Error('invalid');}chunks.push(value);}
+ const bytes=new Uint8Array(size);let offset=0;for(const c of chunks){bytes.set(c,offset);offset+=c.length;}
+ const b=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));
+ if(!b||typeof b!=='object'||Array.isArray(b))throw Error('invalid');return b;
+}
+function validate(b){
+ const c=commands[b.action];if(!c||Object.keys(b).length!==c.keys.length+1||Object.keys(b).some(k=>k!=='action'&&!c.keys.includes(k)))throw Error('invalid');
+ for(const k of c.keys){const v=b[k];
+ if(k==='kind'){if(!['order','acceptance'].includes(v))throw Error('invalid');}
+ else if(k==='confirmed'){if(v!==true)throw Error('invalid');}
+ else if(['body_hash','seal_hash','connection_fingerprint'].includes(k)){if(typeof v!=='string'||!/^[0-9a-f]{64}$/.test(v))throw Error('invalid');}
+ else if(typeof v!=='string'||!uuid.test(v))throw Error('invalid');
+ }return c;
+}
+// Production supplies a fixed verifier, one dedicated connection factory and
+// one bundled renderer. None can be selected or supplied by an HTTP request.
+export function createSiteOrderHandler({verify,connect,render}){
+ return async req=>{
+  if(req.method!=='POST')return response({error:'post_required'},405);
+  const authorization=req.headers.get('authorization')??'';
+  if(authorization.length>16_384||!/^Bearer [^\s]+$/.test(authorization))return response({error:'authentication_required'},401);
+  let claims;try{claims=await verify(authorization.slice(7));}catch{return response({error:'authentication_required'},401);}
+  let b,c;try{b=await body(req);c=validate(b);}catch{return response({error:'invalid_request'},400);}
+  let db,commitStarted=false;
+  try{
+   db=await connect();
+   // The connection is never pooled/reused; close it even after UNKNOWN.
+   if(c.worker){const result=await registerManagerCanonicalSiteOrderJob(db,b.job_id,render,claims);return response({result});}
+   await db.query('begin isolation level read committed');
+   const role=(await db.query('select session_user as role')).rows[0]?.role;
+   if(role!=='postgres')throw Error('internal_connection_required');
+   await db.query("select set_config('request.jwt.claims',$1,true)",[JSON.stringify(claims)]);
+   const result=(await db.query(c.sql,c.keys.map(k=>b[k]))).rows[0]?.result;
+   if(result===undefined||result===null)throw Error('result_required');
+   let pdfBytes;
+   if(c.pdf){const bytes=result instanceof Uint8Array?result:new Uint8Array(result);
+    if(bytes.length<16||bytes.length>20*1024*1024||new TextDecoder().decode(bytes.subarray(0,5))!=='%PDF-')throw Error('original_unavailable');
+    pdfBytes=bytes;
+   }
+   commitStarted=true;await db.query('commit');
+   if(c.pdf){return new Response(pdfBytes,{headers:{'Content-Type':'application/pdf','Cache-Control':'no-store','Content-Disposition':'inline; filename="SKO.pdf"'}});
+   }
+   return response({result});
+  }catch(error){
+   if(db&&!commitStarted&&error?.message!=='canonical_commit_result_unknown')await db.query('rollback').catch(()=>{});
+   const unknown=commitStarted||error?.message==='canonical_commit_result_unknown';
+   return response({error:unknown?'result_unknown':'operation_rejected',retry_automatically:false},unknown?409:403);
+  }finally{if(db)await db.end().catch(()=>{});}
+ };
+}
