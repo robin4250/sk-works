@@ -6,9 +6,13 @@ import 'dart:typed_data';
 import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
 import '../shared/pdf_bytes_cache.dart';
+import '../shared/trade_document_form_session.dart';
+import '../shared/resource_registration_card.dart';
+import '../../data/supabase_backend.dart';
 import 'daily_report_pdf_evidence.dart';
 import 'daily_report_photo_pages.dart';
 import 'daily_report_photo_preview.dart';
+import 'daily_report_photo_hit_target.dart';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -3762,6 +3766,66 @@ class _DailyReportPrintPreviewPageState extends State<DailyReportPrintPreviewPag
   bool _printingPhotos = false;
   String? _fingerprint;
 
+  TradeDocumentFormSession? _photoSession;
+  bool _photoScopeReady = false;
+  Object? get _photoTarget => !SupabaseBackend.isInitialized ? null :
+    (SupabaseBackend.client.auth.currentUser?.id, widget.report?.companyId,
+      widget.report?.id, widget.date, widget.siteName);
+
+  @override void initState() { super.initState(); _preparePhotoScope(); }
+  Future<void> _preparePhotoScope() async {
+    final report = widget.report;
+    if (!SupabaseBackend.isInitialized || report?.companyId?.isNotEmpty != true || report?.id.isNotEmpty != true) return;
+    try {
+      final scope = TradeDocumentFormSession(SupabaseBackend.client,
+        target: _photoTarget, currentTarget: () => _photoTarget);
+      _photoSession = scope;
+      scope.addListener(_photoScopeChanged);
+      await scope.ready();
+      if (mounted && identical(scope, _photoSession)) setState(() => _photoScopeReady = scope.isCurrent);
+    } catch (_) { if (mounted) setState(() => _photoScopeReady = false); }
+  }
+  void _photoScopeChanged() {
+    if (mounted && _photoSession?.isCurrent != true) {
+      setState(() { _photoScopeReady = false; _resolvedEvidence = null; });
+    }
+  }
+  @override void didUpdateWidget(covariant DailyReportPrintPreviewPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.report?.id != widget.report?.id || oldWidget.report?.companyId != widget.report?.companyId ||
+        oldWidget.date != widget.date || oldWidget.siteName != widget.siteName) {
+      _photoSession?.removeListener(_photoScopeChanged); _photoSession?.dispose();
+      _photoSession = null; _photoScopeReady = false; _resolvedEvidence = null;
+      _preparePhotoScope();
+    }
+  }
+  @override void dispose() {
+    _photoSession?.removeListener(_photoScopeChanged); _photoSession?.dispose();
+    super.dispose();
+  }
+
+  List<DailyReportPhotoHitTarget> _photoTargets = [];
+  List<DailyReportPdfEvidence> _previewPhotos = [];
+  int _previewGeneration = 0;
+  ResourceAttachmentGallery _gallery(List<DailyReportPdfEvidence> photos, TradeDocumentFormSession scope) =>
+    ResourceAttachmentGallery(source: scope,
+      workerId: SupabaseBackend.client.auth.currentUser!.id, companyId: widget.report!.companyId!,
+      isCurrent: () => mounted && _photoScopeReady && identical(scope, _photoSession) && scope.isCurrent,
+      signal: scope, entries: dailyReportPhotoAttachments(photos,
+        validateAccess: () async { await scope.ready(); scope.requireScope(); }));
+
+  Widget _photoHit(BuildContext context, int index) {
+    final scope = _photoSession;
+    if (!_photoScopeReady || scope == null || !scope.isCurrent || index < 0 || index >= _previewPhotos.length) {
+      return const SizedBox.shrink();
+    }
+    final gallery = _gallery(_previewPhotos, scope);
+    return Opacity(opacity: 0, alwaysIncludeSemantics: true,
+      child: FittedBox(fit: BoxFit.fill, child: ResourceAttachmentThumbnail(
+        key: ValueKey('daily-report-cover-photo-hit-$index'), attachment: gallery.entries[index],
+        gallery: gallery, requireGalleryScope: true, recordTitle: _previewPhotos[index].record.workerName)));
+  }
+
   Future<List<DailyReportPdfEvidence>> _loadEvidence() async {
     if (!widget.includePhotos) return const [];
     if (widget.resolvedEvidence != null) return widget.resolvedEvidence!;
@@ -3780,10 +3844,18 @@ class _DailyReportPrintPreviewPageState extends State<DailyReportPrintPreviewPag
 
   // Keep the LayoutCallback identity stable across zoom state updates. Printing
   // resets its InteractiveViewer mode whenever the callback changes.
-  Future<Uint8List> _buildPreviewPdf(PdfPageFormat _) => _pdfBytes.get(() async =>
-    DailyReportPdfService.buildPdf(date: widget.date, siteName: widget.siteName,
+  Future<Uint8List> _buildPreviewPdf(PdfPageFormat _) => _pdfBytes.get(() async {
+    final generation = _previewGeneration;
+    final evidence = await _savedEvidence();
+    final targets = <DailyReportPhotoHitTarget>[];
+    final bytes = await DailyReportPdfService.buildPdf(date: widget.date, siteName: widget.siteName,
       workers: widget.workers, workDescription: widget.workDescription,
-      report: widget.report, evidence: await _savedEvidence()));
+      report: widget.report, evidence: evidence, onPhotoLayout: targets.add);
+    if (mounted && generation == _previewGeneration) {
+      _photoTargets = targets; _previewPhotos = dailyReportPhotoRecords(evidence);
+    }
+    return bytes;
+  });
 
   Future<void> _printReport() async {
     try {
@@ -3839,6 +3911,7 @@ class _DailyReportPrintPreviewPageState extends State<DailyReportPrintPreviewPag
     );
     if (_fingerprint != fingerprint) {
       _fingerprint = fingerprint;
+      _previewGeneration++; _photoTargets = []; _previewPhotos = [];
       _pdfBytes.invalidate();
       _photoPdfBytes.invalidate();
       _resolvedEvidence = null;
@@ -3854,35 +3927,14 @@ class _DailyReportPrintPreviewPageState extends State<DailyReportPrintPreviewPag
         ],
       ),
       body: Column(children: [
-        if (widget.includePhotos) FutureBuilder<List<DailyReportPdfEvidence>>(
-          future: _savedEvidence(),
-          builder: (context, snapshot) {
-            final photos = dailyReportPhotoRecords(snapshot.data ?? const []);
-            return Padding(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6,
-                ),
-              child: Row(children: [
-                Expanded(child: photos.isNotEmpty
-                  ? Align(alignment: Alignment.centerLeft,
-                      child: DailyReportPhotoPreview(photos: photos),
-                            )
-                  : Text(SkoLanguageController.tr(snapshot.connectionState == ConnectionState.done
-                      ? '写真の記録がありません' : '読込中...',
-                              ),
-                            ),
-                    ),
-                TextButton.icon(
-                  key: const ValueKey('print-daily-report-photo-pages'),
-                  onPressed: photos.isEmpty || _printingPhotos ? null : _printPhotoPages,
-                  icon: const Icon(Icons.print_outlined),
-                  label: Text(SkoLanguageController.tr('写真ページのみ印刷')),
-                ),
-              ],
-                ),
-              );
-          },
-        ),
+        if (widget.includePhotos && _photoScopeReady && _photoSession?.isCurrent == true)
+          Align(alignment: Alignment.centerRight, child: TextButton.icon(
+            key: const ValueKey('print-daily-report-photo-pages'),
+            onPressed: _printingPhotos ? null : _printPhotoPages,
+            icon: const Icon(Icons.print_outlined), label: Text(SkoLanguageController.tr('写真ページのみ印刷')))),
         Expanded(child: PdfPreview.builder(initialPageFormat: PdfPageFormat.a4,
-          pagesBuilder: (context, pages) => DailyReportZoomPages(pages: pages, onZoomChanged: widget.onZoomChanged),
+          pagesBuilder: (context, pages) => DailyReportZoomPages(pages: pages, onZoomChanged: widget.onZoomChanged,
+            photoTargets: _photoTargets, photoHitBuilder: _photoHit),
           onZoomChanged: widget.onZoomChanged,
           canChangePageFormat: false, canChangeOrientation: false,
           allowPrinting: true, allowSharing: true,

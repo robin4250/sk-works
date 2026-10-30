@@ -99,7 +99,7 @@ void main() {
       contains('東京都新宿区合成テスト住所'));
     expect(text, contains('2026/11/01 07:05'));
     expect(text, contains('送信失敗'));
-    expect(text, contains('保存済み写真を読み込めませんでした'));
+    expect(text.replaceAll(RegExp(r'\s+'), ''), contains('保存済み写真を読み込めませんでした'));
     expect(text.replaceAll(RegExp(r'\s+'), ''), contains('途中現場の実GPS住所'));
     expect(text, contains('2026/11/01 06:30'));
   }, skip: fontPath == null ? 'Set SKO_PDF_FONT_PATH for actual Flutter PDF rendering.' : false);

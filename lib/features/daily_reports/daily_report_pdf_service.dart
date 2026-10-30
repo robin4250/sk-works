@@ -2,7 +2,7 @@
 
 import 'dart:typed_data';
 import 'dart:convert';
-import 'dart:ui' show Offset, Size;
+import 'dart:ui' show Offset, Size, Rect;
 
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -14,6 +14,7 @@ import 'daily_report_repository.dart';
 import 'daily_report_pdf_evidence.dart';
 import 'daily_report_photo_pages.dart';
 import 'daily_report_cover_layout.dart';
+import 'daily_report_photo_hit_target.dart';
 import 'signature_capture_page.dart';
 
 class DailyReportPdfService {
@@ -39,6 +40,7 @@ class DailyReportPdfService {
     PdfPageFormat format = PdfPageFormat.a4,
     List<DailyReportPdfEvidence> evidence = const [],
     bool photoPagesOnly = false,
+    void Function(DailyReportPhotoHitTarget)? onPhotoLayout,
     pw.Font? regularFont,
     pw.Font? boldFont,
   }) async {
@@ -241,7 +243,7 @@ class DailyReportPdfService {
             if (photos.isNotEmpty) ...[
               pw.Text(SkoLanguageController.tr('写真'), style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
               pw.SizedBox(height: 3),
-              ..._photoGrid(photos.take(layout.coverPhotos).toList()),
+              ..._photoGrid(photos.take(layout.coverPhotos).toList(), format: format, onPhotoLayout: onPhotoLayout),
             ],
             pw.Spacer(),
             pw.Divider(thickness: 0.8),
@@ -284,18 +286,22 @@ class DailyReportPdfService {
       document.addPage(pw.MultiPage(pageFormat: format,
         margin: const pw.EdgeInsets.all(14 * PdfPageFormat.mm),
         header: (_) => pw.Text('写真（続き）', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
-        build: (_) => _photoGrid(photos.skip(layout.coverPhotos).toList())));
+        build: (_) => _photoGrid(photos.skip(layout.coverPhotos).toList(), format: format,
+          startIndex: layout.coverPhotos, onPhotoLayout: onPhotoLayout)));
     }
     return document.save();
   }
 
-  static List<pw.Widget> _photoGrid(List<DailyReportPdfEvidence> photos) => [
+  static List<pw.Widget> _photoGrid(List<DailyReportPdfEvidence> photos, {required PdfPageFormat format,
+    int startIndex = 0, void Function(DailyReportPhotoHitTarget)? onPhotoLayout}) => [
     for (var start = 0; start < photos.length; start += DailyReportCoverLayout.photoColumns)
       pw.Padding(padding: const pw.EdgeInsets.only(bottom: 4), child: pw.Row(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [for (var column = 0; column < DailyReportCoverLayout.photoColumns; column++)
           pw.Expanded(child: start + column < photos.length
-            ? _coverPhoto(photos[start + column]) : pw.SizedBox())])),
+            ? pw.Annotation(builder: _PhotoAnnotation(index: startIndex + start + column,
+                format: format, onPhotoLayout: onPhotoLayout),
+                child: _coverPhoto(photos[start + column])) : pw.SizedBox())])),
   ];
 
   static pw.Widget _coverPhoto(DailyReportPdfEvidence photo) {
@@ -587,5 +593,20 @@ class DailyReportPdfService {
   static String _number(double value) {
     if (value == value.roundToDouble()) return value.toInt().toString();
     return value.toStringAsFixed(2).replaceFirst(RegExp(r'0+$'), '').replaceFirst(RegExp(r'\.$'), '');
+  }
+}
+
+class _PhotoAnnotation extends pw.AnnotationUrl {
+  _PhotoAnnotation({required this.index, required this.format, required this.onPhotoLayout})
+    : super('sko-photo:$index');
+  final int index;
+  final PdfPageFormat format;
+  final void Function(DailyReportPhotoHitTarget)? onPhotoLayout;
+  @override PdfAnnot build(pw.Context context, PdfRect? box) {
+    final rect = context.localToGlobal(box!);
+    onPhotoLayout?.call(DailyReportPhotoHitTarget(pageIndex: context.pageNumber - 1,
+      photoIndex: index, bounds: Rect.fromLTWH(rect.left / format.width,
+        (format.height - rect.top) / format.height, rect.width / format.width, rect.height / format.height)));
+    return super.build(context, box);
   }
 }

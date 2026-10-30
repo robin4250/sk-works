@@ -1,0 +1,102 @@
+name: Restored SDK financial PDF transport regression
+on:
+  pull_request:
+    paths:
+      - 'lib/features/shared/trade_document_form_session.dart'
+      - 'lib/features/shared/trade_document_attachment_repository.dart'
+      - 'lib/features/auth/app_auth_mutation_gateway.dart'
+      - 'lib/features/auth/secondary_reset_session_guard.dart'
+      - 'lib/features/auth/sdk_session_replay_baseline.dart'
+      - 'lib/features/invoices/invoice_pdf_service.dart'
+      - 'lib/features/payroll/payment_certificate_pdf_service.dart'
+      - 'lib/data/supabase_backend.dart'
+      - 'test/trade_document_restored_financial_pdf_test.dart'
+      - 'test/trade_document_restored_session_test.dart'
+      - '.github/workflows/trade-document-restored-session.yml'
+permissions:
+  contents: read
+jobs:
+  restored-financial:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: '3.47.5', channel: stable, cache: true}
+      - run: flutter pub get --enforce-lockfile
+      - name: Analyze all production replay guards and both actual SDK regressions
+        run: >-
+          flutter analyze
+          lib/features/auth/app_auth_mutation_gateway.dart
+          lib/features/auth/sdk_session_replay_baseline.dart
+          lib/features/shared/trade_document_form_session.dart
+          lib/features/shared/trade_document_attachment_repository.dart
+          test/trade_document_restored_session_test.dart
+          test/trade_document_restored_financial_pdf_test.dart
+      - name: Exact installed-source RED then restored-candidate GREEN
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/restored-session-proof
+          replay_backup_dir=$(mktemp -d)
+          replay_product_paths=(
+            lib/features/auth/app_auth_mutation_gateway.dart
+            lib/features/shared/trade_document_form_session.dart
+            lib/features/auth/sdk_session_replay_baseline.dart
+          )
+          sha256sum "${replay_product_paths[@]}" > build/restored-session-proof/candidate-products.sha256
+          for replay_path in "${replay_product_paths[@]}"; do
+            mkdir -p "$replay_backup_dir/$(dirname "$replay_path")"
+            cp "$replay_path" "$replay_backup_dir/$replay_path"
+          done
+          restore_replay_products() {
+            for replay_path in "${replay_product_paths[@]}"; do
+              cp "$replay_backup_dir/$replay_path" "$replay_path"
+            done
+            sha256sum --check build/restored-session-proof/candidate-products.sha256
+            git diff --exit-code -- "${replay_product_paths[@]}"
+          }
+          trap restore_replay_products EXIT
+          for replay_path in "${replay_product_paths[@]:0:2}"; do
+            git show "934e4db87d000d3c1f5399631f221dbc07e76625:$replay_path" > "$replay_path"
+          done
+          set +e
+          flutter test --reporter expanded \
+            --dart-define=SKO_RESTORED_FINANCIAL_FIXTURE=true \
+            --dart-define=SUPABASE_URL=http://127.0.0.1:57417 \
+            --dart-define=SUPABASE_PUBLISHABLE_KEY=synthetic-public-fixture \
+            --plain-name 'restored financial' \
+            test/trade_document_restored_financial_pdf_test.dart \
+            2>&1 | tee build/restored-session-proof/installed-source-red.log
+          replay_baseline_status=${PIPESTATUS[0]}
+          set -e
+          test "$replay_baseline_status" -ne 0
+          python - <<'PYCODE'
+          import pathlib,re
+          text=pathlib.Path('build/restored-session-proof/installed-source-red.log').read_text()
+          flat=''.join(re.sub(r'\x1b\[[0-9;]*m','',text).split())
+          reason='StateError:Bad state: ログイン・会社・書類の状態が変わりました。開き直してください。'
+          for kind in ['invoice','payment_certificate']:
+              expected='RESTORED_FINANCIAL_BUILDER_FAILURE:'+kind+':'+reason
+              assert ''.join(expected.split()) in flat,(kind,'Baseline did not fail inside the actual financial builder for the exact installed-source scope reason')
+          print('Strict installed-source RED: both actual financial builders reached the exact scope failure.')
+          PYCODE
+          restore_replay_products
+          trap - EXIT
+          flutter test --reporter expanded \
+            --dart-define=SKO_RESTORED_FINANCIAL_FIXTURE=true \
+            --dart-define=SUPABASE_URL=http://127.0.0.1:57417 \
+            --dart-define=SUPABASE_PUBLISHABLE_KEY=synthetic-public-fixture \
+            test/trade_document_restored_financial_pdf_test.dart \
+            test/trade_document_restored_session_test.dart \
+            test/trade_document_host_session_wire_test.dart \
+            test/app_auth_mutation_gateway_test.dart \
+            test/secondary_password_reset_page_test.dart \
+            2>&1 | tee build/restored-session-proof/restored-candidate-green.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: restored-financial-session-proof
+          path: build/restored-session-proof
+      - run: git diff --exit-code -- pubspec.yaml pubspec.lock

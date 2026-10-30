@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:sk_works/features/daily_reports/daily_report_cover_layout.dart';
+import 'package:sk_works/features/daily_reports/daily_report_photo_hit_target.dart';
 import 'package:sk_works/features/daily_reports/daily_report_pdf_service.dart';
 import 'package:sk_works/features/daily_reports/daily_report_pdf_evidence.dart';
 import 'package:sk_works/features/daily_reports/daily_report_repository.dart';
@@ -34,11 +35,12 @@ void main() {
           eventType: 'clock_in', confirmedAt: DateTime(2026, 10, 30, 8, i),
           storagePath: 'private/$i.png', capturedAddress: '実取得住所$i'), photoBytes: photo)];
       final memberCount = count == 13 ? 40 : 6;
+      final targets = <DailyReportPhotoHitTarget>[];
       final bytes = await DailyReportPdfService.buildPdf(date: DateTime(2026, 10, 30),
         siteName: '実在対象の合成現場', workers: [for (var i = 0; i < memberCount; i++)
           DailyReportWorkerDraft(workerId: 'member-$i', workerName: 'メンバー$i')],
         workDescription: '安全確認と足場作業', report: null, evidence: evidence,
-        regularFont: font, boldFont: font);
+        regularFont: font, boldFont: font, onPhotoLayout: targets.add);
       final file = File('${output.path}/daily_cover_$count.pdf')..writeAsBytesSync(bytes);
       final result = await Process.run('python', ['-c',
         'import fitz,sys,json,os; d=fitz.open(sys.argv[1]); print(json.dumps({"pages":len(d),"texts":[p.get_text() for p in d],"sizes":[list(p.rect) for p in d],"images":[len(p.get_image_info()) for p in d]},ensure_ascii=False)); [p.get_pixmap(matrix=fitz.Matrix(1.3,1.3)).save(os.path.splitext(sys.argv[1])[0]+"_"+str(i+1)+".png") for i,p in enumerate(d)]', file.path]);
@@ -47,6 +49,14 @@ void main() {
       final texts = (actual['texts'] as List).cast<String>();
       expect(actual['pages'], count <= 12 ? 1 : greaterThan(1));
       expect(actual['images'][0], count.clamp(0, 12));
+      expect(targets.map((t) => t.photoIndex).toSet(), {for (var i = 0; i < count; i++) i});
+      expect(targets.where((t) => t.pageIndex == 0).length, count.clamp(0, 12));
+      for (final target in targets) {
+        expect(target.bounds.left, inInclusiveRange(0, 1));
+        expect(target.bounds.right, inInclusiveRange(0, 1));
+        expect(target.bounds.top, inInclusiveRange(0, 1));
+        expect(target.bounds.bottom, inInclusiveRange(0, 1));
+      }
       expect(texts.first, contains('メンバー'));
       for (var i = 0; i < count; i++) {
         expect(texts.join(), contains('実取得住所$i'));
