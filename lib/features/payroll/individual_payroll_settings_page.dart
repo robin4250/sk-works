@@ -978,7 +978,349 @@ class _IndividualPayrollSettingsPageState
                         '日給は登録日給。時給は初期値が時給×8時間で変更可能。月給は設定した1日分の内訳額で、月給に重ねて加算せず有給取得で月給を減額しません。',
                       ),
                     ),
-      …4115 tokens truncated…t('allowance_name_$slot');
+                  ],
+                  if (!_showDeductions && _earningUnit == PayrollItemUnit.day &&
+                      (_rateDraft?.payType ?? _settingValues['pay_type'] ?? 'daily') == 'daily') ...[
+                    const SizedBox(height: 12),
+                    Card(child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                        SwitchListTile(
+                          key: const ValueKey('position-transfer-enabled'),
+                          title: const Text('役職手当振替'),
+                          subtitle: const Text('役職手当と勤務手当を表示上の基本給へ振り替えます。'),
+                          value: _positionTransferEnabled,
+                          onChanged: workspace.canEdit && !_busy
+                              ? (value) => setState(() => _positionTransferEnabled = value) : null,
+                        ),
+                        for (var i = 0; i < _positionTransferItems.length; i++)
+                          Row(key: ValueKey('position-transfer-row-$i'), children: [
+                            Expanded(child: TextField(controller: _positionTransferItems[i].name,
+                              enabled: workspace.canEdit && !_busy && _positionTransferEnabled,
+                              decoration: const InputDecoration(labelText: '項目名'))),
+                            Expanded(child: TextField(controller: _positionTransferItems[i].amount,
+                              enabled: workspace.canEdit && !_busy && _positionTransferEnabled,
+                              keyboardType: TextInputType.number,
+                              decoration: const InputDecoration(labelText: '月額', suffixText: '円'))),
+                            IconButton(tooltip: '振替項目を削除',
+                              onPressed: workspace.canEdit && !_busy && _positionTransferEnabled
+                                ? () => _removeCustomMoney(_positionTransferItems, i) : null,
+                              icon: const Icon(Icons.delete_outline)),
+                          ]),
+                        OutlinedButton.icon(key: const ValueKey('position-transfer-add'),
+                          onPressed: workspace.canEdit && !_busy && _positionTransferEnabled
+                            ? () => setState(() => _positionTransferItems.add(_CustomMoneyDraft())) : null,
+                          icon: const Icon(Icons.add), label: const Text('項目を追加')),
+                        const Text('支給に登録した項目と金額が一致する場合に振り替えます。'),
+                        const Text('表示用日給は500円単位に四捨五入します。支給額・残業代は変わりません。'),
+                      ]),
+                    )),
+                  ],
+                  SizedBox(height: 12),
+                ],
+                ),
+              ),
+      ),
+    );
+  }
+
+  PaidLeavePay _currentPaidLeavePay() {
+    final values = Map<String, dynamic>.from(_settingValues);
+    final draft = _rateDraft;
+    if (draft != null) {
+      values['pay_type'] = draft.payType;
+      values['day_daily'] = draft.formula.dailyBase(draft.baseRateYen);
+      values['hourly_rate_yen'] = draft.baseRateYen;
+      values['calculation_daily_base_yen'] = draft.baseRateYen;
+    }
+    final text = _controllers['paid_leave_daily_yen']!.text.trim();
+    values['rate_formula'] = {
+      if (values['rate_formula'] is Map)
+        ...Map<String, dynamic>.from(values['rate_formula'] as Map),
+      if (draft != null && draft.payType == 'hourly')
+        'hourly_rate_yen': draft.baseRateYen,
+      'paid_leave_daily_yen': text.isEmpty ? null : int.tryParse(text),
+    };
+    return PaidLeavePay.fromSettings(values);
+  }
+
+  void _addCustomMoney(List<_CustomMoneyDraft> items) {
+    setState(() => items.add(_CustomMoneyDraft()));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final target = _addedItemKey.currentContext;
+      if (mounted && target != null) {
+        Scrollable.ensureVisible(
+          target,
+          duration: const Duration(milliseconds: 250),
+          alignment: 0.2,
+        );
+      }
+    });
+  }
+
+  void _removeCustomMoney(List<_CustomMoneyDraft> items, int index) {
+    final removed = items.removeAt(index);
+    removed.dispose();
+    setState(() {});
+  }
+
+  void _includeLegacyMonthlyEarning(String key, String name) {
+    final amount = int.parse(_controllers[key]!.text);
+    if (amount > 0) {
+      final index = _customEarnings.indexWhere(
+        (item) => item.name.text.trim() == name,
+      );
+      if (index < 0) {
+        _customEarnings.add(_CustomMoneyDraft(name: name, amountYen: amount));
+      } else {
+        final item = _customEarnings[index];
+        item.amount.text = (int.parse(item.amount.text) + amount).toString();
+      }
+    }
+    _controllers[key]!.text = '0';
+  }
+
+  List<_CustomMoneyDraft> _customMoneyDrafts(
+    Object? raw, {
+    required List<String> defaults,
+  }) {
+    final result = <_CustomMoneyDraft>[];
+    final seen = <String>{};
+
+    // A stored list is authoritative, including an empty list. Re-adding
+    // defaults here made deleted rows come back immediately after save/reload.
+    if (raw is List) {
+      for (final value in raw) {
+        if (value is! Map) continue;
+        final name = value['name']?.toString().trim() ?? '';
+        final amount = (value['amount_yen'] as num?)?.toInt() ?? 0;
+        if (name.isEmpty || seen.contains(name)) continue;
+        seen.add(name);
+        result.add(_CustomMoneyDraft(name: name, amountYen: amount));
+      }
+      return result;
+    }
+
+    // Defaults are only for a worker with no stored flexible-list value yet.
+    for (final name in defaults) {
+      if (seen.add(name)) {
+        result.add(_CustomMoneyDraft(name: name));
+      }
+    }
+    return result;
+  }
+
+  List<Map<String, Object>>? _serializeCustomMoney(
+    List<_CustomMoneyDraft> items, {
+    required String sectionName,
+  }) {
+    final result = <Map<String, Object>>[];
+    final seen = <String>{};
+    for (var index = 0; index < items.length; index++) {
+      final item = items[index];
+      final name = item.name.text.trim();
+      final amountText = item.amount.text.trim();
+      if (name.isEmpty && amountText.isEmpty) continue;
+      if (name.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(SkoLanguageController.trParams('{section}項目{number}の名称を入力してください', {'section': SkoLanguageController.tr(sectionName), 'number': index + 1}))),
+        );
+        return null;
+      }
+      if (!seen.add(name)) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(SkoLanguageController.trParams('「{name}」は重複しています', {'name': name}))));
+        return null;
+      }
+      final amount = int.tryParse(amountText);
+      if (amount == null || amount < 0) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(SkoLanguageController.trParams('「{name}」の金額は0以上の数字で入力してください', {'name': name}))));
+        return null;
+      }
+      result.add({'name': name, 'amount_yen': amount});
+    }
+    return result;
+  }
+
+  Widget _customMoneyField(
+    List<_CustomMoneyDraft> items,
+    int index,
+    bool enabled, {
+    required String sectionName,
+  }) {
+    final item = items[index];
+    return Card(
+      key:
+          index == items.length - 1 &&
+              identical(
+                items,
+                _showDeductions ? _customDeductions : _customEarnings,
+              )
+          ? _addedItemKey
+          : null,
+      margin: const EdgeInsets.only(bottom: 10),
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Column(
+          children: [
+            Align(alignment: Alignment.centerLeft,
+              child: Text(SkoLanguageController.tr('個別手当（この社員だけ）'),
+                style: Theme.of(context).textTheme.labelSmall)),
+            TextFormField(
+              controller: item.name,
+              enabled: enabled,
+              maxLength: 100,
+              decoration: InputDecoration(
+                labelText:
+                    SkoLanguageController.trParams('{section}{number} 名称', {
+                      'section': SkoLanguageController.tr(sectionName),
+                      'number': index + 1,
+                    }),
+                border: OutlineInputBorder(),
+              ),
+            ),
+            TextFormField(
+              controller: item.amount,
+              enabled: enabled,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                labelText:
+                    SkoLanguageController.trParams('{section}{number} 金額', {
+                      'section': SkoLanguageController.tr(sectionName),
+                      'number': index + 1,
+                    }),
+                suffixText: SkoLanguageController.tr('円'),
+                border: OutlineInputBorder(),
+              ),
+            ),
+            if (enabled)
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: () => _removeCustomMoney(items, index),
+                  icon: Icon(Icons.delete_outline),
+                  label: Text(
+                    SkoLanguageController.trParams('この{section}を削除', {
+                      'section': SkoLanguageController.tr(sectionName),
+                    }),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmAllowanceStateReload() async {
+    final worker = _workerId;
+    if (worker == null) return;
+    final accepted = await showDialog<bool>(context: context, builder: (context) =>
+      AlertDialog(title: const Text('保存済みの状態を確認'),
+        content: const Text('保存し直さず、保存済みの設定を読み直します。表示中の未保存入力は置き換わります。'),
+        actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('入力を保持')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('保存済みの状態を確認'))]));
+    if (mounted && worker == _workerId && accepted == true) await _loadWorker(worker);
+  }
+
+  Future<void> _loadRegisteredAllowanceNames(String company, String worker, int generation) async {
+    final source = _registeredAllowanceSource;
+    if (source == null) return;
+    try {
+      final value = await source.read(company);
+      if (!mounted || generation != _loadGeneration || _workerId != worker ||
+          !_allowanceScopeCurrent() || value.companyId != company ||
+          (_workspace?.companyId ?? _settingValues['company_id']) != company) {
+        return;
+      }
+      setState(() { _registeredAllowanceNames = value; _registeredAllowanceReadFailed = false; });
+    } catch (_) {
+      if (mounted && generation == _loadGeneration && _workerId == worker) {
+        setState(() { _registeredAllowanceNames = null; _registeredAllowanceReadFailed = true; });
+      }
+    }
+  }
+
+  List<PayrollRegisteredAllowanceName> get _registeredNameRows {
+    if (!_allowanceScopeCurrent()) return const [];
+    final type = _settingValues['pay_type']?.toString() ?? 'daily';
+    return [for (final item in _registeredAllowanceNames?.items ?? <CompanyAllowanceLabel>[])
+      if (item.payrollType == 'all' || item.payrollType == type)
+        PayrollRegisteredAllowanceName(
+          key: '${item.origin}/${item.id ?? item.legacySlot}', itemId: item.id,
+          name: item.name, legacySlot: item.legacySlot,
+          currentRateYen: item.currentRateYen, displayUnit: item.displayUnit,
+          section: PayrollItemSection.values.byName(item.section),
+          unit: PayrollItemUnit.values.byName(item.unit)),
+    ];
+  }
+
+  Map<String, dynamic> get _individualAllowanceValues => {
+    for (var slot = 1; slot <= 3; slot++) ...{
+      'allowance_name_$slot': _controllers['allowance_name_$slot']!.text,
+      'allowance_$slot': _controllers['allowance_$slot']!.text,
+    },
+  };
+
+  void _rememberAllowanceDraft(List<PayrollUnitItemDraft> items) {
+    // Preserve incomplete input too. Validation happens before either save.
+    final rows = {for (final item in items)
+      if (individualAllowanceSlot(item.id) != null)
+        individualAllowanceSlot(item.id)!: item};
+    for (var slot = 1; slot <= 3; slot++) {
+      _controllers['allowance_name_$slot']!.text = rows[slot]?.name ?? '';
+      _controllers['allowance_$slot']!.text = rows[slot]?.rate ?? '0';
+    }
+  }
+
+  bool _allowanceScopeCurrent() => !_allowanceUsesLiveSession ||
+      (_allowanceActorAtLoad != null &&
+       SupabaseBackend.client.auth.currentUser?.id == _allowanceActorAtLoad);
+
+  bool _individualAllowanceValuesChanged(Map<String, dynamic> values) =>
+      values.entries.any((entry) {
+        final previous = _settingValues[entry.key];
+        return entry.key.startsWith('allowance_name_')
+            ? (previous?.toString() ?? '') != entry.value
+            : (previous as num? ?? 0) != entry.value;
+      });
+
+  Future<bool> _saveAllowanceRows(List<PayrollUnitItemDraft> items) async {
+    final worker = _workerId;
+    final company = _workspace?.companyId ?? _settingValues['company_id'];
+    final generation = _loadGeneration;
+    if (worker == null || company is! String || _repository == null ||
+        _workspace?.canEdit != true || _allowanceSaveUncertain || !_allowanceScopeCurrent()) {
+      throw StateError('手当の保存対象を確認できません');
+    }
+    final values = splitIndividualAllowanceRows(items).workerValues;
+    final changed = _individualAllowanceValuesChanged(values);
+    if (!changed) return false;
+    await _repository.saveSetting(workerId: worker, values: values);
+    if (!mounted || generation != _loadGeneration || _workerId != worker || !_allowanceScopeCurrent() ||
+        (_workspace?.companyId ?? _settingValues['company_id']) != company) {
+      throw StateError('手当の保存後に対象が変わりました');
+    }
+    setState(() => _settingValues = {..._settingValues, ...values});
+    return true;
+  }
+
+  Future<void> _reloadAllowanceRows() async {
+    final worker = _workerId;
+    final generation = _loadGeneration;
+    if (worker == null || _repository == null) throw StateError('社員を確認できません');
+    final saved = await _repository.loadSetting(worker);
+    final expectedCompany = _workspace?.companyId ?? _settingValues['company_id'];
+    if (saved.values['company_id'] is String && saved.values['company_id'] != expectedCompany) {
+      throw StateError('給与設定の会社が一致しません');
+    }
+    if (!mounted || generation != _loadGeneration || worker != _workerId || !_allowanceScopeCurrent()) {
+      throw StateError('社員が変わりました');
+    }
+    for (var slot = 1; slot <= 3; slot++) {
+      _controllers['allowance_name_$slot']!.text = saved.text('allowance_name_$slot');
       _controllers['allowance_$slot']!.text = saved.amount('allowance_$slot').toStringAsFixed(0);
     }
     _settingValues = {..._settingValues, ...{
