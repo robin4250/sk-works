@@ -9,6 +9,8 @@ class MasterFeatureAvailability {
     this.companySealImageToolsSupported = false,
     this.qrAttendance = false,
     this.qrAttendanceSupported = false,
+    this.tradeDocuments = false,
+    this.tradeDocumentsSupported = false,
   });
 
   final bool vehicleManagement;
@@ -23,6 +25,8 @@ class MasterFeatureAvailability {
   // This contract does not establish production rollout or permission to act.
   final bool qrAttendance;
   final bool qrAttendanceSupported;
+  final bool tradeDocuments;
+  final bool tradeDocumentsSupported;
   bool get qrDeviceRegistration => qrAttendance;
 
   static const unavailable = MasterFeatureAvailability(
@@ -38,8 +42,13 @@ class MasterFeatureAvailability {
     final qrSupported = json['qr_attendance_contract_version'] is int &&
         json['qr_attendance_contract_version'] == 1 &&
         json['qr_attendance'] is bool;
+    final tradeSupported = json['trade_documents_master_contract_version'] is int &&
+        json['trade_documents_master_contract_version'] == 1 &&
+        json['site_order_documents'] is bool;
     return MasterFeatureAvailability(
       qrAttendanceSupported: qrSupported,
+      tradeDocumentsSupported: tradeSupported,
+      tradeDocuments: tradeSupported && json['site_order_documents'] == true,
       qrAttendance: qrSupported && json['qr_attendance'] == true,
       vehicleManagement: json['vehicle_management'] == true,
       routeAssignment: json['route_assignment'] == true,

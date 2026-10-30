@@ -1,0 +1,49 @@
+name: Protected standalone order and acceptance hub
+on:
+  pull_request:
+    paths:
+      - 'lib/app_v2.dart'
+      - 'lib/features/shared/trade_documents_hub*'
+      - 'lib/features/shared/standalone_trade_document*'
+      - 'lib/features/settings/master_feature*'
+      - 'lib/features/companies/trade_company_page.dart'
+      - 'test/trade_documents_hub*'
+      - 'test/trade_document_generator_routing_test.dart'
+      - 'test/master_feature*'
+      - 'docs/review/trade-documents-hub/**'
+      - 'tool/verify_trade_documents_hub_contract.mjs'
+      - '.github/workflows/trade-documents-hub.yml'
+permissions: {contents: read}
+jobs:
+  server-context:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix: {runtime: [pglite, postgres]}
+    services:
+      database:
+        image: postgres:17.6
+        env: {POSTGRES_USER: postgres, POSTGRES_PASSWORD: fixture-only, POSTGRES_DB: sko_trade_hub_fixture}
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22.14.0'}
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
+      - run: node tool/verify_trade_documents_hub_contract.mjs '${{ matrix.runtime }}'
+        env: {SKO_TRADE_HUB_FIXTURE_URL: 'postgres://postgres:fixture-only@127.0.0.1:5432/sko_trade_hub_fixture'}
+      - run: git diff --exit-code -- tool/security/fixture_dependencies/package-lock.json
+  client:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: '3.47.5', channel: stable, cache: true}
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/shared/trade_documents_hub_contract.dart lib/features/shared/trade_documents_hub_page.dart lib/features/shared/trade_documents_hub_repository.dart lib/features/settings/master_feature_availability.dart lib/features/settings/master_feature_controls_repository.dart lib/features/settings/master_feature_controls_page.dart test/trade_documents_hub_contract_test.dart test/trade_documents_hub_repository_test.dart
+      - run: flutter test test/trade_documents_hub_contract_test.dart test/trade_documents_hub_repository_test.dart test/master_feature_availability_test.dart test/master_feature_reauthentication_test.dart test/master_feature_controls_ui_contract_test.dart test/trade_document_generator_routing_test.dart test/standalone_trade_document_operation_gate_test.dart
+      - run: git diff --exit-code -- pubspec.yaml pubspec.lock
