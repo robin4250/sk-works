@@ -2,8 +2,9 @@
 // Only a private temporary module receives this additional review hook.
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import {fileURLToPath,pathToFileURL} from 'node:url';
+import {fileURLToPath} from 'node:url';
 import {createHash,randomUUID} from 'node:crypto';
+import {spawnSync} from 'node:child_process';
 
 if(process.env.SKO_SITE_ORDER_ARTIFACT_REGISTRATION_HOOK!=='contract-v1') {
  throw Error('Fixed isolated artifact registration hook required');
@@ -25,5 +26,8 @@ try {
  await fs.writeFile(temp,source.replace(anchor,hook+anchor),{flag:'wx',mode:0o600});
  console.log(JSON.stringify({canonical_source_files_verified:manifest.files.length,
    original_harness_changed:false,temporary_hook:true}));
- await import(pathToFileURL(temp));
+ const outcome=spawnSync(process.execPath,[temp,...process.argv.slice(2)],
+   {cwd:root,env:process.env,stdio:'inherit'});
+ if(outcome.error)throw outcome.error;
+ if(outcome.status!==0)throw Error('Artifact fixture child failed: '+(outcome.status??outcome.signal));
 } finally { await fs.rm(temp,{force:true}); }

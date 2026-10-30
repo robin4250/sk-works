@@ -49,3 +49,7 @@ jobs:
             node tool/verify_site_order_artifact_registration.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
           fi
       - run: git diff --exit-code -- tool/security/fixture_dependencies/package.json tool/security/fixture_dependencies/package-lock.json
+      - name: Preserve canonical inputs and leave no temporary fixture module
+        run: |
+          git diff --exit-code -- tool/verify_trade_document_bound_seal_consent.mjs tool/fixtures/trade_reciprocal_gate/source_manifest.json
+          node -e "if(require('node:fs').readdirSync('tool').some(n=>n.startsWith('.site-order-artifact-fixture-')))throw Error('Temporary artifact fixture module remains')"
