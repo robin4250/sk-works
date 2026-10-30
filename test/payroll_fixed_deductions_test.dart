@@ -19,6 +19,8 @@ class _Backend {
   bool edit = true, failSave = false;
   bool hasConditions = true;
   bool manualSupported = false;
+  bool reasonSupported = true, corruptReceipt = false;
+  final reasons = <String>[];
   Map<String, dynamic> get response => {
     'company_id': 'company', 'worker_id': 'worker', 'can_edit': edit,
     if (manualSupported) 'manual_insurance_contract_version': 1,
@@ -27,19 +29,28 @@ class _Backend {
   };
   Future<dynamic> rpc(String name, Map<String, dynamic> params) async {
     if (name == 'payroll_deduction_overrides_contract_version') return 1;
+    if (name == 'payroll_tax_adjustment_reason_contract_version') return reasonSupported ? 1 : 0;
     if (name == 'read_worker_payroll_tax_conditions') return response;
-    expect(name, 'save_worker_payroll_tax_conditions');
+    expect(name, 'save_worker_payroll_tax_conditions_with_reason');
     expect(params['p_company_id'], 'company');
     expect(params['p_worker_id'], 'worker');
     expect(params['p_starts_on'], month);
     expect(params['p_expected_version'], version);
     expect(params['p_confirmed'], isTrue);
+    expect(params['p_reason'], isA<String>());
+    expect((params['p_reason'] as String).trim(), isNotEmpty);
     if (failSave) throw StateError('offline');
     sent = Map<String, dynamic>.from(params['p_value'] as Map);
     value = sent!;
     writes++;
+    reasons.add(params['p_reason'] as String);
     version++;
-    return response;
+    return {...response, 'adjustment_receipt': {
+      'starts_on': month, 'version': version,
+      'reason': corruptReceipt ? 'different reason' : params['p_reason'],
+      'actor_id': '11111111-1111-4111-8111-111111111111',
+      'changed_at': '2026-10-30T00:00:00Z',
+    }};
   }
   Future<Map<String, dynamic>?> statement(String company, String worker, String period) async {
     expect([company, worker, period], ['company', 'worker', month]);
@@ -97,11 +108,143 @@ Future<void> save(WidgetTester t) async {
   expect(t.widget<FilledButton>(button).onPressed, isNotNull);
   await t.tap(button);
   await t.pumpAndSettle();
+  await t.enterText(find.byKey(const ValueKey('fixed-deduction-adjustment-reason')), '確認した金額に調整');
+  await t.pumpAndSettle();
+  FocusManager.instance.primaryFocus?.unfocus();
+  await t.pumpAndSettle();
   await t.tap(find.text('確認して保存'));
   await t.pumpAndSettle();
 }
 
+Future<void> startAdjustment(WidgetTester t, String key) async {
+  final button = find.byKey(ValueKey('fixed-deduction-$key-begin-adjustment'));
+  await t.ensureVisible(button);
+  await t.tap(button);
+  await t.pumpAndSettle();
+  await t.ensureVisible(amount(key));
+}
+
 void main() {
+  testWidgets('missing reason capability keeps amounts and general settings readable without manual writes', (t) async {
+    final b = _Backend()..reasonSupported = false;
+    var conditionsOpened = 0;
+    await _mount(t, b, conditions: (_) async => conditionsOpened++);
+    expect(t.widget<TextFormField>(amount('health_insurance')).controller!.text, '5000');
+    final adjust = find.byKey(const ValueKey('fixed-deduction-health_insurance-begin-adjustment'));
+    expect(t.widget<TextButton>(adjust).onPressed, isNull);
+    expect(find.text('手動調整を利用できません。管理者に確認してください。'), findsOneWidget);
+    final settings = find.widgetWithText(TextButton, '保険料の基準・適用月');
+    await t.ensureVisible(settings);
+    await t.tap(settings);
+    await t.pumpAndSettle();
+    expect(conditionsOpened, 1);
+    expect(b.writes, 0);
+  });
+
+  testWidgets('an adjustment requires a reason and cancellation preserves the entered amount without writes', (t) async {
+    final b = _Backend();
+    await _mount(t, b);
+    await startAdjustment(t, 'health_insurance');
+    await t.enterText(amount('health_insurance'), '5100');
+    FocusManager.instance.primaryFocus?.unfocus();
+    await t.pumpAndSettle();
+    final saveButton = find.widgetWithText(FilledButton, '税・保険料を登録');
+    await t.ensureVisible(saveButton);
+    await t.tap(saveButton);
+    await t.pumpAndSettle();
+    final confirm = find.widgetWithText(FilledButton, '確認して保存');
+    expect(t.widget<FilledButton>(confirm).onPressed, isNull);
+    final reason = find.byKey(const ValueKey('fixed-deduction-adjustment-reason'));
+    await t.enterText(reason, '   ');
+    await t.pumpAndSettle();
+    expect(t.widget<FilledButton>(confirm).onPressed, isNull);
+    await t.enterText(reason, '  通知額を確認したため  ');
+    FocusManager.instance.primaryFocus?.unfocus();
+    await t.pumpAndSettle();
+    await t.tap(find.text('戻る'));
+    await t.pumpAndSettle();
+    expect(b.writes, 0);
+    expect(t.widget<TextFormField>(amount('health_insurance')).controller!.text, '5100');
+    await t.ensureVisible(saveButton);
+    await t.tap(saveButton);
+    await t.pumpAndSettle();
+    expect(t.widget<TextField>(reason).controller!.text, '  通知額を確認したため  ');
+    await t.tap(confirm);
+    await t.pumpAndSettle();
+    expect(b.reasons, ['通知額を確認したため']);
+    expect(b.writes, 1);
+    expect(t.widget<TextFormField>(amount('health_insurance')).enabled, isFalse);
+  });
+
+  testWidgets('a mismatched reason receipt keeps the outcome uncertain and retains the reason for review', (t) async {
+    final b = _Backend()..corruptReceipt = true;
+    await _mount(t, b);
+    await startAdjustment(t, 'income_tax');
+    await t.enterText(amount('income_tax'), '1200');
+    await save(t);
+    expect(find.textContaining('保存結果を確認できません'), findsOneWidget);
+    expect(b.writes, 1);
+    final reload = find.widgetWithText(TextButton, '税・保険料を再読み込み');
+    await t.ensureVisible(reload);
+    await t.tap(reload);
+    await t.pumpAndSettle();
+    await startAdjustment(t, 'income_tax');
+    await t.enterText(amount('income_tax'), '1250');
+    FocusManager.instance.primaryFocus?.unfocus();
+    await t.pumpAndSettle();
+    final saveButton = find.widgetWithText(FilledButton, '税・保険料を登録');
+    await t.ensureVisible(saveButton);
+    await t.tap(saveButton);
+    await t.pumpAndSettle();
+    expect(t.widget<TextField>(find.byKey(const ValueKey('fixed-deduction-adjustment-reason'))).controller!.text,
+      '確認した金額に調整');
+    expect(b.writes, 1);
+  });
+
+  testWidgets('automatic amounts require a deliberate per-item adjustment and cancel never writes', (t) async {
+    final b = _Backend();
+    await _mount(t, b);
+    for (final item in fixedPayrollDeductions) {
+      expect(t.widget<TextFormField>(amount(item.$1)).enabled, isFalse);
+    }
+    expect(find.text('自動計算専用'), findsOneWidget);
+    expect(find.byKey(const ValueKey('fixed-deduction-child_support-begin-adjustment')), findsNothing);
+    await startAdjustment(t, 'health_insurance');
+    expect(t.widget<TextFormField>(amount('health_insurance')).enabled, isTrue);
+    expect(t.widget<TextFormField>(amount('employment_insurance')).enabled, isFalse);
+    await t.enterText(amount('health_insurance'), '5100');
+    await t.pumpAndSettle();
+    expect(helper(t, 'health_insurance'), '手入力修正');
+    expect(find.text('手動調整中'), findsOneWidget);
+    final cancel = find.byKey(const ValueKey('fixed-deduction-health_insurance-cancel-adjustment'));
+    await t.ensureVisible(cancel);
+    await t.tap(cancel);
+    await t.pumpAndSettle();
+    expect(t.widget<TextFormField>(amount('health_insurance')).controller!.text, '5000');
+    expect(t.widget<TextFormField>(amount('health_insurance')).enabled, isFalse);
+    expect(find.text('手動調整中'), findsNothing);
+    expect(b.writes, 0);
+    expect(t.widget<FilledButton>(find.widgetWithText(FilledButton, '税・保険料を登録')).onPressed, isNull);
+  });
+
+  testWidgets('cancelling one open adjustment preserves another draft and saved override cancellation', (t) async {
+    final b = _Backend()..value = {...initialProfile, 'deduction_overrides': {'health_insurance': 5200}};
+    await _mount(t, b);
+    await startAdjustment(t, 'health_insurance');
+    await t.enterText(amount('health_insurance'), '5300');
+    await startAdjustment(t, 'income_tax');
+    await t.enterText(amount('income_tax'), '1100');
+    final cancel = find.byKey(const ValueKey('fixed-deduction-health_insurance-cancel-adjustment'));
+    await t.ensureVisible(cancel);
+    await t.tap(cancel);
+    await t.pumpAndSettle();
+    expect(t.widget<TextFormField>(amount('health_insurance')).controller!.text, '5200');
+    expect(helper(t, 'health_insurance'), '手入力修正');
+    expect(t.widget<TextFormField>(amount('income_tax')).controller!.text, '1100');
+    expect(t.widget<FilledButton>(find.widgetWithText(FilledButton, '税・保険料を登録')).onPressed, isNotNull);
+    expect(b.writes, 0);
+  });
+
   for (final calculatorVersion in const [
     'payroll-tax-20261010-v1', 'payroll-tax-20261014-overrides-v1',
   ]) {
@@ -549,8 +692,10 @@ void main() {
     expect(t.widget<TextFormField>(amount('nursing_insurance')).controller!.text, '0');
     expect(b.writes, 0);
     await t.ensureVisible(amount('health_insurance'));
+    await startAdjustment(t, 'health_insurance');
     await t.enterText(amount('health_insurance'), '5100');
     await t.ensureVisible(amount('employment_insurance'));
+    await startAdjustment(t, 'employment_insurance');
     await t.enterText(amount('employment_insurance'), '0');
     await save(t);
     expect(b.sent!['deduction_overrides'], {
@@ -566,6 +711,7 @@ void main() {
     await save(t);
     expect(b.sent!['deduction_overrides'], {'employment_insurance': 0});
     expect(b.writes, 2);
+    expect(b.reasons, ['確認した金額に調整', '確認した金額に調整']);
     expect(t.takeException(), isNull);
   });
 
@@ -595,6 +741,7 @@ void main() {
       expect(helper(t, item.$1), '給与計算待ち');
     }
     await t.ensureVisible(amount('income_tax'));
+    await startAdjustment(t, 'income_tax');
     await t.enterText(amount('income_tax'), '1234');
     b.failSave = true;
     await save(t);
@@ -645,7 +792,8 @@ void main() {
       var opened = 0;
       await _mount(t, b, conditions: (_) async { opened++; });
       await t.ensureVisible(amount('income_tax'));
-      await t.enterText(amount('income_tax'), '1234');
+      await startAdjustment(t, 'income_tax');
+    await t.enterText(amount('income_tax'), '1234');
       if (uncertain) {
         b.failSave = true;
         await save(t);

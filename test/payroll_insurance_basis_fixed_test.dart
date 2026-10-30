@@ -23,6 +23,7 @@ void main() {
           rpc: (name, params) async {
             calls.add(name);
             if (name == 'payroll_deduction_overrides_contract_version') return 1;
+            if (name == 'payroll_tax_adjustment_reason_contract_version') return 1;
             if (name.endsWith('_with_insurance_reference') && fullReadFails) throw StateError('denied');
             return {'company_id': 'company', 'worker_id': 'worker', 'can_edit': true,
               'insurance_basis_reference_contract_version': 1,
@@ -35,7 +36,8 @@ void main() {
       ))));
       await t.pumpAndSettle();
       expect(calls, ['payroll_deduction_overrides_contract_version', 'read_worker_payroll_tax_conditions',
-        'read_worker_payroll_tax_conditions_with_insurance_reference']);
+        'read_worker_payroll_tax_conditions_with_insurance_reference',
+        if (!fullReadFails) 'payroll_tax_adjustment_reason_contract_version']);
       if (fullReadFails) {
         expect(statementReads, 0);
         expect(find.textContaining('税・保険料の計算結果を取得できません'), findsOneWidget);
