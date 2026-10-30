@@ -19,9 +19,9 @@ const verify=createProjectVerifier(client,base);
 const request=(jwt,b)=>new Request('https://function.invalid',{method:'POST',headers:{authorization:'Bearer '+jwt},body:JSON.stringify(b)});
 
 test('real ES256 JWT verifies via pinned Supabase SDK; editable metadata is removed',async()=>{
- const result=await verify(await token());assert.equal(result.sub,id);assert.equal(result.session_id,sid);assert.equal(result.user_metadata,undefined);
+ const result=await verify(await token({is_anonymous:false}));assert.equal(result.is_anonymous,false);assert.equal(result.sub,id);assert.equal(result.session_id,sid);assert.equal(result.user_metadata,undefined);
 });
-for(const [name,extra] of [['foreign issuer',{iss:'https://other.invalid/auth/v1'}],['service role',{role:'service_role'}],['missing SID',{session_id:null}],['expired',{exp:1}],['future issued',{iat:Math.floor(Date.now()/1000)+1000}]])test(name+' JWT is rejected',async()=>{await assert.rejects(async()=>verify(await token(extra)));});
+for(const [name,extra] of [['foreign issuer',{iss:'https://other.invalid/auth/v1'}],['service role',{role:'service_role'}],['anonymous principal',{is_anonymous:true}],['missing SID',{session_id:null}],['expired',{exp:1}],['future issued',{iat:Math.floor(Date.now()/1000)+1000}]])test(name+' JWT is rejected',async()=>{await assert.rejects(async()=>verify(await token(extra)));});
 test('modified signature is rejected by real JWT verifier before DB connect',async()=>{
  const valid=await token(),parts=valid.split('.');parts[2]=b64(new Uint8Array(64));let connected=0;
  const handler=createSiteOrderHandler({verify,connect:()=>{connected++;throw Error('no');},render:()=>{throw Error('no');}});
