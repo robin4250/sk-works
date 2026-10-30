@@ -1,0 +1,55 @@
+name: Attendance correction allowance preservation
+on:
+  pull_request:
+    paths:
+      - 'lib/features/attendance/attendance_correction*'
+      - 'lib/features/attendance/bulk_attendance_correction_page.dart'
+      - 'test/attendance_correction_allowance_preservation_test.dart'
+      - '.github/workflows/attendance-correction-allowance-preservation.yml'
+permissions:
+  contents: read
+jobs:
+  preservation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/attendance/bulk_attendance_correction_page.dart lib/features/attendance/attendance_correction_allowance_notice.dart lib/features/attendance/attendance_correction_approvals_page.dart test/attendance_correction_allowance_preservation_test.dart
+      - name: Reproduce the old hidden-amount assignment without changing the test seam
+        shell: bash
+        run: |
+          set -euo pipefail
+          page=lib/features/attendance/bulk_attendance_correction_page.dart
+          cp "$page" /tmp/attendance-correction-page-fixed.dart
+          trap 'cp /tmp/attendance-correction-page-fixed.dart "$page"' EXIT
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('lib/features/attendance/bulk_attendance_correction_page.dart')
+          s=p.read_text()
+          old="'allowanceYen': widget.proposed['allowanceYen'] ?? widget.entry.allowanceYen,"
+          assert s.count(old)==1
+          p.write_text(s.replace(old,"'allowanceYen': 0,"))
+          PY
+          if flutter test --reporter expanded test/attendance_correction_allowance_preservation_test.dart --plain-name 'hours-only correction preserves unedited amount names and notes' > /tmp/attendance-old-assignment.log 2>&1; then
+            cat /tmp/attendance-old-assignment.log
+            exit 1
+          fi
+          cat /tmp/attendance-old-assignment.log
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('/tmp/attendance-old-assignment.log').read_text()
+          assert 'Expected: <1234>' in s and 'Actual: <0>' in s
+          assert 'Failed to load' not in s and 'Compilation failed' not in s
+          PY
+          cp /tmp/attendance-correction-page-fixed.dart "$page"
+          git diff --exit-code -- "$page"
+      - run: flutter test --reporter expanded test/attendance_correction_allowance_preservation_test.dart test/attendance_correction_notification_target_test.dart test/freeform_correction_allowances_contract_test.dart test/attendance_correction_fullscreen_editor_contract_test.dart test/attendance_correction_approval_ui_contract_test.dart
+      - run: git diff --exit-code -- pubspec.yaml pubspec.lock

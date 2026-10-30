@@ -1976,6 +1976,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
     final repository = _repository;
     final report = _report;
     final actor = repository?.currentActorId;
+    final editTarget = _approvedEditTarget;
     if (_saving || _visitReport || repository == null || report == null ||
         !report.signed || !_approvedEditAvailable || actor == null) {
       return;
@@ -2040,9 +2041,9 @@ class _DailyReportPageState extends State<DailyReportPage> {
         SkoLanguageController.tr('編集できる状態になりました。編集後は報告者・責任者のサインを登録してください。'),
       )));
     } catch (error) {
-      if (mounted && repository.currentActorId == actor) {
+      if (mounted && repository.currentActorId == actor && _approvedEditTarget == editTarget) {
         setState(() {
-          _approvedEditFailureTarget = _approvedEditTarget;
+          _approvedEditFailureTarget = editTarget;
           _approvedEditStartFailure = dailyReportActionErrorMessage(error);
         });
       }

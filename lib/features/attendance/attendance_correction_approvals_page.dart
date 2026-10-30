@@ -4,6 +4,7 @@ import '../notifications/notification_bell.dart';
 import '../notifications/notification_request_selection.dart';
 import '../../international/language_controller.dart';
 import 'attendance_correction_approval_repository.dart';
+import 'attendance_correction_allowance_notice.dart';
 
 class AttendanceCorrectionApprovalsPage extends StatefulWidget {
   const AttendanceCorrectionApprovalsPage({
@@ -245,6 +246,12 @@ class _AttendanceCorrectionApprovalsPageState
                             original: item.originalSnapshot,
                             proposed: item.proposedSnapshot,
                           ),
+                          if (removedAttendanceAllowanceNames(item.originalSnapshot,
+                              item.proposedSnapshot).isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            Text('削除対象の手当：${removedAttendanceAllowanceNames(item.originalSnapshot, item.proposedSnapshot).join('・')}。'
+                              '署名済みの会社共通手当の場合、この申請では削除できません。日報の修正・再署名が必要です。'),
+                          ],
                         ],
                       ),
                     ),
@@ -304,7 +311,16 @@ class _AttendanceCorrectionApprovalsPageState
       await _load();
     } catch (error) {
       if (!mounted || generation != _loadGeneration) return;
-      _show('承認処理に失敗しました: $error');
+      final protectedMessage = protectedAttendanceAllowanceMessage(error);
+      if (protectedMessage == null) {
+        _show('承認処理に失敗しました: $error');
+      } else {
+        await showDialog<void>(context: context, builder: (context) => AlertDialog(
+          title: const Text('手当の変更手順を確認してください'),
+          content: SingleChildScrollView(child: Text(protectedMessage)),
+          actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))],
+        ));
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
