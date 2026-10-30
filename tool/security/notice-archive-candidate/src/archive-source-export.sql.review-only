@@ -1,0 +1,87 @@
+-- REVIEW ONLY / OFF. Private exporter prerequisite; no API/runtime grant.
+-- Requires the exact separately reviewed observation-notice/pinning module.
+-- Does NOT insert authority_records, encrypt bytes, release pins, or purge.
+begin;
+set local search_path='';
+do $$begin
+ if current_user<>'postgres'
+ or to_regclass('security_observation_notice_private.outbox') is null
+ or to_regclass('security_observation_notice_private.inbox') is null
+ or to_regprocedure('private.verify_collector_event_evidence(uuid)') is null
+ or to_regprocedure('security_management_issuer_private.binding(uuid,uuid,uuid,text,boolean)') is null
+ then raise exception 'archive_source_prerequisites_missing';end if;
+end$$;
+create function archive_readback_private.lock_source_export(p_event uuid,p_expected_revision bigint,p_deployment text)
+returns jsonb language plpgsql security definer set search_path='' as $export$
+declare actor uuid:=auth.uid();sid uuid;
+ o security_observation_notice_private.outbox%rowtype;
+ i security_observation_notice_private.inbox%rowtype;
+ c security_observation_notice_private.config%rowtype;
+ e private.security_collector_events%rowtype;
+ x private.security_collector_evidence%rowtype;
+ a jsonb;b jsonb;snapshot jsonb;body text;
+begin
+ if p_event is null or p_expected_revision is null or p_expected_revision<1
+ or p_deployment is null or p_deployment!~'^[A-Za-z0-9_-]{1,64}$'
+ then raise exception 'archive_source_target_invalid';end if;
+ -- Reuse the notice writer's config -> inbox lock order. Retain locks until
+ -- the enclosing trusted producer transaction completes. Never infer a
+ -- company or owner from event metadata, a request field, or display names.
+ select * into strict c from security_observation_notice_private.config where singleton for share;
+ select * into strict i from security_observation_notice_private.inbox where event_id=p_event for share;
+ select * into strict o from security_observation_notice_private.outbox where event_id=p_event for share;
+ if not c.enabled or c.master_id is distinct from actor
+ or i.recipient_id is distinct from actor or o.recipient_id is distinct from actor
+ or i.company_id is distinct from c.company_id or o.company_id is distinct from c.company_id
+ or o.collector_id is distinct from c.collector_id or o.config_revision is distinct from c.revision
+ or o.state<>'available' or i.revision<>p_expected_revision
+ or i.review_state not in('resolved','false_positive') or nullif(btrim(i.review_reason),'') is null
+ then raise exception 'archive_source_binding_denied';end if;
+ sid:=private.require_reauthentication_session();
+ b:=security_management_issuer_private.binding(actor,sid,c.company_id,p_deployment,true);
+ if b is null then raise exception 'archive_source_owner_denied';end if;
+ select * into strict e from private.security_collector_events where event_id=p_event for share;
+ select * into strict x from private.security_collector_evidence where event_id=p_event for share;
+ -- Lock the verification key without returning it. Old revoked keys remain
+ -- usable only for verifying previously accepted originals, as in the core.
+ perform 1 from private.security_collector_keys where collector_id=x.collector_id and key_version=x.key_version for share;
+ if not found or e.collector_id is distinct from c.collector_id
+ or e.event_kind is distinct from i.event_kind or e.generation is distinct from i.generation
+ or e.occurred_at is distinct from i.occurred_at
+ or private.verify_collector_event_evidence(p_event) is not true
+ then raise exception 'archive_source_evidence_denied';end if;
+ -- Serialize the complete retained review history. Inbox FOR SHARE prevents
+ -- the canonical review writer from appending a concurrent revision.
+ perform 1 from security_observation_notice_private.audit where event_id=p_event order by audit_id for share;
+ select coalesce(jsonb_agg(to_jsonb(h) order by h.audit_id),'[]'::jsonb) into a
+ from security_observation_notice_private.audit h where h.event_id=p_event;
+ if jsonb_array_length(a)>22
+ or (select count(*) from security_observation_notice_private.audit h where h.event_id=p_event and h.action='queued')<>1
+ or (select count(*) from security_observation_notice_private.audit h where h.event_id=p_event and h.action='available')<>1
+ or (select count(*) from security_observation_notice_private.audit h where h.event_id=p_event and h.after_revision is not null)<>i.revision-1
+ or (select count(distinct h.after_revision) from security_observation_notice_private.audit h where h.event_id=p_event and h.after_revision is not null)<>i.revision-1
+ or exists(select 1 from security_observation_notice_private.audit h where h.event_id=p_event and h.after_revision is not null
+  and (h.before_revision is distinct from h.after_revision-1 or h.after_revision<2 or h.after_revision>i.revision))
+ or not exists(select 1 from security_observation_notice_private.audit h
+  where h.event_id=p_event and h.after_revision=i.revision and h.action=i.review_state
+  and h.reason is not distinct from i.review_reason) then raise exception 'archive_source_review_history_denied';end if;
+ snapshot:=jsonb_build_object('schema',1,'company_id',c.company_id,'owner_id',actor,
+  'deployment_id',p_deployment,'event_id',p_event,'revision',i.revision,
+  'notice',to_jsonb(i),'outbox',to_jsonb(o),'review_history',a,
+  'event',to_jsonb(e),'source_envelope',jsonb_build_object('collector_id',x.collector_id,
+   'key_version',x.key_version,'timestamp',x.transport_timestamp,
+   'body_base64',replace(encode(x.original_body,'base64'),chr(10),''),'signature',encode(x.signature,'hex')));
+ body:=snapshot::text;
+ if octet_length(body)>49152 then raise exception 'archive_source_export_too_large';end if;
+ return jsonb_build_object('status','source_locked_unattested','snapshot_body',body,
+  'snapshot_sha256',encode(sha256(convert_to(body,'UTF8')),'hex'),
+  'company_id',c.company_id,'owner_id',actor,'deployment_id',p_deployment,
+  'event_id',p_event,'revision',i.revision);
+end $export$;
+revoke all on function archive_readback_private.lock_source_export(uuid,bigint,text) from public,anon,authenticated,service_role;
+do $$begin
+ if exists(select 1 from pg_proc p cross join lateral aclexplode(coalesce(p.proacl,acldefault('f',p.proowner)))a
+ where p.oid='archive_readback_private.lock_source_export(uuid,bigint,text)'::regprocedure and a.grantee<>p.proowner)
+ then raise exception 'archive_source_unexpected_execute_grant';end if;
+end$$;
+commit;
