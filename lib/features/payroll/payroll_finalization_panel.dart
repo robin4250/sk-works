@@ -5,7 +5,9 @@ import 'payroll_condition_warning.dart';
 
 class PayrollFinalizationPanel extends StatefulWidget {
   const PayrollFinalizationPanel({super.key, required this.statement, required this.onSaved,
-    required this.reloadStatement, this.repository, this.onBusyChanged, this.onVerificationRequired, this.statementAvailable = true});
+    required this.reloadStatement, this.repository, this.onBusyChanged, this.onVerificationRequired, this.statementAvailable = true, this.showHelp = true});
+  final bool showHelp;
+  static const helpText = '月の確認登録と、明細の保存確定は別の操作です。全確認者が現在の版を確認した自動計算の下書きを、編集権限のある人が1件ずつ確定します。保存後はその時点の明細を表示します。結果不明時は再送せず保存状態を再読み込みしてください。';
   final PayrollStatementRecord statement;
   final bool statementAvailable;
   final ValueChanged<PayrollStatementRecord> onSaved;
@@ -128,10 +130,10 @@ class _PayrollFinalizationPanelState extends State<PayrollFinalizationPanel> {
       if (_ready) FilledButton(onPressed: _busy ? null : _finalize, child: const Text('給与を確定')),
       if (_error != null || (_status?.canFinalize == true && !_ready))
         TextButton(onPressed: _busy ? null : _reload, child: const Text('保存状態を再読み込み')),
-      IconButton(tooltip: '給与確定の使い方', icon: const Icon(Icons.help_outline),
+      if (widget.showHelp) IconButton(tooltip: '給与確定の使い方', icon: const Icon(Icons.help_outline),
         onPressed: () => showDialog<void>(context: context, builder: (context) => AlertDialog(
           title: const Text('給与確定の使い方'),
-          content: const Text('月の確認登録と、明細の保存確定は別の操作です。全確認者が現在の版を確認した自動計算の下書きを、編集権限のある人が1件ずつ確定します。保存後はその時点の明細を表示します。結果不明時は再送せず保存状態を再読み込みしてください。'),
+          content: const Text(PayrollFinalizationPanel.helpText),
           actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))]))),
     ]));
   }

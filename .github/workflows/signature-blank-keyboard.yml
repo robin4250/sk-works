@@ -1,0 +1,77 @@
+name: Blank signature and keyboard confirmation regression
+on:
+  pull_request:
+    paths:
+      - 'lib/features/daily_reports/signature_capture_page.dart'
+      - 'lib/features/daily_reports/daily_report_page.dart'
+      - 'test/signature*test.dart'
+      - 'test/daily_report_shared_hours_integration_test.dart'
+      - 'test/daily_report_approved_edit_start_test.dart'
+      - 'test/route_visit_report_signed_ui_test.dart'
+      - '.github/workflows/signature-blank-keyboard.yml'
+permissions:
+  contents: read
+jobs:
+  signature:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: '3.47.5', channel: stable, cache: true}
+      - run: flutter pub get --enforce-lockfile
+      - name: Analyze signature capture and actual report integration
+        run: >-
+          flutter analyze
+          lib/features/daily_reports/signature_capture_page.dart
+          lib/features/daily_reports/daily_report_page.dart
+          test/signature_blank_keyboard_test.dart
+          test/signature_point_only_regression_test.dart
+          test/signature_confirm_return_test.dart
+          test/signature_capture_member_names_test.dart
+          test/daily_report_shared_hours_integration_test.dart
+          test/daily_report_approved_edit_start_test.dart
+          test/route_visit_report_signed_ui_test.dart
+      - name: Prove the exact old capture accepts point-only ink and restore fixed source
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_file=lib/features/daily_reports/signature_capture_page.dart
+          backup=$(mktemp)
+          cp "$source_file" "$backup"
+          before=$(sha256sum "$source_file" | cut -d' ' -f1)
+          trap 'cp "$backup" "$source_file"; rm -f "$backup"' EXIT
+          git show 934e4db87d000d3c1f5399631f221dbc07e76625:"$source_file" > "$source_file"
+          mkdir -p build/signature-blank-proof
+          set +e
+          flutter test --reporter expanded test/signature_point_only_regression_test.dart > build/signature-blank-proof/old.log 2>&1
+          result=$?
+          set -e
+          cat build/signature-blank-proof/old.log
+          test "$result" -ne 0
+          grep -F 'POINT_ONLY_SIGNATURE_ACCEPTED' build/signature-blank-proof/old.log
+          grep -F 'No visible stroke must never be confirmed' build/signature-blank-proof/old.log
+          cp "$backup" "$source_file"
+          test "$(sha256sum "$source_file" | cut -d' ' -f1)" = "$before"
+          git diff --exit-code -- "$source_file"
+      - name: Verify name-only, keyboard, clear, role saves and original preservation
+        run: >-
+          flutter test --reporter expanded
+          test/signature_point_only_regression_test.dart
+          test/signature_blank_keyboard_test.dart
+          test/signature_confirm_return_test.dart
+          test/signature_capture_member_names_test.dart
+          test/signature_entry_frame_test.dart
+          test/signature_orientation_guidance_test.dart
+          test/signature_ink_frame_test.dart
+          test/daily_report_signature_aspect_test.dart
+          test/daily_report_shared_hours_integration_test.dart
+          test/daily_report_approved_edit_start_test.dart
+          test/route_visit_report_signed_ui_test.dart
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: signature-point-only-baseline
+          path: build/signature-blank-proof
+      - run: git diff --exit-code -- pubspec.yaml pubspec.lock

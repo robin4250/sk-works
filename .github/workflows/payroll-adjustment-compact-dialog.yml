@@ -1,0 +1,31 @@
+name: Payroll adjustment compact registration dialog
+on:
+  pull_request:
+    paths:
+      - 'lib/features/payroll/payroll_adjustment_page.dart'
+      - 'test/payroll_adjustment_compact_dialog_test.dart'
+      - '.github/workflows/payroll-adjustment-compact-dialog.yml'
+permissions:
+  contents: read
+jobs:
+  registration-dialog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/payroll/payroll_adjustment_page.dart test/payroll_adjustment_compact_dialog_test.dart
+      - name: Verify phone, keyboard, text scaling, input validation and permission
+        run: >-
+          flutter test --reporter expanded
+          test/payroll_adjustment_compact_dialog_test.dart
+          test/payroll_adjustment_ui_contract_test.dart
+          test/payroll_adjustment_permission_contract_test.dart
+      - run: git diff --exit-code -- pubspec.yaml pubspec.lock

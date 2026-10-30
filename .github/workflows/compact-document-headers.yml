@@ -1,0 +1,49 @@
+name: Compact document preview headers
+on:
+  pull_request:
+    paths:
+      - 'lib/features/qualifications/own_qualification_registration_page.dart'
+      - 'lib/features/payroll/payroll_statements_page.dart'
+      - 'lib/features/payroll/payroll_pending_attendance_panel.dart'
+      - 'lib/features/payroll/payroll_insurance_evidence_card.dart'
+      - 'lib/features/payroll/payroll_finalization_panel.dart'
+      - 'test/compact_document_headers_test.dart'
+      - '.github/workflows/compact-document-headers.yml'
+permissions:
+  contents: read
+jobs:
+  compact-headers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - name: Analyze presentation changes
+        run: >-
+          flutter analyze
+          lib/features/qualifications/own_qualification_registration_page.dart
+          lib/features/payroll/payroll_statements_page.dart
+          lib/features/payroll/payroll_pending_attendance_panel.dart
+          lib/features/payroll/payroll_insurance_evidence_card.dart
+          lib/features/payroll/payroll_finalization_panel.dart
+          test/compact_document_headers_test.dart
+      - name: Verify phone layout, preserved controls and attachment navigation
+        run: >-
+          flutter test --reporter expanded
+          test/compact_document_headers_test.dart
+          test/own_registered_qualifications_test.dart
+          test/own_qualification_initial_attachment_test.dart
+          test/own_qualification_photo_editor_test.dart
+          test/resource_attachment_gallery_wiring_test.dart
+          test/payroll_pending_attendance_panel_test.dart
+          test/payroll_insurance_evidence_card_test.dart
+          test/payroll_statement_source_test.dart
+          test/payroll_finalization_ui_test.dart
+      - run: git diff --exit-code -- pubspec.yaml pubspec.lock

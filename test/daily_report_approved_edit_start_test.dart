@@ -64,7 +64,7 @@ class EditableReports extends DailyReportRepository {
       id: 'report-a', companyId: 'company-a', date: date, siteId: 'site-a', siteName: '対象現場',
       workDescription: '保存済み内容', status: signed ? 'signed' : 'draft', workers: [],
       reporterSignatureJson: reporter ?? (signed || reporterSigned
-        ? {'strokes': [[{'x': 0.1, 'y': 0.2}]]} : null),
+        ? {'strokes': [[{'x': 0.1, 'y': 0.2}, {'x': 0.3, 'y': 0.4}]]} : null),
       responsibleSignerName: responsibleName,
       responsibleSignatureJson: responsible ?? (signed ? {'strokes': []} : null));
   @override
@@ -432,7 +432,7 @@ void main() {
       await tester.tap(tile);
       await tester.pumpAndSettle();
       Navigator.of(tester.element(find.byType(SignatureCapturePage))).pop(
-        const SignatureResult(signerName: '責任者', strokes: [[Offset(0.1, 0.2)]]));
+        const SignatureResult(signerName: '責任者', strokes: [[Offset(0.1, 0.2), Offset(0.3, 0.4)]]));
       await tester.pumpAndSettle();
       expect(repo.signCalls, 1);
       expect(find.text('日報の編集を完了しました。保存して確定しました。'), findsNothing);
@@ -452,7 +452,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(SignatureCapturePage), findsOneWidget);
       Navigator.of(tester.element(find.byType(SignatureCapturePage))).pop(
-        const SignatureResult(signerName: '報告者', strokes: [[Offset(0.2, 0.3)]]));
+        const SignatureResult(signerName: '報告者', strokes: [[Offset(0.2, 0.3), Offset(0.4, 0.5)]]));
       await tester.pumpAndSettle();
       expect(repo.reporterCalls, 1);
       expect(repo.signCalls, 0);
@@ -463,7 +463,7 @@ void main() {
       await tester.tap(responsibleTile);
       await tester.pumpAndSettle();
       Navigator.of(tester.element(find.byType(SignatureCapturePage))).pop(
-        const SignatureResult(signerName: '責任者', strokes: [[Offset(0.7, 0.8)]]));
+        const SignatureResult(signerName: '責任者', strokes: [[Offset(0.7, 0.8), Offset(0.9, 0.6)]]));
       await tester.pumpAndSettle();
       expect(repo.reporterCalls, 1);
       expect(repo.signCalls, 0);
