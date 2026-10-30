@@ -1,0 +1,90 @@
+[
+  {
+    "signature": "trade_document_consent_private.bind_local(uuid,uuid,uuid)",
+    "md5": "b7a963d4b6b8427510f77ed09875bd3c",
+    "definer": true,
+    "result": "void",
+    "volatility": "v",
+    "arguments": "doc uuid, cid uuid, local_id uuid"
+  },
+  {
+    "signature": "trade_document_consent_private.decide(uuid,integer,uuid,integer,text,text,text,boolean,uuid)",
+    "md5": "15b5a7a4a961cfee60da6be237c180ec",
+    "definer": true,
+    "result": "jsonb",
+    "volatility": "v",
+    "arguments": "doc uuid, rev integer, cid uuid, expected_epoch integer, expected_body_hash text, action text, expected_seal_hash text, confirmed boolean, rid uuid"
+  },
+  {
+    "signature": "trade_document_consent_private.prepare_document(uuid,uuid,uuid,integer,jsonb,text,uuid,text,integer)",
+    "md5": "a609aebf840b34a6e576a5fe2428e439",
+    "definer": true,
+    "result": "jsonb",
+    "volatility": "v",
+    "arguments": "doc uuid, own_company uuid, peer_company uuid, expected_revision integer, body jsonb, parent_kind text, parent_id uuid, expected_parent_revision text, expected_attachment_version integer"
+  },
+  {
+    "signature": "trade_document_consent_private.preview_own(uuid,integer,uuid)",
+    "md5": "479151769943b00bf76ebd4e31ed69b4",
+    "definer": true,
+    "result": "jsonb",
+    "volatility": "v",
+    "arguments": "doc uuid, rev integer, cid uuid"
+  },
+  {
+    "signature": "trade_document_consent_private.render_approved(uuid,integer,uuid,boolean)",
+    "md5": "b53668611851ab0bc211660e6f6d1f86",
+    "definer": true,
+    "result": "jsonb",
+    "volatility": "v",
+    "arguments": "doc uuid, rev integer, cid uuid, archive boolean"
+  },
+  {
+    "signature": "trade_document_consent_private.require_local(uuid,uuid)",
+    "md5": "658221ecb8ca37c41b7fb3d38f9da321",
+    "definer": true,
+    "result": "void",
+    "volatility": "s",
+    "arguments": "doc uuid, cid uuid"
+  },
+  {
+    "signature": "site_order_artifact_private.prepare_job(uuid,uuid,uuid,integer,uuid,uuid)",
+    "md5": "0a641b5cefd8734a62a7f75e52b39084",
+    "definer": true,
+    "result": "jsonb",
+    "volatility": "v",
+    "arguments": "p_company uuid, p_site uuid, p_document uuid, p_revision integer, p_request uuid, p_trade uuid"
+  },
+  {
+    "signature": "site_order_artifact_private.register_canonical_pdf(uuid,bytea)",
+    "md5": "4d8b771e28f9d50ff3412fb336dd27ee",
+    "definer": true,
+    "result": "jsonb",
+    "volatility": "v",
+    "arguments": "p_job uuid, p_pdf bytea"
+  },
+  {
+    "signature": "private.require_standalone_trade_document_access()",
+    "md5": "63c57e18a04499e8d6bcfad4ead7837f",
+    "definer": true,
+    "result": "jsonb",
+    "volatility": "v",
+    "arguments": ""
+  },
+  {
+    "signature": "trade_document_consent_private.require_actor(uuid)",
+    "md5": "672a165b2b721befce37aa706626be7c",
+    "definer": true,
+    "result": "void",
+    "volatility": "s",
+    "arguments": "cid uuid"
+  },
+  {
+    "signature": "trade_document_consent_private.immutable()",
+    "md5": "73660d9947f20d6f99c59d8451078e7e",
+    "definer": false,
+    "result": "trigger",
+    "volatility": "v",
+    "arguments": ""
+  }
+]
