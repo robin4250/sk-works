@@ -38,6 +38,17 @@ try {
   const originalPublic = (await db.query(`select p.oid,to_jsonb(p)-'prosrc' attrs,p.prosrc,pg_get_functiondef(p.oid) definition from pg_proc p join pg_namespace n on n.oid=p.pronamespace where ${recoveryTargets} order by p.oid`)).rows;
   assert(originalPublic.length===2,'capture exactly the two original public functions');
   const candidate=readFileSync('docs/review/trade-documents-hub/master-and-standalone-context.sql.review-only','utf8');
+  // Match the observed public-schema default EXECUTE grants, without changing
+  // existing function ACLs. New RPCs must explicitly remove service_role too.
+  await db.exec('alter default privileges for role postgres in schema public grant execute on functions to anon,authenticated,service_role');
+  await db.exec('create role sko_unreviewed_api;alter default privileges for role postgres in schema public grant execute on functions to sko_unreviewed_api');
+  let unknownDefaultRejected;
+  try{await db.exec(candidate);}catch(error){unknownDefaultRejected=error;}
+  await db.exec('rollback');
+  assert(unknownDefaultRejected?.message==='new standalone RPC ACL differs','unknown custom default ACL fails closed without accepting broader execution');
+  assert((await db.query("select to_regprocedure('public.standalone_trade_document_access()') value")).rows[0].value===null,'rejected custom default leaves no partial new RPC');
+  await db.exec('alter default privileges for role postgres in schema public revoke execute on functions from sko_unreviewed_api;drop role sko_unreviewed_api');
+
   for(const drift of ['grant update on private.master_feature_settings to authenticated','alter table private.master_feature_settings disable row level security']) {
     await db.exec(drift);let blocked;
     try{await db.exec(candidate);}catch(error){blocked=error;}
@@ -46,6 +57,10 @@ try {
     await db.exec('revoke update on private.master_feature_settings from authenticated;alter table private.master_feature_settings enable row level security');
   }
   await db.exec(candidate);
+  for(const signature of ['public.standalone_trade_document_access()','public.standalone_trade_document_registration_context(uuid,boolean)']){
+    const acl=(await db.query(`select has_function_privilege('service_role','${signature}','execute') service,has_function_privilege('anon','${signature}','execute') anonymous,has_function_privilege('authenticated','${signature}','execute') authenticated`)).rows[0];
+    assert(acl.service===false&&acl.anonymous===false&&acl.authenticated===true,'new public RPC only exposes explicit authenticated entry, not inherited service_role EXECUTE');
+  }
   const installedPublic = (await db.query(`select p.oid,to_jsonb(p)-'prosrc' attrs,p.prosrc from pg_proc p join pg_namespace n on n.oid=p.pronamespace where ${recoveryTargets} order by p.oid`)).rows;
   assert(installedPublic.length===2,'capture exact installed recovery identity');
   const guardedRestore = async () => {

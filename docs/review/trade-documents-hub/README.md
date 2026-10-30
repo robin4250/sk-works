@@ -135,3 +135,15 @@ route. The protected hub still has no owner-only fallback. The recovery fixture
 now passes 56 PGlite checks, including source drift refusal and exact two-body
 restoration with OFF row/additive functions/constraint/RLS retained. Final-head
 Flutter/native CI and fresh production recovery capture remain distinct.
+
+## Public default EXECUTE grants
+
+The observed public-schema function defaults grant EXECUTE to anon,
+authenticated and service_role. New public hub RPCs therefore explicitly revoke
+PUBLIC, anon and service_role before granting authenticated. Existing master RPC
+ACLs remain unchanged. The new RPC postguard rejects any other inherited role;
+an unknown custom default fails the complete transaction rather than broadening
+access. The dedicated fixture reproduces the observed defaults immediately
+before C, tests the unknown-default rollback, and verifies both new public RPCs
+lack service_role/anon execution. Ordered C → formal fixtures reproduce the same
+defaults; this does not change a production default ACL.

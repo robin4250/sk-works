@@ -28,6 +28,7 @@ const setup=`
 const inject=`
  await db.exec(${JSON.stringify(setup)});
  await db.exec(${JSON.stringify(functions)});
+ await db.exec('alter default privileges for role postgres in schema public grant execute on functions to anon,authenticated,service_role');
  await db.exec(await read('docs/review/trade-documents-hub/master-and-standalone-context.sql.review-only'));
  const hubPin=async()=>q("select jsonb_agg(jsonb_build_object('oid',p.oid,'source',md5(p.prosrc),'attrs',to_jsonb(p)-'prosrc') order by p.oid) v from pg_proc p join pg_namespace n on n.oid=p.pronamespace where (n.nspname='public' and p.proname in ('current_master_feature_flags','set_master_feature_enabled_with_proof','standalone_trade_document_access','standalone_trade_document_registration_context')) or (n.nspname='private' and p.proname in ('require_trade_documents_master_feature','require_standalone_trade_document_access','standalone_trade_document_registration_context'))");
  const hubBefore=await hubPin();
