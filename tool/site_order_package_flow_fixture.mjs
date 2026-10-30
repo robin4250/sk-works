@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import {createCanonicalSiteOrderRenderer,registerManagerCanonicalSiteOrderJob} from './site_order_canonical_renderer.mjs';
 export async function verifySiteOrderPackageFlow(db,c){
- const {id,A,B,C,UA,UB,UC,actor,q}=c;let checks=0;
+ const {id,A,B,C,UA,UB,UC,actor,q,openNativePeer}=c;let checks=0;
  const check=(a,b)=>{if(JSON.stringify(a)!==JSON.stringify(b))throw Error('package fixture mismatch '+JSON.stringify(a)+' != '+JSON.stringify(b));checks++;};
  const deny=async(fn,p)=>{let error;try{await fn();}catch(e){error=e;}if(!error||!p.test(error.message))throw Error('Expected '+p+' got '+error?.message);checks++;};
  const signed=async uid=>{await actor(uid);const sid=await q('select id v from auth.sessions where user_id=$1',[uid]);await db.query("select set_config('test.jwt',$1,false)",[JSON.stringify({sub:uid,role:'authenticated',session_id:sid})]);};
@@ -154,5 +154,24 @@ export async function verifySiteOrderPackageFlow(db,c){
  const originalReply=await registerManagerCanonicalSiteOrderJob(db,queued.job_id,renderer);
  check(originalReply.document_id,review.body.transaction_id);
  check(await registerManagerCanonicalSiteOrderJob(db,queued.job_id,()=>{throw Error('Reply original must be reused');}),originalReply);
+
+ await db.exec(await fs.readFile('docs/review/site-order-package-flow/archive-read.sql.review-only','utf8'));
+ await db.query("update private.master_feature_settings set enabled=false where feature_key='site_order_documents'");
+ for(const user of [UA,UB])for(const role of ['owner','admin','manager']){
+ await signed(user);await db.query('update company_members set role=$1 where user_id=$2',[role,user]);
+ const status=await q('select site_order_package_private.package_status($1) v',[second.package_id]);
+ check(status.approved,true);check(status.reply_original_registered,true);check(status.reply_delivered,false);
+ for(const kind of ['order','acceptance']){
+ const bytes=await q('select site_order_package_private.archive_original($1,$2) v',[second.package_id,kind]);
+ check(Buffer.from(bytes).subarray(0,5).toString(),'%PDF-');
+ }
+ }
+ await signed(UB);await deny(()=>confirm(),/master_feature_disabled/);
+ await deny(()=>registerManagerCanonicalSiteOrderJob(db,queued.job_id,renderer),/registration_rejected/);
+ await signed(UC);await deny(()=>q('select site_order_package_private.package_status($1) v',[second.package_id]),/archive_not_found/);
+ await signed(UB);await db.query("update company_members set role='worker' where user_id=$1",[UB]);
+ await deny(()=>q("select site_order_package_private.archive_original($1,'order') v",[second.package_id]),/archive_management/);
+ await db.query("update company_members set role='manager' where user_id=$1",[UB]);
+ await (await import('./site_order_http_jwt_fixture.mjs')).verifySiteOrderHttpJwt(db,{id,UA,UB,UC,q,check,second,queued,renderer,openNativePeer});
  console.log(JSON.stringify({status:'passed',checks,scope:'canonical original + sanitized receive + real site/acceptance intent approval atomicity; prepared legacy guard; ordinary legacy OFF unchanged',production_applied:false,real_auth:false}));
 }
