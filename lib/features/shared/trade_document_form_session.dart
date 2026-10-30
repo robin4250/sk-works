@@ -73,6 +73,12 @@ class TradeDocumentFormSession extends ChangeNotifier with WidgetsBindingObserve
    .eq('id',id).eq('company_id',companyId).maybeSingle().setHeader('Authorization','Bearer $_token').abortSignal(_retired.future);
   return _receive(request.then<Object?>((value)=>value));
  }
+ Future<Object?> readWorkerCompany(String workerId)async {
+  await ready();requireScope();
+  final request=_client.from('workers').select('id,company_id')
+   .eq('id',workerId).limit(2).setHeader('Authorization','Bearer $_token').abortSignal(_retired.future);
+  return _receive(request.then<Object?>((value)=>value));
+ }
  Future<Object?> _receive(Future<Object?> request)async {
   requireScope();Object? value;
   try{value=await Future.any<Object?>([

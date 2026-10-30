@@ -53,6 +53,12 @@ class _Wire extends http.BaseClient {
   final int expiry = DateTime.now().millisecondsSinceEpoch ~/ 1000 + 3600;
   String sessionId = sid, currentCompany = company;
   bool denyAfterHistory = false, missing = false;
+  bool omitWorkspaceCompany = false;
+  bool nullWorkspaceCompany = false;
+  bool workerCompanyChangesAfterHistory = false;
+  List<Map<String, dynamic>> workerRows = [{'id': worker, 'company_id': company}];
+  final workerHeaders = <String?>[], workerQueries = <Map<String, String>>[];
+  Completer<void>? holdWorker;
   int historyReads = 0;
   final calls = <String>[], headers = <String?>[];
   final params = <Map<String, dynamic>>[];
@@ -77,11 +83,17 @@ class _Wire extends http.BaseClient {
     } else {
       final name = request.url.pathSegments.last;
       calls.add(name); headers.add(request.headers['Authorization']);
-      params.add(request is http.Request ? Map<String, dynamic>.from(jsonDecode(request.body) as Map) : {});
+      params.add(request is http.Request && request.body.isNotEmpty ? Map<String, dynamic>.from(jsonDecode(request.body) as Map) : {});
       if (name == 'payroll_workspace') {
-        value = {'company_id': currentCompany,
+        value = {if (!omitWorkspaceCompany) 'company_id': nullWorkspaceCompany ? null : currentCompany,
           'permissions': {'view': !(denyAfterHistory && historyReads > 0)},
           'workers': [{'id': worker, 'name': '検証メンバー'}]};
+      } else if (name == 'workers') {
+        workerHeaders.add(request.headers['Authorization']);
+        workerQueries.add(request.url.queryParameters);
+        await holdWorker?.future;
+        value = workerCompanyChangesAfterHistory && historyReads > 0
+            ? [{'id': worker, 'company_id': foreign}] : workerRows;
       } else if (name == 'read_worker_payroll_tax_adjustment_history') {
         historyReads++; await holdHistory?.future;
         value = missing ? {'code': 'PGRST202', 'message': 'private SQL implementation detail'} : response();
@@ -146,6 +158,73 @@ void main() {
       expect(wire.params[1], {'p_company_id': company, 'p_worker_id': worker});
       expect(wire.headers.every((value) => value == 'Bearer ${wire.token}'), isTrue);
     } finally { source.dispose(); await sdk.dispose(); }
+  }, timeout: const Timeout(Duration(seconds: 45)));
+  test('legacy workspace resolves the selected worker company through the captured RLS read before and after history', () async {
+    final wire = _Wire()..omitWorkspaceCompany = true;
+    final client = await _clientFor(wire);
+    final source = PayrollTaxHistoryRepository(client, companyId: company, workerId: worker);
+    try {
+      expect((await source.load()).items.length, 1);
+      expect(wire.calls, ['payroll_workspace', 'workers', 'read_worker_payroll_tax_adjustment_history', 'payroll_workspace', 'workers']);
+      expect(wire.workerHeaders, everyElement('Bearer ${wire.token}'));
+      expect(wire.workerQueries, everyElement({'select': 'id,company_id', 'id': 'eq.$worker', 'limit': '2'}));
+    } finally { source.dispose(); await client.dispose(); }
+  }, timeout: const Timeout(Duration(seconds: 45)));
+  test('legacy company resolution rejects missing, duplicate, foreign and wrong worker rows before reading history', () async {
+    for (final rows in <List<Map<String, dynamic>>>[
+      [], [{'id': worker, 'company_id': company}, {'id': worker, 'company_id': company}],
+      [{'id': worker, 'company_id': foreign}], [{'id': foreign, 'company_id': company}],
+    ]) {
+      final wire = _Wire()..omitWorkspaceCompany = true..workerRows = rows;
+      final client = await _clientFor(wire);
+      final source = PayrollTaxHistoryRepository(client, companyId: company, workerId: worker);
+      try {
+        await expectLater(source.load(), throwsStateError);
+        expect(wire.historyReads, 0); expect(source.isCurrent, isFalse);
+      } finally { source.dispose(); await client.dispose(); }
+    }
+  }, timeout: const Timeout(Duration(seconds: 45)));
+  test('an explicit mismatching workspace company never falls back to the worker table', () async {
+    for (final wire in [_Wire()..currentCompany = foreign, _Wire()..nullWorkspaceCompany = true]) {
+      final client = await _clientFor(wire);
+      final source = PayrollTaxHistoryRepository(client, companyId: company, workerId: worker);
+      try {
+        await expectLater(source.load(), throwsStateError);
+        expect(wire.workerQueries, isEmpty); expect(wire.historyReads, 0);
+      } finally { source.dispose(); await client.dispose(); }
+    }
+  }, timeout: const Timeout(Duration(seconds: 45)));
+  test('legacy company changes after reading history discard the already received records', () async {
+    final wire = _Wire()..omitWorkspaceCompany = true..workerCompanyChangesAfterHistory = true;
+    final client = await _clientFor(wire);
+    final source = PayrollTaxHistoryRepository(client, companyId: company, workerId: worker);
+    try {
+      await expectLater(source.load(), throwsStateError);
+      expect(wire.historyReads, 1); expect(wire.workerQueries.length, 2);
+      expect(source.isCurrent, isFalse);
+    } finally { source.dispose(); await client.dispose(); }
+  }, timeout: const Timeout(Duration(seconds: 45)));
+  test('logout retires a legacy worker-company read before its delayed response returns', () async {
+    final wire = _Wire()..omitWorkspaceCompany = true..holdWorker = Completer<void>()..holdLogout = Completer<void>();
+    final client = await _clientFor(wire);
+    final source = PayrollTaxHistoryRepository(client, companyId: company, workerId: worker);
+    try {
+      final pending = source.load();
+      final rejected = expectLater(pending, throwsStateError);
+      for (var i = 0; i < 50 && wire.workerQueries.isEmpty; i++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(wire.workerQueries.length, 1);
+      final logout = AppAuthMutationGateway.forClient(client).signOut();
+      wire.holdWorker!.complete();
+      await rejected;
+      expect(source.isCurrent, isFalse); expect(wire.historyReads, 0);
+      wire.holdLogout!.complete(); await logout;
+    } finally {
+      if (!wire.holdWorker!.isCompleted) wire.holdWorker!.complete();
+      if (!wire.holdLogout!.isCompleted) wire.holdLogout!.complete();
+      source.dispose(); await client.dispose();
+    }
   }, timeout: const Timeout(Duration(seconds: 45)));
   test('workspace role loss after history response refuses publication and retires the source', () async {
     final wire = _Wire()..denyAfterHistory = true;

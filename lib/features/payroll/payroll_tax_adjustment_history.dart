@@ -181,10 +181,25 @@ class PayrollTaxHistoryRepository extends PayrollTaxHistorySource {
   }
   Future<void> _workspace() async {
     final raw = await _session.rpc('payroll_workspace', {}); _check();
-    if (raw is! Map || raw['company_id'] != companyId || raw['permissions'] is! Map ||
+    if (raw is! Map || raw['permissions'] is! Map ||
         (raw['permissions'] as Map)['view'] != true || raw['workers'] is! List ||
         (raw['workers'] as List).where((row) => row is Map && row['id'] == workerId).length != 1) {
       retire(); throw StateError('History workspace changed');
+    }
+    if (raw.containsKey('company_id')) {
+      if (raw['company_id'] != companyId) {
+        retire(); throw StateError('History workspace changed');
+      }
+    } else {
+      // The deployed older workspace omits company_id. Resolve only this
+      // selected worker through the existing RLS path, with the same captured
+      // bearer and cancellation boundary as every other history read.
+      final rows = await _session.readWorkerCompany(workerId); _check();
+      if (rows is! List || rows.length != 1 || rows.single is! Map ||
+          (rows.single as Map)['id'] != workerId ||
+          (rows.single as Map)['company_id'] != companyId) {
+        retire(); throw StateError('History worker company changed');
+      }
     }
   }
   @override Future<void> refreshAccess() async {

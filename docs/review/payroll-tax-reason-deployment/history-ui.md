@@ -24,6 +24,14 @@ checks preserve the reader's expansion state; they do not promise instantaneous
 remote permission revocation. Server authorization remains mandatory on every
 read. The page stores nothing persistently.
 
+Older canonical workspace responses omit `company_id`. The read-only history
+repository follows the existing individual-settings resolver's selected-worker
+RLS lookup, through the shared captured-bearer/abort/receive boundary. It checks
+exactly one matching worker and company before and after reading the history.
+An explicit `company_id` mismatch or null is rejected without fallback. No
+display-name join, first membership selection, guessed company, new backend
+RPC, or change to server authorization is introduced.
+
 Reasons, effective month and change time are visible immediately. Before/after
 amounts and audit identity are expandable. A missing override is shown as no individual correction, not an invented zero
 or a fabricated historical automatically calculated amount. An explicit zero
