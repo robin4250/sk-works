@@ -1,0 +1,26 @@
+{
+  "2.9.6": {
+    "version": "2.9.6",
+    "resolved": "https://registry.npmjs.org/@deno/linux-x64-glibc/-/linux-x64-glibc-2.9.6.tgz",
+    "integrity": "sha512-3md4TKLCuzsLDmfOoC5KN7NAZaxSVkMgm64vg6foD00JBADCpYS2/5QqXfzgnP5ZQz3iLP9vBQJtEgc116OAoQ==",
+    "cpu": [
+      "x64"
+    ],
+    "license": "MIT",
+    "os": [
+      "linux"
+    ]
+  },
+  "1.46.3": {
+    "version": "1.46.3",
+    "resolved": "https://registry.npmjs.org/@deno/linux-x64-glibc/-/linux-x64-glibc-1.46.3.tgz",
+    "integrity": "sha512-2z8O02jFnmFapHbSmS7Xg0/MIVhhpNCULqnqTdFHQYXRweIpQu5Hcf0WHCjW4bZstl5Y50bGjQHQFwTKbEo1Kg==",
+    "cpu": [
+      "x64"
+    ],
+    "license": "MIT",
+    "os": [
+      "linux"
+    ]
+  }
+}

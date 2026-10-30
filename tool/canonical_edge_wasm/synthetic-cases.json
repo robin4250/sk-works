@@ -1,0 +1,442 @@
+{
+  "order-v1": {
+    "body": {
+      "version": 1,
+      "kind": "order",
+      "month": "2026-10",
+      "issue_date": "2026-10-01",
+      "order_date": "2026-10-01",
+      "period_start": "2026-10-01",
+      "period_end": "2026-10-31",
+      "issuer_company_id": "00000000-0000-0000-0000-000000000001",
+      "counterparty_company_id": "00000000-0000-0000-0000-000000000002",
+      "issuer": {
+        "name": "合成甲会社",
+        "address": "合成自社住所"
+      },
+      "counterparty": {
+        "name": "合成乙会社",
+        "address": "合成相手住所"
+      },
+      "work_name": "合成工事",
+      "work_address": "合成住所",
+      "total_amount_yen": 100,
+      "tax_amount_yen": 0,
+      "payment_conditions": "合成支払条件",
+      "notes": "",
+      "contract_terms": {
+        "schema": 1,
+        "version": 1,
+        "title": "[ 工事請負契約条項 ]",
+        "source_sha256": "3acf9090f2c027840bba43351f4d9e173759baa8b7c0340c05db9e28731f0d1f",
+        "renderer_contract": "sko-original-form-20261029-v1",
+        "design_sha256": "942bad918b696b4c2c527dbf2fca9d050e4fb38a3674cff115eb0755793b8a18"
+      }
+    },
+    "seals": [
+      {
+        "company_id": "00000000-0000-0000-0000-000000000001",
+        "seal_snapshot": {
+          "version": 1,
+          "style": "legacy",
+          "name": "合成甲会社"
+        },
+        "seal_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "version_key": "synthetic-v1"
+      }
+    ],
+    "consents": [
+      {
+        "company_id": "00000000-0000-0000-0000-000000000001",
+        "seal_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "version_key": "synthetic-v1"
+      }
+    ],
+    "render_seal_company_id": "00000000-0000-0000-0000-000000000001",
+    "render_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "order-v2": {
+    "body": {
+      "version": 1,
+      "kind": "order",
+      "month": "2026-10",
+      "issue_date": "2026-10-01",
+      "order_date": "2026-10-01",
+      "period_start": "2026-10-01",
+      "period_end": "2026-10-31",
+      "issuer_company_id": "00000000-0000-0000-0000-000000000001",
+      "counterparty_company_id": "00000000-0000-0000-0000-000000000002",
+      "issuer": {
+        "name": "合成甲会社",
+        "address": "合成自社住所",
+        "representative_name": "合成代表"
+      },
+      "counterparty": {
+        "name": "合成乙会社",
+        "address": "合成相手住所"
+      },
+      "work_name": "合成工事",
+      "work_address": "合成住所",
+      "total_amount_yen": 100,
+      "tax_amount_yen": 0,
+      "payment_conditions": "合成支払条件",
+      "notes": "",
+      "contract_terms": {
+        "schema": 1,
+        "version": 1,
+        "title": "[ 工事請負契約条項 ]",
+        "source_sha256": "3acf9090f2c027840bba43351f4d9e173759baa8b7c0340c05db9e28731f0d1f",
+        "renderer_contract": "sko-original-form-20261029-v1",
+        "design_sha256": "942bad918b696b4c2c527dbf2fca9d050e4fb38a3674cff115eb0755793b8a18"
+      },
+      "form_fields": {
+        "schema": 2,
+        "work_content": "とび工事",
+        "issuer_phone": "03-0000-0001",
+        "issuer_fax": "03-0000-0002",
+        "issuer_representative_title": "代表取締役",
+        "amount_description": "下記「施工単価内訳書」による",
+        "payments": {
+          "advance": {
+            "choice": "no",
+            "date": null,
+            "amount_yen": null
+          },
+          "partial": {
+            "choice": "no",
+            "date": null,
+            "amount_yen": null
+          },
+          "completion": {
+            "choice": "no",
+            "date": null,
+            "amount_yen": null
+          }
+        },
+        "progress_cutoff_day": "month_end",
+        "invoice_cutoff_day": 10,
+        "payment_day": 5,
+        "payment_month_offset": 2,
+        "cash_ratio_percent": "100",
+        "bill_ratio_percent": null,
+        "bill_months": null,
+        "supplies": "仮設材他",
+        "rows": [
+          {
+            "item": "とび工　安全施設・足場組立解体作業（一般作業員）",
+            "quantity": "1",
+            "unit": "人日",
+            "unit_price_yen": null,
+            "amount_yen": null,
+            "note": ""
+          },
+          {
+            "item": "",
+            "quantity": "",
+            "unit": "",
+            "unit_price_yen": null,
+            "amount_yen": null,
+            "note": ""
+          },
+          {
+            "item": "",
+            "quantity": "",
+            "unit": "",
+            "unit_price_yen": null,
+            "amount_yen": null,
+            "note": ""
+          },
+          {
+            "item": "",
+            "quantity": "",
+            "unit": "",
+            "unit_price_yen": null,
+            "amount_yen": null,
+            "note": ""
+          },
+          {
+            "item": "",
+            "quantity": "",
+            "unit": "",
+            "unit_price_yen": null,
+            "amount_yen": null,
+            "note": ""
+          },
+          {
+            "item": "",
+            "quantity": "",
+            "unit": "",
+            "unit_price_yen": null,
+            "amount_yen": null,
+            "note": ""
+          },
+          {
+            "item": "",
+            "quantity": "",
+            "unit": "",
+            "unit_price_yen": null,
+            "amount_yen": null,
+            "note": ""
+          },
+          {
+            "item": "",
+            "quantity": "",
+            "unit": "",
+            "unit_price_yen": null,
+            "amount_yen": null,
+            "note": ""
+          },
+          {
+            "item": "",
+            "quantity": "",
+            "unit": "",
+            "unit_price_yen": null,
+            "amount_yen": null,
+            "note": ""
+          }
+        ]
+      }
+    },
+    "seals": [
+      {
+        "company_id": "00000000-0000-0000-0000-000000000001",
+        "seal_snapshot": {
+          "version": 1,
+          "style": "legacy",
+          "name": "合成甲会社"
+        },
+        "seal_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "version_key": "synthetic-v1"
+      }
+    ],
+    "consents": [
+      {
+        "company_id": "00000000-0000-0000-0000-000000000001",
+        "seal_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "version_key": "synthetic-v1"
+      }
+    ],
+    "render_seal_company_id": "00000000-0000-0000-0000-000000000001",
+    "render_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "acceptance-v1": {
+    "body": {
+      "version": 1,
+      "kind": "acceptance",
+      "month": "2026-10",
+      "issue_date": "2026-10-01",
+      "order_date": "2026-10-01",
+      "period_start": "2026-10-01",
+      "period_end": "2026-10-31",
+      "issuer_company_id": "00000000-0000-0000-0000-000000000001",
+      "counterparty_company_id": "00000000-0000-0000-0000-000000000002",
+      "issuer": {
+        "name": "合成甲会社",
+        "address": "合成自社住所"
+      },
+      "counterparty": {
+        "name": "合成乙会社",
+        "address": "合成相手住所"
+      },
+      "work_name": "合成工事",
+      "work_address": "合成住所",
+      "total_amount_yen": 100,
+      "tax_amount_yen": 0,
+      "payment_conditions": "合成支払条件",
+      "notes": "",
+      "contract_terms": {
+        "schema": 1,
+        "version": 1,
+        "title": "[ 工事請負契約条項 ]",
+        "source_sha256": "3acf9090f2c027840bba43351f4d9e173759baa8b7c0340c05db9e28731f0d1f",
+        "renderer_contract": "sko-original-form-20261029-v1",
+        "design_sha256": "942bad918b696b4c2c527dbf2fca9d050e4fb38a3674cff115eb0755793b8a18"
+      }
+    },
+    "seals": [
+      {
+        "company_id": "00000000-0000-0000-0000-000000000001",
+        "seal_snapshot": {
+          "version": 1,
+          "style": "legacy",
+          "name": "合成甲会社"
+        },
+        "seal_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "version_key": "synthetic-v1"
+      }
+    ],
+    "consents": [
+      {
+        "company_id": "00000000-0000-0000-0000-000000000001",
+        "seal_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "version_key": "synthetic-v1"
+      }
+    ],
+    "render_seal_company_id": "00000000-0000-0000-0000-000000000001",
+    "render_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "acceptance-v2": {
+    "body": {
+      "version": 1,
+      "kind": "acceptance",
+      "month": "2026-10",
+      "issue_date": "2026-10-01",
+      "order_date": "2026-10-01",
+      "period_start": "2026-10-01",
+      "period_end": "2026-10-31",
+      "issuer_company_id": "00000000-0000-0000-0000-000000000001",
+      "counterparty_company_id": "00000000-0000-0000-0000-000000000002",
+      "issuer": {
+        "name": "合成甲会社",
+        "address": "合成自社住所",
+        "representative_name": "合成代表"
+      },
+      "counterparty": {
+        "name": "合成乙会社",
+        "address": "合成相手住所"
+      },
+      "work_name": "合成工事",
+      "work_address": "合成住所",
+      "total_amount_yen": 100,
+      "tax_amount_yen": 0,
+      "payment_conditions": "合成支払条件",
+      "notes": "",
+      "contract_terms": {
+        "schema": 1,
+        "version": 1,
+        "title": "[ 工事請負契約条項 ]",
+        "source_sha256": "3acf9090f2c027840bba43351f4d9e173759baa8b7c0340c05db9e28731f0d1f",
+        "renderer_contract": "sko-original-form-20261029-v1",
+        "design_sha256": "942bad918b696b4c2c527dbf2fca9d050e4fb38a3674cff115eb0755793b8a18"
+      },
+      "form_fields": {
+        "schema": 2,
+        "work_content": "とび工事",
+        "issuer_phone": "03-0000-0001",
+        "issuer_fax": "03-0000-0002",
+        "issuer_representative_title": "代表取締役",
+        "amount_description": "下記「施工単価内訳書」による",
+        "payments": {
+          "advance": {
+            "choice": "no",
+            "date": null,
+            "amount_yen": null
+          },
+          "partial": {
+            "choice": "no",
+            "date": null,
+            "amount_yen": null
+          },
+          "completion": {
+            "choice": "no",
+            "date": null,
+            "amount_yen": null
+          }
+        },
+        "progress_cutoff_day": "month_end",
+        "invoice_cutoff_day": 10,
+        "payment_day": 5,
+        "payment_month_offset": 2,
+        "cash_ratio_percent": "100",
+        "bill_ratio_percent": null,
+        "bill_months": null,
+        "supplies": "仮設材他",
+        "rows": [
+          {
+            "item": "とび工　安全施設・足場組立解体作業（一般作業員）",
+            "quantity": "1",
+            "unit": "人日",
+            "unit_price_yen": null,
+            "amount_yen": null,
+            "note": ""
+          },
+          {
+            "item": "",
+            "quantity": "",
+            "unit": "",
+            "unit_price_yen": null,
+            "amount_yen": null,
+            "note": ""
+          },
+          {
+            "item": "",
+            "quantity": "",
+            "unit": "",
+            "unit_price_yen": null,
+            "amount_yen": null,
+            "note": ""
+          },
+          {
+            "item": "",
+            "quantity": "",
+            "unit": "",
+            "unit_price_yen": null,
+            "amount_yen": null,
+            "note": ""
+          },
+          {
+            "item": "",
+            "quantity": "",
+            "unit": "",
+            "unit_price_yen": null,
+            "amount_yen": null,
+            "note": ""
+          },
+          {
+            "item": "",
+            "quantity": "",
+            "unit": "",
+            "unit_price_yen": null,
+            "amount_yen": null,
+            "note": ""
+          },
+          {
+            "item": "",
+            "quantity": "",
+            "unit": "",
+            "unit_price_yen": null,
+            "amount_yen": null,
+            "note": ""
+          },
+          {
+            "item": "",
+            "quantity": "",
+            "unit": "",
+            "unit_price_yen": null,
+            "amount_yen": null,
+            "note": ""
+          },
+          {
+            "item": "",
+            "quantity": "",
+            "unit": "",
+            "unit_price_yen": null,
+            "amount_yen": null,
+            "note": ""
+          }
+        ]
+      }
+    },
+    "seals": [
+      {
+        "company_id": "00000000-0000-0000-0000-000000000001",
+        "seal_snapshot": {
+          "version": 1,
+          "style": "legacy",
+          "name": "合成甲会社"
+        },
+        "seal_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "version_key": "synthetic-v1"
+      }
+    ],
+    "consents": [
+      {
+        "company_id": "00000000-0000-0000-0000-000000000001",
+        "seal_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "version_key": "synthetic-v1"
+      }
+    ],
+    "render_seal_company_id": "00000000-0000-0000-0000-000000000001",
+    "render_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  }
+}
