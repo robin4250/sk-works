@@ -111,7 +111,7 @@ void main(){
    await t.runAsync(()async{await (generate as dynamic)();});await t.pumpAndSettle();
    expect(find.byType(PdfPreview),findsOneWidget);
    final preview=t.widget<PdfPreview>(find.byType(PdfPreview)).build;
-   final button=find.widgetWithText(OutlinedButton,'印刷');await t.ensureVisible(button);await t.tap(button);await t.pumpAndSettle();
+   final button=find.widgetWithText(OutlinedButton,'印刷');await t.ensureVisible(button);await t.tap(button);await t.pump();await t.pump(const Duration(milliseconds:100));
    expect(printer.prints,1);final callback=printer.callback!;expect(await callback(PdfPageFormat.a4),isNotEmpty);
    g.revoke();await t.pumpAndSettle();await expectLater(callback(PdfPageFormat.a4),throwsStateError);await expectLater(preview(PdfPageFormat.a4),throwsStateError);
    printer.end!.complete(false);await t.pumpAndSettle();expect(find.byType(PdfPreview),findsNothing);expect(t.takeException(),isNull);
