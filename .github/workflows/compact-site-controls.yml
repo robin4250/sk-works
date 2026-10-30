@@ -5,6 +5,7 @@ on:
       - 'lib/features/sites/site_cloud_page.dart'
       - 'lib/features/sites/site_compact_controls.dart'
       - 'test/site_compact_controls_test.dart'
+      - 'test/device_review_batch_contract_test.dart'
       - '.github/workflows/compact-site-controls.yml'
 permissions:
   contents: read
@@ -23,5 +24,5 @@ jobs:
           cache: true
       - run: flutter pub get --enforce-lockfile
       - run: flutter analyze lib/features/sites/site_cloud_page.dart lib/features/sites/site_compact_controls.dart test/site_compact_controls_test.dart
-      - run: flutter test --reporter expanded test/site_compact_controls_test.dart test/registered_site_search_test.dart
+      - run: flutter test --reporter expanded test/site_compact_controls_test.dart test/registered_site_search_test.dart test/device_review_batch_contract_test.dart
       - run: git diff --exit-code -- pubspec.yaml pubspec.lock

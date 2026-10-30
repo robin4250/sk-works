@@ -82,8 +82,9 @@ void main() {
     expect(sitesPage, contains("SkoLanguageController.tr('現場データ')"));
     expect(sitesPage, contains("SkoLanguageController.tr('現場登録')"));
     expect(sitesPage, contains("SkoLanguageController.tr('現場マップ')"));
-    expect(sitesPage, contains("heroTag: 'site_map'"));
-    expect(sitesPage, contains("heroTag: 'site_register'"));
+    expect(sitesPage, contains("controlKey: 'site_map'"));
+    expect(sitesPage, contains("controlKey: 'site_register'"));
+    expect(RegExp(r'child: SiteCompactAction\(').allMatches(sitesPage), hasLength(2));
     expect(sitesPage, contains('floatingActionButton: Padding('));
     expect(sitesPage, contains('padding: const EdgeInsets.only(bottom: 88)'));
     expect(sitesPage, contains('FloatingActionButtonLocation.centerFloat'));
