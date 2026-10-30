@@ -71,3 +71,17 @@ test('approval reconciliation is a fixed authenticated barrier, never an arbitra
  assert.deepEqual(query.args,[id,id,sid]);assert.equal(calls.at(-1).sql,'end');
  assert.equal(calls.some(x=>x.sql.includes('approve_operation')),false);
 });
+
+test('refusal requires explicit confirmation and uses one fixed transaction with notification dispatch',async()=>{
+ const calls=[],handler=createSiteOrderHandler({verify,connect:async()=>({async query(sql,args){calls.push({sql,args});
+  if(sql==='select session_user as role')return {rows:[{role:'postgres'}]};
+  if(sql.includes('refuse_order'))return {rows:[{result:{package_id:id,request_id:sid,status:'rejected'}}]};
+  return {rows:[]};},async end(){calls.push({sql:'end'});}}),render:()=>{throw Error('must not render refusal');}});
+ assert.equal((await handler(request(await token(),{action:'refuse',package_id:id,request_id:sid}))).status,400);
+ assert.equal(calls.length,0);
+ const r=await handler(request(await token(),{action:'refuse',package_id:id,request_id:sid,confirmed:true}));
+ assert.equal(r.status,200);assert.equal((await r.json()).result.status,'rejected');
+ const query=calls.find(x=>x.sql.includes('refuse_order'));
+ assert.ok(query.sql.includes('dispatch_refusal_notifications'));assert.deepEqual(query.args,[id,sid,true]);
+ assert.equal(calls.filter(x=>x.sql==='commit').length,1);
+});

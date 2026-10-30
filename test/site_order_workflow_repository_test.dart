@@ -134,6 +134,55 @@ Future<(SupabaseClient, SiteOrderWorkflowRepository)> _fixture(
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+  test('uncertain refusal survives reopen and fences approval until the exact barrier result', () async {
+    final wire = _Wire()..functionStatus = 409;
+    final f = await _fixture(wire);
+    await expectLater(
+      f.$2.refuse(package, package),
+      throwsA(isA<SiteOrderResultUnknown>()),
+    );
+    expect(wire.functions, 1);
+    f.$2.dispose();
+    final reopened = SiteOrderWorkflowRepository(f.$1);
+    addTearDown(reopened.dispose);
+    addTearDown(f.$1.dispose);
+    expect(await reopened.hasPendingRefusal(package), isTrue);
+    await expectLater(
+      reopened.approve({
+        'package_id': package,
+        'preview_id': package,
+        'body_hash': 'b' * 64,
+        'own_seal': {'seal_hash': 'c' * 64},
+      }, sid),
+      throwsA(isA<SiteOrderResultUnknown>()),
+    );
+    expect(wire.functions, 1);
+    wire.functionStatus = 200;
+    wire.functionJson = {
+      'result': {
+        'package_id': package,
+        'request_id': package,
+        'operation_state': 'cancelled',
+      },
+    };
+    expect(await reopened.reconcileRefusal(package), 'cancelled');
+    expect(await reopened.hasPendingRefusal(package), isFalse);
+    expect(wire.functions, 2);
+  });
+  test(
+    'corrupt refusal journal blocks any new refusal before network submission',
+    () async {
+      SharedPreferences.setMockInitialValues({
+        'sko.site_order.refusal.v1.$actor.$company.$package':
+            '{"request_id":"corrupt"}',
+      });
+      final wire = _Wire(), f = await _fixture(wire);
+      addTearDown(f.$1.dispose);
+      addTearDown(f.$2.dispose);
+      await expectLater(f.$2.refuse(package, package), throwsStateError);
+      expect(wire.functions, 0);
+    },
+  );
   for (final throwsOnWrite in [false, true]) {
     test(
       'approval sends no SDK HTTP request if durable storage fails ($throwsOnWrite)',

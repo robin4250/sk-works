@@ -13,6 +13,28 @@ const request = '10000000-0000-0000-0000-000000000005';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
+  test('refusal uses an independent durable ID-only journal without a fabricated preview', () async {
+    final journal = SiteOrderRefusalJournal();
+    await journal.begin(actor, company, package, request);
+    expect(await SiteOrderRefusalJournal().read(actor, company, package), {
+      'package_id': package,
+      'request_id': request,
+    });
+    expect(
+      await SiteOrderApprovalJournal().read(actor, company, package),
+      isNull,
+    );
+    await expectLater(
+      journal.begin(actor, company, package, preview),
+      throwsStateError,
+    );
+    await expectLater(
+      journal.resolve(actor, company, package, preview),
+      throwsStateError,
+    );
+    await journal.resolve(actor, company, package, request);
+    expect(await journal.read(actor, company, package), isNull);
+  });
   test('unknown approval survives a new page/repository instance with identifiers only', () async {
     final first = SiteOrderApprovalJournal();
     await first.begin(actor, company, package, preview, request);

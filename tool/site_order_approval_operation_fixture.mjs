@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 export async function verifySiteOrderApprovalOperations(db,c){
- const {id,UA,UB,UC,q,check,deny,signed,send,recipientTrade,recipientPeer,openNativePeer}=c;
+ const {id,UA,UB,UC,q,check,deny,signed,send,recipientTrade,recipientPeer,openNativePeer,second,queued:originalQueued,renderer}=c;
  const sql=await fs.readFile('docs/review/site-order-package-flow/approval-operation.sql.review-only','utf8');
  await db.exec(sql);
  const make=async n=>{
@@ -64,5 +64,6 @@ export async function verifySiteOrderApprovalOperations(db,c){
  const projection=await q('select site_order_package_private.package_detail($1) v',[accepted.packet.package_id]);
  check(Object.hasOwn(projection.site_projection,'notes'),false);
  check(typeof projection.site_projection.name,'string');
+ await (await import('./site_order_refusal_fixture.mjs')).verifySiteOrderRefusal(db,{id,UA,UB,UC,q,check,deny,signed,send,recipientTrade,recipientPeer,openNativePeer,second,queued:originalQueued,renderer});
  console.log(JSON.stringify({status:'passed',approval_operation_barriers:true,native_waits:openNativePeer?2:0,real_auth:false,production_changed:false}));
 }
