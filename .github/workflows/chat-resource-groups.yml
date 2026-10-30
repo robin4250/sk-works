@@ -1,0 +1,37 @@
+name: Notes and albums chat destinations
+on:
+  pull_request:
+    paths:
+      - 'lib/features/shared/chat_resource_groups.dart'
+      - 'lib/features/notes/notes_cloud_repository.dart'
+      - 'lib/features/albums/albums_cloud_repository.dart'
+      - 'test/chat_resource_groups_test.dart'
+      - '.github/workflows/chat-resource-groups.yml'
+permissions:
+  contents: read
+jobs:
+  resource-groups:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - name: Analyze resource group changes
+        run: >-
+          flutter analyze lib/features/shared/chat_resource_groups.dart
+          lib/features/notes/notes_cloud_repository.dart
+          lib/features/albums/albums_cloud_repository.dart
+          test/chat_resource_groups_test.dart
+      - name: Verify exact analysis classification and existing page guards
+        run: >-
+          flutter test --reporter expanded
+          test/chat_resource_groups_test.dart
+          test/communication_load_guard_test.dart
+      - run: git diff --exit-code -- pubspec.yaml pubspec.lock

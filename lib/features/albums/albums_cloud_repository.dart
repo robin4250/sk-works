@@ -3,9 +3,12 @@ import 'dart:typed_data';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
+import '../shared/chat_resource_groups.dart';
 
 class AlbumsCloudRepository {
   AlbumsCloudRepository._(this._client);
+
+  AlbumsCloudRepository.forTesting(this._client);
 
   final SupabaseClient _client;
   static const _bucket = 'communication-albums';
@@ -31,12 +34,7 @@ class AlbumsCloudRepository {
 
   Future<List<Map<String, dynamic>>> loadGroups() async {
     final companyId = await _companyId();
-    final rows = await _client
-        .from('communication_groups')
-        .select('id, name, site_id, group_type')
-        .eq('company_id', companyId)
-        .order('name');
-    return List<Map<String, dynamic>>.from(rows);
+    return loadChatResourceGroups(_client, companyId);
   }
 
   Future<List<Map<String, dynamic>>> loadAlbums(String groupId) async {
