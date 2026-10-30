@@ -99,7 +99,10 @@ void main() {
       if (manager) {
         final scrollable = find.byWidgetPredicate((widget) => widget is Scrollable && widget.axisDirection == AxisDirection.down).first;
         await tester.scrollUntilVisible(management, 250, scrollable: scrollable, maxScrolls: 40);
-        await tester.ensureVisible(management); await tester.tap(management); await tester.pumpAndSettle();
+        await Scrollable.ensureVisible(tester.element(management), alignment: 0.5);
+        await tester.pumpAndSettle();
+        expect(management.hitTestable(), findsOneWidget);
+        await tester.tap(management); await tester.pumpAndSettle();
         expect(find.byType(SecondaryProtectedPage), findsOneWidget);
         expect(repo.saves, 0);
       }
