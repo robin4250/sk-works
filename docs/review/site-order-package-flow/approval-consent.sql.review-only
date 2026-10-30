@@ -29,7 +29,7 @@ do $$ declare e record;p pg_proc;signature text;begin
 end $$;
 do $$ declare p pg_proc;begin
  select * into p from pg_proc where oid=to_regprocedure('site_order_package_private.approve_order(uuid,uuid,text,uuid)');
- if p.oid is null or md5(p.prosrc)<>'27fd70ee64810e8d037cd3e08b56fcc9' or not p.prosecdef
+ if p.oid is null or md5(p.prosrc)<>'018cce31f774dc03d41f7a1806b889e1' or not p.prosecdef
  or pg_get_userbyid(p.proowner)<>'postgres' or p.proconfig is distinct from array['search_path=""']::text[]
  then raise exception 'site_order_approval_source_changed';end if;
  select * into p from pg_proc where oid=to_regprocedure('trade_document_consent_private.own_seal(uuid)');

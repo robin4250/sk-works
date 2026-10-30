@@ -14,7 +14,7 @@ do $$ declare e record;p pg_proc;begin
 ('site_order_manager_private.counterparty_context(uuid,uuid,text)','6e8915f47ec3daa03eafd8ee2960bd24',true),
 ('site_order_manager_private.render_approved(uuid,integer,uuid,boolean)','f6fb2629e3660acaae1706879eab1f03',true),
 ('site_order_manager_private.require_local(uuid,uuid)','52851fbaeefa4ab6a6c4332036a6603b',true),
-('site_order_package_private.send_order(uuid,uuid,uuid)','0fcb1ad69746bca61cb9ee270619f05e',true),
+('site_order_package_private.send_order(uuid,uuid,uuid)','d143df0623ea365861209cc5bf22f61d',true),
 ('trade_document_consent_private.immutable()','73660d9947f20d6f99c59d8451078e7e',false)
  )v(signature,source_md5,definer) loop
  select * into p from pg_proc where oid=to_regprocedure(e.signature);
@@ -87,7 +87,8 @@ begin
   raise exception 'site_order_exact_sender_connection_required' using errcode='42501';end if;
  select * into i from private.site_share_inbox where data_item_id=p.data_item_id and recipient_company_id=cid for update;
  if i.data_item_id is null or i.status<>'pending' then raise exception 'site_order_pending_inbox_required' using errcode='40001';end if;
- select x.payload into payload from private.company_data_delivery_items x where x.id=p.data_item_id for share;
+ -- The legacy delivery item is transport metadata, never the approved snapshot.
+ payload:=p.site_projection;
  select j.evidence->'body' into source_body from site_order_artifact_private.render_jobs j
  join site_order_artifact_private.pdf_records r on r.job_id=j.id
  where j.id=p.source_job_id and r.receipt_id=p.original_receipt_id

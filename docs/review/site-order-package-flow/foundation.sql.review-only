@@ -37,6 +37,7 @@ create table site_order_package_private.packages(
  source_job_id uuid not null references site_order_artifact_private.render_jobs(id),
  original_receipt_id uuid not null references site_order_artifact_private.pdf_records(receipt_id),
  data_item_id uuid not null unique references private.company_data_delivery_items(id),
+ site_projection jsonb not null check(jsonb_typeof(site_projection)='object'),
  created_at timestamptz not null default clock_timestamp(),
  unique(sender_company_id,actor_id,request_id)
 );
@@ -107,8 +108,8 @@ begin
  insert into private.site_share_inbox(data_item_id,recipient_company_id,status)
  values(item,j.counterparty_company_id,'pending');
  insert into site_order_package_private.packages(id,sender_company_id,recipient_company_id,actor_id,session_id,
- request_id,source_job_id,original_receipt_id,data_item_id)
- values(package,cid,j.counterparty_company_id,auth.uid(),sid,p_request,j.id,r.receipt_id,item);
+ request_id,source_job_id,original_receipt_id,data_item_id,site_projection)
+ values(package,cid,j.counterparty_company_id,auth.uid(),sid,p_request,j.id,r.receipt_id,item,projection);
  insert into site_order_package_private.notice_intents(id,package_id,audience_company_id,kind)
  values(gen_random_uuid(),package,j.counterparty_company_id,'order_received'),
  (gen_random_uuid(),package,j.counterparty_company_id,'approval_required');
