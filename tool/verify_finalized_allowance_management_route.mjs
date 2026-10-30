@@ -28,7 +28,7 @@ try{
  eq(await withManagementProof('upsert',[managementCell(reportWorker,docDay,{company_allowance_selections:choices([]),company_allowance_legacy_labels:''})]),1,'Real highest-management proof explicitly removes selected registered allowances');
  const managedReportAfter=await q('select to_jsonb(r) v from daily_reports r where id=$1',[rid]);
  eq(managedReportAfter.status,'draft','Managed correction requires fresh signatures');
- for(const key of ['representative_signature_json','representative_name','supervisor_signature_json','supervisor_name'])eq(managedReportAfter[key],null,'No reuse of old role signature: '+key);
+ for(const key of ['representative_signature_json','representative_signer_name','supervisor_signature_json','supervisor_signer_name'])eq(managedReportAfter[key],null,'No reuse of old role signature: '+key);
  const managedWorkerAfter=await q('select to_jsonb(w) v from daily_report_workers w where report_id=$1 and worker_id=$2',[rid,reportWorker]);
  eq(managedWorkerAfter.company_allowance_selections,choices([]),'Only explicit authorized empty registered selection is saved');
  eq(managedWorkerAfter.company_allowance_legacy_labels,'','No obsolete name retained');
