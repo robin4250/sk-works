@@ -13,7 +13,12 @@ do $$ declare e record;p pg_proc;begin
  select * into p from pg_proc where oid=to_regprocedure(e.signature);
  if p.oid is null or md5(p.prosrc) is distinct from e.source_md5 or p.prosecdef is distinct from e.definer
  or pg_get_userbyid(p.proowner)<>'postgres' or p.proconfig is distinct from array['search_path=""']::text[]
- or has_function_privilege('anon',p.oid,'execute') or has_function_privilege('authenticated',p.oid,'execute')
+ or has_function_privilege('anon',p.oid,'execute') or (case when e.signature='private.require_standalone_trade_document_access()' then
+   (select jsonb_agg(jsonb_build_array(pg_get_userbyid(a.grantor),pg_get_userbyid(a.grantee),a.privilege_type,a.is_grantable)
+     order by pg_get_userbyid(a.grantee),a.privilege_type)
+    from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner)))a)
+    is distinct from '[["postgres","authenticated","EXECUTE",false],["postgres","postgres","EXECUTE",false]]'::jsonb
+   else has_function_privilege('authenticated',p.oid,'execute') end)
  or has_function_privilege('service_role',p.oid,'execute') then raise exception 'site_package_dependency_changed: %',e.signature;end if;
  end loop;
 end $$;

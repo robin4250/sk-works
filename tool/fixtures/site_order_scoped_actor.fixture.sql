@@ -14,3 +14,6 @@ begin
   'company_id',companies[1],'role',roles[1],'master_enabled',true,'can_generate',true,'context_contract_version',1);
 end $body$;
 revoke all on function private.require_standalone_trade_document_access() from public,anon,authenticated,service_role;
+
+-- Match the real C invoker-wrapper contract, not an owner-only stand-in.
+grant execute on function private.require_standalone_trade_document_access() to authenticated;
