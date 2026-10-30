@@ -10,6 +10,45 @@ Map<String,dynamic> formBody()=>TradeDocumentTermsSnapshot.initialize({
 });
 TradeDocumentFormDraft draft({bool amount=false})=>TradeDocumentFormDraft.fromPayload(formBody(),allowAmountEditing:amount);
 void main(){
+ for(final kind in ['order','acceptance']) {
+  test('new $kind receives agreed editable defaults with no invented rate or amount',(){
+   final source=formBody()..['kind']=kind;
+   final before=jsonEncode(source);
+   final value=TradeDocumentFormDraft.fromPayload(source,allowAmountEditing:false,
+    initializeDefaults:true,initializeExtendedFields:true);
+   final p=value.payload,fields=p['form_fields'];
+   expect(fields['schema'],2);expect(fields['work_content'],'とび工事');
+   expect(fields['amount_description'],'下記「施工単価内訳書」による');
+   expect(fields['progress_cutoff_day'],'month_end');expect(fields['invoice_cutoff_day'],10);
+   expect(fields['cash_ratio_percent'],'100');expect(fields['payment_month_offset'],2);expect(fields['payment_day'],5);
+   expect(fields['supplies'],'仮設材他');expect(p['notes'],tradeDocumentDefaultNotes);
+   for(final key in ['advance','partial','completion']) {expect(fields['payments'][key],{'choice':'no','date':null,'amount_yen':null});}
+   expect(fields['rows'][0],{'item':'とび工　安全施設・足場組立解体作業（一般作業員）','quantity':'1','unit':'人日','unit_price_yen':null,'amount_yen':null,'note':''});
+   expect((fields['rows'] as List).skip(1).every((row)=>row['item']==''),isTrue);
+   expect(p['total_amount_yen'],110000);expect(p['tax_amount_yen'],10000);expect(jsonEncode(source),before);
+   final changed=Map<String,dynamic>.from(fields as Map)..['progress_cutoff_day']=31;
+   expect(value.withChanges({'form_fields':changed}).payload['form_fields']['progress_cutoff_day'],31);
+   expect(tradeDocumentClosingDay('month_end'),'末日');expect(tradeDocumentClosingDay(31),'31');
+   final reopened=TradeDocumentFormDraft.fromPayload(p,allowAmountEditing:false,initializeDefaults:true,initializeExtendedFields:true);
+   expect(reopened.payload,p);
+  });
+ }
+ test('saved explicit blank form fields and notes are never replaced by new defaults',(){
+  final source=formBody()..['form_fields']=TradeDocumentFormFields.empty().toJson();
+  final before=jsonEncode(source);
+  final reopened=TradeDocumentFormDraft.fromPayload(source,allowAmountEditing:false,initializeDefaults:true,initializeExtendedFields:true);
+  expect(jsonEncode(reopened.payload),before);
+ });
+ test('historical missing form fields and explicit blank notes stay blank without new-document opt-in',(){
+  final source=formBody();
+  final p=TradeDocumentFormDraft.fromPayload(source,allowAmountEditing:false,initializeExtendedFields:true).payload;
+  expect(p['notes'],'');expect(p['form_fields'],TradeDocumentFormFields.empty().toJson());
+ });
+ test('v2 schema only allows exact month-end sentinel and never aliases day 31',(){
+  final fields=TradeDocumentFormDraft.fromPayload(formBody(),allowAmountEditing:false,initializeDefaults:true,initializeExtendedFields:true).payload['form_fields'] as Map<String,dynamic>;
+  for(final bad in ['末日','31','monthEnd',0,32]) {expect(()=>TradeDocumentFormFields.fromJson({...fields,'progress_cutoff_day':bad}),throwsFormatException);}
+  expect(()=>TradeDocumentFormFields.fromJson({...fields,'invoice_cutoff_day':'month_end'}),throwsFormatException);
+ });
  test('complete schema and nine rows are added only to the private working copy',(){
   final source=formBody(),before=jsonEncode(source),value=TradeDocumentFormDraft.fromPayload(source,allowAmountEditing:false),p=value.payload;
   expect(p['form_fields'],TradeDocumentFormFields.empty().toJson());expect((p['form_fields']['rows'] as List),hasLength(9));

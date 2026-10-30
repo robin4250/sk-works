@@ -33,6 +33,20 @@ void main() {
     },
   };
 
+  test('fresh order uses exact v2 defaults without changing source financial values',(){
+    final data=workspace()..['form_fields_schema_version']=2;
+    final result=PaymentOrderResolver.resolve(data)!;
+    final fields=result.payload['form_fields'];
+    expect(fields['schema'],2);expect(fields['progress_cutoff_day'],'month_end');
+    expect(fields['payments']['advance']['choice'],'no');expect(fields['cash_ratio_percent'],'100');
+    expect(fields['rows'][0]['quantity'],'1');expect(fields['rows'][0]['unit'],'人日');
+    expect(fields['rows'][0]['unit_price_yen'],isNull);expect(fields['rows'][0]['amount_yen'],isNull);
+    expect(result.payload['total_amount_yen'],110000);expect(result.payload['tax_amount_yen'],10000);
+    expect(result.payload['notes'],'編集済み特記事項');
+    expect((data['defaults'] as Map).containsKey('form_fields'),isFalse);
+    data['auto_generate']=false;expect(PaymentOrderResolver.resolve(data),isNull);
+  });
+
   test(
     'unsaved order uses source parties amounts month seal and prose only',
     () {
