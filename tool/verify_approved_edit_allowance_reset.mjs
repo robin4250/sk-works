@@ -49,6 +49,11 @@ const unit=String.raw`
  await exec('rollback');
  eq(await q('select status v from daily_report_edit_requests where id=$1',[pcRequest]),'approved','Old attempt rolled back including request consumption');
  await exec(await readFile('docs/review/approved-edit-allowance-reset/approved-edit-allowance-reset.sql.review-only','utf8'));
+ const resetPin=Object.keys(pins.after_source_md5).filter(name=>fq(name)==='public.save_daily_report_destination_draft(uuid,uuid,uuid,date,text,jsonb)');
+ eq(resetPin.length,1,'Exactly one parent source pin represents the deliberately patched writer');
+ eq(pins.after_source_md5[resetPin[0]],'8c341bb00650cab35b1fa23b34e69eae','Parent writer pin was unchanged before the explicit candidate composition');
+ eq(await q('select md5(prosrc) v from pg_proc where oid=$1::regprocedure',[fq(resetPin[0])]),'075b62ee12e02f4aeb04f6c20bbfd3d3','Reviewed four-CASE candidate is the only new intended writer body');
+ pins.after_source_md5[resetPin[0]]='075b62ee12e02f4aeb04f6c20bbfd3d3';
  await exec('begin');
  const fixedAttrs=await q("select to_jsonb(p)-'prosrc' v from pg_proc p where oid='public.save_daily_report_destination_draft(uuid,uuid,uuid,date,text,jsonb)'::regprocedure");
  await pcSave();
