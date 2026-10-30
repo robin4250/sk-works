@@ -6,6 +6,7 @@ on:
       - 'supabase/functions/site-order-workflow/**'
       - 'tool/site_order_edge_dependencies/**'
       - 'tool/site_order_edge_http.test.mjs'
+      - 'tool/site_order_reply_worker.test.mjs'
       - 'tool/site_order_http_jwt_fixture.mjs'
       - 'tool/site_order_canonical_core.mjs'
       - 'tool/site_order_package_flow_fixture.mjs'
@@ -42,7 +43,7 @@ jobs:
       - run: dart pub get --enforce-lockfile --directory=tool/canonical_renderer
       - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts
       - run: npm ci --prefix tool/site_order_edge_dependencies --ignore-scripts
-      - run: node --test tool/site_order_edge_http.test.mjs
+      - run: node --test tool/site_order_edge_http.test.mjs tool/site_order_reply_worker.test.mjs
       - run: node --check tool/site_order_package_flow_fixture.mjs
       - run: node --check tool/verify_site_order_package_flow.mjs
       - run: node --test tool/site_order_manager_renderer.test.mjs tool/site_order_canonical_renderer.test.mjs

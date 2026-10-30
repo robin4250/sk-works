@@ -34,4 +34,4 @@ export async function createCanonicalSiteOrderRenderer({dartExecutable,repositor
  });
 }
 
-export {registerCanonicalSiteOrderJob,registerManagerCanonicalSiteOrderJob} from './site_order_canonical_core.mjs';
+export {registerCanonicalSiteOrderJob,registerManagerCanonicalSiteOrderJob,processCanonicalSiteOrderReply} from './site_order_canonical_core.mjs';

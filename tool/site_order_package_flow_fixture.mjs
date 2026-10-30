@@ -173,5 +173,53 @@ export async function verifySiteOrderPackageFlow(db,c){
  await deny(()=>q("select site_order_package_private.archive_original($1,'order') v",[second.package_id]),/archive_management/);
  await db.query("update company_members set role='manager' where user_id=$1",[UB]);
  await (await import('./site_order_http_jwt_fixture.mjs')).verifySiteOrderHttpJwt(db,{id,UA,UB,UC,q,check,second,queued,renderer,openNativePeer});
+
+ await db.exec(`alter table public.app_notifications add column if not exists id uuid default gen_random_uuid(),
+ add column if not exists recipient_user_id uuid,add column if not exists kind text,
+ add column if not exists title text,add column if not exists body text,add column if not exists created_at timestamptz default now()`);
+ await db.exec(`alter table public.app_notifications rename to fixture_legacy_notifications;
+ create table public.app_notifications(id uuid primary key default gen_random_uuid(),company_id uuid not null,
+ recipient_user_id uuid not null,kind text not null default 'info',title text not null,body text,action_key text,action_id uuid,
+ read_at timestamptz,created_at timestamptz not null default now());
+ alter table public.app_notifications enable row level security`);
+ await db.exec(await fs.readFile('docs/review/site-order-package-flow/delivery.sql.review-only','utf8'));
+ await signed(UA);await deny(()=>q("select site_order_package_private.archive_original($1,'acceptance') v",[second.package_id]),/original_not_registered/);
+ await signed(UB);await deny(()=>q('select site_order_package_private.deliver_acceptance($1,$2,$3) v',[second.package_id,id(999999),id(12302)]),/registered_original/);
+ // Force the notification stage to fail after recipient receipt insertion.
+ // The outer delivery transaction must roll both stages back together.
+ await db.exec("create function pg_temp.reject_order_notice()returns trigger language plpgsql as $$begin raise exception 'fixture_notice_failure';end$$;create trigger fixture_notice_failure before insert on public.app_notifications for each row execute function pg_temp.reject_order_notice()");
+ const {processCanonicalSiteOrderReply}=await import('./site_order_canonical_core.mjs');
+ const ubSid=await q('select id v from auth.sessions where user_id=$1',[UB]);
+ const verifiedClaims={sub:UB,role:'authenticated',session_id:ubSid};
+ await deny(()=>processCanonicalSiteOrderReply(db,second.package_id,renderer,verifiedClaims),/reply_rejected/);
+ check(await q('select count(*)::int v from site_order_package_private.acceptance_deliveries'),0);
+ check(await q('select count(*)::int v from site_order_package_private.notification_receipts'),0);
+ await db.exec('drop trigger fixture_notice_failure on public.app_notifications');
+ const delivered=await processCanonicalSiteOrderReply(db,second.package_id,renderer,verifiedClaims);
+ check(delivered.status,'recipient_stored');check(delivered.notifications.app_inbox_inserted>0,true);
+ await db.query("update private.master_feature_settings set enabled=false where feature_key='site_order_documents'");
+ await (await import('./site_order_http_jwt_fixture.mjs')).verifySiteOrderHttpJwt(db,{id,UA,UB,UC,q,check,second,queued,renderer,openNativePeer,processReply:true});
+ const storedCount=await q('select count(*)::int v from public.app_notifications');
+ const replay=await processCanonicalSiteOrderReply(db,second.package_id,()=>{throw Error('Do not rerender delivered reply');},verifiedClaims);
+ check(replay.status,'recipient_stored');check(replay.notifications.app_inbox_inserted,0);
+ check(await q('select count(*)::int v from public.app_notifications'),storedCount);
+ check(await q("select count(*)::int v from public.app_notifications where action_key<>'site_order_package' or body like '%99999%' or title like '%99999%'"),0);
+ await db.query("update private.master_feature_settings set enabled=false where feature_key='site_order_documents'");
+ for(const user of [UA,UB])for(const role of ['owner','admin','manager']){
+ await signed(user);await db.query('update company_members set role=$1 where user_id=$2',[role,user]);
+ check((await q('select site_order_package_private.delivery_status($1) v',[second.package_id])).reply_recipient_stored,true);
+ const original=await q("select site_order_package_private.archive_original($1,'acceptance') v",[second.package_id]);
+ check(Buffer.from(original).subarray(0,5).toString(),'%PDF-');
+ }
+ await signed(UB);await deny(()=>q('select site_order_package_private.dispatch_notifications($1) v',[second.package_id]),/master_feature_disabled/);
+
+ await db.exec(await fs.readFile('docs/review/site-order-package-flow/read-surfaces.sql.review-only','utf8'));
+ await signed(UA);
+ const detail=await q('select site_order_package_private.package_detail($1) v',[second.package_id]);
+ check(detail.reply_recipient_stored,true);check(detail.can_write,false);check(detail.body.work_name,originalBody.work_name);
+ const firstPage=await q('select site_order_package_private.package_list(null,null,1) v');check(firstPage.length,1);
+ const nextPage=await q('select site_order_package_private.package_list($1,$2,1) v',[firstPage[0].created_at,firstPage[0].package_id]);
+ check(nextPage.length,1);check(nextPage[0].package_id===firstPage[0].package_id,false);
+ await signed(UC);await deny(()=>q('select site_order_package_private.package_detail($1) v',[second.package_id]),/archive_not_found/);
  console.log(JSON.stringify({status:'passed',checks,scope:'canonical original + sanitized receive + real site/acceptance intent approval atomicity; prepared legacy guard; ordinary legacy OFF unchanged',production_applied:false,real_auth:false}));
 }

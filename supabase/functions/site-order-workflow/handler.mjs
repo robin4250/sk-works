@@ -1,12 +1,16 @@
-import {registerManagerCanonicalSiteOrderJob} from '../../../tool/site_order_canonical_core.mjs';
+import {registerManagerCanonicalSiteOrderJob,processCanonicalSiteOrderReply} from '../../../tool/site_order_canonical_core.mjs';
 const uuid=/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/;
 const commands={
+ detail:{keys:['package_id'],sql:'select site_order_package_private.package_detail($1) as result'},
+ list:{keys:['before','before_id','limit'],sql:'select site_order_package_private.package_list($1,$2,$3) as result'},
+ recipient_targets:{keys:['package_id'],sql:'select site_order_package_private.recipient_targets($1) as result'},
  status:{keys:['package_id'],sql:'select site_order_package_private.package_status($1) as result'},
  archive:{keys:['package_id','kind'],sql:'select site_order_package_private.archive_original($1,$2) as result',pdf:true},
  preview_approval:{keys:['package_id','trade_id','connection_fingerprint','request_id'],sql:'select site_order_package_private.preview_approval($1,$2,$3,$4) as result'},
- approve:{keys:['preview_id','body_hash','seal_hash','confirmed','request_id'],sql:'select site_order_package_private.approve_with_consent($1,$2,$3,$4,$5) as result'},
- send_order:{keys:['job_id','original_receipt_id','request_id'],sql:'select site_order_package_private.send_order($1,$2,$3) as result'},
+ approve:{keys:['preview_id','body_hash','seal_hash','confirmed','request_id'],sql:`with approved as materialized(select site_order_package_private.approve_with_consent($1,$2,$3,$4,$5) as result) select result||jsonb_build_object('notifications',site_order_package_private.dispatch_notifications((result->>'package_id')::uuid)) as result from approved`},
+ send_order:{keys:['job_id','original_receipt_id','request_id'],sql:`with sent as materialized(select site_order_package_private.send_order($1,$2,$3) as result) select result||jsonb_build_object('notifications',site_order_package_private.dispatch_notifications((result->>'package_id')::uuid)) as result from sent`},
  register_original:{keys:['job_id'],worker:true},
+ process_reply:{keys:['package_id'],replyWorker:true},
 };
 function response(data,status=200){return new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store'}});}
 async function body(req){
@@ -20,7 +24,10 @@ async function body(req){
 function validate(b){
  const c=commands[b.action];if(!c||Object.keys(b).length!==c.keys.length+1||Object.keys(b).some(k=>k!=='action'&&!c.keys.includes(k)))throw Error('invalid');
  for(const k of c.keys){const v=b[k];
- if(k==='kind'){if(!['order','acceptance'].includes(v))throw Error('invalid');}
+ if(k==='before'){if(v!==null&&(typeof v!=='string'||!/^\d{4}-\d{2}-\d{2}T[0-9:.+-]+Z?$/.test(v)||!Number.isFinite(Date.parse(v))))throw Error('invalid');}
+ else if(k==='before_id'){if(v!==null&&(typeof v!=='string'||!uuid.test(v)))throw Error('invalid');}
+ else if(k==='limit'){if(!Number.isInteger(v)||v<1||v>50)throw Error('invalid');}
+ else if(k==='kind'){if(!['order','acceptance'].includes(v))throw Error('invalid');}
  else if(k==='confirmed'){if(v!==true)throw Error('invalid');}
  else if(['body_hash','seal_hash','connection_fingerprint'].includes(k)){if(typeof v!=='string'||!/^[0-9a-f]{64}$/.test(v))throw Error('invalid');}
  else if(typeof v!=='string'||!uuid.test(v))throw Error('invalid');
@@ -39,6 +46,7 @@ export function createSiteOrderHandler({verify,connect,render}){
   try{
    db=await connect();
    // The connection is never pooled/reused; close it even after UNKNOWN.
+   if(c.replyWorker){const result=await processCanonicalSiteOrderReply(db,b.package_id,render,claims);return response({result});}
    if(c.worker){const result=await registerManagerCanonicalSiteOrderJob(db,b.job_id,render,claims);return response({result});}
    await db.query('begin isolation level read committed');
    const role=(await db.query('select session_user as role')).rows[0]?.role;
@@ -51,13 +59,14 @@ export function createSiteOrderHandler({verify,connect,render}){
     if(bytes.length<16||bytes.length>20*1024*1024||new TextDecoder().decode(bytes.subarray(0,5))!=='%PDF-')throw Error('original_unavailable');
     pdfBytes=bytes;
    }
-   commitStarted=true;await db.query('commit');
-   if(c.pdf){return new Response(pdfBytes,{headers:{'Content-Type':'application/pdf','Cache-Control':'no-store','Content-Disposition':'inline; filename="SKO.pdf"'}});
+   commitStarted=true;await db.query('commit');commitStarted=false;
+   if(b.action==='approve'){try{return response({result:await processCanonicalSiteOrderReply(db,result.package_id,render,claims)});}catch(error){return response({result,reply_processing:error?.message?.includes('result_unknown')?'result_unknown':'pending',retry_automatically:false},202);}}
+   if(c.pdf){return new Response(pdfBytes,{headers:{'Content-Type':'application/octet-stream','Cache-Control':'no-store','Content-Disposition':'inline; filename="SKO.pdf"'}});
    }
    return response({result});
   }catch(error){
-   if(db&&!commitStarted&&error?.message!=='canonical_commit_result_unknown')await db.query('rollback').catch(()=>{});
-   const unknown=commitStarted||error?.message==='canonical_commit_result_unknown';
+   if(db&&!commitStarted&&!error?.message?.includes('result_unknown'))await db.query('rollback').catch(()=>{});
+   const unknown=commitStarted||error?.message?.includes('result_unknown');
    return response({error:unknown?'result_unknown':'operation_rejected',retry_automatically:false},unknown?409:403);
   }finally{if(db)await db.end().catch(()=>{});}
  };

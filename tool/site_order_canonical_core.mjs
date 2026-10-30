@@ -56,3 +56,27 @@ async function registerForPurpose(db,jobId,render,manager,verifiedClaims) {
   throw Error(commitStarted&&!committed?'canonical_commit_result_unknown':'canonical_registration_rejected');
  }
 }
+
+// Fixed ready-reply worker: job, original receipt and recipient are DB-derived.
+// No client-supplied PDF bytes, authorizer or recipient is accepted.
+async function replyTransaction(db,claims,sql,args){
+ let commitStarted=false;
+ await db.query('begin isolation level read committed');
+ try{
+  if((await db.query('select session_user as role')).rows[0]?.role!=='postgres')throw Error('internal');
+  await db.query("select set_config('request.jwt.claims',$1,true)",[JSON.stringify(claims)]);
+  const result=(await db.query(sql,args)).rows[0]?.result;if(!result)throw Error('missing');
+  commitStarted=true;await db.query('commit');return result;
+ }catch{
+  if(!commitStarted)await db.query('rollback').catch(()=>{});
+  throw Error(commitStarted?'site_order_commit_result_unknown':'site_order_reply_rejected');
+ }
+}
+export async function processCanonicalSiteOrderReply(db,packageId,render,verifiedClaims){
+ if(!uuid.test(packageId)||!verifiedClaims)throw Error('site_order_reply_rejected');
+ const ready=await replyTransaction(db,verifiedClaims,'select site_order_package_private.ready_reply($1) as result',[packageId]);
+ const original=await registerManagerCanonicalSiteOrderJob(db,ready.job_id,render,verifiedClaims);
+ return replyTransaction(db,verifiedClaims,`with stored as materialized(select site_order_package_private.deliver_acceptance($1,$2,$3) as result)
+ select result||jsonb_build_object('notifications',site_order_package_private.dispatch_notifications($1)) as result from stored`,
+ [packageId,original.receipt_id,ready.request_id]);
+}
