@@ -1,3 +1,4 @@
+import 'payroll_tax_adjustment_history.dart';
 import 'payroll_insurance_settings_entry.dart';
 import 'payroll_tax_conditions_page.dart';
 import 'payroll_fixed_deductions.dart';
@@ -737,6 +738,24 @@ class _IndividualPayrollSettingsPageState
                     key: const ValueKey('insurance-settings-global-entry'),
                     controller: _insuranceEntry, enabled: !_busy,
                   ),
+                  Align(alignment: Alignment.centerRight,
+                    child: TextButton.icon(
+                      key: const ValueKey('payroll-tax-adjustment-history-open'),
+                      icon: const Icon(Icons.history), label: const Text('保険料・税の変更履歴'),
+                      onPressed: _busy || _workerId == null || companyId == null || companyId.isEmpty ? null : () {
+                        final selectedWorker = _workerId!;
+                        final selectedCompany = companyId;
+                        final generation = _loadGeneration;
+                        final name = workspace.workers.firstWhere((worker) => worker.id == selectedWorker,
+                          orElse: () => const IndividualPayrollWorker(id: '', name: '選択したメンバー')).name;
+                        Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) =>
+                          PayrollTaxAdjustmentHistoryPage(companyId: selectedCompany,
+                            workerId: selectedWorker, workerName: name,
+                            scopeIsCurrent: () => mounted && _workspace?.canView == true &&
+                              _loadGeneration == generation && _workerId == selectedWorker &&
+                              (_settingValues['company_id'] is String ? _settingValues['company_id'] : _workspace?.companyId) == selectedCompany)));
+                      },
+                    )),
                   SegmentedButton<bool>(
                     showSelectedIcon: false,
                     segments: [
