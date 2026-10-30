@@ -24,7 +24,12 @@ do $$ declare e record;p pg_proc; begin
    or p.prosecdef is distinct from e.definer or pg_get_userbyid(p.proowner)<>'postgres'
    or p.proconfig is distinct from array['search_path=""']::text[]
    or has_function_privilege('anon',p.oid,'EXECUTE')
-   or has_function_privilege('authenticated',p.oid,'EXECUTE')
+   or (case when e.signature='private.require_standalone_trade_document_access()' then
+   (select jsonb_agg(jsonb_build_array(pg_get_userbyid(a.grantor),pg_get_userbyid(a.grantee),a.privilege_type,a.is_grantable)
+     order by pg_get_userbyid(a.grantee),a.privilege_type)
+    from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner)))a)
+    is distinct from '[["postgres","authenticated","EXECUTE",false],["postgres","postgres","EXECUTE",false]]'::jsonb
+   else has_function_privilege('authenticated',p.oid,'EXECUTE') end)
    or has_function_privilege('service_role',p.oid,'EXECUTE') then
    raise exception 'site_manager_source_changed: %',e.signature;
   end if;

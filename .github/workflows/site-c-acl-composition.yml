@@ -1,0 +1,48 @@
+name: Formal C and site ACL composition
+on:
+  pull_request:
+    paths:
+      - 'docs/review/site-order-manager-purpose/adapter.sql.review-only'
+      - 'docs/review/site-order-package-flow/**'
+      - 'tool/fixtures/site_order_scoped_actor.fixture.sql'
+      - 'tool/verify_site_c_acl_composition.mjs'
+      - '.github/workflows/site-c-acl-composition.yml'
+permissions:
+  contents: read
+jobs:
+  actual-c-composition:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        engine: [pglite, postgres]
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_document_consent_fixture
+        ports:
+          - 5432:5432
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/checkout@v4
+        with:
+          ref: 6a24114471a9c264fad1aeec5dd2222915ddbedf
+          path: .c-source
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with: {node-version: '22.21.0'}
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts
+      - name: Unchanged formal C, old guard RED, exact ACL GREEN
+        env:
+          SKO_CONSENT_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_document_consent_fixture
+        run: |
+          export SKO_TRADE_C_SOURCE_ROOT="$GITHUB_WORKSPACE/.c-source"
+          if [ '${{ matrix.engine }}' = 'postgres' ]; then
+            node tool/verify_site_c_acl_composition.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js" postgres
+          else
+            node tool/verify_site_c_acl_composition.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
+          fi

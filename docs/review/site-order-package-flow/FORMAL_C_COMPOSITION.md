@@ -1,0 +1,9 @@
+# Formal C ACL composition (review only)
+
+The unchanged formal C source SHA-256 is `7796c2e7bcc7a9eca78f1b79ce8cfc87fcd978c1dc4a4ddb7a5a8ced17b597e5`, taken from fixed main `6a24114471a9c264fad1aeec5dd2222915ddbedf`. C grants authenticated EXECUTE on `private.require_standalone_trade_document_access()` because its public invoker wrapper needs that grant. Site dependency guards previously rejected this real contract while the disposable scoped actor fixture incorrectly removed the grant.
+
+Only that one dependency permits the exact normalized postgres-owner/authenticated EXECUTE ACL, both without grant option. PUBLIC, anon, service_role, unknown roles, authenticated grant option, and a missing authenticated grant are rejected. Every other private dependency remains owner-only. Source, attributes, owner, configuration, and other ACL checks remain enforced. No C source or existing production function is changed.
+
+`tool/verify_site_c_acl_composition.mjs` installs the actual C SQL under the observed public-schema-only default privileges, then verbatim private consent source, the exact single private actor source, artifact registration, and the site adapter. It proves old full adapter RED and limited adapter GREEN, with negative grants and full C helper catalog preservation. Raw financial parent helpers remain unchanged and fail closed; no public financial confirmation API is installed. This is an isolated composition test with synthetic surrounding tables and Auth claims, not production runtime or deployment evidence.
+
+Local PGlite: 23 checks passed. The dedicated workflow runs both PGlite and native PostgreSQL 17 against the fixed C source. The existing package workflow also checks the new exact authenticated fixture ACL through downstream installers. Production remains on HOLD; site feature remains initially OFF. Missing production private consent/API prerequisites and live authorization verification remain separate work.
