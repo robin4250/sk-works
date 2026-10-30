@@ -19,13 +19,16 @@ export async function verifyCanonicalConcurrentOriginal(db,c){
  const bytes=await render(evidence);
  const firstDb=await openNativePeer(),secondDb=await openNativePeer();
  let release,firstStarted,first,second;const started=new Promise(r=>{firstStarted=r;});const resume=new Promise(r=>{release=r;});
- let firstCalls=0,secondCalls=0;
+ let firstCalls=0,secondCalls=0,firstIsolation,secondIsolation;
  try{
   for(const peer of [firstDb,secondDb])await peer.query("select set_config('test.uid',$1,false),set_config('test.jwt',$2,false)",[UA,claims]);
+  await secondDb.query("set default_transaction_isolation='repeatable read'");
+  const auditedSecond={query:async(sql,args)=>{const result=await secondDb.query(sql,args);if(sql==='begin isolation level read committed')secondIsolation=(await secondDb.query('show transaction_isolation')).rows[0].transaction_isolation;return result;}};
   first=registerCanonicalSiteOrderJob(firstDb,job.job_id,async value=>{
+   firstIsolation=(await firstDb.query('show transaction_isolation')).rows[0].transaction_isolation;
    assert.deepEqual(value,evidence);firstCalls++;firstStarted();await resume;return bytes;
   });first.catch(()=>{});await started;
-  second=registerCanonicalSiteOrderJob(secondDb,job.job_id,async value=>{
+  second=registerCanonicalSiteOrderJob(auditedSecond,job.job_id,async value=>{
    assert.deepEqual(value,evidence);secondCalls++;return bytes;
   });second.catch(()=>{});
   let blocked=false;
@@ -37,10 +40,10 @@ export async function verifyCanonicalConcurrentOriginal(db,c){
   assert.equal(blocked,true,'Second request must actually wait for the first job lock');
   release();const [a,b]=await Promise.all([first,second]);
   assert.deepEqual(a,b,'Concurrent request must return the same immutable receipt');
-  assert.equal(firstCalls,1);
+  assert.equal(firstCalls,1);assert.equal(firstIsolation,'read committed');assert.equal(secondIsolation,'read committed');
   assert.equal(secondCalls,0,'Second request rerendered after waiting: stale joined-original snapshot');
   assert.equal(await q('select count(*)::int v from site_order_artifact_private.pdf_records where job_id=$1',[job.job_id]),1);
-  console.log('PASS native concurrent original: observed job-lock wait; first render once; second render zero; same original receipt');
+  console.log('PASS native concurrent original: observed job-lock wait; first render once; second render zero; same original receipt; default RR explicitly overridden');
  }finally{
   release();await Promise.allSettled([first,second].filter(Boolean));
   await firstDb.end();await secondDb.end();

@@ -40,19 +40,23 @@ export async function registerCanonicalSiteOrderJob(db,jobId,render) {
  // No transaction retries here. A COMMIT transport error is UNKNOWN; caller must
  // look up the same request/job, never mint a replacement job or resubmit bytes.
  let committed=false,commitStarted=false;
- await db.query('begin');
+ await db.query('begin isolation level read committed');
  try {
   const role=(await db.query('select session_user as role')).rows[0]?.role;
   if(role!=='postgres')throw Error('canonical_internal_connection_required');
   await db.query('select trade_document_confirmation_api_private.actor()');
   await db.query('select private.require_trade_documents_master_feature()');
-  const j=(await db.query(`select j.evidence,r.pdf_bytes from site_order_artifact_private.render_jobs j
-   left join site_order_artifact_private.pdf_records r on r.job_id=j.id where j.id=$1 and j.actor_id=auth.uid()
+  const j=(await db.query(`select j.evidence from site_order_artifact_private.render_jobs j
+   where j.id=$1 and j.actor_id=auth.uid()
    and j.session_id=(auth.jwt()->>'session_id')::uuid for update of j`,[jobId])).rows[0];
   if(!j)throw Error('canonical_job_unavailable');
+  // This MUST be a separate statement after acquiring the immutable job lock.
+  // A joined READ COMMITTED snapshot can miss a first worker's pdf_records
+  // insert after waiting, since that worker never updates the locked job row.
+  const original=(await db.query('select pdf_bytes from site_order_artifact_private.pdf_records where job_id=$1',[jobId])).rows[0]?.pdf_bytes;
   // Replays reuse immutable original bytes. A fresh PDF timestamp must never
   // replace an already registered original or cause an avoidable retry failure.
-  const bytes=j.pdf_bytes??await render(j.evidence);
+  const bytes=original??await render(j.evidence);
   const receipt=(await db.query('select site_order_artifact_private.register_canonical_pdf($1,$2) as receipt',[jobId,bytes])).rows[0]?.receipt;
   if(!receipt||receipt.job_id!==jobId||receipt.pdf_byte_length!==bytes.length)throw Error('canonical_receipt_mismatch');
   commitStarted=true;

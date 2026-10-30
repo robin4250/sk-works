@@ -99,3 +99,20 @@ SECURITY INVOKER attribute. A deliberately changed dependency is rejected before
 new-schema creation in the disposable fixture, with the original definition
 restored by transaction rollback. No dependency body or attributes are changed
 by the real candidate.
+
+## Concurrent original retry
+
+Native PostgreSQL RED on head13b99fbc (job124041463397) observed worker2 waiting
+on worker1's immutable job lock, then unnecessarily invoking its renderer once
+instead of zero times after worker1 inserted/committed the original. A LEFT JOIN
+in the original locking statement retained the old READ COMMITTED statement
+snapshot because the locked job row itself was never updated.
+
+The coordinator now starts an explicit READ COMMITTED transaction, locks the
+job in one statement and reads pdf_records in a second, fresh statement after
+the lock is acquired. The native regression uses two real connections, pauses
+worker1 before registering a real canonical PDF and verifies worker2 reuses the
+same original/receipt without calling its renderer. It also sets worker2's
+connection default to REPEATABLE READ and verifies the operation's explicit
+READ COMMITTED level. This function still requires a fresh dedicated connection;
+it must never be nested into a caller's existing approval transaction.
