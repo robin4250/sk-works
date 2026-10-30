@@ -5,8 +5,15 @@ import {readFile,writeFile,mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {spawnSync} from 'node:child_process';
-const base=await readFile('tool/verify_shared_approved_edit.mjs','utf8');
-const marker=' const approvedRequest=id(8600);';
+let base=await readFile('tool/verify_checkout_shared_approved_v2.mjs','utf8');
+const originalRead="const original=await readFile('tool/verify_checkout_shared_hours_v2.mjs','utf8');";
+const rosterLine=' const v2Roster=JSON.stringify([worker(reportWorker,[]),worker(W2,[])]);';
+const pcSetup=" const resetPcItem=id(8660);\n await client.query(\"insert into company_common_allowance_private.items(id,company_id,payroll_type,section,unit,name,amount_yen) values($1,$2,'daily','earning','day','PC',3000)\",[resetPcItem,A]);\n const resetPcChoice=choice('company_common',resetPcItem,'PC');\n const v2Roster=JSON.stringify([worker(reportWorker,[resetPcChoice]),worker(W2,[resetPcChoice])]);";
+const selectedLine="const v2SelectedHours={contract_version:1,items:[choice('company_common',HOUR,'合成時間手当','hour')]};";
+const selectedPC="const v2SelectedHours={contract_version:1,items:[choice('company_common',HOUR,'合成時間手当','hour'),resetPcChoice]};";
+assert.equal(base.split(originalRead).length,2);
+base=base.replace(originalRead,"const original=(await readFile('tool/verify_checkout_shared_hours_v2.mjs','utf8')).replace("+JSON.stringify(rosterLine)+","+JSON.stringify(pcSetup)+").replace("+JSON.stringify(selectedLine)+","+JSON.stringify(selectedPC)+").replaceAll("+JSON.stringify("allowance_label:'合成時間手当'")+","+JSON.stringify("allowance_label:'合成時間手当\\nPC'")+");");
+const marker=' const approvedV2=id(8990);';
 assert.equal(base.split(marker).length,2);
 const unit=String.raw`
  phase='unchanged-PC-approved-reset';
@@ -16,31 +23,19 @@ const unit=String.raw`
  for(const f of resetSource.history_functions)await exec(f.definition);
  await exec(resetSource.report_basis.definition);
  eq(await q("select md5(prosrc) v from pg_proc where oid='public.save_daily_report_destination_draft(uuid,uuid,uuid,date,text,jsonb)'::regprocedure"),resetSource.source_md5,'Exact current deployed writer body installed');
- const pcItem=id(8660),pcClock=id(8662),pcRequest=id(8664);
- await client.query("insert into company_common_allowance_private.items(id,company_id,payroll_type,section,unit,name,amount_yen) values($1,$2,'daily','earning','day','PC',3000)",[pcItem,A]);
- const pcChoice=choice('company_common',pcItem,'PC');
- const pcRows=JSON.stringify([worker(reportWorker,[pcChoice])]);
- await mkShift(8662,reportWorker,'2026-10-18');
- await client.query("select set_config('fixture.actor',$1,false),set_config('fixture.sid',$2,false)",[U,id(80)]);
- const pcRid=await draft('2026-10-18',reportWorker,[pcChoice]);
- const pcFirst=await sharedCall(U,id(80),'select public.read_my_shared_daily_report($1) v',[pcClock]);
- const pcReporter=await sharedCall(U,id(80),'select public.submit_shared_daily_report($1,$6::timestamptz,$2,$3::jsonb,$4,$5::jsonb,$7) v',
-  [pcClock,'合成作業',pcRows,'合成報告者',signature,pcFirst.report_updated_at,pcFirst.signature_scope_fingerprint]);
- eq(pcReporter.report_id,pcRid,'PC work report is the exact source-linked report');
- await client.query('insert into checkout_shared_hours_private.fixture_confirmations values($1,$2,$3)',[pcRid,reportWorker,U]);
- const pcBeforeSupervisor=await sharedCall(U,id(80),'select public.read_shared_daily_report_context($1) v',[pcRid]);
- await sharedCall(U,id(80),'select public.collect_shared_report_supervisor_signature($1,$2,$3,$4::jsonb,$5::timestamptz,$6) v',
-  [pcRid,pcClock,'合成責任者',signature,pcBeforeSupervisor.report_updated_at,pcBeforeSupervisor.signature_scope_fingerprint]);
+ const pcRid=v2Rid,pcRequest=id(8664),pcDate=v2Day;
+ const pcRows=JSON.stringify(await q("select jsonb_agg(to_jsonb(w)-'report_id' order by worker_id) v from daily_report_workers w where report_id=$1",[pcRid]));
+ const pcDescription=await q('select work_description v from daily_reports where id=$1',[pcRid]);
  const pcReportBefore=await q('select to_jsonb(r) v from daily_reports r where id=$1',[pcRid]);
  const pcRosterBefore=await q('select jsonb_agg(to_jsonb(w) order by worker_id) v from daily_report_workers w where report_id=$1',[pcRid]);
  const pcReceiptsBefore=await q('select jsonb_agg(to_jsonb(r) order by id) v from company_checkout_allowance_private.receipts r where report_id=$1',[pcRid]);
  eq(pcReportBefore.status,'signed','Unchanged PC baseline is fully signed');
  assert.ok(pcReportBefore.representative_signature_json&&pcReportBefore.supervisor_signature_json);
- const pcSave=()=>sharedCall(U,id(80),"select public.save_daily_report_destination_draft($1,$2,null,'2026-10-18','合成作業',$3::jsonb) v",[pcRid,SITE,pcRows]);
+ const pcSave=()=>sharedCall(U,id(80),"select public.save_daily_report_destination_draft($1,$2,null,$3,$4,$5::jsonb) v",[pcRid,SITE,pcDate,pcDescription,pcRows]);
  await reject(pcSave,/approved edit request/);
  eq(await q('select to_jsonb(r) v from daily_reports r where id=$1',[pcRid]),pcReportBefore,'Missing approval changes no signed data');
  await client.query("insert into public.daily_report_edit_requests(id,report_id,company_id,requested_by,status) values($1,$2,$3,$4,'approved')",[pcRequest,pcRid,A,U]);
- await reject(()=>sharedCall(memberB,sidB,"select public.save_daily_report_destination_draft($1,$2,null,'2026-10-18','合成作業',$3::jsonb) v",[pcRid,SITE,pcRows]),/approved edit request|actor|member/);
+ await reject(()=>sharedCall(memberB,sidB,"select public.save_daily_report_destination_draft($1,$2,null,$3,$4,$5::jsonb) v",[pcRid,SITE,pcDate,pcDescription,pcRows]),/approved edit request|actor|member/);
  eq(await q('select status v from daily_report_edit_requests where id=$1',[pcRequest]),'approved','Foreign actor cannot consume the approval');
  // Savepoint makes the old broken attempt observable without retaining its
  // draft/signature inconsistency in the rest of the disposable proof.
@@ -50,9 +45,10 @@ const unit=String.raw`
  eq(oldPc.status,'draft','Old writer consumes approval and changes status');
  eq(oldPc.representative_signature_json,pcReportBefore.representative_signature_json,'RED: old writer incorrectly retains reporter signature on unchanged PC');
  eq(oldPc.supervisor_signature_json,pcReportBefore.supervisor_signature_json,'RED: old writer incorrectly retains supervisor signature on unchanged PC');
- await exec('rollback to old_unchanged_pc;commit');
- eq(await q('select status v from daily_report_edit_requests where id=$1',[pcRequest]),'approved','Old attempt rolled back including consumed request');
+ await exec('rollback');
+ eq(await q('select status v from daily_report_edit_requests where id=$1',[pcRequest]),'approved','Old attempt rolled back including request consumption');
  await exec(await readFile('docs/review/approved-edit-allowance-reset/approved-edit-allowance-reset.sql.review-only','utf8'));
+ await exec('begin');
  const fixedAttrs=await q("select to_jsonb(p)-'prosrc' v from pg_proc p where oid='public.save_daily_report_destination_draft(uuid,uuid,uuid,date,text,jsonb)'::regprocedure");
  await pcSave();
  const fixedPc=await q('select to_jsonb(r) v from daily_reports r where id=$1',[pcRid]);
@@ -66,7 +62,14 @@ const unit=String.raw`
  assert.ok(pcSession.old_annex,'Existing annex history is retained');
  eq(await q('select jsonb_agg(to_jsonb(r) order by id) v from company_checkout_allowance_private.receipts r where report_id=$1',[pcRid]),pcReceiptsBefore,'Unchanged original PC receipt is preserved');
  const otherSid=id(8668);await client.query('insert into auth.sessions(id,user_id) values($1,$2)',[otherSid,U]);
- await reject(()=>sharedCall(U,otherSid,"select public.save_daily_report_destination_draft($1,$2,null,'2026-10-18','合成作業',$3::jsonb) v",[pcRid,SITE,pcRows]),/exact_actor_session_required|reset_proof|exact_session/);
+ await exec('savepoint wrong_pc_sid');
+ await client.query("select set_config('fixture.actor',$1,false),set_config('fixture.sid',$2,false)",[U,otherSid]);
+ await exec('set role authenticated');
+ let pcSidError;
+ try {await q("select public.save_daily_report_destination_draft($1,$2,null,$3,$4,$5::jsonb) v",[pcRid,SITE,pcDate,pcDescription,pcRows]);}catch(error){pcSidError=error;}
+ await exec('rollback to wrong_pc_sid');
+ assert.ok(pcSidError,'Different live session must be denied');assert.match(pcSidError.message,/exact_actor_session_required|reset_proof|exact_session/);
+
  await pcSave();
  eq(await q('select to_jsonb(s) v from shared_report_edit_private.sessions s where report_id=$1',[pcRid]),pcSession,'Retry cannot consume another request or replace the old signature history');
  eq(await q("select to_jsonb(p)-'prosrc' v from pg_proc p where oid='public.save_daily_report_destination_draft(uuid,uuid,uuid,date,text,jsonb)'::regprocedure"),fixedAttrs,'Ownership grants and security attributes remain unchanged');
@@ -76,17 +79,25 @@ const unit=String.raw`
  // Legacy non-protocol draft: ordinary unchanged PC saves still retain an
  // already collected reporter signature. The patch is NOT a global clear.
  await client.query("select set_config('fixture.actor',$1,false),set_config('fixture.sid',$2,false)",[U,id(80)]);
- const ordinaryPc=await draft('2026-10-17',reportWorker,[pcChoice]);
+ const ordinaryPc=await draft('2026-10-17',reportWorker,[resetPcChoice]);
  await client.query("update daily_reports set created_at=(select new_report_from-interval '1 day' from shared_daily_report_private.rollout where company_id=$2) where id=$1",[ordinaryPc,A]);
  await sharedCall(U,id(80),"select public.save_daily_report_signature($1,'representative','合成通常報告者',$2::jsonb) v",[ordinaryPc,signature]);
  const ordinarySig=await q('select representative_signature_json v from daily_reports where id=$1',[ordinaryPc]);
- await draft('2026-10-17',reportWorker,[pcChoice],{reportId:ordinaryPc});
+ await draft('2026-10-17',reportWorker,[resetPcChoice],{reportId:ordinaryPc});
  eq(await q('select representative_signature_json v from daily_reports where id=$1',[ordinaryPc]),ordinarySig,'Ordinary unchanged PC draft preserves its signature');
- console.log(JSON.stringify({pass:true,unchanged_PC_old_retained_signatures_reproduced:true,approved_reset_current_roles_cleared:true,original_report_roster_annex_and_receipts_preserved:true,ordinary_draft_preserved:true,production_changed:false}));
+ await exec('rollback');
+ await client.query('delete from public.daily_report_edit_requests where id=$1',[pcRequest]);
+ eq(await q('select to_jsonb(r) v from daily_reports r where id=$1',[pcRid]),pcReportBefore,'Disposable regression leaves the parent v2 report exactly unchanged');
+ console.log(JSON.stringify({pass:true,actual_v2_PC_receipt:true,unchanged_PC_old_retained_signatures_reproduced:true,approved_reset_current_roles_cleared:true,original_report_roster_annex_and_receipts_preserved:true,ordinary_draft_preserved:true,production_changed:false}));
 `;
 const folder=await mkdtemp(join(tmpdir(),'approved-pc-reset-proof-'));
 try {
  const file=join(folder,'proof.mjs');await writeFile(file,base.replace(marker,()=>unit+marker));
+ const syntax=spawnSync(process.execPath,['--check',file],{stdio:'inherit'});
+ assert.equal(syntax.status,0,'Generated v2 wrapper syntax');
+ if(process.argv[2]==='--syntax-only'){console.log('Generated v2 wrapper syntax valid');}
+ else {
  const result=spawnSync(process.execPath,[file,process.argv[2]],{stdio:'inherit',env:process.env});
  if(result.error)throw result.error;process.exitCode=result.status??1;
+ }
 } finally {await rm(folder,{recursive:true,force:true});}
