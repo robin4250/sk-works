@@ -7,7 +7,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sk_works/features/auth/app_auth_mutation_gateway.dart';
 import 'package:sk_works/features/auth/secure_onboarding_repository.dart';
 import 'package:sk_works/data/supabase_auth_repository.dart';
-import 'package:sk_works/features/profile/profile_repository.dart';
 
 const actor = '60000000-0000-0000-0000-000000000001';
 const other = '60000000-0000-0000-0000-000000000002';
