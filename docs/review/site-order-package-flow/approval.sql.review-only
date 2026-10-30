@@ -1,0 +1,130 @@
+-- REVIEW ONLY. Approval stores a real recipient site and a bound reply intent
+-- atomically. The intent is not a rendered/sent acceptance and cannot bypass
+-- the existing explicit own-seal preview/consent contract.
+begin;
+do $$ begin
+ if to_regclass('site_order_package_private.packages') is null
+ or to_regclass('site_order_package_private.approvals') is not null then
+ raise exception 'site_order_approval_prerequisite_changed';end if;
+end $$;
+do $$ declare e record;p pg_proc;begin
+ for e in select * from(values
+('private.require_standalone_trade_document_access()','63c57e18a04499e8d6bcfad4ead7837f',true),
+('site_order_manager_private.require_actor(uuid,uuid)','0c841be3d2b20f5cbdbe713a6414f744',true),
+('site_order_manager_private.counterparty_context(uuid,uuid,text)','6e8915f47ec3daa03eafd8ee2960bd24',true),
+('site_order_manager_private.render_approved(uuid,integer,uuid,boolean)','f6fb2629e3660acaae1706879eab1f03',true),
+('site_order_manager_private.require_local(uuid,uuid)','52851fbaeefa4ab6a6c4332036a6603b',true),
+('site_order_package_private.send_order(uuid,uuid,uuid)','0fcb1ad69746bca61cb9ee270619f05e',true),
+('trade_document_consent_private.immutable()','73660d9947f20d6f99c59d8451078e7e',false)
+ )v(signature,source_md5,definer) loop
+ select * into p from pg_proc where oid=to_regprocedure(e.signature);
+ if p.oid is null or md5(p.prosrc) is distinct from e.source_md5 or p.prosecdef is distinct from e.definer
+ or pg_get_userbyid(p.proowner)<>'postgres' or p.proconfig is distinct from array['search_path=""']::text[]
+ or has_function_privilege('anon',p.oid,'execute') or has_function_privilege('authenticated',p.oid,'execute')
+ or has_function_privilege('service_role',p.oid,'execute') then raise exception 'site_package_dependency_changed: %',e.signature;end if;
+ end loop;
+end $$;
+create table site_order_package_private.approvals(
+ package_id uuid primary key references site_order_package_private.packages(id),
+ recipient_company_id uuid not null,actor_id uuid not null,session_id uuid not null,
+ request_id uuid not null,accepted_site_id uuid not null references public.sites(id),
+ trade_company_id uuid not null,connection_fingerprint text not null,
+ reply_intent_id uuid not null unique,created_at timestamptz not null default clock_timestamp(),
+ unique(recipient_company_id,actor_id,request_id)
+);
+create table site_order_package_private.reply_intents(
+ id uuid primary key,package_id uuid not null unique references site_order_package_private.packages(id),
+ site_id uuid not null references public.sites(id),issuer_company_id uuid not null,counterparty_company_id uuid not null,
+ trade_company_id uuid not null,connection_fingerprint text not null,document_id uuid not null unique,
+ source_original_receipt_id uuid not null references site_order_artifact_private.pdf_records(receipt_id),
+ body jsonb not null,body_sha256 text not null,
+ status text not null default 'awaiting_explicit_consent' check(status='awaiting_explicit_consent'),
+ created_at timestamptz not null default clock_timestamp()
+);
+create table site_order_package_private.approval_notice_intents(
+ id uuid primary key,package_id uuid not null references site_order_package_private.approvals(package_id),
+ audience_company_id uuid not null,kind text not null check(kind in('order_approved','acceptance_reply_pending')),
+ created_at timestamptz not null default clock_timestamp(),unique(package_id,audience_company_id,kind)
+);
+alter table site_order_package_private.approval_notice_intents enable row level security;
+create trigger immutable_approval_notice before update or delete on site_order_package_private.approval_notice_intents
+ for each row execute function trade_document_consent_private.immutable();
+create trigger immutable_approval_notice_truncate before truncate on site_order_package_private.approval_notice_intents
+ for each statement execute function trade_document_consent_private.immutable();
+alter table site_order_package_private.approvals enable row level security;
+alter table site_order_package_private.reply_intents enable row level security;
+create trigger immutable_order_approval before update or delete on site_order_package_private.approvals
+ for each row execute function trade_document_consent_private.immutable();
+create trigger immutable_order_approval_truncate before truncate on site_order_package_private.approvals
+ for each statement execute function trade_document_consent_private.immutable();
+create trigger immutable_order_reply before update or delete on site_order_package_private.reply_intents
+ for each row execute function trade_document_consent_private.immutable();
+create trigger immutable_order_reply_truncate before truncate on site_order_package_private.reply_intents
+ for each statement execute function trade_document_consent_private.immutable();
+create function site_order_package_private.approve_order(p_package uuid,p_trade uuid,p_fingerprint text,p_request uuid)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare a jsonb;cid uuid;sid uuid;p site_order_package_private.packages%rowtype;
+ old site_order_package_private.approvals%rowtype;i private.site_share_inbox%rowtype;
+ peer jsonb;payload jsonb;body jsonb;source_body jsonb;site uuid;intent uuid;doc uuid;
+begin
+ a:=private.require_standalone_trade_document_access();cid:=(a->>'company_id')::uuid;sid:=(a->>'session_id')::uuid;
+ -- Recipient filtering comes before any state result: foreign IDs reveal nothing.
+ select * into p from site_order_package_private.packages where id=p_package and recipient_company_id=cid for share;
+ if p.id is null then raise exception 'site_order_received_package_not_found' using errcode='42501';end if;
+ if p_request is null then raise exception 'site_order_request_required' using errcode='22023';end if;
+ perform pg_advisory_xact_lock(hashtextextended('site-order-approval:'||p.id::text,0));
+ select * into old from site_order_package_private.approvals where package_id=p.id for share;
+ if old.package_id is not null then
+  if(old.actor_id,old.session_id,old.request_id,old.trade_company_id,old.connection_fingerprint)
+   is distinct from(auth.uid(),sid,p_request,p_trade,p_fingerprint) then
+   raise exception 'site_order_approval_request_changed' using errcode='40001';end if;
+  return jsonb_build_object('package_id',p.id,'site_id',old.accepted_site_id,'reply_intent_id',old.reply_intent_id,
+   'status','approved_reply_awaiting_consent');
+ end if;
+ peer:=site_order_manager_private.counterparty_context(cid,p_trade,'acceptance');
+ if peer->>'company_id' is distinct from p.sender_company_id::text
+ or peer->>'connection_fingerprint' is distinct from p_fingerprint then
+  raise exception 'site_order_exact_sender_connection_required' using errcode='42501';end if;
+ select * into i from private.site_share_inbox where data_item_id=p.data_item_id and recipient_company_id=cid for update;
+ if i.data_item_id is null or i.status<>'pending' then raise exception 'site_order_pending_inbox_required' using errcode='40001';end if;
+ select x.payload into payload from private.company_data_delivery_items x where x.id=p.data_item_id for share;
+ select j.evidence->'body' into source_body from site_order_artifact_private.render_jobs j
+ join site_order_artifact_private.pdf_records r on r.job_id=j.id
+ where j.id=p.source_job_id and r.receipt_id=p.original_receipt_id
+ and j.company_id=p.sender_company_id and j.counterparty_company_id=cid for share of j,r;
+ if source_body is null or source_body->>'kind'<>'order' or nullif(payload->>'name','') is null then
+  raise exception 'site_order_bound_original_required' using errcode='42501';end if;
+ -- No financial fields or free notes are copied into the public site.
+ insert into public.sites(company_id,name,formal_name,address,nearest_station,representative_name,
+ representative_phone,latitude,longitude,starts_at,ends_at,status,created_by)
+ values(cid,payload->>'name',nullif(payload->>'formal_name',''),nullif(payload->>'address',''),
+ nullif(payload->>'nearest_station',''),nullif(payload->>'representative_name',''),nullif(payload->>'representative_phone',''),
+ nullif(payload->>'latitude','')::double precision,nullif(payload->>'longitude','')::double precision,
+ nullif(payload->>'starts_on','')::date,nullif(payload->>'ends_on','')::date,'preparation',auth.uid()) returning id into site;
+ intent:=gen_random_uuid();doc:=gen_random_uuid();
+ -- Preserve every received commercial condition. Only directional identity and
+ -- party roles change; new-form defaults and guessed prices never enter here.
+ body:=source_body||jsonb_build_object('kind','acceptance','transaction_id',doc,
+ 'issuer_company_id',cid,'counterparty_company_id',p.sender_company_id,
+ 'issuer',source_body->'counterparty','counterparty',source_body->'issuer');
+ insert into site_order_package_private.reply_intents(id,package_id,site_id,issuer_company_id,counterparty_company_id,
+ trade_company_id,connection_fingerprint,document_id,source_original_receipt_id,body,body_sha256)
+ values(intent,p.id,site,cid,p.sender_company_id,p_trade,p_fingerprint,doc,p.original_receipt_id,body,
+ encode(sha256(convert_to(body::text,'UTF8')),'hex'));
+ insert into site_order_package_private.approvals(package_id,recipient_company_id,actor_id,session_id,request_id,
+ accepted_site_id,trade_company_id,connection_fingerprint,reply_intent_id)
+ values(p.id,cid,auth.uid(),sid,p_request,site,p_trade,p_fingerprint,intent);
+ insert into site_order_package_private.approval_notice_intents(id,package_id,audience_company_id,kind)
+ values(gen_random_uuid(),p.id,p.sender_company_id,'order_approved'),
+ (gen_random_uuid(),p.id,cid,'acceptance_reply_pending');
+ update private.site_share_inbox set status='accepted',responded_by=auth.uid(),responded_at=clock_timestamp(),accepted_site_id=site
+ where data_item_id=p.data_item_id and recipient_company_id=cid;
+ -- Delivery workers must run only after COMMIT. This function neither renders
+ -- inside the approval transaction nor reports a reply as sent.
+ perform private.require_standalone_trade_document_access();
+ return jsonb_build_object('package_id',p.id,'site_id',site,'reply_intent_id',intent,
+ 'status','approved_reply_awaiting_consent');
+end $$;
+revoke all on all tables in schema site_order_package_private from public,anon,authenticated,service_role;
+revoke all on all functions in schema site_order_package_private from public,anon,authenticated,service_role;
+commit;
