@@ -21,7 +21,7 @@ const sourcePath=new URL('./verify_trade_document_bound_seal_consent.mjs',import
 const source=await fs.readFile(sourcePath,'utf8');
 const anchor=" console.log('PASS '+n+' bound consent checks;";
 if(source.split(anchor).length!==2)throw Error('Canonical completion anchor changed');
-const hook=" await (await import('./site_order_artifact_registration_fixture.mjs')).verifySiteOrderArtifactRegistration(db,{id,A,B,C,UA,UB,UV,UC,actor,q,prepare,preview,decide,confirmedTerms});\n await (await import('./site_order_manager_adapter_fixture.mjs')).verifySiteOrderManagerAdapter(db,{id,A,B,C,UA,UB,UC,actor,q,prepare,preview,decide,confirmedTerms});\n";
+const hook=" await (await import('./site_order_artifact_registration_fixture.mjs')).verifySiteOrderArtifactRegistration(db,{id,A,B,C,UA,UB,UV,UC,actor,q,prepare,preview,decide,confirmedTerms});\n await (await import('./site_order_manager_adapter_fixture.mjs')).verifySiteOrderManagerAdapter(db,{id,A,B,C,UA,UB,UC,actor,q,prepare,preview,decide,confirmedTerms,openNativePeer});\n";
 const temp=fileURLToPath(new URL(`./.site-order-artifact-fixture-${randomUUID()}.mjs`,import.meta.url));
 try {
  await fs.writeFile(temp,source.replace(anchor,hook+anchor),{flag:'wx',mode:0o600});

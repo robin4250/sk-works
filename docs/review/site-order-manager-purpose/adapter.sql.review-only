@@ -92,11 +92,18 @@ begin
  if a->>'company_id' is distinct from cid::text or s.document_id is null or s.company_id<>cid
  or not exists(select 1 from public.sites where id=s.site_id and company_id=cid) then
   raise exception 'site_manager_registered_site_document_required' using errcode='42501';end if;
+ perform 1 from public.sites where id=s.site_id and company_id=cid for share;
+ if not found then raise exception 'site_manager_registered_site_document_required' using errcode='42501';end if;
  peer:=site_order_manager_private.counterparty_context(cid,s.trade_company_id,s.kind);
  if peer->>'company_id' is distinct from s.counterparty_company_id::text
  or peer->>'connection_fingerprint' is distinct from s.connection_fingerprint then
   raise exception 'site_manager_counterparty_changed' using errcode='40001';end if;
  select * into d from trade_document_consent_private.documents where id=doc for share;
+ -- A reserved site document cannot lend authority to any financial revision,
+ -- including a historical binding after an owner returns its current body to standalone.
+ if exists(select 1 from trade_document_consent_private.revisions where document_id=doc and binding is not null) then
+  raise exception 'site_manager_document_repurposed' using errcode='42501';end if;
+
  if d.id is not null and (d.issuer_company_id,d.counterparty_company_id,d.document_kind)
  is distinct from(cid,s.counterparty_company_id,s.kind) then
   raise exception 'site_manager_directional_document_changed' using errcode='42501';end if;
@@ -135,10 +142,10 @@ begin
   if e.name='prepare_document' then
    src:=replace(src,E'begin\n',E'begin\n if parent_kind is not null or parent_id is not null or expected_parent_revision is not null or expected_attachment_version is not null then raise exception ''site_manager_no_financial_parent'' using errcode=''42501'';end if;\n if peer_company is distinct from(select counterparty_company_id from site_order_manager_private.document_scopes where document_id=doc) or body->>''kind'' is distinct from(select kind from site_order_manager_private.document_scopes where document_id=doc) then raise exception ''site_manager_exact_reserved_direction_required'' using errcode=''42501'';end if;\n');
   elsif e.name='prepare_job' then
-   src:=replace(src,E'begin\n',E'begin\n if p_site is distinct from(select site_id from site_order_manager_private.document_scopes where document_id=p_document and company_id=p_company) then raise exception ''site_manager_exact_reserved_site_required'' using errcode=''42501'';end if;\n');
+   src:=replace(src,E'begin\n',E'begin\n if not exists(select 1 from site_order_manager_private.document_scopes where document_id=p_document and company_id=p_company and site_id=p_site and trade_company_id=p_trade) then raise exception ''site_manager_exact_reserved_site_or_trade_required'' using errcode=''42501'';end if;\n');
   elsif e.name='register_canonical_pdf' then
    src:=replace(src,'perform site_order_manager_private.require_actor(j.company_id,j.document_id);',
-    'perform site_order_manager_private.require_actor(j.company_id,j.document_id); if j.site_id is distinct from(select site_id from site_order_manager_private.document_scopes where document_id=j.document_id and company_id=j.company_id) then raise exception ''site_manager_exact_reserved_site_required'' using errcode=''42501'';end if;');
+    'perform site_order_manager_private.require_actor(j.company_id,j.document_id); if not exists(select 1 from site_order_manager_private.document_scopes where document_id=j.document_id and company_id=j.company_id and site_id=j.site_id and trade_company_id=j.counterparty_trade_company_id and connection_fingerprint=j.counterparty_connection_fingerprint) then raise exception ''site_manager_exact_reserved_site_or_trade_required'' using errcode=''42501'';end if;');
   end if;
   args:=pg_get_function_arguments(p.oid);result_type:=pg_get_function_result(p.oid);
   vol:=case p.provolatile when 's' then 'stable' when 'i' then 'immutable' else 'volatile' end;

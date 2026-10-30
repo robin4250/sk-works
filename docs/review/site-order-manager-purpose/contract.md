@@ -40,7 +40,7 @@ company membership mutation, client-writable authorization GUC or public upload.
 
 ## Verification
 
-Disposable PGlite: 39 checks passed, including both manager order and acceptance
+Disposable PGlite: 46 checks passed, including both manager order and acceptance
 prepare → registered own seal consent → job → actual Dart PDF → original receipt.
 The original global helper still rejects manager. Foreign site/company/document,
 wrong registered direction, changed fingerprint, no registry, financial-parent
@@ -81,3 +81,21 @@ manager Node registration dispatch, actual internal runner/authenticated route,
 reply recovery/history/notifications, production prerequisites/installer and
 phone verification. The existing invoice/financial approval rights are not
 expanded. Production HOLD, new feature OFF and document exemption OFF remain.
+
+## Independent-review boundary corrections
+
+A real owner can legitimately re-associate a document with a financial parent
+through the unchanged original function. This previously left the manager site
+helper usable (RED reproduced). Site operations now lock the canonical document
+before inspecting all revision bindings and refuse a document with any financial
+revision, including a later return to standalone. Existing original owner/admin
+financial/archive routes are unchanged. A native two-connection test observes
+the manager's document lock blocking a parallel owner's canonical update.
+
+Job preparation also fixes the registered trade ID to the site reservation.
+Registration fixes site, registered trade ID and fingerprint together. A second
+registration linked to the same peer is not interchangeable: both manager job
+preparation and borrowing an owner-created alternate-registration job are
+rejected. The fixture keeps the duplicate directory row but removes its test-only
+second financial-parent mapping, so the separate legitimate-owner financial
+re-association regression can use the existing unique financial-link contract.
