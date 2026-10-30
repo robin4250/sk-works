@@ -372,6 +372,45 @@ class SharedDailyReportRepository {
     final raw = await _rpc('read_shared_daily_report_context', {'p_report_id': reportId}, expectedActor: expectedActor);
     return SharedDailyReportContext.parse(raw, actorId: expectedActor ?? _client.auth.currentSession!.user.id, reportId: reportId);
   }
+  Future<SharedDailyReportContext> resumeApprovedSignatures({
+    required SharedDailyReportContext before,
+    required String requestId,
+  }) async {
+    if (!before.enabled ||
+        before.isManagementHold ||
+        before.requiresAttendanceManagement ||
+        before.reportStatus != 'draft' ||
+        before.reportId == null ||
+        before.approvedEditRequestId != requestId ||
+        before.expectedUpdatedAt == null ||
+        before.signatureScopeFingerprint == null) {
+      throw StateError('承認済みの編集とサインの状態を確認してください。');
+    }
+    final raw = await _rpc('resume_approved_daily_report_signatures', {
+      'p_report_id': before.reportId,
+      'p_request_id': requestId,
+      'p_expected_updated_at': before.expectedUpdatedAt!
+          .toUtc()
+          .toIso8601String(),
+      'p_expected_signature_scope': before.signatureScopeFingerprint,
+    }, expectedActor: before.actorId);
+    final after = SharedDailyReportContext.parse(
+      raw,
+      actorId: before.actorId,
+      companyId: before.companyId,
+      reportId: before.reportId,
+      workDate: before.workDate,
+    );
+    if (after.approvedEditRequestId != requestId ||
+        after.reportStatus != 'draft' ||
+        after.reporterSaved ||
+        after.supervisorSaved ||
+        after.requiresAttendanceManagement) {
+      throw StateError('編集の再開状態を確認できません。日報を再読み込みしてください。');
+    }
+    return after;
+  }
+
   Future<SharedDailyReportContext> startFinalizationEdit({required SharedDailyReportContext before,
     required String reason}) async {
     if (!before.explicitFinalizationRequired || !before.explicitFinalizationEditable ||

@@ -38,8 +38,8 @@ begin
  perform 1 from shared_report_edit_private.sessions where report_id=rid for update;
  proof:=shared_report_edit_private.evidence(rid,request);
  if proof->>'actor_id' is distinct from actor::text or proof->>'session_id' is distinct from sid::text
- or proof->>'company_id' is distinct from r.company_id::text or proof->>'state'<>'active'
- or r.status<>'draft' or proof->'old_report'->>'status'<>'signed' then
+ or proof->>'company_id' is distinct from r.company_id::text or proof->>'state' is distinct from 'active'
+ or r.status is distinct from 'draft' or proof->'old_report'->>'status' is distinct from 'signed' then
   raise sqlstate '42501' using message='approved_signature_resume_exact_session_required';end if;
  -- Explicit finalization and management remain a different authorized workflow.
  if exists(select 1 from explicit_report_finalization_private.events where report_id=rid and kind='finalized')

@@ -4,9 +4,28 @@ on:
     paths:
       - 'docs/review/approved-edit-signature-resume/**'
       - 'tool/verify_approved_signature_resume.mjs'
+      - 'lib/features/daily_reports/daily_report_page.dart'
+      - 'lib/features/daily_reports/shared_daily_report_repository.dart'
+      - 'test/daily_report_approved_signature_resume_test.dart'
       - '.github/workflows/approved-signature-resume.yml'
   workflow_dispatch:
 jobs:
+  widget-resume:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze lib/features/daily_reports/daily_report_page.dart lib/features/daily_reports/shared_daily_report_repository.dart test/daily_report_approved_signature_resume_test.dart
+      - run: flutter test --reporter expanded test/daily_report_approved_signature_resume_test.dart test/daily_report_approved_edit_start_test.dart test/daily_report_approved_edit_failure_visibility_test.dart test/signature_blank_keyboard_test.dart test/signature_point_only_regression_test.dart
+      - run: git diff --exit-code -- pubspec.yaml pubspec.lock
   native-resume:
     runs-on: ubuntu-latest
     timeout-minutes: 15

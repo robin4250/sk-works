@@ -213,9 +213,23 @@ class _DailyReportPageState extends State<DailyReportPage> {
   String? _pendingReporterFingerprint;
   bool _optionalFactsHaveInputChanges = false;
 
-  bool get _editingApprovedReport => !_visitReport && _editSession != null &&
+  bool get _editingApprovedReport => !_visitReport && _editSession?.confirmed == true &&
       _editSession!.actorId == _repository?.currentActorId &&
       _editSession!.reportId == _report?.id;
+
+  bool get _canResumeApprovedSignatures =>
+      !_visitReport &&
+      !_signed &&
+      _report?.status == 'draft' &&
+      _editSession != null &&
+      !_editSession!.confirmed &&
+      _editSession!.actorId == _repository?.currentActorId &&
+      _editSession!.companyId == _report?.companyId &&
+      _editSession!.reportId == _report?.id &&
+      _sharedContext?.approvedEditRequestId == _editSession!.requestId &&
+      _sharedContext?.requiresAttendanceManagement != true &&
+      _report?.reporterSignatureJson != null &&
+      _report?.responsibleSignatureJson != null;
 
   void _invalidatePendingSignature() {
     if (_pendingResponsibleSignature == null) {
@@ -1690,7 +1704,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
   }
 
   Future<void> _sign() async {
-    if (_managementHold || _saving) return;
+    if (_managementHold || _saving || (_editSession != null && !_editSession!.confirmed)) return;
     if (_report?.reporterSignatureJson == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         content: Text('先に作業内容を保存し、報告者サインを登録してください。')));
@@ -2048,6 +2062,102 @@ class _DailyReportPageState extends State<DailyReportPage> {
           _approvedEditFailureTarget = editTarget;
           _approvedEditStartFailure = dailyReportActionErrorMessage(error);
         });
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _resumeApprovedSignatures() async {
+    final session = _editSession;
+    final repository = _repository;
+    final sharedRepository = _sharedReportRepository;
+    if (_saving ||
+        _managementHold ||
+        !_canResumeApprovedSignatures ||
+        session == null ||
+        repository == null ||
+        sharedRepository == null)
+      return;
+    final target = _approvedEditTarget;
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('承認済みの編集を再開'),
+        content: const Text('前のサインは履歴に残します。承認済みの編集を再開し、報告者・責任者の新しいサインを登録します。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('戻る'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('編集を再開'),
+          ),
+        ],
+      ),
+    );
+    if (accepted != true ||
+        !mounted ||
+        target != _approvedEditTarget ||
+        !_canResumeApprovedSignatures)
+      return;
+    setState(() => _saving = true);
+    try {
+      final before = await _readSharedContext(reportId: session.reportId);
+      if (!mounted ||
+          target != _approvedEditTarget ||
+          before == null ||
+          repository.currentActorId != session.actorId ||
+          _editSession?.requestId != session.requestId) {
+        throw const DailyReportActorChanged();
+      }
+      await sharedRepository.resumeApprovedSignatures(
+        before: before,
+        requestId: session.requestId,
+      );
+      if (!mounted ||
+          target != _approvedEditTarget ||
+          repository.currentActorId != session.actorId) {
+        throw const DailyReportActorChanged();
+      }
+      await _loadSelectedSite();
+      if (!mounted ||
+          target != _approvedEditTarget ||
+          repository.currentActorId != session.actorId ||
+          _error != null ||
+          _report?.status != 'draft' ||
+          _report?.reporterSignatureJson != null ||
+          _report?.responsibleSignatureJson != null ||
+          !await repository.verifyEditSession(session)) {
+        throw StateError('編集の再開状態を確認できません。日報を再読み込みしてください。');
+      }
+      await _editSessions.remember(session.confirm());
+      if (!mounted ||
+          target != _approvedEditTarget ||
+          repository.currentActorId != session.actorId) {
+        throw const DailyReportActorChanged();
+      }
+      setState(() {
+        _editSession = session.confirm();
+        _editSessionUnverified = false;
+        _approvedEditStartFailure = null;
+        _approvedEditFailureTarget = null;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('編集を再開しました。報告者、責任者の順にサインを登録してください。')),
+      );
+    } catch (error) {
+      // A response may have been lost. Reload for visibility, never resend here.
+      if (mounted &&
+          repository.currentActorId == session.actorId &&
+          target == _approvedEditTarget) {
+        await _loadSelectedSite();
+        if (mounted && target == _approvedEditTarget)
+          setState(() {
+            _approvedEditFailureTarget = target;
+            _approvedEditStartFailure = dailyReportActionErrorMessage(error);
+          });
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -2747,7 +2857,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
                             ),
                           ),
                           const SizedBox(height: 8),
-                          if (_signed || _documentComplete || _sharedContext?.supervisorSaved == true ||
+                          if (_signed || _documentComplete || _report?.responsibleSignatureJson != null || _sharedContext?.supervisorSaved == true ||
                               (_visitReport && _report?.responsibleSignatureJson != null))
                             Card(
                               shape: _stepCardShape, margin: EdgeInsets.zero,
@@ -2847,6 +2957,37 @@ class _DailyReportPageState extends State<DailyReportPage> {
                           if (_documentComplete)
                             const Padding(padding: EdgeInsets.symmetric(vertical: 8),
                               child: Text('日報のサインは保存済みです。給与・請求への反映には、勤務実績の確認と新しいサインが必要です。')),
+                    if (_canResumeApprovedSignatures)
+                      Card(
+                        key: const ValueKey(
+                          'daily-report-approved-signature-resume',
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              const Text(
+                                '承認済みの編集を再開してください',
+                                style: TextStyle(fontWeight: FontWeight.w800),
+                              ),
+                              const Text(
+                                '前のサインが残っています。再申請せず、編集を再開して新しいサインを登録します。',
+                              ),
+                              FilledButton.icon(
+                                key: const ValueKey(
+                                  'daily-report-resume-approved-signatures',
+                                ),
+                                onPressed: _saving || _managementHold
+                                    ? null
+                                    : _resumeApprovedSignatures,
+                                icon: const Icon(Icons.edit_outlined),
+                                label: const Text('承認済みの編集を再開'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                           if (_approvedEditStartFailure != null && _approvedEditFailureTarget == _approvedEditTarget)
                             Card(key: const ValueKey('daily-report-approved-edit-start-failure'),
                               child: Padding(padding: const EdgeInsets.all(12),
