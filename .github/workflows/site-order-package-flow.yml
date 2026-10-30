@@ -4,6 +4,7 @@ on:
     paths:
       - 'docs/review/site-order-package-flow/**'
       - 'tool/site_order_package_flow_fixture.mjs'
+      - 'tool/site_order_approval_operation_fixture.mjs'
       - 'tool/fixtures/site_order_legacy_public_respond.fixture.sql'
       - 'tool/site_order_canonical_renderer.mjs'
       - 'tool/verify_site_order_package_flow.mjs'

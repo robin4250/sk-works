@@ -256,19 +256,23 @@ class _SiteOrderPackagePageState extends State<SiteOrderPackagePage> {
 
   Future<void> _load() async {
     final recovering = _unknown;
+    var pendingApproval = false;
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
+      pendingApproval = await widget.api.hasPendingApproval(widget.packageId);
       final value = await widget.api.detail(widget.packageId);
       if (mounted && !widget.api.invalidated) {
         setState(() {
           _detail = value;
           // A negative read can race an earlier request still committing.
           // Only the final recipient receipt resolves an uncertain operation.
-          _unknown = recovering && value['reply_recipient_stored'] != true;
-          if (recovering) {
+          _unknown =
+              pendingApproval ||
+              (recovering && value['reply_recipient_stored'] != true);
+          if (recovering || pendingApproval) {
             _message = _unknown
                 ? '結果はまだ確定できません。再送せず、保存状態を再確認してください。'
                 : '相手の保管先への保存を確認しました。';
@@ -280,6 +284,28 @@ class _SiteOrderPackagePageState extends State<SiteOrderPackagePage> {
       }
     } catch (_) {
       if (mounted) setState(() => _error = '保存状態を確認できません。画面を開き直してください。');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _checkSaved() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final state = await widget.api.reconcileApproval(widget.packageId);
+      if (!mounted || widget.api.invalidated) return;
+      if (state != null) {
+        setState(() {
+          _unknown = false;
+          _message = state == 'accepted'
+              ? '承認の保存を確認しました。請書の送信状態を確認してください。'
+              : '前の承認は受け付けられていません。内容を確認して承認し直せます。';
+        });
+      }
+      await _load();
+    } catch (_) {
+      if (mounted) setState(() => _error = '保存状態はまだ確定できません。再送せず、もう一度確認してください。');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -402,6 +428,8 @@ class _SiteOrderPackagePageState extends State<SiteOrderPackagePage> {
   Widget build(BuildContext context) {
     final detail = _detail, rawBody = detail?['body'];
     final body = rawBody is Map ? rawBody : const {};
+    final projection = detail?['site_projection'];
+    final site = projection is Map ? projection : const {};
     final recipient = detail?['is_recipient'] == true;
     final approved = detail?['approved'] == true;
     final stored = detail?['reply_recipient_stored'] == true;
@@ -415,7 +443,7 @@ class _SiteOrderPackagePageState extends State<SiteOrderPackagePage> {
         actions: [
           IconButton(
             tooltip: '保存状態を確認',
-            onPressed: _busy ? null : _load,
+            onPressed: _busy ? null : _checkSaved,
             icon: const Icon(Icons.refresh),
           ),
         ],
@@ -437,6 +465,21 @@ class _SiteOrderPackagePageState extends State<SiteOrderPackagePage> {
                   ),
                   if (partyName != null && partyName.trim().isNotEmpty)
                     Text('${sent ? '送付先' : '注文元'}：$partyName'),
+                  if (recipient) ...[
+                    const SizedBox(height: 12),
+                    const Text('共有された現場情報'),
+                    for (final entry in const {
+                      'name': '現場名',
+                      'formal_name': '正式名称',
+                      'address': '住所',
+                      'nearest_station': '最寄り駅',
+                      'starts_on': '開始日',
+                      'ends_on': '終了日',
+                    }.entries)
+                      if (site[entry.key] is String &&
+                          (site[entry.key] as String).trim().isNotEmpty)
+                        Text('${entry.value}：${site[entry.key]}'),
+                  ],
                   const SizedBox(height: 12),
                   Chip(
                     label: Text(
@@ -489,7 +532,7 @@ class _SiteOrderPackagePageState extends State<SiteOrderPackagePage> {
                   ),
                 if (_unknown || _error != null)
                   OutlinedButton(
-                    onPressed: _busy ? null : _load,
+                    onPressed: _busy ? null : _checkSaved,
                     child: const Text('保存状態を確認'),
                   ),
               ],

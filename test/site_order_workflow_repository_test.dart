@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sk_works/features/sites/site_order_workflow_repository.dart';
 
@@ -17,6 +18,7 @@ class _Wire extends http.BaseClient {
   String role = 'manager';
   int functionStatus = 200;
   bool malformedSuccess = false;
+  Map<String, dynamic>? functionJson;
   int functions = 0;
   String? authorization;
   Completer<void>? hold;
@@ -70,6 +72,14 @@ class _Wire extends http.BaseClient {
         request: request,
       );
     }
+    if (functionJson != null) {
+      return http.StreamedResponse(
+        Stream.value(utf8.encode(jsonEncode(functionJson))),
+        200,
+        headers: {'content-type': 'application/json'},
+        request: request,
+      );
+    }
     if (malformedSuccess) {
       return http.StreamedResponse(
         Stream.value(utf8.encode('{"result":{"status":"recipient_stored"}}')),
@@ -102,6 +112,58 @@ Future<(SupabaseClient, SiteOrderWorkflowRepository)> _fixture(
 }
 
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
+  test('unknown approval remains quarantined across repositories until exact server barrier resolves', () async {
+    final wire = _Wire()..functionStatus = 409;
+    final f = await _fixture(wire);
+    final review = <String, dynamic>{
+      'package_id': package,
+      'preview_id': package,
+      'body_hash': 'b' * 64,
+      'own_seal': {'seal_hash': 'c' * 64},
+    };
+    await expectLater(
+      f.$2.approve(review, package),
+      throwsA(isA<SiteOrderResultUnknown>()),
+    );
+    expect(wire.functions, 1);
+    f.$2.dispose();
+    final reopened = SiteOrderWorkflowRepository(f.$1);
+    addTearDown(reopened.dispose);
+    addTearDown(f.$1.dispose);
+    expect(await reopened.hasPendingApproval(package), isTrue);
+    await expectLater(
+      reopened.approve(review, sid),
+      throwsA(isA<SiteOrderResultUnknown>()),
+    );
+    expect(wire.functions, 1);
+    wire.functionStatus = 200;
+    wire.functionJson = {
+      'result': {
+        'package_id': package,
+        'preview_id': package,
+        'request_id': sid,
+        'operation_state': 'cancelled',
+      },
+    };
+    await expectLater(
+      reopened.reconcileApproval(package),
+      throwsA(isA<SiteOrderResultUnknown>()),
+    );
+    expect(await reopened.hasPendingApproval(package), isTrue);
+    wire.functionJson = {
+      'result': {
+        'package_id': package,
+        'preview_id': package,
+        'request_id': package,
+        'operation_state': 'cancelled',
+      },
+    };
+    expect(await reopened.reconcileApproval(package), 'cancelled');
+    expect(await reopened.hasPendingApproval(package), isFalse);
+    expect(wire.functions, 3);
+  });
+
   setUp(
     () => TestWidgetsFlutterBinding.ensureInitialized()
         .handleAppLifecycleStateChanged(AppLifecycleState.resumed),

@@ -9,6 +9,7 @@ import '../../data/supabase_backend.dart';
 import '../../domain/company_seal_snapshot.dart';
 import '../shared/trade_document_form_renderer.dart';
 import '../shared/trade_document_form_session.dart';
+import 'site_order_approval_journal.dart';
 
 String siteOrderRequestId() {
   final random = Random.secure();
@@ -45,6 +46,8 @@ abstract class SiteOrderWorkflowApi extends ChangeNotifier {
   Future<Uint8List> original(String packageId, String kind);
   Future<Map<String, dynamic>> originalPayload(String packageId, String kind);
   Future<void> verify();
+  Future<bool> hasPendingApproval(String packageId) async => false;
+  Future<String?> reconcileApproval(String packageId) async => null;
 }
 
 /// One captured SDK session/gateway lease. No automatic mutation retry or new
@@ -71,6 +74,8 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
   final String _token;
   final TradeDocumentFormSession _session;
   final _retired = Completer<void>();
+  final _approvalJournal = SiteOrderApprovalJournal();
+  String get _actor => _client.auth.currentUser!.id;
   String? _company, _role;
   bool _invalid = false;
   @override
@@ -255,20 +260,79 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
   }
 
   @override
+  Future<bool> hasPendingApproval(String packageId) async {
+    await verify();
+    return await _approvalJournal.read(_actor, _company!, packageId) != null;
+  }
+
+  @override
+  Future<String?> reconcileApproval(String packageId) async {
+    await verify();
+    final pending = await _approvalJournal.read(_actor, _company!, packageId);
+    if (pending == null) return null;
+    final result = _map(
+      _map(
+        await _call({'action': 'reconcile_approval', ...pending}, write: true),
+      )['result'],
+    );
+    if (result['package_id'] != packageId ||
+        result['request_id'] != pending['request_id'] ||
+        result['preview_id'] != pending['preview_id'] ||
+        !const {'accepted', 'cancelled'}.contains(result['operation_state'])) {
+      throw const SiteOrderResultUnknown();
+    }
+    await verify();
+    await _approvalJournal.resolve(
+      _actor,
+      _company!,
+      packageId,
+      pending['request_id']!,
+    );
+    return result['operation_state'] as String;
+  }
+
+  @override
   Future<Map<String, dynamic>> approve(
     Map<String, dynamic> review,
     String requestId,
-  ) async => _writeOutcome(
-    await _call({
-      'action': 'approve',
-      'preview_id': review['preview_id'],
-      'body_hash': review['body_hash'],
-      'seal_hash': _map(review['own_seal'])['seal_hash'],
-      'confirmed': true,
-      'request_id': requestId,
-    }, write: true),
-    review['package_id'],
-  );
+  ) async {
+    await verify();
+    final id = review['package_id'];
+    if (!_savedId(id) ||
+        !_savedId(review['preview_id']) ||
+        !_savedId(requestId)) {
+      throw StateError('承認内容を確認できません。');
+    }
+    if (await hasPendingApproval(id as String))
+      throw const SiteOrderResultUnknown();
+    await _approvalJournal.begin(
+      _actor,
+      _company!,
+      id,
+      review['preview_id'] as String,
+      requestId,
+    );
+    try {
+      final result = _writeOutcome(
+        await _call({
+          'action': 'approve',
+          'preview_id': review['preview_id'],
+          'body_hash': review['body_hash'],
+          'seal_hash': _map(review['own_seal'])['seal_hash'],
+          'confirmed': true,
+          'request_id': requestId,
+        }, write: true),
+        id,
+      );
+      await _approvalJournal.resolve(_actor, _company!, id, requestId);
+      return result;
+    } catch (_) {
+      // The persisted entry outlives this page/session. Never infer rejection
+      // from a network error, cancellation or a negative package-detail read.
+      throw const SiteOrderResultUnknown();
+    }
+  }
+
   @override
   Future<Map<String, dynamic>> resume(String id) async => _writeOutcome(
     await _call({'action': 'process_reply', 'package_id': id}, write: true),
