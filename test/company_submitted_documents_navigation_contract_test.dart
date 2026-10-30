@@ -13,7 +13,14 @@ void main() {
     expect(app, contains("key: 'company_documents'"));
     expect(app, contains("SkoLanguageController.tr('会社データ')"));
     expect(app, contains("key == 'company_documents' && !_isAdmin"));
-    expect(app, contains("(key == 'company_deliveries' || key == 'company_delivery_inbox') && !_identity.isManagement"));
+    final normalized = app.replaceAll(RegExp(r'\s+'), ' ');
+    expect(
+      normalized,
+      contains(
+        "(key == 'company_deliveries' || key == 'company_delivery_inbox' || key == 'trade_documents') && !_identity.isManagement",
+      ),
+      reason: 'Company deliveries and the standalone trade hub retain the same management-only navigation gate',
+    );
     expect(app, contains('HomeShortcut('));
     expect(home, contains("shortcut.access"));
     expect(app, contains("'company_documents',"));
