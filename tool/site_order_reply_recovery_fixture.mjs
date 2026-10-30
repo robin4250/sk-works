@@ -48,7 +48,8 @@ export async function verifyReplyRecovery(db,c){
  check(result.status,'recipient_stored');
  const receipt=await q('select to_jsonb(r) v from site_order_artifact_private.pdf_records r where job_id=$1',[ready.job_id]);
  check(receipt.receipt_id,result.original_receipt_id);
- await deny(()=>q('select site_order_manager_private.register_canonical_pdf($1,$2) v',[ready.job_id,receipt.pdf_bytes]),/original_actor_session/);
+ const nativePdf=await q('select pdf_bytes v from site_order_artifact_private.pdf_records where job_id=$1',[ready.job_id]);
+ await deny(()=>q('select site_order_manager_private.register_canonical_pdf($1,$2) v',[ready.job_id,nativePdf]),/original_actor_session/);
  const replay=await processRecoveredSiteOrderReply(db,incoming.package_id,lease.lease_id,()=>{throw Error('must reuse original');},claims);
  check(replay.original_receipt_id,result.original_receipt_id);
  check((await q('select site_order_package_private.reconcile_reply_recovery($1,$2,$3) v',[incoming.package_id,preview.preview_id,id(15005)])).operation_state,'accepted');
