@@ -59,4 +59,29 @@ with tempfile.TemporaryDirectory(prefix='sko-workflow-composition-') as temp:
     except ValueError as error:
         assert str(error) == 'fixed_private_source_required'
     assert not blocked.exists()
+    alias = root / 'alias'
+    alias.symlink_to(root, target_is_directory=True)
+    try:
+        module.stage(source, alias / 'not-created')
+        raise AssertionError('symlink output parent accepted')
+    except ValueError as error:
+        assert str(error) == 'new_absolute_private_destination_required'
+    assert not (root / 'not-created').exists()
+    fake = root / 'changed-receipt'
+    (fake / 'build').mkdir(parents=True)
+    for name in ('workflow_source_pins.json', 'build-proof.json'):
+        shutil.copyfile(P / name, fake / name)
+    altered = json.loads((P / 'build/build-receipt.json').read_text())
+    altered['outputs']['main.wasm']['sha256'] = '0' * 64
+    (fake / 'build/build-receipt.json').write_text(json.dumps(altered))
+    original_module_path = module.P
+    module.P = fake
+    try:
+        module.stage(source, root / 'receipt-not-created')
+        raise AssertionError('changed build receipt accepted')
+    except ValueError as error:
+        assert str(error) == 'reviewed_build_receipt_changed'
+    finally:
+        module.P = original_module_path
+    assert not (root / 'receipt-not-created').exists()
 print('PASS actual ten-file private composition, manifest/hash/modes, no overwrite, source drift and symlink refusal')

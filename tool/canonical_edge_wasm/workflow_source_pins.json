@@ -7,5 +7,6 @@
     "supabase/functions/site-order-workflow/auth.mjs": "b71378004e878b785836acf6fdc9f616b875e36602d506e91cd1c8b0a4a1f6a8",
     "supabase/functions/site-order-workflow/handler.mjs": "15705ca8da15ae4c7bdec8a9df8b21c6d7b7c710032b17a5221caa416e4e42bc",
     "tool/site_order_canonical_core.mjs": "e1f88ac1432af378d02beb009d7afa4e184018dd6905cea54e07d4531c4d7d3d"
-  }
+  },
+  "adapter_sha256": "783a7e5367d4303c6956f839845453bfe99bb27095f088ea679a32767f2b3a86"
 }

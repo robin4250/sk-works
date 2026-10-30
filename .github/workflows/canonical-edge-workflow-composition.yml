@@ -5,6 +5,7 @@ on:
       - 'tool/canonical_edge_wasm/stage_workflow*'
       - 'tool/canonical_edge_wasm/combined_import_test.mjs'
       - 'tool/canonical_edge_wasm/workflow_source_pins.json'
+      - 'tool/canonical_edge_wasm/combined-deno.lock'
       - '.github/workflows/canonical-edge-workflow-composition.yml'
 permissions: {contents: read}
 jobs:
@@ -43,7 +44,7 @@ jobs:
           python3 tool/canonical_edge_wasm/stage_workflow_test.py
           python3 tool/canonical_edge_wasm/stage_workflow.py --source-root . --output /tmp/sko-workflow-private
       - name: Resolve actual pinned npm specifiers without executing server code
-        run: tool/canonical_edge_wasm/build/deno146/node_modules/@deno/linux-x64-glibc/deno cache --no-config --lock=/tmp/sko-combined-deno.lock /tmp/sko-workflow-private/supabase/functions/site-order-workflow/runtime.mjs
+        run: tool/canonical_edge_wasm/build/deno146/node_modules/@deno/linux-x64-glibc/deno cache --no-config --frozen --lock=tool/canonical_edge_wasm/combined-deno.lock /tmp/sko-workflow-private/supabase/functions/site-order-workflow/runtime.mjs
       - name: Actual Deno combined import and staged PDF with no network/project credentials
         env:
           USER: synthetic-fixture
@@ -51,10 +52,10 @@ jobs:
           WS_NO_BUFFER_UTIL: '1'
           WS_NO_UTF_8_VALIDATE: '1'
         run: |
-          tool/canonical_edge_wasm/build/deno146/node_modules/@deno/linux-x64-glibc/deno run --no-config --cached-only --frozen --lock=/tmp/sko-combined-deno.lock --allow-env=USER,NODE_ENV,WS_NO_BUFFER_UTIL,WS_NO_UTF_8_VALIDATE --allow-read=/tmp/sko-workflow-private,tool/canonical_edge_wasm tool/canonical_edge_wasm/combined_import_test.mjs /tmp/sko-workflow-private
+          tool/canonical_edge_wasm/build/deno146/node_modules/@deno/linux-x64-glibc/deno run --no-config --cached-only --frozen --lock=tool/canonical_edge_wasm/combined-deno.lock --allow-env=USER,NODE_ENV,WS_NO_BUFFER_UTIL,WS_NO_UTF_8_VALIDATE --allow-read=/tmp/sko-workflow-private,tool/canonical_edge_wasm tool/canonical_edge_wasm/combined_import_test.mjs /tmp/sko-workflow-private
       - uses: actions/upload-artifact@v4
         with:
           name: canonical-workflow-composition-receipts
           path: |
-            /tmp/sko-combined-deno.lock
+            tool/canonical_edge_wasm/combined-deno.lock
             /tmp/sko-workflow-private/private-composition-manifest.json

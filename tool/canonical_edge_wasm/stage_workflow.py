@@ -25,10 +25,13 @@ def checked_file(root, relative):
 def stage(source, output):
     os.umask(0o077)
     source = source.resolve(strict=True)
-    if output.exists() or output.is_symlink() or not output.is_absolute():
+    if (output.exists() or output.is_symlink() or not output.is_absolute()
+            or any(parent.is_symlink() for parent in output.parents)):
         raise ValueError('new_absolute_private_destination_required')
     pins = json.loads((P / 'workflow_source_pins.json').read_text())
     receipt = json.loads((P / 'build/build-receipt.json').read_text())
+    if receipt != json.loads((P / 'build-proof.json').read_text()):
+        raise ValueError('reviewed_build_receipt_changed')
     pending = {}
     for name, expected in pins['files'].items():
         data = checked_file(source, name)
@@ -41,7 +44,10 @@ def stage(source, output):
         if len(data) != pin['bytes'] or hashlib.sha256(data).hexdigest() != pin['sha256']:
             raise ValueError('compiled_artifact_changed')
         pending[str(FUNCTION / '_canonical' / name)] = data
-    pending[str(FUNCTION / '_canonical/edge_adapter.mjs')] = checked_file(P, 'edge_adapter.mjs.in')
+    adapter = checked_file(P, 'edge_adapter.mjs.in')
+    if hashlib.sha256(adapter).hexdigest() != pins['adapter_sha256']:
+        raise ValueError('reviewed_adapter_changed')
+    pending[str(FUNCTION / '_canonical/edge_adapter.mjs')] = adapter
     total = sum(map(len, pending.values()))
     if total >= 20_000_000:
         raise ValueError('static_and_source_budget_exceeded')

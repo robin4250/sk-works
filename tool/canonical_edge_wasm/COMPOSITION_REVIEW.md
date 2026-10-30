@@ -3,7 +3,8 @@
 `stage_workflow.py` fills the previous hand-copy gap. It verifies the five
 reviewed HTTP/coordinator files at `e84fc59681282136187d20bb80760c2b339d6895`
 against `workflow_source_pins.json`, verifies the generated canonical runtime
-receipt, and stages exactly ten source/runtime files into a new private tree.
+receipt against the retained reviewed `build-proof.json`, and stages exactly ten
+source/runtime files into a new private tree.
 The original relative import from the HTTP handler to the pure DB coordinator
 is preserved. No handler, coordinator, Auth policy, SQL, configuration or existing
 deployment is edited. Later site workflow changes require an explicitly reviewed
@@ -25,8 +26,8 @@ python3 tool/canonical_edge_wasm/stage_workflow.py --source-root . --output /new
 ```
 
 The new staging tests verify ten exact files, byte/hash/mode receipts, refusal to
-overwrite an existing destination, and source drift/symlink refusal before any
-destination is created. No `.env`, project config, customer seal/original, runtime
+overwrite an existing destination, source drift/source symlink and output-parent
+symlink refusal before any destination is created. No `.env`, project config, customer seal/original, runtime
 credential, node_modules or previous release is copied.
 
 The dedicated composition CI caches the actual pinned npm imports in official
@@ -40,8 +41,13 @@ three rejected HTTP boundaries without invoking DB/render and renders one
 existing synthetic immutable evidence case through the staged real Wasm.
 
 This is import/composition evidence, not real JWT authentication, DB authorization,
-delivery, runtime quota or hosted execution. A generated dependency lock must be
-reviewed and retained before any deployment. The local Deno native npm-cache step
+delivery, runtime quota or hosted execution. The successful initial CI's actual
+Deno 1.46 lock is retained as `combined-deno.lock` and both cache and execution now
+require it frozen. Its SDK/PG runtime versions and integrity match the existing
+Node fixture locks; only TypeScript's Node declarations resolve to an older version.
+The complete CLI bundle still needs to demonstrably preserve this dependency
+graph before deployment; a successful standalone Deno lock is not that proof.
+The local Deno native npm-cache step
 could not reach the registry in this environment; dedicated CI results must be
 checked on its exact source head rather than inferred from local syntax/staging.
 
