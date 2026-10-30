@@ -127,13 +127,32 @@ class _EditorState extends State<TradeDocumentAttachmentEditorPage> {
       _requireScope();_payload=saved.payload;_version=saved.version;
     }catch(_){_saveUncertain=true;rethrow;}finally{_saving=false;}
   }
+  Future<TradeDocumentFormDraft> _refreshOwnCompany(TradeDocumentFormDraft current)async{
+    _requireScope();if(!_canEdit)throw StateError('この書類は変更できません。');
+    final fresh=await _repo!.loadWorkspace(subjectKind:widget.subjectKind,subjectId:widget.subjectId,sourceRevision:widget.sourceRevision);
+    _requireScope();
+    final attachment=fresh['attachment'];final version=attachment is Map?attachment['version']:0;
+    if(version!=_version||fresh['company_id']!=_workspace?['company_id']||fresh['source_revision']!=_workspace?['source_revision']||
+      fresh['source_changed']==true||fresh['source_locked']==true||fresh['source_blocked']==true||fresh['can_manage']!=true||fresh['form_fields_schema_version']!=2) {
+      throw StateError('書類や会社情報の状態が変わりました。開き直してください。');
+    }
+    final issuer=(fresh['defaults'] as Map?)?['issuer'];final payload=current.payload;final previous=payload['issuer'] as Map;
+    if(issuer is! Map||issuer['name']!=previous['name'])throw StateError('登録会社を確認できません。');
+    final next=Map<String,dynamic>.from(previous);
+    for(final key in ['phone','fax','representative_name']) {
+      final value=issuer[key];if(value is! String||value.runes.length>(key=='representative_name'?80:40))throw StateError('会社の連絡先を確認できません。');
+      next[key]=value;
+    }
+    payload['issuer']=next;
+    return TradeDocumentFormDraft.fromPayload(payload,allowAmountEditing:false);
+  }
   Future<void> _openTyped()async{
     if(_typedLaunched||!_canEdit)return;
     try{
-      _requireScope();final draft=TradeDocumentFormDraft.fromPayload(_payload,allowAmountEditing:false);
+      _requireScope();final draft=TradeDocumentFormDraft.fromPayload(_payload,allowAmountEditing:false,initializeDefaults:_version==0&&_workspace?['source_locked']==false&&_workspace?['form_fields_schema_version']==2,initializeExtendedFields:_version==0&&_workspace?['source_locked']==false&&_workspace?['form_fields_schema_version']==2);
       _typedLaunched=true;
       final saved=await Navigator.of(context).push<bool>(MaterialPageRoute(builder:(_)=>TradeDocumentTouchEditorPage(
-        initial:draft,requireScope:_requireScope,scopeChanges:_scope,canEdit:true,buildPreview:_preview,onSave:_saveTyped)));
+        initial:draft,allowExtendedFields:_workspace?['form_fields_schema_version']==2,onRefreshOwnCompany:_workspace?['form_fields_schema_version']==2?_refreshOwnCompany:null,requireScope:_requireScope,scopeChanges:_scope,canEdit:true,buildPreview:_preview,onSave:_saveTyped)));
       if(!mounted)return;_requireScope();
       if(saved==true&&ModalRoute.of(context)?.isCurrent==true){Navigator.of(context).pop(true);}
     }catch(error){if(mounted&&!_revoked)setState(()=>_error=error.toString());}

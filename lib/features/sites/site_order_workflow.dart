@@ -37,9 +37,15 @@ class SiteOrderArtifact {
   SiteOrderArtifact({required this.id, required this.companyId,
     required this.siteId, required this.revision, required this.pdfSha256,
     required this.title, required this.startsOn, required this.endsOn,
-    required this.sealVersionId, required this.kind, required List<SiteOrderPrice> prices})
+    required this.sealVersionId, required this.kind,
+    required this.counterpartyCompanyId, required this.counterpartyName,
+    required this.counterpartyTradeCompanyId, required this.counterpartyConnectionFingerprint,
+    required List<SiteOrderPrice> prices})
     : prices = List.unmodifiable(prices) {
     if ([id, companyId, siteId, sealVersionId, title].any((s) => s.trim().isEmpty) ||
+        [counterpartyCompanyId,counterpartyName,counterpartyTradeCompanyId].any((s)=>s.trim().isEmpty) ||
+        counterpartyCompanyId == companyId ||
+        !RegExp(r'^[a-f0-9]{64}$').hasMatch(counterpartyConnectionFingerprint) ||
         revision < 1 || !RegExp(r'^[a-f0-9]{64}$').hasMatch(pdfSha256) ||
         !_date(startsOn) || !_date(endsOn) ||
         endsOn.compareTo(startsOn) < 0 || prices.isEmpty) {
@@ -50,11 +56,16 @@ class SiteOrderArtifact {
     sealVersionId;
   final int revision;
   final SiteOrderArtifactKind kind;
+  final String counterpartyCompanyId,counterpartyName,counterpartyTradeCompanyId,
+    counterpartyConnectionFingerprint;
   final List<SiteOrderPrice> prices;
   String get period => '$startsOn ～ $endsOn';
   String get fingerprint => jsonEncode({'id': id, 'company_id': companyId,
     'site_id': siteId, 'revision': revision, 'pdf_sha256': pdfSha256, 'kind': kind.name,
     'seal_version_id': sealVersionId, 'title': title,
+    'counterparty_company_id': counterpartyCompanyId, 'counterparty_name':counterpartyName,
+    'counterparty_trade_company_id':counterpartyTradeCompanyId,
+    'counterparty_connection_fingerprint':counterpartyConnectionFingerprint,
     'starts_on': startsOn, 'ends_on': endsOn,
     'prices': prices.map((p) => p.toJson()).toList()});
 
@@ -67,11 +78,11 @@ class SiteOrderArtifact {
 
 class SiteOrderRecipient {
   const SiteOrderRecipient({required this.tradeCompanyId,
-    required this.companyId, required this.name, required this.connectionVersion});
+    required this.companyId, required this.name, required this.connectionFingerprint});
   final String tradeCompanyId, companyId, name;
-  final int connectionVersion;
+  final String connectionFingerprint;
   String get fingerprint => jsonEncode([tradeCompanyId, companyId, name,
-    connectionVersion]);
+    connectionFingerprint]);
 }
 
 class SiteOrderDeliveryIntent {
@@ -89,11 +100,11 @@ class SiteOrderDeliveryReceipt {
     required this.artifactRevision, required this.pdfSha256,
     required this.recipientCompanyId, required this.deliveryId,
     required this.actorId, required this.sessionId,
-    required this.recipientConnectionVersion});
+    required this.recipientTradeCompanyId,required this.recipientConnectionFingerprint});
   final String requestId, companyId, siteId, artifactId, pdfSha256,
     recipientCompanyId, deliveryId;
-  final String actorId, sessionId;
-  final int artifactRevision, recipientConnectionVersion;
+  final String actorId, sessionId,recipientTradeCompanyId,recipientConnectionFingerprint;
+  final int artifactRevision;
   bool matches(SiteOrderDeliveryIntent intent) =>
     requestId == intent.requestId && companyId == intent.scope.companyId &&
     siteId == intent.scope.siteId && artifactId == intent.artifact.id &&
@@ -101,7 +112,8 @@ class SiteOrderDeliveryReceipt {
     pdfSha256 == intent.artifact.pdfSha256 &&
     recipientCompanyId == intent.recipient.companyId && deliveryId.isNotEmpty &&
     actorId == intent.scope.actorId && sessionId == intent.scope.sessionId &&
-    recipientConnectionVersion == intent.recipient.connectionVersion;
+    recipientTradeCompanyId == intent.recipient.tradeCompanyId &&
+    recipientConnectionFingerprint == intent.recipient.connectionFingerprint;
 }
 
 enum SiteOrderSendState { selecting, confirming, preparing, sending, outcomeUnknown, sent, retired }
@@ -156,7 +168,12 @@ class SiteOrderSendWorkflow {
     if (state != SiteOrderSendState.selecting ||
         recipient.companyId.isEmpty || recipient.companyId == scope.companyId ||
         recipient.tradeCompanyId.isEmpty || recipient.name.trim().isEmpty ||
-        recipient.connectionVersion < 1 || !isRecipientCurrent(recipient)) {
+        !RegExp(r'^[a-f0-9]{64}$').hasMatch(recipient.connectionFingerprint) ||
+        recipient.companyId != artifact.counterpartyCompanyId ||
+        recipient.name != artifact.counterpartyName ||
+        recipient.tradeCompanyId != artifact.counterpartyTradeCompanyId ||
+        recipient.connectionFingerprint != artifact.counterpartyConnectionFingerprint ||
+        !isRecipientCurrent(recipient)) {
       throw StateError('送信先の協力会社を確認してください。');
     }
     _recipient = recipient;

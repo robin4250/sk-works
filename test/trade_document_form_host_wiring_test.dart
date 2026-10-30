@@ -77,6 +77,21 @@ class _Fixture{
 }
 void main(){
   setUp(()=>TestWidgetsFlutterBinding.ensureInitialized().handleAppLifecycleStateChanged(AppLifecycleState.resumed));
+  for(final locked in [false,true]){
+    testWidgets('fresh host defaults are opt-in only for unlocked source ($locked)',(tester)async{
+      final f=_Fixture();try{
+        final defaults=_payload()..remove('form_fields');defaults['notes']='';
+        final workspace=_workspace(defaults:defaults,locked:locked)..['attachment']=null..['form_fields_schema_version']=2;
+        await f.mount(tester,workspace);
+        final touch=tester.widget<TradeDocumentTouchEditorPage>(find.byType(TradeDocumentTouchEditorPage));
+        final fields=touch.initial.payload['form_fields'];
+        expect(fields['work_content'],locked?'':'とび工事');
+        expect(fields['schema'],locked?1:2);
+        expect(touch.initial.payload['notes'],locked?'':tradeDocumentDefaultNotes);
+        expect(f.repository!.saves,0);expect(tester.takeException(),isNull);
+      }finally{await f.close(tester);}
+    });
+  }
   testWidgets('monthly real host opens reviewed input with one bound scope, immutable parties and amounts', (tester)async{
     final f=_Fixture();try{
       await f.mount(tester,_workspace());final touch=tester.widget<TradeDocumentTouchEditorPage>(find.byType(TradeDocumentTouchEditorPage));

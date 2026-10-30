@@ -11,12 +11,14 @@ class TradeDocumentTouchEditorPage extends StatefulWidget {
   const TradeDocumentTouchEditorPage({super.key, required this.initial,
     required this.requireScope, required this.buildPreview, required this.onSave,
     required this.canEdit, this.scopeChanges, this.onEditOwnCompany,
-    this.onEditCounterparty});
+    this.onEditCounterparty, this.allowExtendedFields = false, this.onRefreshOwnCompany});
   final TradeDocumentFormDraft initial;
   final VoidCallback requireScope;
   final Future<Uint8List> Function(Map<String, dynamic>) buildPreview;
   final Future<void> Function(Map<String, dynamic>) onSave;
   final bool canEdit;
+  final bool allowExtendedFields;
+  final Future<TradeDocumentFormDraft> Function(TradeDocumentFormDraft)? onRefreshOwnCompany;
   final Listenable? scopeChanges;
   final VoidCallback? onEditOwnCompany, onEditCounterparty;
   @override State<TradeDocumentTouchEditorPage> createState() => _TouchEditorState();
@@ -100,8 +102,13 @@ class _TouchEditorState extends State<TradeDocumentTouchEditorPage> with Widgets
         builder: (sheet) => _CompanySheet(title: target.title,
           data: Map<String, dynamic>.from(_draft!.payload[target.company] as Map),
           onEdit: target.company == 'issuer' ? widget.onEditOwnCompany : widget.onEditCounterparty,
-          requireScope: _check));
+          requireScope: _check, onRefresh: target.company=='issuer'&&widget.onRefreshOwnCompany!=null ? () => unawaited(_refreshCompany()) : null, onTitle: target.company=='issuer'&&widget.allowExtendedFields ? () => unawaited(_open(
+            const _Target('issuer_title','代表者の役職',Rect.zero,[
+              _Spec('form.issuer_representative_title','役職（この書類の表示）',max:32)]))) : null));
       return;
+    }
+    if(target.id=='amount'&&widget.allowExtendedFields) {
+      target=_Target(target.id,target.title,target.rect,[...target.specs,const _Spec('form.amount_description','発注金額の文面',max:240)]);
     }
     if (target.specs.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -113,7 +120,7 @@ class _TouchEditorState extends State<TradeDocumentTouchEditorPage> with Widgets
       context: context, useRootNavigator: false, isScrollControlled: true,
       useSafeArea: true, builder: (_) => _FieldSheet(title: target.title,
         specs: target.specs, payload: draft.payload,
-        confirm: (values) {
+        allowExtendedFields: widget.allowExtendedFields, confirm: (values) {
           _check();
           if (generation != _generation) throw StateError('入力画面を開き直してください。');
           final form = Map<String, dynamic>.from(draft.payload['form_fields'] as Map);
@@ -128,7 +135,13 @@ class _TouchEditorState extends State<TradeDocumentTouchEditorPage> with Widgets
               formChanged = true;
             }
           }
-          if (formChanged) changes['form_fields'] = form;
+          if (formChanged) {
+            if(form['progress_cutoff_day']=='month_end'||values.containsKey('form.issuer_representative_title')||values.containsKey('form.amount_description')) {
+              if(!widget.allowExtendedFields)throw StateError('この書類では末日・役職の入力を利用できません。');
+              form['schema']=2;form.putIfAbsent('issuer_representative_title',()=> '');form.putIfAbsent('amount_description',()=> '下記「施工単価内訳書」による');
+            }
+            changes['form_fields'] = form;
+          }
           return draft.withChanges(changes);
         }));
     if (confirmed == null || !mounted) return;
@@ -139,6 +152,25 @@ class _TouchEditorState extends State<TradeDocumentTouchEditorPage> with Widgets
       setState(() { _draft = confirmed; _generation++; _error = null; });
       WidgetsBinding.instance.addPostFrameCallback((_) => _fit());
     } catch (_) { _invalidate(); }
+  }
+  Future<void> _refreshCompany() async {
+    if(_busy||_revoked||_saveUncertain||widget.onRefreshOwnCompany==null)return;
+    final generation=_generation;
+    try {
+      _check();
+      final confirmed=await showDialog<bool>(context: _navigator.currentContext!,useRootNavigator:false,
+        builder:(context)=>AlertDialog(title:const Text('会社データを反映'),
+          content:const Text('登録中の電話・FAX・代表者名をこの下書きに反映します。現在の表示内容を置き換えますが、保存するまでは書類へ登録しません。'),
+          actions:[TextButton(onPressed:()=>Navigator.pop(context,false),child:const Text('キャンセル')),
+            FilledButton(onPressed:()=>Navigator.pop(context,true),child:const Text('反映'))]));
+      if(confirmed!=true)return;
+      _check();if(generation!=_generation)return;
+      setState(()=>_busy=true);
+      final next=await widget.onRefreshOwnCompany!(_draft!);
+      _check();if(!mounted||generation!=_generation)return;
+      setState((){_draft=next;_generation++;_error=null;});
+    }catch(error){if(mounted&&!_revoked)setState(()=>_error=_message(error));}
+    finally{if(mounted&&!_revoked)setState(()=>_busy=false);}
   }
   Future<void> _preview() async {
     if (_busy || _saveUncertain) return;
@@ -251,7 +283,7 @@ void _writePath(Map<String, dynamic> map, List<String> path, Object? value) {
   else { (current as Map)[path.last] = value; }
 }
 
-enum _InputKind { text, integer, decimal, date, choice, month }
+enum _InputKind { text, integer, decimal, date, choice, month, closingDay }
 class _Spec {
   const _Spec(this.path, this.label, {this.kind = _InputKind.text,
     this.max = 240, this.lines = 1, this.nullable = false});
@@ -302,7 +334,7 @@ List<_Target> _targets(TradeDocumentFormDraft draft, Size paper) {
       const _Spec('base.total_amount_yen', '発注金額（円・必須）', kind: _InputKind.integer),
       const _Spec('base.tax_amount_yen', 'うち消費税等（円・必須）', kind: _InputKind.integer)] : const []),
     _Target('cutoffs', '締切日・支払日', row(6, 7), [
-      const _Spec('form.progress_cutoff_day', '出来高締切日（毎月）', kind: _InputKind.integer),
+      const _Spec('form.progress_cutoff_day', '出来高締切日（毎月）', kind: _InputKind.closingDay),
       const _Spec('form.invoice_cutoff_day', '請求書締切日（毎月）', kind: _InputKind.integer),
       const _Spec('form.payment_month_offset', '支払月', kind: _InputKind.month),
       const _Spec('form.payment_day', '支払日', kind: _InputKind.integer)]),
@@ -363,7 +395,7 @@ class _Paper extends StatelessWidget {
       String value;
       if (target.company != null) {
         final party = Map<String, dynamic>.from(payload[target.company] as Map);
-        value = '${target.title}\n${party['name'] ?? ''}\n${party['address'] ?? ''}\n${party['representative_name'] ?? ''}';
+        value = '${target.title}\n${party['name'] ?? ''}\n${party['address'] ?? ''}\n${target.company=='issuer' ? (payload['form_fields'] as Map)['issuer_representative_title'] ?? '' : ''} ${party['representative_name'] ?? ''}';
         if (target.company == 'issuer') {
           value += '\nTEL ${party['phone'] ?? ''}　FAX ${party['fax'] ?? ''}';
         }
@@ -432,7 +464,7 @@ class _Paper extends StatelessWidget {
     }
     final month = {0: '当月', 1: '翌月', 2: '翌々月'}[form['payment_month_offset']] ?? '';
     for (final value in [
-      (left, a, '出来高締切日'), (a, choice, '毎月 ${_shown(form['progress_cutoff_day'])} 日'),
+      (left, a, '出来高締切日'), (a, choice, '毎月 ${tradeDocumentClosingDay(form['progress_cutoff_day'])}${form['progress_cutoff_day']=='month_end'?'':' 日'}'),
       (choice, when, '請求書締切日'), (when, m, '毎月 ${_shown(form['invoice_cutoff_day'])} 日'),
       (m, n, '支払日'), (n, right, '$month ${_shown(form['payment_day'])} 日'),
     ]) { children.add(text(cell(value.$1, value.$2, 6, 7), value.$3, font: 7.5)); }
@@ -486,8 +518,9 @@ class _PaperLines extends CustomPainter {
 
 class _FieldSheet extends StatefulWidget {
   const _FieldSheet({required this.title, required this.specs, required this.payload,
-    required this.confirm});
+    required this.confirm, required this.allowExtendedFields});
   final String title;
+  final bool allowExtendedFields;
   final List<_Spec> specs;
   final Map<String, dynamic> payload;
   final TradeDocumentFormDraft Function(Map<String, Object?>) confirm;
@@ -513,6 +546,7 @@ class _FieldSheetState extends State<_FieldSheet> {
       for (final spec in widget.specs) {
         final text = _controllers[spec.path]!.text;
         values[spec.path] = switch (spec.kind) {
+          _InputKind.closingDay => text=='month_end' ? 'month_end' : text.isEmpty ? null : int.tryParse(text) ?? (throw const FormatException('1〜31の日付または末日を選択してください。')),
           _InputKind.integer || _InputKind.month => text.isEmpty ? null :
             int.tryParse(text) ?? (throw const FormatException('数値は整数で入力してください。')),
           _InputKind.date => text.isEmpty && spec.nullable ? null : text,
@@ -544,6 +578,23 @@ class _FieldSheetState extends State<_FieldSheet> {
   }
   Widget _field(_Spec spec, bool first) {
     final controller = _controllers[spec.path]!;
+    if (spec.kind == _InputKind.closingDay) {
+      final monthEnd=controller.text=='month_end';
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(spec.label),
+        Wrap(spacing: 8, children: [
+          ChoiceChip(label: const Text('日付を指定'), selected: !monthEnd,
+            onSelected: (_) => setState(() { if(monthEnd)controller.clear(); })),
+          ChoiceChip(label: const Text('末日'), selected: monthEnd,
+            onSelected: widget.allowExtendedFields ? (_) => setState(() { FocusManager.instance.primaryFocus?.unfocus();controller.text='month_end'; }) : null),
+        ]),
+        if(!monthEnd)TextField(key: ValueKey('trade-touch-input-${spec.path}'), controller: controller,
+          keyboardType: TextInputType.number, inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          decoration: const InputDecoration(labelText: '日付（1〜31日）', border: OutlineInputBorder()),
+          textInputAction: TextInputAction.done, onEditingComplete: () => FocusManager.instance.primaryFocus?.unfocus()),
+        if(!widget.allowExtendedFields)const Text('末日の設定は、会社の書類設定を更新後に利用できます。', style: TextStyle(fontSize: 12)),
+      ]);
+    }
     if (spec.kind == _InputKind.date) {
       return ListTile(contentPadding: EdgeInsets.zero, title: Text(spec.label),
         subtitle: Text(controller.text.isEmpty ? '日付を選択してください' : controller.text),
@@ -603,11 +654,11 @@ class _FieldSheetState extends State<_FieldSheet> {
   }
 }
 class _CompanySheet extends StatelessWidget {
-  const _CompanySheet({required this.title, required this.data, required this.requireScope, this.onEdit});
+  const _CompanySheet({required this.title, required this.data, required this.requireScope, this.onEdit, this.onTitle, this.onRefresh});
   final String title;
   final Map<String, dynamic> data;
   final VoidCallback requireScope;
-  final VoidCallback? onEdit;
+  final VoidCallback? onEdit, onTitle, onRefresh;
   @override Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
     final height = math.min(520.0, math.max(64.0,
@@ -628,6 +679,8 @@ class _CompanySheet extends StatelessWidget {
                     Text(data[entry.key].toString()),
                   ])),
             const Text('登録会社の情報です。この書類の入力欄では変更しません。'),
+            if(onRefresh!=null)TextButton(onPressed: () {requireScope();Navigator.of(context).pop();onRefresh!();}, child: const Text('会社データを反映')),
+            if(onTitle!=null)TextButton(onPressed: () {requireScope();Navigator.of(context).pop();onTitle!();}, child: const Text('代表者の役職を入力')),
           ]))),
         SafeArea(top: false, child: Padding(padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
           child: Row(children: [

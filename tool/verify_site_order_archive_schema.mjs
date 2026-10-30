@@ -31,10 +31,12 @@ async function denied(sql, code) {
   assert(error && (!code || error.code===code),`expected ${code}: ${sql}; got ${error?.code}`);
 }
 function artifact(n,company,site,kind='order') { return `insert into site_order_private.artifacts
- (id,revision,company_id,source_site_id,kind,work_name,starts_on,ends_on,pdf_sha256,
+ (id,revision,company_id,counterparty_company_id,counterparty_name,counterparty_trade_company_id,
+ counterparty_connection_fingerprint,source_site_id,kind,work_name,starts_on,ends_on,pdf_sha256,
  pdf_byte_length,pdf_storage_path,trusted_issuer_receipt_id,company_snapshot,
  seal_version_id,canonical_price_lines,created_by) values
- ('${id(n)}',1,'${id(company)}','${id(site)}','${kind}','工事名称','2026-10-01','2026-10-31',
+ ('${id(n)}',1,'${id(company)}','${id(company===1?2:1)}','${company===1?'乙会社':'甲会社'}',
+ '${id(company===1?30:31)}','${'c'.repeat(64)}','${id(site)}','${kind}','工事名称','2026-10-01','2026-10-31',
  '${'a'.repeat(64)}',1024,'private/${id(n)}','${id(n+1000)}','{}','${id(n+2000)}',
  '[{"item":"とび工","unit_price_yen":32000,"unit":"人日"}]','${id(100)}')`; }
 try {
@@ -52,11 +54,19 @@ try {
       '[{"item":"とび工","unit_price_yen":32000,"unit":"人日"}]',invalid),'23514');
   }
   const delivery = `insert into site_order_private.deliveries
-    (id,sender_company_id,recipient_company_id,registered_trade_company_id,connection_version,
+    (id,sender_company_id,recipient_company_id,registered_trade_company_id,recipient_name,connection_fingerprint,
     request_id,source_site_id,site_share_data_item_id,artifact_id,artifact_revision,sent_by,sent_session_id)
-    values('${id(20)}','${id(1)}','${id(2)}','${id(30)}',1,'${id(40)}','${id(101)}',
+    values('${id(20)}','${id(1)}','${id(2)}','${id(30)}','乙会社','${'c'.repeat(64)}','${id(40)}','${id(101)}',
     '${id(50)}','${id(10)}',1,'${id(100)}','${id(200)}')`;
   await db.exec(delivery);
+  await denied(delivery.replace(id(20),id(21)).replace(id(40),id(41)).replace(id(50),id(51))
+    .replace(id(2),id(3)),'23503');
+  await denied(delivery.replace(id(20),id(21)).replace(id(40),id(41)).replace(id(50),id(51))
+    .replace('乙会社','旧乙会社'),'23503');
+  await denied(delivery.replace(id(20),id(21)).replace(id(40),id(41)).replace(id(50),id(51))
+    .replace('c'.repeat(64),'d'.repeat(64)),'23503');
+  await denied(delivery.replace(id(20),id(21)).replace(id(40),id(41)).replace(id(50),id(51))
+    .replace(id(30),id(99)),'23503');
   const notice=(n,kind,audience)=>`insert into site_order_private.notification_outbox
     (id,delivery_id,original_sender_company_id,original_recipient_company_id,audience_company_id,event_kind)
     values('${id(n)}','${id(20)}','${id(1)}','${id(2)}','${id(audience)}','${kind}')`;
@@ -70,9 +80,13 @@ try {
   await denied(delivery.replace(id(20),id(21)).replace(id(40),id(41))
     .replace(id(50),id(51)).replace(id(10),id(11)),'23503');
   const outbox = `insert into site_order_private.acceptance_outbox
-    (id,approval_delivery_id,sender_company_id,recipient_company_id,artifact_id,artifact_revision,source_site_id)
-    values('${id(60)}','${id(20)}','${id(2)}','${id(1)}','${id(11)}',1,'${id(102)}')`;
+    (id,approval_delivery_id,sender_company_id,recipient_company_id,artifact_id,artifact_revision,source_site_id,
+     recipient_name,registered_trade_company_id,connection_fingerprint)
+    values('${id(60)}','${id(20)}','${id(2)}','${id(1)}','${id(11)}',1,'${id(102)}',
+     '甲会社','${id(31)}','${'c'.repeat(64)}')`;
   await denied(outbox.replace(id(1),id(3)),'23503');
+  await denied(outbox.replace('甲会社','別名'),'23503');
+  await denied(outbox.replace('c'.repeat(64),'d'.repeat(64)),'23503');
   await denied(outbox.replace(id(11),id(10)),'23503');
   const response = `insert into site_order_private.responses
     (delivery_id,recipient_company_id,decision,accepted_site_id,acceptance_outbox_id,

@@ -3,12 +3,15 @@ import 'package:sk_works/features/sites/site_order_approval_contract.dart';
 import 'package:sk_works/features/sites/site_order_workflow.dart';
 
 const scope=SiteOrderScope(actorId:'actor',companyId:'own',sessionId:'sid',siteId:'accepted-site');
-SiteOrderArtifact artifact({required bool acceptance,int price=32000})=>SiteOrderArtifact(
+SiteOrderArtifact artifact({required bool acceptance,int price=32000,String? counterparty})=>SiteOrderArtifact(
   id:acceptance?'acceptance':'incoming-order',companyId:acceptance?'own':'original-sender',
   siteId:acceptance?'accepted-site':'original-site',revision:2,
   pdfSha256:(acceptance?'b':'a')*64,title:'現場A',startsOn:'2026-10-01',endsOn:'2026-10-31',
   sealVersionId:acceptance?'own-registered-seal':'sender-registered-seal',
   kind:acceptance?SiteOrderArtifactKind.acceptance:SiteOrderArtifactKind.order,
+  counterpartyCompanyId:counterparty??(acceptance?'original-sender':'own'),
+  counterpartyName:acceptance?'取引会社':'自社',counterpartyTradeCompanyId:'registered-trade',
+  counterpartyConnectionFingerprint:'c'*64,
   prices:[SiteOrderPrice(item:'とび工',unitPriceYen:price,unit:'人日')]);
 SiteOrderApprovalIntent intent({int acceptancePrice=32000,String? hash})=>SiteOrderApprovalIntent(
   requestId:'request',scope:scope,packageId:'package',packageRevision:2,
@@ -42,6 +45,12 @@ void main(){
     expect(()=>SiteOrderApprovalIntent(requestId:'request',scope:scope,packageId:'package',
       packageRevision:2,incomingOrder:artifact(acceptance:false),
       acceptance:artifact(acceptance:false),acceptedOrderPdfSha256:'a'*64),throwsStateError);
+    expect(()=>SiteOrderApprovalIntent(requestId:'request',scope:scope,packageId:'package',
+      packageRevision:2,incomingOrder:artifact(acceptance:false,counterparty:'another-receiver'),
+      acceptance:artifact(acceptance:true),acceptedOrderPdfSha256:'a'*64),throwsStateError);
+    expect(()=>SiteOrderApprovalIntent(requestId:'request',scope:scope,packageId:'package',
+      packageRevision:2,incomingOrder:artifact(acceptance:false),
+      acceptance:artifact(acceptance:true,counterparty:'wrong-sender'),acceptedOrderPdfSha256:'a'*64),throwsStateError);
   });
   test('notice resolves exact company/package/revision from strict private envelope',(){
     final target=SiteOrderNoticeTarget.fromJson(notice(),expectedCompanyId:uuid(3));

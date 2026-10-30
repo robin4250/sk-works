@@ -57,6 +57,8 @@ eaaf95001。既存 `site_share_approval_page.dart` と `site_cloud_repository.da
   従来どおりであり、未完成ページに差し替えていない。
 - 原本会社/現場/帳票種別をcompound FKで検証する構造候補、承認と請書の元sender返信
   intent DTO、価格やURLを含まない通知envelopeのstrict mapper、通知event宛先/重複検証。
+- 原本には受注会社ID・正式名・発行側の登録trade ID・server発行の接続fingerprintを固定。
+  選択先の4項目と一致しない送信、請書の会社IDが逆方向でない承認を拒否する。
 - master capability はarchive閲覧とmutationを分離し、必要なserver各契約版が全部1の
   ときだけ新操作を許可する。DTOの一致は実認証・実権限を証明するものではない。
 - 新package向けの非金額現場projectionを用意。price/PDF/会社情報snapshotだけでなく、
@@ -80,6 +82,17 @@ Draft PRはmerge blocked。新しい独立hub/現場管理の作成経路が未�
    actor・live SID・会社・管理権限・登録協力会社・accepted connection・接続版・
    source site・artifact revision/hash を再確認し、idempotency request ID の
    同一内容リトライだけを既存 receipt として返す。別内容の再利用を拒否する。
+   user操作順は「入力draft確定→登録協力会社選択→その宛先入り最終押印原本prepare
+   →単価/会社/原本版の再確認→共有」。相手の選択前に完成した原本として扱わない。
+   `SiteOrderSendPage.prepareWorkflow` は選択後にだけ呼ばれ、saved draft ID/revision、
+   正規trade ID、expected peer company ID、expected connection fingerprint、同一request
+   IDを使ってserverでCASするadapterが必要。返却された原本が選択先と異なると、
+   確認popupを出さず送信も行わない。
+   company_connectionsには整数version列がないため仮の1を使わない。サーバーが
+   connection ID/status/updated_at、正規trade ID/linked company/role/status、会社正式名
+   からopaque SHA-256 fingerprintを発行し、その値を比較する。clientがPostgresの
+   JSON表現を再計算して別hashに置き換えない。会社名・登録リンクの変更は新原本版を
+   準備して再確認する。保存済み旧原本の会社名やhashは書き換えない。
 4. 既存 `respond_site_share` の保護を保った package-aware 応答を用意する。
    管理者/サブ管理者かつ recipient だけが、同一 pending package と押印版を承認。
    サイト作成と archive response を同一TXで完了し、片方だけ保存しない。
@@ -138,8 +151,9 @@ adapter の一覧 pagination が未完了なら「全履歴閲覧完成」と報
 置き換えたfixtureだけで live authorization 成功とはしない。
 本番DML/DDL/RLS/Auth・配信・実機更新は未実施。個別書類免除はOFFを維持する。
 
-2026-10-30 オフライン PGlite: `verify_site_order_archive_schema.mjs` は **37 checks
+2026-10-30 オフライン PGlite: `verify_site_order_archive_schema.mjs` は **43 checks
 passed**。正規の注文→自社請書outboxと承認の整合、元の取引会社以外への返送拒否、
 別会社artifact/別現場参照拒否、request ID重複拒否、原本更新/削除拒否、RLSと無grant、
-通知宛先/応答整合/重複拒否、単価明細の型・負数・小数・未知キーの拒否を確認。
+通知宛先/応答整合/重複拒否、単価明細の型・負数・小数・未知キー、原本と異なる
+宛先・旧会社名・別登録trade ID・変更済み接続fingerprintの拒否を確認。
 このSQLは構造候補であり、trusted issuer・RPC・live session・実配送は試験対象外。

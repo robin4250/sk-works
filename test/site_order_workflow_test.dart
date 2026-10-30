@@ -3,20 +3,24 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/sites/site_order_workflow.dart';
 
 const scope = SiteOrderScope(actorId: 'actor', companyId: 'own', sessionId: 'session', siteId: 'site');
+const linkHash='cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc';
 const recipient = SiteOrderRecipient(tradeCompanyId: 'trade', companyId: 'other',
-  name: '協力会社', connectionVersion: 3);
+  name: '協力会社', connectionFingerprint:linkHash);
 SiteOrderArtifact artifact({int revision = 2}) => SiteOrderArtifact(
   id: 'order', companyId: 'own', siteId: 'site', revision: revision, kind: SiteOrderArtifactKind.order,
   pdfSha256: 'a' * 64, title: '工事名称', startsOn: '2026-10-01',
   endsOn: '2026-10-31', sealVersionId: 'registered-seal',
+  counterpartyCompanyId:'other',counterpartyName:'協力会社',counterpartyTradeCompanyId:'trade',
+  counterpartyConnectionFingerprint:linkHash,
   prices: [SiteOrderPrice(item: 'とび工', unitPriceYen: 32000, unit: '人日')]);
 SiteOrderDeliveryReceipt receipt(SiteOrderDeliveryIntent i, {String? hash, String? actor,
-  int? connectionVersion}) => SiteOrderDeliveryReceipt(requestId: i.requestId,
+  String? connectionFingerprint}) => SiteOrderDeliveryReceipt(requestId: i.requestId,
   companyId: i.scope.companyId, siteId: i.scope.siteId, artifactId: i.artifact.id,
   artifactRevision: i.artifact.revision, pdfSha256: hash ?? i.artifact.pdfSha256,
   recipientCompanyId: i.recipient.companyId, deliveryId: 'delivery',
   actorId: actor ?? i.scope.actorId, sessionId: i.scope.sessionId,
-  recipientConnectionVersion: connectionVersion ?? i.recipient.connectionVersion);
+  recipientTradeCompanyId:i.recipient.tradeCompanyId,
+  recipientConnectionFingerprint: connectionFingerprint ?? i.recipient.connectionFingerprint);
 
 void main() {
   late SiteOrderScope current;
@@ -50,7 +54,7 @@ void main() {
       isArtifactCurrent: (_) => true, isRecipientCurrent: (_) => true,
       newRequestId: () => 'id', persistIntent: (_) async {}), throwsStateError);
     expect(() => workflow.select(const SiteOrderRecipient(tradeCompanyId: 'trade',
-      companyId: '', name: 'name', connectionVersion: 1)), throwsStateError);
+      companyId: '', name: 'name', connectionFingerprint:linkHash)), throwsStateError);
   });
   test('company or session change before send never writes', () async {
     confirm(); current = const SiteOrderScope(actorId: 'actor', companyId: 'own',
@@ -68,6 +72,19 @@ void main() {
     confirm(); recipientCurrent = false;
     await expectLater(workflow.send((i) async => receipt(i)), throwsStateError);
     expect(persisted, isEmpty);
+  });
+  test('sealed recipient company/name/directory/link must all match selected recipient', () {
+    for(final other in [
+      const SiteOrderRecipient(tradeCompanyId:'trade',companyId:'unrelated',name:'協力会社',connectionFingerprint:linkHash),
+      const SiteOrderRecipient(tradeCompanyId:'trade',companyId:'other',name:'旧会社名',connectionFingerprint:linkHash),
+      const SiteOrderRecipient(tradeCompanyId:'different-registration',companyId:'other',name:'協力会社',connectionFingerprint:linkHash),
+      SiteOrderRecipient(tradeCompanyId:'trade',companyId:'other',name:'協力会社',connectionFingerprint:'d'*64),
+    ]) {
+      expect(()=>workflow.select(other),throwsStateError);
+      expect(workflow.pendingIntent,isNull);
+    }
+    expect(persisted,isEmpty);
+    workflow.select(recipient);expect(workflow.confirm().recipient,same(recipient));
   });
   test('unknown outcome retains intent and never issues a second mutation', () async {
     confirm(); var calls = 0;
@@ -88,7 +105,7 @@ void main() {
     await expectLater(workflow.send((i) async => receipt(i, actor: 'foreign')), throwsStateError);
     expect(workflow.state, SiteOrderSendState.outcomeUnknown);
     await expectLater(workflow.resolve((i) async => receipt(i, hash: 'b' * 64)), throwsStateError);
-    await expectLater(workflow.resolve((i) async => receipt(i, connectionVersion: 4)), throwsStateError);
+    await expectLater(workflow.resolve((i) async => receipt(i, connectionFingerprint:'d'*64)), throwsStateError);
     expect(workflow.receipt, isNull);
   });
   test('session change while awaiting response retires result', () async {
@@ -131,7 +148,9 @@ void main() {
   test('invalid calendar day/hash/missing seal/negative price rejected', () {
     expect(() => SiteOrderArtifact(id: 'order', companyId: 'own', siteId: 'site', revision: 1, kind: SiteOrderArtifactKind.order,
       pdfSha256: 'a' * 64, title: 'test', startsOn: '2026-02-30', endsOn: '2026-03-01',
-      sealVersionId: 'seal', prices: [SiteOrderPrice(item: 'item', unitPriceYen: 1, unit: '人日')]),
+      sealVersionId: 'seal',counterpartyCompanyId:'other',counterpartyName:'協力会社',
+      counterpartyTradeCompanyId:'trade',counterpartyConnectionFingerprint:linkHash,
+      prices: [SiteOrderPrice(item: 'item', unitPriceYen: 1, unit: '人日')]),
       throwsFormatException);
     expect(() => SiteOrderPrice(item: 'item', unitPriceYen: -1, unit: '人日'), throwsFormatException);
   });

@@ -26,6 +26,10 @@ create table site_order_private.artifacts (
   id uuid not null,
   revision bigint not null check (revision > 0),
   company_id uuid not null,
+  counterparty_company_id uuid not null check(counterparty_company_id<>company_id),
+  counterparty_name text not null check(length(trim(counterparty_name)) between 1 and 240),
+  counterparty_trade_company_id uuid not null,
+  counterparty_connection_fingerprint text not null check(counterparty_connection_fingerprint~'^[a-f0-9]{64}$'),
   source_site_id uuid not null,
   kind text not null check (kind in ('order','acceptance')),
   work_name text not null check (length(trim(work_name)) between 1 and 240),
@@ -43,7 +47,8 @@ create table site_order_private.artifacts (
   created_at timestamptz not null default clock_timestamp(),
   primary key (id, revision),
   unique (company_id, id, revision),
-  unique (company_id, id, revision, source_site_id, kind)
+  unique (company_id, id, revision, source_site_id, kind,
+    counterparty_company_id,counterparty_name,counterparty_trade_company_id,counterparty_connection_fingerprint)
 );
 alter table site_order_private.artifacts enable row level security;
 
@@ -52,7 +57,8 @@ create table site_order_private.deliveries (
   sender_company_id uuid not null,
   recipient_company_id uuid not null check (recipient_company_id <> sender_company_id),
   registered_trade_company_id uuid not null,
-  connection_version bigint not null check (connection_version > 0),
+  recipient_name text not null,
+  connection_fingerprint text not null check(connection_fingerprint~'^[a-f0-9]{64}$'),
   request_id uuid not null,
   source_site_id uuid not null,
   -- Link to the existing pending site share: transaction/response adapter must
@@ -64,8 +70,10 @@ create table site_order_private.deliveries (
   sent_by uuid not null,
   sent_session_id uuid not null,
   sent_at timestamptz not null default clock_timestamp(),
-  foreign key (sender_company_id, artifact_id, artifact_revision,source_site_id,artifact_kind)
-    references site_order_private.artifacts(company_id,id,revision,source_site_id,kind),
+  foreign key (sender_company_id, artifact_id, artifact_revision,source_site_id,artifact_kind,
+    recipient_company_id,recipient_name,registered_trade_company_id,connection_fingerprint)
+    references site_order_private.artifacts(company_id,id,revision,source_site_id,kind,
+      counterparty_company_id,counterparty_name,counterparty_trade_company_id,counterparty_connection_fingerprint),
   unique (sender_company_id, sent_by, request_id),
   unique (id, recipient_company_id),
   unique (id, sender_company_id, recipient_company_id)
@@ -82,13 +90,18 @@ create table site_order_private.acceptance_outbox (
   artifact_id uuid not null,
   artifact_revision bigint not null,
   source_site_id uuid not null,
+  recipient_name text not null,
+  registered_trade_company_id uuid not null,
+  connection_fingerprint text not null check(connection_fingerprint~'^[a-f0-9]{64}$'),
   artifact_kind text not null default 'acceptance' check (artifact_kind='acceptance'),
   decision text not null default 'accepted' check (decision='accepted'),
   created_at timestamptz not null default clock_timestamp(),
   foreign key (approval_delivery_id,recipient_company_id,sender_company_id)
     references site_order_private.deliveries(id,sender_company_id,recipient_company_id),
-  foreign key (sender_company_id,artifact_id,artifact_revision,source_site_id,artifact_kind)
-    references site_order_private.artifacts(company_id,id,revision,source_site_id,kind),
+  foreign key (sender_company_id,artifact_id,artifact_revision,source_site_id,artifact_kind,
+    recipient_company_id,recipient_name,registered_trade_company_id,connection_fingerprint)
+    references site_order_private.artifacts(company_id,id,revision,source_site_id,kind,
+      counterparty_company_id,counterparty_name,counterparty_trade_company_id,counterparty_connection_fingerprint),
   unique (approval_delivery_id,sender_company_id,source_site_id,id)
 );
 alter table site_order_private.acceptance_outbox enable row level security;

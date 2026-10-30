@@ -11,7 +11,9 @@ class SiteOrderApprovalIntent {
         packageRevision < 1 || incomingOrder.kind != SiteOrderArtifactKind.order ||
         acceptance.kind != SiteOrderArtifactKind.acceptance ||
         incomingOrder.companyId == scope.companyId ||
+        incomingOrder.counterpartyCompanyId != scope.companyId ||
         acceptance.companyId != scope.companyId ||
+        acceptance.counterpartyCompanyId != incomingOrder.companyId ||
         acceptance.siteId != scope.siteId ||
         acceptedOrderPdfSha256 != incomingOrder.pdfSha256 ||
         !_samePrices(incomingOrder.prices, acceptance.prices)) {
