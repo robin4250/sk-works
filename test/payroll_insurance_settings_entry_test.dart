@@ -16,6 +16,7 @@ void main() {
           openConditions: (month) async { opens++; openedMonth = month; },
           rpc: (name, params) async {
             if (name == 'payroll_deduction_overrides_contract_version') return 1;
+            if (name == 'payroll_tax_adjustment_reason_contract_version') return 1;
             reads++;
             if (state == 'failed') throw StateError('read denied');
             return {'company_id': 'company', 'worker_id': 'worker', 'can_edit': true,

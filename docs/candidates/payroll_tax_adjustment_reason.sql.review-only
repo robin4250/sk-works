@@ -1,0 +1,143 @@
+-- REVIEW ONLY. Additive, separately deployed contract; no payroll calculation,
+-- original condition history, existing saver, validator or auth function changes.
+BEGIN;
+SET LOCAL lock_timeout='3s';
+SET LOCAL statement_timeout='30s';
+DO $guard$
+DECLARE entry record;
+BEGIN
+ FOR entry IN SELECT * FROM (VALUES
+  ('payroll_tax_private.read_conditions(uuid,uuid)','00899f2b5e0479640d49b4062c2bff57',true,'{postgres=X/postgres,authenticated=X/postgres}'),
+  ('payroll_tax_private.save_conditions(uuid,uuid,date,bigint,jsonb,boolean)','c1b64964defa7dbc317384573ce419b5',true,'{postgres=X/postgres,authenticated=X/postgres}'),
+  ('payroll_tax_private.validate_conditions(jsonb)','49e11c9cde60c19208f6c3fd6fcc2b7b',false,'{postgres=X/postgres}'),
+  ('public.save_worker_payroll_tax_conditions(uuid,uuid,date,bigint,jsonb,boolean)','882c4849b11231d2a09b6abdc32e56a0',false,'{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}'),
+  ('private.require_reauthentication_session()','b5c8e2f259a99b3c69694ad0640080e5',true,'{postgres=X/postgres}')
+ ) AS dependencies(signature,source_md5,security_definer,acl) LOOP
+  IF NOT EXISTS(SELECT 1 FROM pg_proc WHERE oid=to_regprocedure(entry.signature)
+   AND md5(prosrc)=entry.source_md5 AND pg_get_userbyid(proowner)='postgres'
+   AND prosecdef=entry.security_definer AND proconfig=ARRAY['search_path=""']
+   AND proacl @> entry.acl::aclitem[] AND proacl <@ entry.acl::aclitem[])
+  THEN RAISE EXCEPTION 'payroll adjustment reason dependency differs: %',entry.signature; END IF;
+ END LOOP;
+ IF to_regclass('payroll_tax_private.adjustment_reasons') IS NOT NULL
+ OR to_regprocedure('public.save_worker_payroll_tax_conditions_with_reason(uuid,uuid,date,bigint,jsonb,boolean,text)') IS NOT NULL
+ THEN RAISE EXCEPTION 'payroll adjustment reason contract already exists'; END IF;
+END $guard$;
+
+CREATE TABLE payroll_tax_private.adjustment_reasons (
+ company_id uuid NOT NULL, worker_id uuid NOT NULL, starts_on date NOT NULL,
+ version bigint NOT NULL CHECK(version>0), reason text NOT NULL,
+ actor_id uuid NOT NULL, session_id uuid NOT NULL, changed_at timestamptz NOT NULL,
+ before_value jsonb, after_value jsonb NOT NULL,
+ PRIMARY KEY(company_id,worker_id,starts_on,version),
+ CHECK(starts_on=date_trunc('month',starts_on)::date),
+ CHECK(reason=btrim(reason) AND char_length(reason) BETWEEN 1 AND 1000 AND octet_length(reason)<=4000)
+);
+ALTER TABLE payroll_tax_private.adjustment_reasons ENABLE ROW LEVEL SECURITY;
+CREATE INDEX adjustment_reasons_scoped_history ON payroll_tax_private.adjustment_reasons
+ (company_id,worker_id,changed_at DESC,starts_on DESC,version DESC);
+REVOKE ALL ON payroll_tax_private.adjustment_reasons FROM public,anon,authenticated,service_role;
+CREATE FUNCTION payroll_tax_private.guard_adjustment_reason_history()
+RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path='' AS $fn$
+BEGIN RAISE SQLSTATE '55000' USING message='payroll adjustment reason history is append-only'; END $fn$;
+REVOKE ALL ON FUNCTION payroll_tax_private.guard_adjustment_reason_history() FROM public,anon,authenticated,service_role;
+CREATE TRIGGER adjustment_reason_history_immutable BEFORE UPDATE OR DELETE ON payroll_tax_private.adjustment_reasons
+FOR EACH ROW EXECUTE FUNCTION payroll_tax_private.guard_adjustment_reason_history();
+
+CREATE FUNCTION payroll_tax_private.save_conditions_with_reason(cid uuid,wid uuid,p_start date,p_expected_version bigint,p_value jsonb,p_confirmed boolean,p_reason text)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $fn$
+DECLARE actor uuid:=auth.uid(); sid uuid; result jsonb; current_row payroll_tax_private.worker_conditions%rowtype;
+ history_row payroll_tax_private.condition_history%rowtype; recorded payroll_tax_private.adjustment_reasons%rowtype;
+ reason_value text:=btrim(p_reason,E' \t\n\r　'); retry boolean:=false; expected_value jsonb:=p_value;
+BEGIN
+ sid:=private.require_reauthentication_session();
+ IF actor IS NULL OR NOT coalesce(private.payroll_settings_allowed(cid,wid,'edit'),false) THEN
+  RAISE SQLSTATE '42501' USING message='payroll access denied'; END IF;
+ IF p_confirmed IS DISTINCT FROM true OR p_start IS NULL OR p_start<>date_trunc('month',p_start)::date
+ OR p_expected_version IS NULL OR p_expected_version<0 OR p_expected_version>=9223372036854775807
+ OR reason_value IS NULL OR char_length(reason_value) NOT BETWEEN 1 AND 1000 OR octet_length(reason_value)>4000 THEN
+  RAISE SQLSTATE '22023' USING message='変更理由・適用月・保存版を確認してください'; END IF;
+ PERFORM payroll_tax_private.validate_conditions(p_value);
+ -- Exactly the existing saver lock order. The worker lock also serializes first
+ -- month creation and prevents auditing another client's already-saved revision.
+ PERFORM 1 FROM public.companies WHERE id=cid FOR SHARE;
+ PERFORM 1 FROM public.workers WHERE id=wid AND company_id=cid FOR UPDATE;
+ IF NOT FOUND THEN RAISE SQLSTATE '42501' USING message='payroll access denied'; END IF;
+ SELECT * INTO current_row FROM payroll_tax_private.worker_conditions
+ WHERE company_id=cid AND worker_id=wid AND starts_on=p_start FOR UPDATE;
+ -- The pinned existing saver preserves an omitted insurance basis reference.
+ -- Keep its original payload/reply behavior while comparing the exact saved JSON.
+ IF NOT (p_value?'insurance_basis_reference') AND current_row.value?'insurance_basis_reference' THEN
+  expected_value:=jsonb_set(p_value,'{insurance_basis_reference}',current_row.value->'insurance_basis_reference');
+ END IF;
+ retry:=coalesce(current_row.version=p_expected_version+1 AND current_row.value=expected_value,false);
+ IF current_row.version=p_expected_version AND current_row.value=expected_value THEN
+  RAISE SQLSTATE '22023' USING message='保存する変更がありません'; END IF;
+ IF retry THEN
+  SELECT * INTO recorded FROM payroll_tax_private.adjustment_reasons
+  WHERE company_id=cid AND worker_id=wid AND starts_on=p_start AND version=p_expected_version+1;
+  IF recorded.version IS NULL OR recorded.actor_id IS DISTINCT FROM actor OR recorded.session_id IS DISTINCT FROM sid
+  OR recorded.reason IS DISTINCT FROM reason_value OR recorded.after_value IS DISTINCT FROM expected_value THEN
+   RAISE SQLSTATE '40001' USING message='変更理由の保存版が一致しません。再読み込みしてください'; END IF;
+ END IF;
+ result:=payroll_tax_private.save_conditions(cid,wid,p_start,p_expected_version,p_value,p_confirmed);
+ SELECT * INTO history_row FROM payroll_tax_private.condition_history
+ WHERE company_id=cid AND worker_id=wid AND starts_on=p_start AND version=p_expected_version+1;
+ IF history_row.version IS NULL OR history_row.actor_id IS DISTINCT FROM actor OR history_row.after_value IS DISTINCT FROM expected_value
+ OR (NOT retry AND history_row.before_value IS DISTINCT FROM current_row.value) THEN
+  RAISE SQLSTATE '40001' USING message='変更履歴の保存版を確認できません'; END IF;
+ IF NOT retry THEN
+  INSERT INTO payroll_tax_private.adjustment_reasons VALUES(cid,wid,p_start,history_row.version,
+   reason_value,actor,sid,history_row.changed_at,history_row.before_value,history_row.after_value);
+ ELSE
+  IF recorded.before_value IS DISTINCT FROM history_row.before_value OR recorded.changed_at IS DISTINCT FROM history_row.changed_at THEN
+   RAISE SQLSTATE '40001' USING message='変更理由と変更履歴が一致しません'; END IF;
+ END IF;
+ IF private.require_reauthentication_session() IS DISTINCT FROM sid OR auth.uid() IS DISTINCT FROM actor THEN
+  RAISE SQLSTATE '42501' USING message='payroll session changed'; END IF;
+ RETURN result||jsonb_build_object('adjustment_receipt',jsonb_build_object(
+  'starts_on',p_start,'version',history_row.version,'reason',reason_value,
+  'actor_id',actor,'changed_at',history_row.changed_at));
+END $fn$;
+
+CREATE FUNCTION public.save_worker_payroll_tax_conditions_with_reason(p_company_id uuid,p_worker_id uuid,p_starts_on date,p_expected_version bigint,p_value jsonb,p_confirmed boolean,p_reason text)
+RETURNS jsonb LANGUAGE sql SECURITY INVOKER SET search_path='' AS $fn$
+ SELECT payroll_tax_private.save_conditions_with_reason(p_company_id,p_worker_id,p_starts_on,p_expected_version,p_value,p_confirmed,p_reason)
+$fn$;
+
+CREATE FUNCTION payroll_tax_private.read_adjustment_history(cid uuid,wid uuid)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $fn$
+DECLARE rows jsonb; more boolean;
+BEGIN
+ PERFORM private.require_reauthentication_session();
+ IF NOT coalesce(private.payroll_settings_allowed(cid,wid,'view'),false) THEN
+  RAISE SQLSTATE '42501' USING message='payroll access denied'; END IF;
+ IF NOT EXISTS(SELECT 1 FROM public.workers WHERE id=wid AND company_id=cid) THEN
+  RAISE SQLSTATE '42501' USING message='payroll access denied'; END IF;
+ SELECT coalesce(jsonb_agg(jsonb_build_object('starts_on',r.starts_on,'version',r.version,'reason',r.reason,
+  'actor_id',r.actor_id,'changed_at',r.changed_at,'before_value',r.before_value,'after_value',r.after_value)
+  ORDER BY r.changed_at DESC,r.starts_on DESC,r.version DESC),'[]'::jsonb) INTO rows
+ FROM (SELECT * FROM payroll_tax_private.adjustment_reasons WHERE company_id=cid AND worker_id=wid
+  ORDER BY changed_at DESC,starts_on DESC,version DESC LIMIT 100) r;
+ SELECT EXISTS(SELECT 1 FROM payroll_tax_private.adjustment_reasons WHERE company_id=cid AND worker_id=wid OFFSET 100 LIMIT 1) INTO more;
+ RETURN jsonb_build_object('contract_version',1,'company_id',cid,'worker_id',wid,'items',rows,'truncated',more);
+END $fn$;
+CREATE FUNCTION public.read_worker_payroll_tax_adjustment_history(p_company_id uuid,p_worker_id uuid)
+RETURNS jsonb LANGUAGE sql SECURITY INVOKER SET search_path='' AS $fn$
+ SELECT payroll_tax_private.read_adjustment_history(p_company_id,p_worker_id)
+$fn$;
+CREATE FUNCTION public.payroll_tax_adjustment_reason_contract_version()
+RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $fn$
+BEGIN PERFORM private.require_reauthentication_session(); RETURN 1; END $fn$;
+
+REVOKE ALL ON FUNCTION payroll_tax_private.save_conditions_with_reason(uuid,uuid,date,bigint,jsonb,boolean,text),
+ payroll_tax_private.read_adjustment_history(uuid,uuid),
+ public.save_worker_payroll_tax_conditions_with_reason(uuid,uuid,date,bigint,jsonb,boolean,text),
+ public.read_worker_payroll_tax_adjustment_history(uuid,uuid),
+ public.payroll_tax_adjustment_reason_contract_version() FROM public,anon,authenticated,service_role;
+GRANT EXECUTE ON FUNCTION payroll_tax_private.save_conditions_with_reason(uuid,uuid,date,bigint,jsonb,boolean,text),
+ payroll_tax_private.read_adjustment_history(uuid,uuid),
+ public.save_worker_payroll_tax_conditions_with_reason(uuid,uuid,date,bigint,jsonb,boolean,text),
+ public.read_worker_payroll_tax_adjustment_history(uuid,uuid),
+ public.payroll_tax_adjustment_reason_contract_version() TO authenticated;
+COMMIT;

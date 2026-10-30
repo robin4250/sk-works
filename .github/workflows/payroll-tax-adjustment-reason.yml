@@ -1,0 +1,40 @@
+name: Payroll tax adjustment reasons
+on:
+  pull_request:
+    paths:
+      - 'docs/candidates/payroll_tax_adjustment_reason.sql.review-only'
+      - 'docs/review/payroll-tax-adjustment-reason.md'
+      - 'tool/verify_payroll_tax_adjustment_reason.mjs'
+      - 'tool/fixtures/payroll_tax_reason_*.sql'
+      - '.github/workflows/payroll-tax-adjustment-reason.yml'
+permissions:
+  contents: read
+jobs:
+  database:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_tax_reason_fixture
+        ports:
+          - 5432:5432
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.21.0'
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts
+      - run: node --check tool/verify_payroll_tax_adjustment_reason.mjs
+      - name: PGlite reason and boundary checks
+        run: node tool/verify_payroll_tax_adjustment_reason.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
+      - name: PostgreSQL 17 reason, boundary and concurrent legacy writer checks
+        env:
+          SKO_TAX_REASON_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_tax_reason_fixture
+        run: node tool/verify_payroll_tax_adjustment_reason.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js" postgres
+      - run: git diff --exit-code -- tool/security/fixture_dependencies/package.json tool/security/fixture_dependencies/package-lock.json
