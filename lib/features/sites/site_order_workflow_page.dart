@@ -235,7 +235,7 @@ class SiteOrderPackagePage extends StatefulWidget {
 
 class _SiteOrderPackagePageState extends State<SiteOrderPackagePage> {
   Map<String, dynamic>? _detail;
-  bool _busy = true, _unknown = false;
+  bool _busy = true, _unknown = false, _prompting = false;
   String? _error, _message;
   final Map<String, dynamic> _uncertainOperation = {};
   @override
@@ -382,8 +382,8 @@ class _SiteOrderPackagePageState extends State<SiteOrderPackagePage> {
   }
 
   Future<void> _refuse() async {
-    if (_busy || _unknown) return;
-    setState(() => _busy = true);
+    if (_busy || _unknown || _prompting) return;
+    setState(() => _prompting = true);
     try {
       final confirmed = await showDialog<bool>(
         context: context,
@@ -403,6 +403,7 @@ class _SiteOrderPackagePageState extends State<SiteOrderPackagePage> {
         ),
       );
       if (confirmed != true || !mounted || widget.api.invalidated) return;
+      setState(() => _busy = true);
       await widget.api.refuse(widget.packageId, siteOrderRequestId());
       if (!mounted || widget.api.invalidated) return;
       setState(() => _message = '注文を辞退し、注文元の要通知へ保存しました。');
@@ -417,7 +418,12 @@ class _SiteOrderPackagePageState extends State<SiteOrderPackagePage> {
     } catch (_) {
       if (mounted) setState(() => _error = '辞退の結果を確認できません。保存状態を確認してください。');
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _prompting = false;
+        });
+      }
     }
   }
 
