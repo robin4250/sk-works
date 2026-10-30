@@ -1,9 +1,22 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-const dependency = process.env.SKO_PGLITE_MODULE || resolve('tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js');
-const { PGlite } = await import(pathToFileURL(dependency));
-const db = new PGlite();
+const engine=process.argv[2]||'pglite';
+let db;
+if(engine==='postgres') {
+  const url=new URL(process.env.SKO_SITE_ORDER_FIXTURE_URL??'');
+  if(!['127.0.0.1','localhost'].includes(url.hostname)||url.pathname!=='/sko_site_order_fixture') {
+    throw new Error('Local dedicated fixture database required');
+  }
+  const dependency=process.env.SKO_PG_MODULE||resolve('tool/security/fixture_dependencies/node_modules/pg/lib/index.js');
+  const {Client}=await import(pathToFileURL(dependency));
+  const client=new Client({connectionString:url.toString()});await client.connect();
+  db={exec:sql=>client.query(sql),query:sql=>client.query(sql),close:()=>client.end()};
+} else if(engine==='pglite') {
+  const dependency = process.env.SKO_PGLITE_MODULE || resolve('tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js');
+  const { PGlite } = await import(pathToFileURL(dependency));
+  db = new PGlite();
+} else { throw new Error('Unsupported fixture engine'); }
 const schema = readFileSync('docs/review/site-order-management/archive-schema.sql.review-only','utf8');
 let checks=0;
 const assert = (ok,message) => { if(!ok)throw new Error(message); checks++; };
@@ -87,5 +100,5 @@ try {
   await denied('select * from site_order_private.artifacts','42501');
   await db.exec('reset role');
   await db.exec('rollback');
-  console.log(JSON.stringify({status:'passed',checks,scope:'offline structural prototype; no RPC/auth/issuer/real delivery proof',production_applied:false}));
+  console.log(JSON.stringify({status:'passed',engine,checks,scope:'offline structural prototype; no RPC/auth/issuer/real delivery proof',production_applied:false}));
 } finally { await db.close(); }

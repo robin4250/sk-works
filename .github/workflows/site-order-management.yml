@@ -26,12 +26,24 @@ jobs:
       - run: flutter pub get --enforce-lockfile
       - name: Parse Dart source
         run: dart format --output=none lib/features/sites/site_order_*.dart test/site_order_*.dart
-      - run: flutter analyze lib/features/sites/site_order_workflow.dart lib/features/sites/site_order_company_page.dart lib/features/sites/site_order_send_page.dart lib/features/sites/site_order_history_page.dart lib/features/sites/site_order_approval_contract.dart lib/features/companies/trade_company_page.dart test/site_order_workflow_test.dart test/site_order_pages_test.dart test/site_order_approval_contract_test.dart
-      - run: flutter test --reporter expanded test/site_order_workflow_test.dart test/site_order_pages_test.dart test/site_order_approval_contract_test.dart test/trade_document_generator_routing_test.dart test/trade_company_save_completion_test.dart test/trade_company_detail_edit_delete_contract_test.dart test/trade_company_master_contract_test.dart test/trade_company_dialog_test.dart
+      - run: flutter analyze lib/features/sites/site_order_*.dart lib/features/companies/trade_company_page.dart test/site_order_*.dart test/trade_document_generator_routing_test.dart
+      - run: flutter test --reporter expanded test/site_order_*.dart test/trade_document_generator_routing_test.dart test/trade_company_save_completion_test.dart test/trade_company_detail_edit_delete_contract_test.dart test/trade_company_master_contract_test.dart test/trade_company_dialog_test.dart
       - run: git diff --exit-code -- pubspec.yaml pubspec.lock
   archive-structure:
     runs-on: ubuntu-latest
     timeout-minutes: 8
+    strategy:
+      matrix:
+        engine: [pglite, postgres]
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_site_order_fixture
+        ports:
+          - 5432:5432
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
         with:
@@ -41,5 +53,7 @@ jobs:
           node-version: '22.21.0'
       - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts
       - run: node --check tool/verify_site_order_archive_schema.mjs
-      - run: node tool/verify_site_order_archive_schema.mjs
+      - run: node tool/verify_site_order_archive_schema.mjs ${{ matrix.engine }}
+        env:
+          SKO_SITE_ORDER_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_site_order_fixture
       - run: git diff --exit-code -- tool/security/fixture_dependencies/package.json tool/security/fixture_dependencies/package-lock.json

@@ -59,6 +59,8 @@ eaaf95001。既存 `site_share_approval_page.dart` と `site_cloud_repository.da
   intent DTO、価格やURLを含まない通知envelopeのstrict mapper、通知event宛先/重複検証。
 - master capability はarchive閲覧とmutationを分離し、必要なserver各契約版が全部1の
   ときだけ新操作を許可する。DTOの一致は実認証・実権限を証明するものではない。
+- 新package向けの非金額現場projectionを用意。price/PDF/会社情報snapshotだけでなく、
+  金額を含み得るfree-form notesも引き継がない。既存の一般site_shareは変更しない。
 
 **これらは本番ルートから未接続。受信保存・送信が完成したという意味ではない。**
 API不在をスタブ成功に変換せず、既存サイト共有や会社情報を変更していない。
@@ -91,6 +93,8 @@ Draft PRはmerge blocked。新しい独立hub/現場管理の作成経路が未�
 5. 一般 `sites` / notes / 地図 / チャットの公開欄に価格・注文書payload・PDF URL・
    秘密の storage path を入れない。既存 directory RPC に archive join を足さない。
    押印PDF、会社情報原本、単価を protected private archive に保管する。
+   旧site_shareのnotesは自由文なので、新packageの承認projectionへそのままコピー
+   しない。新しいpure DTOの許可fieldとserverの実際のprojectionを一致させて試験する。
 6. protected workspace RPC は live SID、現会社、`can_view_admin_site_data` または
    既存管理権限を再確認し、sender/recipient の正規現場リンクを検証する。
    全件履歴は cursor pagination、重複なく欠落なく取得する。
