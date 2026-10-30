@@ -1,0 +1,18 @@
+name: Dynamic required document guide regression
+on:
+  pull_request:
+    paths:
+      - 'lib/features/tutorial/**'
+      - 'test/tutorial_dynamic_required_documents_test.dart'
+      - '.github/workflows/tutorial-dynamic-required-documents.yml'
+permissions: {contents: read}
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: '3.47.5', channel: stable, cache: true}
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/tutorial/tutorial_evidence_repository.dart lib/features/tutorial/tutorial_workspace.dart lib/features/tutorial/tutorial_home_card.dart lib/features/tutorial/tutorial_page.dart test/tutorial_dynamic_required_documents_test.dart
+      - run: flutter test test/tutorial_dynamic_required_documents_test.dart
