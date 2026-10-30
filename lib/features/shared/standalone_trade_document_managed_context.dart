@@ -18,11 +18,11 @@ Map<String,dynamic> managedTradeDocumentContext(Object? raw,{
   raw['actor_id']!=actorId || raw['company_id']!=companyId || raw['trade_company_id']!=tradeCompanyId || raw['acceptance']!=acceptance ||
   raw['session_id'] is! String || !uuid.hasMatch(raw['session_id'] as String) || '$actorId/${raw['session_id']}'!=sessionIdentity ||
   !uuid.hasMatch(actorId)||!uuid.hasMatch(companyId)||!uuid.hasMatch(tradeCompanyId) ||
-  raw['company_seal_enabled']!=true || raw['bank_backend_available'] is! bool)invalid();
+  raw['company_seal_enabled']!=true || raw['bank_backend_available'] is! bool){invalid();}
  String text(Object? v,int max,{bool blank=true,bool multiline=false}){
   if(v is! String||v.runes.length>max||(!blank&&v.trim().isEmpty)||
-   RegExp(multiline?r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]':r'[\x00-\x1f\x7f]').hasMatch(v))invalid();
-  return v as String;
+   RegExp(multiline?r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]':r'[\x00-\x1f\x7f]').hasMatch(v)){invalid();}
+  return v;
  }
  for(final key in ['issuer','counterparty']){
   final p=raw[key],keys={'name','address','corporate_number','representative_name','phone',if(key=='issuer')'fax'};
@@ -51,7 +51,7 @@ Map<String,dynamic> managedTradeDocumentContext(Object? raw,{
  if(raw['bank_backend_available']==true&&(acceptance||partner==null))invalid();
  if(raw.containsKey('counterparty_bank')){
   if(raw['bank_backend_available']!=true||partner is! String||raw['counterparty_bank']==null)invalid();
-  PartnerCompanyBankAccount.fromJson(raw['counterparty_bank'],companyId:companyId,partnerCompanyId:partner as String);
+  PartnerCompanyBankAccount.fromJson(raw['counterparty_bank'],companyId:companyId,partnerCompanyId:partner);
  }
  // Return a private copy; actor/SID remain receipt evidence, never editable fields.
  return Map<String,dynamic>.from(jsonDecode(jsonEncode(raw)) as Map);
