@@ -14,35 +14,30 @@ class DailyReportPhotoPreview extends StatelessWidget {
   Widget build(BuildContext context) {
     if (photos.isEmpty) return const SizedBox.shrink();
     final cover = photos.where((photo) => photo.photoBytes != null).firstOrNull;
-    return InkWell(
-      key: const ValueKey('daily-report-photo-thumbnail'),
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => _DailyReportPhotoGallery(
-            photos: photos,
-            initialIndex: cover == null ? 0 : photos.indexOf(cover),
-          ),
-        ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (cover?.photoBytes != null)
-            Image.memory(
-              cover!.photoBytes!,
-              width: 56,
-              height: 42,
-              fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) =>
-                  const Icon(Icons.broken_image_outlined),
-            )
-          else
-            const Icon(Icons.broken_image_outlined),
-          const SizedBox(width: 6),
-          Text('${photos.length} ${SkoLanguageController.tr('写真')}'),
-        ],
-      ),
-    );
+    return LayoutBuilder(builder: (context, constraints) {
+      final width = constraints.maxWidth.isFinite ? constraints.maxWidth : 336.0;
+      final tileWidth = width / 6;
+      return Wrap(children: [
+        for (final (index, photo) in photos.indexed)
+          SizedBox(width: tileWidth, child: InkWell(
+            key: photo == (cover ?? photos.first)
+              ? const ValueKey('daily-report-photo-thumbnail')
+              : ValueKey('daily-report-photo-thumbnail-$index'),
+            onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+              builder: (_) => _DailyReportPhotoGallery(photos: photos, initialIndex: index))),
+            child: Padding(padding: const EdgeInsets.all(2), child: Column(
+              mainAxisSize: MainAxisSize.min, children: [
+                SizedBox(height: 42, width: double.infinity,
+                  child: photo.photoBytes != null
+                    ? Image.memory(photo.photoBytes!, fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) => const Icon(Icons.broken_image_outlined))
+                    : const Icon(Icons.broken_image_outlined)),
+                Text(photo.record.workerName, maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 10)),
+              ])),
+          )),
+      ]);
+    });
   }
 }
 
@@ -72,7 +67,10 @@ class _DailyReportPhotoGalleryState extends State<_DailyReportPhotoGallery> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text(SkoLanguageController.tr('写真'))),
+    appBar: AppBar(leading: IconButton(key: const ValueKey('daily-report-photo-close'),
+      tooltip: SkoLanguageController.tr('閉じる'), icon: const Icon(Icons.close),
+      onPressed: () => Navigator.of(context).pop()),
+      title: Text(SkoLanguageController.tr('写真'))),
     body: PageView(
       controller: _pages,
       children: [

@@ -1,0 +1,31 @@
+name: Daily report cover photo grid
+on:
+  pull_request:
+    paths:
+      - 'lib/features/daily_reports/**'
+      - 'test/daily_report_cover_pdf_test.dart'
+      - 'test/daily_report_evidence_pdf_test.dart'
+      - 'test/daily_report_photo_preview_test.dart'
+      - '.github/workflows/daily-report-cover-photos.yml'
+permissions: {contents: read}
+jobs:
+  cover-photos:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SKO_PDF_FONT_PATH: build/pdf-fixtures/NotoSansJP-Regular.ttf
+      SKO_PDF_OUTPUT_DIR: build/pdf-fixtures
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: '3.47.5', channel: stable, cache: true}
+      - run: |
+          flutter pub get --enforce-lockfile
+          python3 -m pip install PyMuPDF==1.26.6 fonttools==4.61.1
+          python3 tool/prepare_pdf_fixture_font.py
+      - run: flutter analyze lib/features/daily_reports/daily_report_cover_layout.dart lib/features/daily_reports/daily_report_pdf_service.dart lib/features/daily_reports/daily_report_photo_preview.dart test/daily_report_cover_pdf_test.dart test/daily_report_evidence_pdf_test.dart test/daily_report_photo_preview_test.dart
+      - run: flutter test --reporter expanded test/daily_report_cover_pdf_test.dart test/daily_report_evidence_pdf_test.dart test/daily_report_photo_preview_test.dart
+      - run: git diff --exit-code -- pubspec.yaml pubspec.lock
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: daily-report-cover-photo-renders, path: build/pdf-fixtures/, if-no-files-found: warn}

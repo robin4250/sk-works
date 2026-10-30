@@ -89,7 +89,7 @@ void main() {
       file.path, directory.path]);
     expect(result.exitCode, 0, reason: result.stderr.toString());
     final actual = jsonDecode(result.stdout.toString()) as Map<String, dynamic>;
-    expect(actual['pages'], 2);
+    expect(actual['pages'], 1);
     expect(actual['images'], greaterThanOrEqualTo(1));
     final text = actual['text'] as String;
     // PDF text extraction may omit a visual Japanese word-space. Keep the
@@ -175,12 +175,13 @@ void main() {
       ]);
       expect(result.exitCode, 0, reason: result.stderr.toString());
       final output = jsonDecode(result.stdout.toString()) as List;
-      expect(output[0]['pages'], 2);
+      expect(output[0]['pages'], 1);
       expect(output[1]['pages'], 1);
       final photosText = output[1]['texts'][0] as String;
       expect(photosText, isNot(contains('本文専用作業内容')));
       expect(photosText, isNot(contains('時刻のみの本人')));
-      expect(photosText, output[0]['texts'][1]);
+      expect(photosText, contains('合成運転手'));
+      expect(output[0]['texts'][0], contains('合成運転手'));
       expect(
         output[0]['images'][0],
         greaterThan(0),

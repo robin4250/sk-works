@@ -68,6 +68,9 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('1/2 先の失敗'), findsOneWidget);
       expect(find.text('写真未登録・送信失敗'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('daily-report-photo-close')));
+      await tester.pumpAndSettle();
+      expect(find.byType(PageView), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );
