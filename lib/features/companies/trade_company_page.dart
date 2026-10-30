@@ -1,4 +1,5 @@
 import '../shared/trade_document_confirmation_dialog.dart';
+import '../shared/standalone_trade_document_page.dart';
 import 'trade_company_dialog.dart';
 import '../../data/supabase_backend.dart';
 import '../referrals/app_referral_page.dart';
@@ -361,6 +362,14 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
             icon: const Icon(Icons.rule_outlined),
             label: const Text('計算元を確認・変更'),
           ),
+          OutlinedButton.icon(
+            onPressed: () =>
+                Navigator.of(dialogContext).pop(_CompanyAction.document),
+            icon: const Icon(Icons.description_outlined),
+            label: Text(
+              widget.mode == TradeCompanyPageMode.customer ? '注文請書生成' : '注文書生成',
+            ),
+          ),
           if (item.linkStatus == 'linked')
             OutlinedButton.icon(
               onPressed: () => Navigator.of(dialogContext).pop(_CompanyAction.receivedDocuments),
@@ -378,6 +387,16 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
     );
     if (!mounted || action == null) return;
     switch (action) {
+      case _CompanyAction.document:
+        await Navigator.of(context).push<void>(
+          MaterialPageRoute(
+            builder: (_) => StandaloneTradeDocumentPage(
+              tradeCompanyId: item.id,
+              acceptance: widget.mode == TradeCompanyPageMode.customer,
+            ),
+          ),
+        );
+
       case _CompanyAction.receivedDocuments:
         await openReceivedTradeDocuments(context, item.id, item.name);
 
@@ -653,7 +672,7 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
   };
 }
 
-enum _CompanyAction { edit, contract, delete, source, invite, receivedDocuments }
+enum _CompanyAction { edit, contract, delete, source, invite, document, receivedDocuments }
 
 class _CompanyDraft {
   const _CompanyDraft({

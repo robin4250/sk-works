@@ -4,9 +4,14 @@
 
 The standalone entry belongs to management (`owner`, `admin`, `manager`) behind
 the existing second protected route. It reuses the formal touch editor and PDF
-generator. The two registration-detail generator buttons are moved only in the
-same release as a working hub; never deploy those removals independently.
+generator. The two registration-detail generator buttons are retained unchanged in this
+candidate. Their removal is deferred until the new hub has a working installed
+backend, separately authorized activation and owner device proof. Never deploy
+those removals merely because candidate CI passes.
 Company editing, existing received documents and archives remain accessible.
+The retained registration-only route has no new master semantics; it is not an
+owner fallback from the protected hub. A failed hub operation never invokes it.
+See `deployment-and-recovery.md` for the bounded installation and transition checklist.
 
 `site_order_documents` is the **one master-controlled flag** shared with site
 orders. Missing/unknown means OFF. Standalone capability is independent of the
