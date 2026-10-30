@@ -16,7 +16,7 @@ try{
  }else{
   const marker=(await client.query('select value from public.sko_atomic_fixture_marker')).rows;
   if(marker.length!==1||marker[0].value!=='isolated-atomic-fixture-v1')throw Error('Owned fixture marker missing');
-  await client.query('begin;drop schema private cascade;drop schema auth cascade;drop schema extensions cascade;drop schema public cascade;drop role anon;drop role authenticated;drop role service_role;create schema public;commit');
+  await client.query('begin;drop schema private cascade;drop schema auth cascade;drop schema extensions cascade;drop schema public cascade;drop role anon;drop role authenticated;drop role service_role;create schema public;grant usage on schema public to public;commit');
  }
  await client.query("create table public.sko_atomic_fixture_marker(value text not null);insert into public.sko_atomic_fixture_marker values('isolated-atomic-fixture-v1')");
  console.log(JSON.stringify({action,disposable:true,production:false}));
