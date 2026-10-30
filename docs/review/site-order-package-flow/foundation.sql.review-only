@@ -1,0 +1,121 @@
+-- REVIEW ONLY. Receives an immutable approved PDF and a nonfinancial site item
+-- in the same transaction. No public grants, master ON, or production install.
+begin;
+do $$ begin
+ if to_regnamespace('site_order_package_private') is not null
+ or to_regprocedure('site_order_manager_private.require_actor(uuid,uuid)') is null
+ or to_regclass('private.document_deliveries') is null
+ or to_regclass('private.company_data_delivery_items') is null
+ or to_regclass('private.site_share_inbox') is null then
+  raise exception 'site_order_package_prerequisite_changed';end if;
+end $$;
+do $$ declare e record;p pg_proc;begin
+ for e in select * from(values
+('private.require_standalone_trade_document_access()','63c57e18a04499e8d6bcfad4ead7837f',true),
+('site_order_manager_private.require_actor(uuid,uuid)','0c841be3d2b20f5cbdbe713a6414f744',true),
+('site_order_manager_private.counterparty_context(uuid,uuid,text)','6e8915f47ec3daa03eafd8ee2960bd24',true),
+('site_order_manager_private.render_approved(uuid,integer,uuid,boolean)','f6fb2629e3660acaae1706879eab1f03',true),
+('site_order_manager_private.require_local(uuid,uuid)','52851fbaeefa4ab6a6c4332036a6603b',true),
+('trade_document_consent_private.immutable()','73660d9947f20d6f99c59d8451078e7e',false)
+ )v(signature,source_md5,definer) loop
+ select * into p from pg_proc where oid=to_regprocedure(e.signature);
+ if p.oid is null or md5(p.prosrc) is distinct from e.source_md5 or p.prosecdef is distinct from e.definer
+ or pg_get_userbyid(p.proowner)<>'postgres' or p.proconfig is distinct from array['search_path=""']::text[]
+ or has_function_privilege('anon',p.oid,'execute') or has_function_privilege('authenticated',p.oid,'execute')
+ or has_function_privilege('service_role',p.oid,'execute') then raise exception 'site_package_dependency_changed: %',e.signature;end if;
+ end loop;
+end $$;
+create schema site_order_package_private;
+revoke all on schema site_order_package_private from public,anon,authenticated,service_role;
+create table site_order_package_private.packages(
+ id uuid primary key,
+ sender_company_id uuid not null,
+ recipient_company_id uuid not null check(recipient_company_id<>sender_company_id),
+ actor_id uuid not null,
+ session_id uuid not null,
+ request_id uuid not null,
+ source_job_id uuid not null references site_order_artifact_private.render_jobs(id),
+ original_receipt_id uuid not null references site_order_artifact_private.pdf_records(receipt_id),
+ data_item_id uuid not null unique references private.company_data_delivery_items(id),
+ created_at timestamptz not null default clock_timestamp(),
+ unique(sender_company_id,actor_id,request_id)
+);
+create table site_order_package_private.notice_intents(
+ id uuid primary key,package_id uuid not null references site_order_package_private.packages(id),
+ audience_company_id uuid not null,kind text not null check(kind in('order_received','approval_required')),
+ created_at timestamptz not null default clock_timestamp(),unique(package_id,audience_company_id,kind)
+);
+alter table site_order_package_private.packages enable row level security;
+alter table site_order_package_private.notice_intents enable row level security;
+create trigger immutable_package before update or delete on site_order_package_private.packages
+ for each row execute function trade_document_consent_private.immutable();
+create trigger immutable_package_truncate before truncate on site_order_package_private.packages
+ for each statement execute function trade_document_consent_private.immutable();
+create trigger immutable_package_notice before update or delete on site_order_package_private.notice_intents
+ for each row execute function trade_document_consent_private.immutable();
+create trigger immutable_package_notice_truncate before truncate on site_order_package_private.notice_intents
+ for each statement execute function trade_document_consent_private.immutable();
+
+create function site_order_package_private.send_order(p_job uuid,p_original_receipt uuid,p_request uuid)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare a jsonb;cid uuid;sid uuid;j site_order_artifact_private.render_jobs%rowtype;
+ r site_order_artifact_private.pdf_records%rowtype;old site_order_package_private.packages%rowtype;
+ s public.sites%rowtype;original jsonb;projection jsonb;sender_name text;recipient_name text;
+ delivery uuid;item uuid;package uuid;
+begin
+ a:=private.require_standalone_trade_document_access();cid:=(a->>'company_id')::uuid;sid:=(a->>'session_id')::uuid;
+ if p_request is null then raise exception 'site_order_request_required' using errcode='22023';end if;
+ perform pg_advisory_xact_lock(hashtextextended('site-package:'||cid::text||':'||auth.uid()::text||':'||p_request::text,0));
+ select * into old from site_order_package_private.packages where sender_company_id=cid
+  and actor_id=auth.uid() and request_id=p_request for share;
+ if old.id is not null then
+  if(old.source_job_id,old.original_receipt_id,old.session_id) is distinct from(p_job,p_original_receipt,sid) then
+   raise exception 'site_order_request_changed' using errcode='40001';end if;
+  return jsonb_build_object('contract_version',1,'package_id',old.id,'data_item_id',old.data_item_id,
+   'sender_company_id',old.sender_company_id,'recipient_company_id',old.recipient_company_id,'status','received');
+ end if;
+ select * into j from site_order_artifact_private.render_jobs where id=p_job for share;
+ if j.id is null or j.company_id<>cid or j.actor_id<>auth.uid() or j.session_id<>sid
+ or j.evidence#>>'{body,kind}' is distinct from 'order' then
+  raise exception 'site_order_current_own_order_required' using errcode='42501';end if;
+ perform site_order_manager_private.require_actor(cid,j.document_id);
+ if not exists(select 1 from site_order_manager_private.document_scopes where document_id=j.document_id
+  and company_id=cid and site_id=j.site_id and trade_company_id=j.counterparty_trade_company_id
+  and connection_fingerprint=j.counterparty_connection_fingerprint) then
+  raise exception 'site_order_exact_reserved_target_required' using errcode='42501';end if;
+ select * into r from site_order_artifact_private.pdf_records where job_id=j.id and receipt_id=p_original_receipt for share;
+ if r.job_id is null then raise exception 'site_order_registered_original_required' using errcode='42501';end if;
+ original:=site_order_manager_private.render_approved(j.document_id,j.document_revision,cid,false);
+ if original is distinct from j.evidence then raise exception 'site_order_approved_body_changed' using errcode='40001';end if;
+ select * into s from public.sites where id=j.site_id and company_id=cid for share;
+ if s.id is null or(s.latitude is not null and not(s.latitude between -90 and 90))
+ or(s.longitude is not null and not(s.longitude between -180 and 180)) then
+  raise exception 'site_order_valid_own_site_required' using errcode='42501';end if;
+ select name into sender_name from public.companies where id=cid for share;
+ select name into recipient_name from public.companies where id=j.counterparty_company_id for share;
+ projection:=jsonb_build_object('source_site_id',s.id,'name',coalesce(nullif(s.formal_name,''),s.name),
+ 'formal_name',coalesce(s.formal_name,''),'address',coalesce(s.address,''),
+ 'nearest_station',coalesce(s.nearest_station,''),'representative_name',coalesce(s.representative_name,''),
+ 'representative_phone',coalesce(s.representative_phone,''),'latitude',s.latitude,'longitude',s.longitude,
+ 'starts_on',s.starts_at,'ends_on',s.ends_at,'status','preparation');
+ -- No customer-name heuristic, financial amounts, arbitrary notes or original URL.
+ delivery:=gen_random_uuid();item:=gen_random_uuid();package:=gen_random_uuid();
+ insert into private.document_deliveries(id,sender_company_id,recipient_company_id,sender_name,recipient_name,sent_by,note)
+ values(delivery,cid,j.counterparty_company_id,sender_name,recipient_name,auth.uid(),'現場注文書共有');
+ insert into private.company_data_delivery_items(id,delivery_id,payload_kind,payload,company_path)
+ values(item,delivery,'site_share',projection,jsonb_build_array(sender_name));
+ insert into private.site_share_inbox(data_item_id,recipient_company_id,status)
+ values(item,j.counterparty_company_id,'pending');
+ insert into site_order_package_private.packages(id,sender_company_id,recipient_company_id,actor_id,session_id,
+ request_id,source_job_id,original_receipt_id,data_item_id)
+ values(package,cid,j.counterparty_company_id,auth.uid(),sid,p_request,j.id,r.receipt_id,item);
+ insert into site_order_package_private.notice_intents(id,package_id,audience_company_id,kind)
+ values(gen_random_uuid(),package,j.counterparty_company_id,'order_received'),
+ (gen_random_uuid(),package,j.counterparty_company_id,'approval_required');
+ perform site_order_manager_private.require_actor(cid,j.document_id);
+ return jsonb_build_object('contract_version',1,'package_id',package,'data_item_id',item,
+ 'sender_company_id',cid,'recipient_company_id',j.counterparty_company_id,'status','received');
+end $$;
+revoke all on all tables in schema site_order_package_private from public,anon,authenticated,service_role;
+revoke all on all functions in schema site_order_package_private from public,anon,authenticated,service_role;
+commit;
