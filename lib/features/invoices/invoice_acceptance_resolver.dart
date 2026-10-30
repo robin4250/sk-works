@@ -1,5 +1,6 @@
 import '../../domain/company_seal_snapshot.dart';
 import '../../domain/trade_document_terms_snapshot.dart';
+import '../../domain/trade_document_form_draft.dart';
 import '../shared/r18_defaults.dart';
 import '../shared/trade_document_attachment.dart';
 
@@ -80,7 +81,15 @@ class InvoiceAcceptanceResolver {
         result['order_date'].toString(),
       );
     }
-    return TradeDocumentAttachment.fromJson({'version': 1, 'payload': workspace['source_locked']==false?TradeDocumentTermsSnapshot.initialize(result):result});
+    final initialized = workspace['source_locked'] == false
+        ? TradeDocumentFormDraft.fromPayload(
+            TradeDocumentTermsSnapshot.initialize(result),
+            allowAmountEditing: false,
+            initializeDefaults: true,
+            initializeExtendedFields: workspace['form_fields_schema_version'] == 2,
+          ).payload
+        : result;
+    return TradeDocumentAttachment.fromJson({'version': 1, 'payload': initialized});
   }
 
   static Map<String, dynamic>? _parentSealPayload(CompanySealSnapshot seal) {

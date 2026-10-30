@@ -197,7 +197,7 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
         for(final key in ['issuer','counterparty','company_seal_snapshot','company_seal_enabled','counterparty_bank'])if(value.containsKey(key))key:value[key],
         for(final entry in initial.entries)if(!entry.key.contains('.'))entry.key:entry.value,
       });
-      _draft=TradeDocumentFormDraft.fromPayload(payload,allowAmountEditing:true);
+      _draft=TradeDocumentFormDraft.fromPayload(payload,allowAmountEditing:true,initializeExtendedFields:true,initializeDefaults:true);
       setState(() {
         _context = value;
         _loading = false;
@@ -225,7 +225,7 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
     try{
       _verify();
       await Navigator.of(context).push<bool>(MaterialPageRoute(builder:(_)=>TradeDocumentTouchEditorPage(
-        initial:_draft!,requireScope:_verify,scopeChanges:_session,canEdit:true,
+        initial:_draft!,allowExtendedFields:true,requireScope:_verify,scopeChanges:_session,canEdit:true,
         buildPreview:(payload)async{_verify();final bytes=await TradeDocumentFormRenderer.canonical(_validatedPayload(payload,_context!));_verify();return bytes;},
         onSave:(payload)async{
           _verify();final validated=_validatedPayload(payload,_context!);
