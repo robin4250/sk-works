@@ -246,5 +246,6 @@ export async function verifySiteOrderPackageFlow(db,c){
  check(e.pdf_sha256,await q('select r.pdf_sha256 v from site_order_package_private.packages p join site_order_artifact_private.pdf_records r on r.job_id=p.source_job_id and r.receipt_id=p.original_receipt_id where p.id=$1',[e.package_id]));
  }
  await (await import('./site_order_approval_operation_fixture.mjs')).verifySiteOrderApprovalOperations(db,{id,UA,UB,UC,q,check,deny,signed,send,recipientTrade,recipientPeer,openNativePeer,second,queued,renderer});
+ await (await import('./site_order_reply_recovery_fixture.mjs')).verifyReplyRecovery(db,{id,UA,UB,UC,q,check,deny,signed,send,recipientTrade,recipientPeer,renderer});
  console.log(JSON.stringify({status:'passed',checks,scope:'canonical original + sanitized receive + real site/acceptance intent approval atomicity; prepared legacy guard; ordinary legacy OFF unchanged',production_applied:false,real_auth:false}));
 }

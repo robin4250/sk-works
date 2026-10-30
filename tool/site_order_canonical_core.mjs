@@ -80,3 +80,38 @@ export async function processCanonicalSiteOrderReply(db,packageId,render,verifie
  select result||jsonb_build_object('notifications',site_order_package_private.dispatch_notifications($1)) as result from stored`,
  [packageId,original.receipt_id,ready.request_id]);
 }
+
+// Separate fixed lease route. It never changes the original job's SID or installs
+// old claims. Current verified claims and the server's explicit recovery lease
+// are independently rechecked inside every transaction.
+async function registerRecoveredOriginal(db,jobId,leaseId,render,claims){
+ let commitStarted=false;
+ await db.query('begin isolation level read committed');
+ try{
+  if((await db.query('select session_user as role')).rows[0]?.role!=='postgres')throw Error('internal');
+  await db.query("select set_config('request.jwt.claims',$1,true)",[JSON.stringify(claims)]);
+  await db.query('select private.require_standalone_trade_document_access()');
+  const job=(await db.query('select evidence from site_order_artifact_private.render_jobs where id=$1 for update',[jobId])).rows[0];
+  if(!job)throw Error('missing');
+  await db.query('select site_order_package_private.require_reply_recovery_lease($1,$2)',[leaseId,jobId]);
+  // A fresh statement after the lock observes a worker which committed while
+  // this request waited. Existing original bytes are never rendered again.
+  const saved=(await db.query('select pdf_bytes from site_order_artifact_private.pdf_records where job_id=$1',[jobId])).rows[0]?.pdf_bytes;
+  const bytes=saved??await render(job.evidence);
+  const receipt=(await db.query('select site_order_package_private.register_recovered_pdf($1,$2,$3) as receipt',[jobId,bytes,leaseId])).rows[0]?.receipt;
+  if(!receipt||receipt.job_id!==jobId||receipt.pdf_byte_length!==bytes.length)throw Error('receipt');
+  commitStarted=true;await db.query('commit');return receipt;
+ }catch{
+  if(!commitStarted)await db.query('rollback').catch(()=>{});
+  throw Error(commitStarted?'site_order_commit_result_unknown':'site_order_reply_rejected');
+ }
+}
+export async function processRecoveredSiteOrderReply(db,packageId,leaseId,render,verifiedClaims){
+ if(!uuid.test(packageId)||!uuid.test(leaseId)||!verifiedClaims)throw Error('site_order_reply_rejected');
+ const ready=await replyTransaction(db,verifiedClaims,'select site_order_package_private.ready_recovered_reply($1,$2) as result',[packageId,leaseId]);
+ if(ready.reply_recipient_stored===true)return {package_id:packageId,original_receipt_id:ready.original_receipt_id,status:'recipient_stored'};
+ const original=await registerRecoveredOriginal(db,ready.job_id,leaseId,render,verifiedClaims);
+ return replyTransaction(db,verifiedClaims,`with stored as materialized(select site_order_package_private.deliver_recovered_acceptance($1,$2,$3,$4) as result)
+ select result||jsonb_build_object('notifications',site_order_package_private.dispatch_notifications($1)) as result from stored`,
+ [packageId,original.receipt_id,ready.request_id,leaseId]);
+}
