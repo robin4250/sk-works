@@ -121,6 +121,29 @@ void main() {
     expect(find.text('閉じる'),findsOneWidget);
   });
 
+  testWidgets('scope retirement removes covered confirmation without closing another dialog', (tester) async {
+    final changes=ChangeNotifier();addTearDown(changes.dispose);
+    final navigator=GlobalKey<NavigatorState>();var valid=true;
+    final flow=SiteOrderSendWorkflow(scope:scope,artifact:order('現場A'),currentScope:()=>scope,
+      isArtifactCurrent:(_)=>valid,isRecipientCurrent:(_)=>true,newRequestId:()=> 'request',
+      persistIntent:(_)async {});
+    await tester.pumpWidget(MaterialApp(navigatorKey:navigator,home:sendPage(flow,
+      recipients:const[recipient],scopeChanges:changes,lookupReceipt:(_)async=>null,
+      send:(_)async=>throw StateError('must not send'))));
+    await tester.tap(find.byType(DropdownButtonFormField<String>));await tester.pumpAndSettle();
+    await tester.tap(find.text('協力会社A').last);await tester.pumpAndSettle();
+    await tester.tap(find.text('共有送信'));await tester.pumpAndSettle();
+    final help=showDialog<void>(context:navigator.currentContext!,builder:(context)=>AlertDialog(
+      title:const Text('ヘルプ'),actions:[TextButton(onPressed:()=>Navigator.pop(context),
+        child:const Text('ヘルプを閉じる'))]));
+    await tester.pumpAndSettle();valid=false;changes.notifyListeners();await tester.pumpAndSettle();
+    expect(find.text('ヘルプを閉じる'),findsOneWidget);
+    await tester.tap(find.text('ヘルプを閉じる'));await help;await tester.pumpAndSettle();
+    expect(find.text('注文書を共有送信しますか？'),findsNothing);
+    expect(find.text('とび工\n単価 32000円／人日'),findsNothing);
+    expect(find.text('閉じる'),findsOneWidget);
+  });
+
   testWidgets('archive list shows work name and period, clears on permission revocation', (tester) async {
     final changes=ChangeNotifier(); addTearDown(changes.dispose);
     var valid=true;

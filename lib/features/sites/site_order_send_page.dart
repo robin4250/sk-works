@@ -62,8 +62,9 @@ class _SiteOrderSendPageState extends State<SiteOrderSendPage> {
       _workflow?.retire();
       if (mounted) setState(() => _retired = true);
       final dialog = _confirmationContext;
-      if (dialog != null && dialog.mounted && ModalRoute.of(dialog)?.isCurrent == true) {
-        Navigator.of(dialog).pop(false);
+      final route=dialog!=null && dialog.mounted ? ModalRoute.of(dialog) : null;
+      if (route != null && route.isActive) {
+        route.navigator?.removeRoute(route);
       }
     }
   }
@@ -95,7 +96,9 @@ class _SiteOrderSendPageState extends State<SiteOrderSendPage> {
         current.single.fingerprint!=recipient.fingerprint) {
         workflow.retire();throw StateError('原本・送信先の対象が一致しません。');
       }
-      workflow.select(recipient);_workflow=workflow;
+      try { workflow.select(recipient); }
+      catch (_) { workflow.retire();rethrow; }
+      _workflow=workflow;
       final intent = workflow.confirm();
       final confirmed = await showDialog<bool>(context: context,
         barrierDismissible: false, builder: (dialogContext) {
