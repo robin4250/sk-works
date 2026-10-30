@@ -80,11 +80,11 @@ const unit=String.raw`
  // Legacy non-protocol draft: ordinary unchanged PC saves still retain an
  // already collected reporter signature. The patch is NOT a global clear.
  await client.query("select set_config('fixture.actor',$1,false),set_config('fixture.sid',$2,false)",[U,id(80)]);
- const ordinaryPc=await draft('2026-10-17',reportWorker,[resetPcChoice]);
- await client.query("update daily_reports set created_at=(select new_report_from-interval '1 day' from shared_daily_report_private.rollout where company_id=$2) where id=$1",[ordinaryPc,A]);
+ const ordinaryPc=await draft('2025-09-17',reportWorker,[resetPcChoice]);
+ eq(await q('select shared_daily_report_private.report_enabled($1) v',[ordinaryPc]),false,'Ordinary draft is outside the shared-consent rollout, not an unauthorized shared-report edit');
  await sharedCall(U,id(80),"select public.save_daily_report_signature($1,'representative','合成通常報告者',$2::jsonb) v",[ordinaryPc,signature]);
  const ordinarySig=await q('select representative_signature_json v from daily_reports where id=$1',[ordinaryPc]);
- await draft('2026-10-17',reportWorker,[resetPcChoice],{reportId:ordinaryPc});
+ await draft('2025-09-17',reportWorker,[resetPcChoice],{reportId:ordinaryPc});
  eq(await q('select representative_signature_json v from daily_reports where id=$1',[ordinaryPc]),ordinarySig,'Ordinary unchanged PC draft preserves its signature');
  await exec('rollback');
  await client.query('delete from public.daily_report_edit_requests where id=$1',[pcRequest]);
