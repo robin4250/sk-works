@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import {createCanonicalSiteOrderRenderer,registerManagerCanonicalSiteOrderJob} from './site_order_canonical_renderer.mjs';
 export async function verifySiteOrderPackageFlow(db,c){
  const {id,A,B,C,UA,UB,UC,actor,q}=c;let checks=0;
  const check=(a,b)=>{if(JSON.stringify(a)!==JSON.stringify(b))throw Error('package fixture mismatch '+JSON.stringify(a)+' != '+JSON.stringify(b));checks++;};
@@ -119,5 +120,39 @@ export async function verifySiteOrderPackageFlow(db,c){
  await deny(()=>approve(),/master_feature_disabled/);
  check(await q('select count(*)::int v from site_order_package_private.reply_intents'),1);
 
+
+ const reviewedApprovalSql=await fs.readFile('docs/review/site-order-package-flow/approval-consent.sql.review-only','utf8');
+ await deny(async()=>{
+ await db.exec("begin;alter function trade_document_consent_private.own_seal(uuid) set search_path='public'");
+ try{await db.exec(reviewedApprovalSql);}finally{await db.exec('rollback');}
+ },/seal_source_changed/);
+ await db.exec(reviewedApprovalSql);
+ await signed(UA);await db.query("update private.master_feature_settings set enabled=true where feature_key='site_order_documents'");
+ const second=await send(id(12300));await signed(UB);
+ const siteCount=await q('select count(*)::int v from sites');
+ const documentCount=await q('select count(*)::int v from trade_document_consent_private.documents');
+ const review=await q('select site_order_package_private.preview_approval($1,$2,$3,$4) v',[second.package_id,recipientTrade,recipientPeer.connection_fingerprint,id(12301)]);
+ check(review.creates_site,false);check(review.consent_recorded,false);
+ check(await q('select count(*)::int v from sites'),siteCount);
+ check(await q('select count(*)::int v from trade_document_consent_private.documents'),documentCount);
+ const confirm=(confirmed=true,hash=review.body_hash)=>q('select site_order_package_private.approve_with_consent($1,$2,$3,$4,$5) v',[review.preview_id,hash,review.own_seal.seal_hash,confirmed,id(12302)]);
+ await deny(()=>confirm(false),/explicit_reviewed_consent/);
+ await deny(()=>confirm(true,'0'.repeat(64)),/explicit_reviewed_consent/);
+ await db.exec("create function pg_temp.reject_ready()returns trigger language plpgsql as $$begin raise exception 'fixture_late_ready_failure';end$$;create trigger fixture_late_ready before insert on site_order_package_private.ready_reply_jobs for each row execute function pg_temp.reject_ready()");
+ await deny(()=>confirm(),/fixture_late_ready_failure/);
+ check(await q('select count(*)::int v from sites'),siteCount);
+ check(await q('select count(*)::int v from trade_document_consent_private.documents'),documentCount);
+ check(await q('select status v from private.site_share_inbox where data_item_id=$1',[second.data_item_id]),'pending');
+ await db.exec('drop trigger fixture_late_ready on site_order_package_private.ready_reply_jobs');
+ const queued=await confirm();check(queued.status,'approved_reply_queued');check(await confirm(),queued);
+ check(await q('select count(*)::int v from sites'),siteCount+1);
+ check(await q('select count(*)::int v from trade_document_consent_private.documents'),documentCount+1);
+ const canonicalReply=await q('select evidence v from site_order_artifact_private.render_jobs where id=$1',[queued.job_id]);
+ check(canonicalReply.body,review.body);check(canonicalReply.render_seal_company_id,B);
+ // The worker is called after the approval statement committed, on a fresh TX.
+ const renderer=await createCanonicalSiteOrderRenderer({dartExecutable:process.env.SKO_CANONICAL_DART,repositoryRoot:process.cwd()});
+ const originalReply=await registerManagerCanonicalSiteOrderJob(db,queued.job_id,renderer);
+ check(originalReply.document_id,review.body.transaction_id);
+ check(await registerManagerCanonicalSiteOrderJob(db,queued.job_id,()=>{throw Error('Reply original must be reused');}),originalReply);
  console.log(JSON.stringify({status:'passed',checks,scope:'canonical original + sanitized receive + real site/acceptance intent approval atomicity; prepared legacy guard; ordinary legacy OFF unchanged',production_applied:false,real_auth:false}));
 }
