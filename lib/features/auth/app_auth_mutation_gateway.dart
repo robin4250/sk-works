@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'apple_session_navigation_binding.dart';
 import 'app_auth_logout_persistence.dart';
+import 'sdk_session_replay_baseline.dart';
 
 /// Serializes app-owned repository writes to an existing SDK client.
 /// SDK deep links, OAuth callbacks, automatic refresh and storage remain outside
@@ -43,19 +44,14 @@ class _LogoutSignal implements AppLogoutQuarantineSignal {
 
 class AppAuthMutationGateway {
   AppAuthMutationGateway._(this._client) {
-    Session? initial = _client.auth.currentSession;
-    var baseline = true;
-    var seen = false;
+    final baseline = SdkSessionReplayBaseline(_client.auth.currentSession);
     _externalHistory = _client.auth.onAuthStateChange.listen((event) {
-      // Ignore only the SDK's cached exact-session replay. A subsequent live
-      // event, including same-session signedIn, always advances the revision.
-      final cached = baseline && !seen && identical(event.session, initial) &&
-          (event.event == AuthChangeEvent.initialSession ||
-              (initial != null && event.event != AuthChangeEvent.signedOut));
-      seen = true;
+      // A recovered initialSession may be a distinct, byte-equivalent SDK
+      // object. Every subsequent live event still advances the revision.
+      final cached = baseline.consume(event, _client.auth.currentSession);
       if (!cached) _externalRevision++;
     }, onError: (Object _) => _closeExternalHistory(), onDone: _closeExternalHistory);
-    _externalReady = Future<void>.value().then((_) { baseline = false; initial = null; });
+    _externalReady = Future<void>.value().then((_) { baseline.close(); });
   }
   StreamSubscription<AuthState>? _externalHistory;
   late final Future<void> _externalReady;
