@@ -3,18 +3,22 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sk_works/features/shared/standalone_trade_document_repository.dart';
+import 'package:sk_works/features/shared/trade_document_form_session.dart';
+import 'package:flutter/widgets.dart';
 
 const _actor='00000000-0000-0000-0000-000000000001';
 const _company='00000000-0000-0000-0000-000000000002';
 const _partner='00000000-0000-0000-0000-000000000003';
 String _jwt() {
   String part(Object value) => base64Url.encode(utf8.encode(jsonEncode(value))).replaceAll('=', '');
-  return '${part({'alg':'HS256','typ':'JWT'})}.${part({'sub':_actor,'exp':DateTime.now().millisecondsSinceEpoch~/1000+3600})}.fixture';
+  return '${part({'alg':'HS256','typ':'JWT'})}.${part({'sub':_actor,'role':'authenticated','session_id':_partner,'exp':DateTime.now().millisecondsSinceEpoch~/1000+3600})}.fixture';
 }
 class _Fixture extends http.BaseClient {
   final String token=_jwt();
   final calls=<http.BaseRequest>[];
   bool multi=false;
+  final profileContacts=<String,Object?>{};
+  final companyContacts=<String,Object?>{'phone':'03-1111-2222','fax':'03-3333-4444'};
   @override Future<http.StreamedResponse> send(http.BaseRequest request) async {
     calls.add(request);
     final path=request.url.path;
@@ -31,10 +35,10 @@ class _Fixture extends http.BaseClient {
         value=[{'id':_partner,'trade_role':'both','name':'登録相手','address':'相手住所','representative_name':'相手代表'}];
       } else if(path.endsWith('/read_partner_company_profile')) {
         expect(jsonDecode((request as http.Request).body)['p_company_id'],_company);
-        value={'company_id':_company,'profile':{'name':'自社会社','address':'自社住所','representative_name':'自社代表'}};
+        value={'company_id':_company,'profile':{'name':'自社会社','address':'自社住所','representative_name':'自社代表',...profileContacts}};
       } else if(path.endsWith('/companies')) {
         expect(request.url.queryParameters['id'],'eq.$_company');
-        value={'id':_company,'name':'自社会社','company_seal_enabled':true,'company_seal_style':'legacy'};
+        value={'id':_company,'name':'自社会社','company_seal_enabled':true,'company_seal_style':'legacy',...companyContacts};
       } else if(path.endsWith('/company_uploaded_seal_settings')) {
         value={'company_id':_company,'company_name':'自社会社','enabled':false};
       } else if(path.endsWith('/trade_document_template')) {
@@ -46,6 +50,35 @@ class _Fixture extends http.BaseClient {
   }
 }
 void main() {
+  final binding=TestWidgetsFlutterBinding.ensureInitialized();
+  setUp(()=>binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed));
+  for(final scoped in [false,true]){
+    test('old profile missing phone/FAX uses only the same scoped company row ($scoped)',()async{
+      final fixture=_Fixture();final client=SupabaseClient('https://fixture.invalid','fixture-public',httpClient:fixture,authOptions:const AuthClientOptions(autoRefreshToken:false));
+      TradeDocumentFormSession? scope;StandaloneTradeDocumentRepository? repository;
+      try{
+        await client.auth.signInWithPassword(email:'fixture@example.invalid',password:'fixture-password');
+        if(scoped)scope=TradeDocumentFormSession(client);
+        repository=StandaloneTradeDocumentRepository(client,session:scope);
+        final value=await repository.load(tradeCompanyId:_partner,acceptance:true);
+        expect(value['issuer']['phone'],'03-1111-2222');expect(value['issuer']['fax'],'03-3333-4444');
+        final query=fixture.calls.singleWhere((r)=>r.url.path.endsWith('/companies'));
+        expect(query.url.queryParameters['select'],'id,name,phone,fax,company_seal_enabled,company_seal_style');
+        expect(query.url.queryParameters['id'],'eq.$_company');expect(fixture.calls.where((r)=>r.url.path.endsWith('/companies')),hasLength(1));
+      }finally{await repository?.dispose();scope?.dispose();await client.dispose();}
+    });
+  }
+  for(final explicit in ['',null,'03-7777-8888']){
+    test('profile explicit contact $explicit is retained instead of replaced from company',()async{
+      final fixture=_Fixture()..profileContacts['fax']=explicit;
+      final client=SupabaseClient('https://fixture.invalid','fixture-public',httpClient:fixture,authOptions:const AuthClientOptions(autoRefreshToken:false));
+      StandaloneTradeDocumentRepository? repository;
+      try{
+        await client.auth.signInWithPassword(email:'fixture@example.invalid',password:'fixture-password');repository=StandaloneTradeDocumentRepository(client);
+        expect((await repository.load(tradeCompanyId:_partner,acceptance:true))['issuer']['fax'],explicit??'');
+      }finally{await repository?.dispose();await client.dispose();}
+    });
+  }
   test('missing session refuses any company before SDK reads; dispose is idempotent', () async {
     final fixture=_Fixture();
     final client=SupabaseClient('https://fixture.invalid','fixture-public',httpClient:fixture,

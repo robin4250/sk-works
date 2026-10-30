@@ -65,8 +65,9 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
     if(client!=null){
       _session=widget.sessionOverride??TradeDocumentFormSession(client,target:'${widget.tradeCompanyId}:${widget.acceptance}',currentTarget:()=>'${widget.tradeCompanyId}:${widget.acceptance}');
       if(!_session!.belongsTo(client))throw ArgumentError('Foreign contract session');
-      _repository=widget.repositoryOverride??StandaloneTradeDocumentRepository(client,session:_session);
+      _repository=widget.repositoryOverride??StandaloneTradeDocumentRepository(client,session:_session,managedCompanyId:widget.operationGate?.companyId);
       if(!_repository!.isBoundTo(_session!))throw ArgumentError('Unbound contract repository');
+      if(widget.operationGate!=null&&!_repository!.isManagedFor(widget.operationGate!.companyId))throw ArgumentError('Unbound managed registration context');
       _session!.addListener(_invalidate);
     }
     _printScope = StandaloneTradeDocumentPrintScope(
@@ -111,7 +112,7 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
 
   void _verify() {
     if (_revoked || _repository == null) {
-      throw StateError('会社詳細から開き直してください。');
+      throw StateError(widget.operationGate==null?'会社詳細から開き直してください。':'注文・請書を開き直してください。');
     }
     _repository!.verify();
     final gate=_operationGate;
@@ -122,7 +123,7 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
           gate.acceptance!=widget.acceptance || (_context!=null&&gate.companyId!=_context!['company_id'])) {
           throw StateError('書類の会社・作成対象を確認できません。');
         }
-      }catch(_){_invalidate('書類の作成・保存を利用できません。現場管理から開き直してください。');rethrow;}
+      }catch(_){_invalidate('書類の作成・保存を利用できません。注文・請書を開き直してください。');rethrow;}
     }
   }
 
@@ -131,7 +132,7 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
   Future<void> _refreshOperationGate()async{
     _verify();
     try{await _operationGate?.refresh();_verify();}
-    catch(_){_invalidate('書類の作成・保存を利用できません。現場管理から開き直してください。');rethrow;}
+    catch(_){_invalidate('書類の作成・保存を利用できません。注文・請書を開き直してください。');rethrow;}
   }
 
   void _invalidate([String? message]) {
@@ -153,7 +154,7 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
       setState(() {
         _busy = false;
         _loading = false;
-        _error = message ?? 'ログイン状態が変わりました。会社詳細から開き直してください。';
+        _error = message ?? (widget.operationGate==null?'ログイン状態が変わりました。会社詳細から開き直してください。':'ログイン状態が変わりました。注文・請書を開き直してください。');
       });
     }
   }
@@ -185,7 +186,7 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
       if (value['trade_company_id'] != widget.tradeCompanyId ||
           value['acceptance'] != widget.acceptance ||
           (_operationGate!=null&&value['company_id']!=_operationGate.companyId)) {
-        throw StateError('対象会社が変わりました。会社詳細から開き直してください。');
+        throw StateError(widget.operationGate==null?'対象会社が変わりました。会社詳細から開き直してください。':'対象会社が変わりました。注文・請書を開き直してください。');
       }
       if (!mounted) {
         return;
@@ -237,7 +238,7 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
           _loading = false;
           _error = error is StateError
               ? error.message.toString()
-              : '登録会社の情報を確認できません。会社詳細から開き直してください。';
+              : (widget.operationGate==null?'登録会社の情報を確認できません。会社詳細から開き直してください。':'登録会社の情報を確認できません。注文・請書を開き直してください。');
         });
       }
     }

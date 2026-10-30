@@ -165,6 +165,9 @@ class _MasterFeatureControlsPageState extends State<MasterFeatureControlsPage>
       if (confirmed != true || !currentOperation()) return;
       final required = await repository.reauthenticationRequired();
       if (!currentOperation()) return;
+      if (featureKey == 'site_order_documents' && !required) {
+        throw StateError('注文・請書の本人確認機能を確認できません。');
+      }
       String? proof;
       if (required) {
         final verifier = widget.reauthentication ?? OperationReauthenticationRepository.maybeCreate();
@@ -239,6 +242,19 @@ class _MasterFeatureControlsPageState extends State<MasterFeatureControlsPage>
                             ),
                           ),
                           const SizedBox(height: 12),
+                          Card(child: SwitchListTile(
+                            key: const Key('master-trade-documents-toggle'),
+                            value: availability.tradeDocuments,
+                            onChanged: !availability.tradeDocumentsSupported || _busyKey != null ||
+                                _loading || _lifecycle != AppLifecycleState.resumed ? null
+                              : (_) => _toggle(featureKey: 'site_order_documents',
+                                  label: '注文・請書', current: availability.tradeDocuments),
+                            title: const Text('注文・請書', style: TextStyle(fontWeight: FontWeight.w900)),
+                            subtitle: Text(availability.tradeDocumentsSupported
+                              ? '新規生成・共有・注文承認と請書返信を制御。保存済み書類は保持\n現在: ${availability.tradeDocuments ? 'ON' : 'OFF'}'
+                              : '初期OFF。サーバー側の接続が完了するまで変更できません。'),
+                          )),
+                          const SizedBox(height: 10),
                           if (availability.companySealImageToolsSupported) ...[
                             _featureTile(
                               featureKey: 'company_seal_image_tools',

@@ -1,0 +1,22 @@
+name: Managed trade registration context receipt
+on:
+  pull_request:
+    paths:
+      - 'lib/features/shared/standalone_trade_document*.dart'
+      - 'lib/features/shared/trade_document_form_session.dart'
+      - 'test/standalone_trade_document_repository_test.dart'
+      - 'test/standalone_trade_document_managed_context_test.dart'
+      - 'test/standalone_trade_document_operation_gate_test.dart'
+      - '.github/workflows/trade-document-managed-registration-context.yml'
+permissions: {contents: read}
+jobs:
+  dedicated-context-client:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: '3.47.5', channel: stable, cache: true}
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/shared/standalone_trade_document_managed_context.dart lib/features/shared/standalone_trade_document_repository.dart lib/features/shared/standalone_trade_document_page.dart lib/features/shared/trade_document_form_session.dart test/standalone_trade_document_repository_test.dart test/standalone_trade_document_managed_context_test.dart test/standalone_trade_document_operation_gate_test.dart
+      - run: flutter test test/standalone_trade_document_managed_context_test.dart test/standalone_trade_document_operation_gate_test.dart test/standalone_trade_document_repository_test.dart test/standalone_trade_document_print_scope_test.dart
+      - run: git diff --exit-code -- pubspec.yaml pubspec.lock

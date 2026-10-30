@@ -15,7 +15,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 const actorA = '10000000-0000-0000-0000-000000000001';
 const actorB = '10000000-0000-0000-0000-000000000002';
 final nonce = 'a' * 64;
-Map<String, dynamic> flags() => {for (final key in MasterFeatureControlsRepository.supportedFeatures) key: true};
+Map<String, dynamic> flags() => {for (final key in MasterFeatureControlsRepository.supportedFeatures) key: true,
+ 'trade_documents_master_contract_version':1};
 class _UnusedClient implements SupabaseClient {
   @override
   dynamic noSuchMethod(Invocation invocation) => throw StateError('Unused fixture SDK');
@@ -147,7 +148,8 @@ class _Wire {
     }
     if (request.url.path.contains('/set_master_feature_enabled')) {
       await duringWrite?.call();
-      return writeStatus == 200 ? json(flags()) : json({'code': 'PGRST202', 'message': 'synthetic missing'}, writeStatus);
+      final payload=jsonDecode(request.body) as Map;
+      return writeStatus == 200 ? json({...flags(),payload['p_feature_key'] as String:payload['p_enabled']}) : json({'code': 'PGRST202', 'message': 'synthetic missing'}, writeStatus);
     }
     throw StateError('Unexpected fixture endpoint');
   }
@@ -327,7 +329,7 @@ void main() {
     await expectLater(f.repository.reauthenticationRequired(), throwsA(anything));
     expect(f.writes, isEmpty);
   });
-  test('SDK exact five features and both values carry bound bearer and nonce without a fallback', () async {
+  test('SDK supported features and both values carry bound bearer and nonce without a fallback', () async {
     final f = _Wire(); addTearDown(f.client.dispose); await f.login();
     final bearer = 'Bearer ${f.client.auth.currentSession!.accessToken}';
     for (final key in MasterFeatureControlsRepository.supportedFeatures) {
@@ -342,6 +344,8 @@ void main() {
     await f.repository.setEnabled(featureKey: 'vehicle_management', enabled: false, expectedActor: actorA);
     expect(f.writes.last.url.path.endsWith('/set_master_feature_enabled'), true);
     final before = f.writes.length;
+    await expectLater(f.repository.setEnabled(featureKey:'site_order_documents',enabled:true),throwsStateError);
+    expect(f.writes.length,before);
     f.writeStatus = 404;
     await expectLater(f.repository.setEnabled(featureKey: 'vehicle_management', enabled: false, proof: nonce), throwsA(isA<PostgrestException>()));
     expect(f.writes.length, before + 1);

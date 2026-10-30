@@ -5,6 +5,7 @@ import 'features/chat/line_release_access.dart';
 import 'features/referrals/app_referral_page.dart';
 import 'features/referrals/app_referral_repository.dart';
 import 'features/settings/master_feature_controls_repository.dart';
+import 'features/shared/trade_documents_hub_page.dart';
 import 'dart:async';
 import 'dart:io';
 
@@ -1071,7 +1072,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       );
       return;
     }
-    if ((key == 'company_deliveries' || key == 'company_delivery_inbox') && !_identity.isManagement) {
+    if ((key == 'company_deliveries' || key == 'company_delivery_inbox' || key == 'trade_documents') && !_identity.isManagement) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(SkoLanguageController.tr('この機能は管理者・サブ管理者のみ利用できます'))),
       );
@@ -1398,6 +1399,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           mode: TradeCompanyPageMode.customer,
         );
         break;
+      case 'trade_documents':
+        if (!_identity.isManagement) return;
+        page = const SecondaryProtectedPage(
+          title: '注文・請書', child: TradeDocumentsHubPage());
+        break;
       case 'subcontractors':
         page = TradeCompanyPage(
           mode: TradeCompanyPageMode.subcontractor,
@@ -1704,6 +1710,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           homeEligible: true,
           accessLabel: SkoLanguageController.tr('管理者・請求書閲覧権限'),
         ),
+      if (_identity.isManagement)
+        _MenuAction(key: 'trade_documents', label: SkoLanguageController.tr('注文・請書'),
+          icon: Icons.description_outlined, homeEligible: true,
+          accessLabel: SkoLanguageController.tr('管理者・サブ管理者')),
       if (_moduleEnabled('sites') && _identity.can('can_view_admin_site_data'))
         _MenuAction(
           key: 'admin_sites',

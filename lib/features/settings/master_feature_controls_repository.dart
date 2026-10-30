@@ -13,6 +13,7 @@ class MasterFeatureControlsRepository {
   static const supportedFeatures = {
     'vehicle_management', 'route_assignment', 'traffic_nearest_station',
     'traffic_train_transfer', 'traffic_bus_stop', 'company_seal_image_tools',
+    'site_order_documents',
   };
 
   final SupabaseClient _client;
@@ -71,6 +72,10 @@ class MasterFeatureControlsRepository {
         (proof != null && !RegExp(r'^[0-9a-f]{64}$').hasMatch(proof))) {
       throw ArgumentError('対応していない機能変更です。');
     }
+    // New financial-document control never falls back to the proof-free setter.
+    if (featureKey == 'site_order_documents' && proof == null) {
+      throw StateError('注文・請書の変更には本人確認が必要です。');
+    }
     // Bind this request to the captured actor even if the SDK's asynchronous
     // token lookup observes another account before dispatch. Never fall back
     // from a rejected proof operation to the legacy setter.
@@ -82,6 +87,13 @@ class MasterFeatureControlsRepository {
     if (actorId != actor) throw StateError('ログイン状態が変わりました。');
     if (raw is! Map) {
       throw StateError('マスター機能設定を更新できません。');
+    }
+    if (featureKey == 'site_order_documents' &&
+        (_client.auth.currentSession?.accessToken != session.accessToken ||
+         raw['trade_documents_master_contract_version'] is! int ||
+         raw['trade_documents_master_contract_version'] != 1 ||
+         raw['site_order_documents'] is! bool || raw['site_order_documents'] != enabled)) {
+      throw StateError('注文・請書の設定結果を確認できません。再読み込みしてください。');
     }
     return MasterFeatureAvailability.fromJson(Map<String, dynamic>.from(raw));
   }

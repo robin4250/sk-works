@@ -16,6 +16,7 @@ void main(){
    await tester.tap(find.text('登録会社').first);await tester.pumpAndSettle();
    await tester.tap(find.text(mode==TradeCompanyPageMode.customer?'注文請書生成':'注文書生成'));await tester.pumpAndSettle();
    final page=tester.widget<StandaloneTradeDocumentPage>(find.byType(StandaloneTradeDocumentPage));expect(page.acceptance,mode==TradeCompanyPageMode.customer);expect(page.tradeCompanyId,'10000000-0000-4000-8000-000000000001');
+   expect(page.operationGate,isNull,reason:'The existing registration-only generator remains unchanged until hub transition readiness is verified');
    await tester.pumpWidget(const SizedBox());await tester.pumpAndSettle();
   });
  }

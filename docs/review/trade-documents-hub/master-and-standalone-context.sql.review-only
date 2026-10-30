@@ -1,0 +1,249 @@
+-- REVIEW ONLY. Never auto-run on production. No feature row is enabled/inserted.
+-- Extends only the master read/proof setter; owner-only profile/seal guards stay unchanged.
+begin;
+set local lock_timeout='3s';
+set local statement_timeout='30s';
+create temporary table trade_hub_existing_proc_before on commit drop as
+ select p.oid,to_jsonb(p)-'prosrc' as attrs,p.prosrc from pg_proc p
+ join pg_namespace n on n.oid=p.pronamespace
+ where n.nspname='public' and p.proname in ('current_master_feature_flags','set_master_feature_enabled_with_proof','set_master_feature_enabled');
+create temporary table trade_hub_existing_table_before on commit drop as
+ select oid,relowner,relrowsecurity,relforcerowsecurity,relacl from pg_class where oid='private.master_feature_settings'::regclass;
+do $guard$
+declare e jsonb;p record;
+begin
+ if not exists(select 1 from pg_class c where c.oid='private.master_feature_settings'::regclass
+  and c.relkind='r' and pg_get_userbyid(c.relowner)='postgres' and c.relrowsecurity
+  and not c.relforcerowsecurity)
+  or has_table_privilege('authenticated','private.master_feature_settings','INSERT,UPDATE,DELETE,TRUNCATE')
+  or has_table_privilege('anon','private.master_feature_settings','INSERT,UPDATE,DELETE,TRUNCATE') then
+  raise exception 'master feature table security changed';
+ end if;
+ for e in select value from jsonb_array_elements($expected$[{"schema":"public","name":"current_master_feature_flags","arguments":"","md5":"0f2cbe837823fc973519f87e67423fcf","owner":"postgres","prosecdef":true,"provolatile":"s","proconfig":["search_path=\"\""],"acl":"{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"},{"schema":"public","name":"set_master_feature_enabled_with_proof","arguments":"p_feature_key text, p_enabled boolean, p_proof text","md5":"f63cff90341b538bdf5ce813c5b712ca","owner":"postgres","prosecdef":true,"provolatile":"v","proconfig":["search_path=\"\""],"acl":"{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"},{"schema":"private","name":"require_reauthentication_session","arguments":"","md5":"b5c8e2f259a99b3c69694ad0640080e5","owner":"postgres","prosecdef":true,"provolatile":"v","proconfig":["search_path=\"\""],"acl":"{postgres=X/postgres}"},{"schema":"private","name":"account_access_allowed","arguments":"","md5":"aeca25db212c043c472334026bd98724","owner":"postgres","prosecdef":true,"provolatile":"s","proconfig":["search_path=\"\""],"acl":"{postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}"},{"schema":"private","name":"consume_reauthentication_proof","arguments":"p_operation text, p_target jsonb, p_proof text","md5":"31a65249b835b7e11e7e011c384886aa","owner":"postgres","prosecdef":true,"provolatile":"v","proconfig":["search_path=\"\""],"acl":"{postgres=X/postgres}"},{"schema":"public","name":"is_current_user_master_admin","arguments":"","md5":"efbc31721e3fb604059228badaef0139","owner":"postgres","prosecdef":true,"provolatile":"s","proconfig":["search_path=public, private, pg_temp"],"acl":"{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"},{"schema":"private","name":"partner_company_profile_value","arguments":"p_company_id uuid","md5":"06ce79748602c8ca5aebda226bc7f742","owner":"postgres","prosecdef":true,"provolatile":"s","proconfig":["search_path=\"\""],"acl":"{postgres=X/postgres}"},{"schema":"public","name":"set_master_feature_enabled","arguments":"p_feature_key text, p_enabled boolean","md5":"e8aa57848946bd19461e4479038ae799","owner":"postgres","prosecdef":true,"provolatile":"v","proconfig":["search_path=\"\""],"acl":"{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"}]$expected$::jsonb) loop
+  select q.*,pg_get_userbyid(q.proowner) as owner_name into p from pg_proc q join pg_namespace n on n.oid=q.pronamespace
+   where n.nspname=e->>'schema' and q.proname=e->>'name' and pg_get_function_identity_arguments(q.oid)=e->>'arguments';
+  if not found or md5(p.prosrc)<>e->>'md5' or p.owner_name<>e->>'owner'
+   or p.prosecdef is distinct from (e->>'prosecdef')::boolean or p.provolatile::text<>e->>'provolatile'
+   or to_jsonb(p.proconfig) is distinct from e->'proconfig' or p.proacl::text is distinct from e->>'acl' then
+   raise exception 'master contract source/attributes changed';
+  end if;
+ end loop;
+ if not has_schema_privilege('authenticated','private','usage') then raise exception 'existing private schema usage required'; end if;
+ if to_regprocedure('public.standalone_trade_document_access()') is not null
+  or to_regprocedure('public.standalone_trade_document_registration_context(uuid,boolean)') is not null
+  or to_regprocedure('private.require_standalone_trade_document_access()') is not null
+  or to_regprocedure('private.require_trade_documents_master_feature()') is not null then
+  raise exception 'standalone contract already exists; review before retry';
+ end if;
+ if (select pg_get_constraintdef(oid) from pg_constraint where conrelid='private.master_feature_settings'::regclass
+  and conname='master_feature_settings_feature_key_check') is distinct from
+  $constraint$CHECK ((feature_key = ANY (ARRAY['vehicle_management'::text, 'route_assignment'::text, 'traffic_nearest_station'::text, 'traffic_train_transfer'::text, 'traffic_bus_stop'::text])))$constraint$ then
+  raise exception 'master feature key constraint changed';
+ end if;
+end $guard$;
+alter table private.master_feature_settings drop constraint master_feature_settings_feature_key_check;
+alter table private.master_feature_settings add constraint master_feature_settings_feature_key_check
+ check(feature_key in ('vehicle_management','route_assignment','traffic_nearest_station','traffic_train_transfer','traffic_bus_stop','site_order_documents'));
+CREATE OR REPLACE FUNCTION public.current_master_feature_flags()
+ RETURNS jsonb
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+ select (case
+    when auth.uid() is null then null
+    else jsonb_build_object(
+      'vehicle_management',
+        coalesce((
+          select mfs.enabled
+          from private.master_feature_settings mfs
+          where mfs.feature_key = 'vehicle_management'
+        ), true),
+      'route_assignment',
+        coalesce((
+          select mfs.enabled
+          from private.master_feature_settings mfs
+          where mfs.feature_key = 'route_assignment'
+        ), true),
+      'traffic_nearest_station', coalesce((select enabled from private.master_feature_settings where feature_key='traffic_nearest_station'),false),
+      'traffic_train_transfer', coalesce((select enabled from private.master_feature_settings where feature_key='traffic_train_transfer'),false),
+      'traffic_bus_stop', coalesce((select enabled from private.master_feature_settings where feature_key='traffic_bus_stop'),false)
+    )
+  end) || jsonb_build_object('site_order_documents',coalesce((select enabled from private.master_feature_settings where feature_key='site_order_documents'),false),'trade_documents_master_contract_version',1,'standalone_trade_documents_contract_version',1);
+$function$
+;
+CREATE OR REPLACE FUNCTION public.set_master_feature_enabled_with_proof(p_feature_key text, p_enabled boolean, p_proof text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+begin
+ if p_feature_key='site_order_documents' then
+  perform private.require_reauthentication_session();
+  if public.is_current_user_master_admin() is not true or private.account_access_allowed() is not true then
+   raise sqlstate '42501' using message='master_administrator_access_required';
+  end if;
+ end if;
+ perform private.consume_reauthentication_proof('master.feature.set',jsonb_build_object('feature_key',p_feature_key,'enabled',p_enabled),p_proof);
+ if p_feature_key not in ('vehicle_management','route_assignment','traffic_nearest_station','traffic_train_transfer','traffic_bus_stop','site_order_documents') or p_enabled is null then
+  raise sqlstate '22023' using message='unsupported_master_feature';
+ end if;
+ insert into private.master_feature_settings(feature_key,enabled,updated_at,updated_by)
+ values(p_feature_key,p_enabled,now(),auth.uid()) on conflict(feature_key) do update
+ set enabled=excluded.enabled,updated_at=excluded.updated_at,updated_by=excluded.updated_by;
+ return public.current_master_feature_flags();
+end $function$
+;
+
+create function private.require_trade_documents_master_feature() returns void
+language plpgsql security definer set search_path='' as $body$
+declare flag boolean;
+begin
+ perform private.require_reauthentication_session();
+ select enabled into flag from private.master_feature_settings where feature_key='site_order_documents' for share;
+ if not found then
+  lock table private.master_feature_settings in share mode;
+  select enabled into flag from private.master_feature_settings where feature_key='site_order_documents' for share;
+ end if;
+ if flag is distinct from true then raise sqlstate '42501' using message='standalone_master_feature_disabled'; end if;
+end $body$;
+revoke all on function private.require_trade_documents_master_feature() from public,anon,authenticated;
+
+create function private.require_standalone_trade_document_access() returns jsonb
+language plpgsql security definer set search_path='' as $body$
+declare sid uuid; companies uuid[];roles text[];
+begin
+ sid:=private.require_reauthentication_session();
+ select array_agg(m.company_id),array_agg(m.role::text) into companies,roles
+ from (select company_id,role from public.company_members where user_id=auth.uid() for share) m;
+ if coalesce(cardinality(companies),0)<>1 or companies[1] is null or roles[1] is null or roles[1] not in ('owner','admin','manager') then
+  raise sqlstate '42501' using message='standalone_company_management_required';
+ end if;
+ perform private.require_trade_documents_master_feature();
+ return jsonb_build_object('contract_version',1,'actor_id',auth.uid(),'session_id',sid,
+  'company_id',companies[1],'role',roles[1],'master_enabled',true,'can_generate',true,'context_contract_version',1);
+end $body$;
+revoke all on function private.require_standalone_trade_document_access() from public,anon,authenticated;
+
+create function public.standalone_trade_document_access() returns jsonb
+language sql security invoker set search_path='' as $body$
+ select private.require_standalone_trade_document_access()
+$body$;
+-- Invoker wrappers require execute on the private guard; this reveals only the
+-- same scoped access receipt, never data outside that actor's sole company.
+grant execute on function private.require_standalone_trade_document_access() to authenticated;
+revoke all on function public.standalone_trade_document_access() from public,anon;
+grant execute on function public.standalone_trade_document_access() to authenticated;
+
+create function private.standalone_trade_document_registration_context(p_trade_company_id uuid,p_acceptance boolean) returns jsonb
+language plpgsql security definer set search_path='' as $body$
+declare a jsonb; cid uuid; t public.trade_companies; c public.companies; profile jsonb;
+ seal jsonb; png jsonb; template jsonb; result jsonb; bank jsonb; bank_available boolean:=false;
+begin
+ if p_trade_company_id is null or p_acceptance is null then raise sqlstate '22023' using message='standalone_target_required'; end if;
+ a:=private.require_standalone_trade_document_access(); cid:=(a->>'company_id')::uuid;
+ select * into t from public.trade_companies where id=p_trade_company_id and company_id=cid for share;
+ if not found or t.trade_role is null or (p_acceptance and t.trade_role not in ('customer','both'))
+  or (not p_acceptance and t.trade_role not in ('subcontractor','both')) or t.linked_company_id=cid then
+  raise sqlstate '42501' using message='standalone_counterparty_not_authorized';
+ end if;
+ select * into c from public.companies where id=cid for share;
+ if not found then raise sqlstate '42501' using message='standalone_company_not_found'; end if;
+ if c.company_seal_enabled is distinct from true then
+  raise sqlstate '42501' using message='standalone_registered_seal_required'; end if;
+ profile:=private.partner_company_profile_value(cid);
+ if profile is null or profile->>'name' is distinct from c.name then
+  raise sqlstate '40001' using message='standalone_company_changed'; end if;
+ seal:=jsonb_build_object('version',1,'style',coalesce(c.company_seal_style,'legacy'),'name',c.name,'company_id',cid);
+ perform 1 from private.company_seal_png_selection where company_id=cid for share;
+ select jsonb_build_object('enabled',coalesce(s.enabled,false),'version_id',v.id,
+  'png_base64',encode(v.png_bytes,'base64'),'png_sha256',v.sha256)
+ into png from private.company_seal_png_selection s
+ left join private.company_seal_png_versions v on v.company_id=s.company_id and v.id=s.version_id where s.company_id=cid;
+ if png->>'enabled'='true' then
+  if png->>'version_id' is null or png->>'png_base64' is null or png->>'png_sha256' is null then
+   raise sqlstate '42501' using message='standalone_registered_seal_unavailable'; end if;
+  seal:=jsonb_build_object('version',2,'style','uploaded_png','name',c.name,'company_id',cid,
+   'png_version_id',png->'version_id','png_base64',png->'png_base64','png_sha256',png->'png_sha256');
+ end if;
+ -- Read configured prose only; never call its saving overload or write templates.
+ select coalesce((select payload from private.trade_document_templates where company_id=cid
+  and subject_kind=(case when p_acceptance then 'invoice' else 'payment_certificate' end)),'{}'::jsonb) into template;
+ if p_acceptance then
+  template:=coalesce((select jsonb_object_agg(key,value) from jsonb_each(coalesce((select payload
+   from private.trade_document_templates where company_id=cid and subject_kind='payment_certificate'),'{}'::jsonb))
+   where key in ('work_name','work_address')),'{}'::jsonb)||template;
+ end if;
+ result:=jsonb_build_object('context_contract_version',1,'actor_id',a->'actor_id','session_id',a->'session_id',
+  'company_id',cid,'trade_company_id',t.id,'acceptance',p_acceptance,
+  'issuer',jsonb_build_object('name',c.name,'address',coalesce(c.address,''),'corporate_number',coalesce(c.corporate_number,''),
+   'representative_name',coalesce(profile->>'representative_name',''),'phone',coalesce(c.phone,''),'fax',coalesce(c.fax,'')),
+  'counterparty',jsonb_build_object('name',t.name,'address',coalesce(t.address,''),'corporate_number',coalesce(t.corporate_number,''),
+   'representative_name',coalesce(t.representative_name,''),'phone',coalesce(t.phone,'')),
+  'template',template,'company_seal_snapshot',seal,'company_seal_enabled',coalesce(c.company_seal_enabled,false));
+ if not p_acceptance and t.partner_company_id is not null then
+  result:=result||jsonb_build_object('partner_company_id',t.partner_company_id);
+  if to_regprocedure('public.partner_company_bank_read(uuid,uuid)') is not null then
+   execute 'select public.partner_company_bank_read($1,$2)' into bank using cid,t.partner_company_id;
+   if jsonb_typeof(bank) is distinct from 'object' then
+    raise sqlstate '42501' using message='standalone_counterparty_bank_mismatch'; end if;
+   if (select count(*) from jsonb_object_keys(bank))<>5
+    or not bank ?& array['company_id','partner_company_id','available','version','bank']
+    or bank->>'company_id' is distinct from cid::text
+    or bank->>'partner_company_id' is distinct from t.partner_company_id::text
+    or jsonb_typeof(bank->'available') is distinct from 'boolean'
+    or jsonb_typeof(bank->'version') is distinct from 'number'
+    or coalesce(bank->>'version','') !~ '^(0|[1-9][0-9]{0,9})$' then
+    raise sqlstate '42501' using message='standalone_counterparty_bank_mismatch'; end if;
+   if (bank->>'version')::numeric>2147483647 then
+    raise sqlstate '42501' using message='standalone_counterparty_bank_mismatch'; end if;
+   if bank->'bank'='null'::jsonb then
+    if bank->>'version'<>'0' then raise sqlstate '42501' using message='standalone_counterparty_bank_mismatch'; end if;
+   else
+    if jsonb_typeof(bank->'bank') is distinct from 'object' then
+     raise sqlstate '42501' using message='standalone_counterparty_bank_mismatch'; end if;
+    if (select count(*) from jsonb_object_keys(bank->'bank'))<>9
+     or not (bank->'bank') ?& array['schema','company_id','partner_company_id','bank_version','bank_name','branch_name','account_type','account_number','account_holder']
+     or bank->>'available'<>'true' or bank->'bank'->>'schema' is distinct from '1'
+     or jsonb_typeof(bank->'bank'->'schema') is distinct from 'number'
+     or bank->'bank'->>'company_id' is distinct from cid::text
+     or bank->'bank'->>'partner_company_id' is distinct from t.partner_company_id::text
+     or jsonb_typeof(bank->'bank'->'bank_version') is distinct from 'number'
+     or bank->'bank'->>'bank_version' is distinct from bank->>'version'
+     or bank->>'version'='0' then
+     raise sqlstate '42501' using message='standalone_counterparty_bank_mismatch'; end if;
+    result:=result||jsonb_build_object('counterparty_bank',bank->'bank');
+   end if;
+   if bank->>'available'='false' and (bank->'bank'<>'null'::jsonb or bank->>'version'<>'0') then
+    raise sqlstate '42501' using message='standalone_counterparty_bank_mismatch'; end if;
+   bank_available:=true;
+  end if;
+ end if;
+ perform private.require_standalone_trade_document_access();
+ return result||jsonb_build_object('bank_backend_available',bank_available);
+end $body$;
+revoke all on function private.standalone_trade_document_registration_context(uuid,boolean) from public,anon,authenticated;
+grant execute on function private.standalone_trade_document_registration_context(uuid,boolean) to authenticated;
+create function public.standalone_trade_document_registration_context(p_trade_company_id uuid,p_acceptance boolean) returns jsonb
+language sql security invoker set search_path='' as $body$
+ select private.standalone_trade_document_registration_context(p_trade_company_id,p_acceptance)
+$body$;
+revoke all on function public.standalone_trade_document_registration_context(uuid,boolean) from public,anon;
+grant execute on function public.standalone_trade_document_registration_context(uuid,boolean) to authenticated;
+
+do $attrs$
+begin
+ if exists(select 1 from trade_hub_existing_proc_before b left join pg_proc p on p.oid=b.oid
+  where p.oid is null or (to_jsonb(p)-'prosrc') is distinct from b.attrs
+   or (p.proname='set_master_feature_enabled' and p.prosrc is distinct from b.prosrc)) then
+  raise exception 'existing function identity/attributes changed';
+ end if;
+ if exists(select 1 from trade_hub_existing_table_before b left join pg_class c on c.oid=b.oid
+  where c.oid is null or c.relowner is distinct from b.relowner
+   or c.relrowsecurity is distinct from b.relrowsecurity
+   or c.relforcerowsecurity is distinct from b.relforcerowsecurity or c.relacl is distinct from b.relacl) then
+  raise exception 'existing master table identity/security changed';
+ end if;
+end $attrs$;
+commit;
