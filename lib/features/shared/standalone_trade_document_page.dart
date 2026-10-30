@@ -48,7 +48,7 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
   late final StandaloneTradeDocumentPrintScope _printScope;
   late final StandaloneTradeDocumentOperationGate? _operationGate;
   late final Listenable _operationChanges;
-  final ChangeNotifier _retirementChanges=ChangeNotifier();
+  final ValueNotifier<int> _retirementChanges=ValueNotifier<int>(0);
   Map<String, dynamic>? _context;
   Uint8List? _bytes,_canonicalBytes;
   Map<String,dynamic>? _renderedPayload;
@@ -148,7 +148,7 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
     for (final controller in _controllers.values) {
       controller.clear();
     }
-    _retirementChanges.notifyListeners();
+    _retirementChanges.value++;
     if (mounted) {
       setState(() {
         _busy = false;
@@ -184,7 +184,7 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
       await _refreshOperationGate();
       if (value['trade_company_id'] != widget.tradeCompanyId ||
           value['acceptance'] != widget.acceptance ||
-          (_operationGate!=null&&value['company_id']!=_operationGate!.companyId)) {
+          (_operationGate!=null&&value['company_id']!=_operationGate.companyId)) {
         throw StateError('対象会社が変わりました。会社詳細から開き直してください。');
       }
       if (!mounted) {

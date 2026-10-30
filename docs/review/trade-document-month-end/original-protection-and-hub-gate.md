@@ -7,8 +7,12 @@ main `67d1a1960e5f59662457ee23c34d2cbacc9e12aa`. Only its class name and a sourc
 comment differ. The schema-2 front is separately frozen. The explicit saved
 form schema selects a renderer; current company settings, current date, signed
 status and the application release do not silently upgrade a historical form.
-The new-header defaults require the authorized schema-2 capability and a new,
-unlocked attachment. Missing backend capability retains the original pathway.
+For attached financial documents, the new-header defaults require the authorized
+schema-2 capability and a new, unlocked attachment. Missing backend capability
+retains the original pathway. Standalone registration-only PDFs are always new,
+ephemeral drafts, so their local schema-2 defaults do not require the financial
+attachment persistence capability. This does not claim a server save, an approved
+shared original, or an enabled new-hub master.
 
 The focused workflow renders four historical adopted payloads through both
 the exact old source and the version dispatcher and requires identical text and
