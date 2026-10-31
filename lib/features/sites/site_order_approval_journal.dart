@@ -10,13 +10,25 @@ import 'package:shared_preferences/shared_preferences.dart';
 class SiteOrderApprovalJournal {
   SiteOrderApprovalJournal()
     : _preferences = SharedPreferences.getInstance,
-      _refusal = false;
+      _refusal = false,
+      _recovery = false;
   SiteOrderApprovalJournal._forRefusal()
     : _preferences = SharedPreferences.getInstance,
-      _refusal = true;
+      _refusal = true,
+      _recovery = false;
   @visibleForTesting
   SiteOrderApprovalJournal.withPreferences(this._preferences)
-    : _refusal = false;
+    : _refusal = false,
+      _recovery = false;
+  SiteOrderApprovalJournal.forReplyRecovery()
+    : _preferences = SharedPreferences.getInstance,
+      _refusal = false,
+      _recovery = true;
+  @visibleForTesting
+  SiteOrderApprovalJournal.replyRecoveryWithPreferences(this._preferences)
+    : _refusal = false,
+      _recovery = true;
+  final bool _recovery;
   final bool _refusal;
   final Future<SharedPreferences> Function() _preferences;
   static Future<void> _tail = Future<void>.value();
@@ -26,7 +38,11 @@ class SiteOrderApprovalJournal {
     for (final id in [actor, company, package]) {
       if (!_uuid.hasMatch(id)) throw StateError('保存状態の識別情報を確認できません。');
     }
-    return 'sko.site_order.${_refusal ? 'refusal' : 'approval'}.v1.$actor.$company.$package';
+    return 'sko.site_order.${_recovery
+        ? 'reply_recovery'
+        : _refusal
+        ? 'refusal'
+        : 'approval'}.v1.$actor.$company.$package';
   }
 
   Future<T> _serial<T>(Future<T> Function() action) {

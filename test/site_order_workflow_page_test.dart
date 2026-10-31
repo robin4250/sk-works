@@ -13,7 +13,8 @@ class _Api extends SiteOrderWorkflowApi {
   bool expired = false, enabled = true, approved = false, stored = false;
   int approvals = 0, previews = 0, reconciliations = 0;
   bool pendingApproval = false, rejected = false;
-  int refusals = 0;
+  int refusals = 0, recoveries = 0;
+  bool pendingReply = false;
   Completer<Map<String, dynamic>>? hold;
   @override
   bool get invalidated => expired;
@@ -103,6 +104,29 @@ class _Api extends SiteOrderWorkflowApi {
     refusals++;
     rejected = true;
     return {'package_id': id, 'request_id': request, 'status': 'rejected'};
+  }
+
+  @override
+  Future<bool> hasPendingReplyRecovery(String id) async => pendingReply;
+  @override
+  Future<Map<String, dynamic>> previewReplyRecovery(String id) async {
+    previews++;
+    return {'package_id': id, 'preview_id': package};
+  }
+
+  @override
+  Future<Uint8List> renderReplyRecovery(Map<String, dynamic> preview) =>
+      renderReview(preview);
+  @override
+  Future<Map<String, dynamic>> recoverReply(
+    Map<String, dynamic> preview,
+    String requestId,
+  ) async {
+    recoveries++;
+    stored = true;
+    return {
+      'result': {'status': 'recipient_stored', 'package_id': package},
+    };
   }
 
   @override
@@ -299,5 +323,32 @@ void main() {
     expect(find.byKey(const ValueKey('private-pdf')), findsNothing);
     expect(find.byTooltip('閉じる'), findsOneWidget);
     expect(api.approvals, 0);
+  });
+  testWidgets('reply restart requires preview and explicit seal confirmation', (
+    tester,
+  ) async {
+    final api = _Api()..approved = true;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SiteOrderPackagePage(
+          api: api,
+          packageId: package,
+          previewBuilder: (_) => const Text('recovery PDF'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('内容と自社印を確認して返信を再開'));
+    await tester.pumpAndSettle();
+    expect(find.text('recovery PDF'), findsOneWidget);
+    expect(api.recoveries, 0);
+    final button = find.widgetWithText(FilledButton, '確認して返信を再開');
+    expect(tester.widget<FilledButton>(button).onPressed, isNull);
+    await tester.tap(find.byType(CheckboxListTile));
+    await tester.pump();
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+    expect(api.recoveries, 1);
+    expect(find.text('請書を相手先に保管済み'), findsOneWidget);
   });
 }

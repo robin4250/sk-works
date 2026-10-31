@@ -126,6 +126,8 @@ begin
  v.company_id,v.actor_id,v.session_id,p_request) returning * into l;
  elsif(l.preview_id,l.session_id) is distinct from(v.id,v.session_id) then
  raise exception 'site_order_recovery_request_changed' using errcode='40001';end if;
+ if exists(select 1 from site_order_package_private.reply_recovery_cancellations where lease_id=l.id) then
+ raise exception 'site_order_recovery_operation_retired' using errcode='40001';end if;
  return jsonb_build_object('package_id',l.package_id,'lease_id',l.id,'status','reply_recovery_confirmed');
 end $$;
 

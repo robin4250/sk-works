@@ -1,7 +1,7 @@
 // Disposable SQL composition. Auth surroundings remain synthetic.
 import fs from 'node:fs/promises';
 export async function verifyReplyRecovery(db,c){
- const {id,UA,UB,UC,q,check,deny,signed,send,recipientTrade,recipientPeer,renderer}=c;
+ const {id,UA,UB,UC,q,check,deny,signed,send,recipientTrade,recipientPeer,renderer,openNativePeer}=c;
  const originals=()=>q(`select jsonb_agg(to_jsonb(p) order by p.oid) v from pg_proc p where p.oid in(
  'site_order_manager_private.register_canonical_pdf(uuid,bytea)'::regprocedure,
  'site_order_package_private.deliver_acceptance(uuid,uuid,uuid)'::regprocedure,
@@ -16,13 +16,18 @@ export async function verifyReplyRecovery(db,c){
  await signed(UB);await db.query("update company_members set role='manager' where user_id=$1",[UB]);
  const review=await q('select site_order_package_private.preview_approval($1,$2,$3,$4) v',[incoming.package_id,recipientTrade,recipientPeer.connection_fingerprint,id(15001)]);
  const ready=await q('select site_order_package_private.approve_with_consent($1,$2,$3,true,$4) v',[review.preview_id,review.body_hash,review.own_seal.seal_hash,id(15002)]);
- const oldSid=await q('select id v from auth.sessions where user_id=$1',[UB]),newSid=id(15003);
+ const newSid=id(15003);
  const frozen=await q(`select jsonb_build_object('job',to_jsonb(j),'consents',(select jsonb_agg(to_jsonb(c)) from trade_document_consent_private.consents c where c.document_id=j.document_id)) v
  from site_order_artifact_private.render_jobs j where id=$1`,[ready.job_id]);
+ const oldSid=frozen.job.session_id;
  await db.query('insert into auth.sessions values($1,$2)',[newSid,UB]);
  const claims={sub:UB,role:'authenticated',session_id:newSid};
  const useNew=async()=>{await db.query("select set_config('test.uid',$1,false)",[UB]);await db.query("select set_config('test.jwt',$1,false)",[JSON.stringify(claims)]);};
  await useNew();
+ // The original SID is actually revoked, not merely different from the caller.
+ // Only the disposable Auth surroundings change; original job/consent stay frozen.
+ await db.query('delete from auth.sessions where id=$1',[oldSid]);
+ check(await q('select exists(select 1 from auth.sessions where id=$1) v',[oldSid]),false);
  await deny(()=>q('select site_order_package_private.ready_reply($1) v',[incoming.package_id]),/exact_own_reply_job/);
  const preview=await q('select site_order_package_private.preview_reply_recovery($1,$2) v',[incoming.package_id,id(15004)]);
  check(preview.body_hash,frozen.job.body_hash);check(preview.render_hash,frozen.job.render_hash);
@@ -43,6 +48,8 @@ export async function verifyReplyRecovery(db,c){
  [unusedPreview.preview_id,unusedPreview.body_hash,unusedPreview.render_hash,unusedPreview.seal_hash,id(15011)]);
  check((await q('select site_order_package_private.reconcile_reply_recovery($1,$2,$3) v',[incoming.package_id,unusedPreview.preview_id,id(15011)])).operation_state,'cancelled');
  await deny(()=>q('select site_order_package_private.require_reply_recovery_lease($1,$2) v',[unusedLease.lease_id,ready.job_id]),/recovery_lease/);
+ await deny(()=>q('select site_order_package_private.confirm_reply_recovery($1,$2,$3,$4,true,$5) v',
+ [unusedPreview.preview_id,unusedPreview.body_hash,unusedPreview.render_hash,unusedPreview.seal_hash,id(15011)]),/operation_retired/);
  const {processRecoveredSiteOrderReply}=await import('./site_order_canonical_core.mjs');
  const result=await processRecoveredSiteOrderReply(db,incoming.package_id,lease.lease_id,renderer,claims);
  check(result.status,'recipient_stored');
@@ -77,5 +84,7 @@ export async function verifyReplyRecovery(db,c){
  }
  check(await originals(),before);
  check(frozen.job.session_id,oldSid);
+ await (await import('./site_order_reply_recovery_races.mjs')).verifyReplyRecoveryRaces(db,
+ {id,UA,UB,q,check,deny,signed,send,recipientTrade,recipientPeer,renderer,openNativePeer});
  console.log(JSON.stringify({reply_recovery:true,original_functions_and_jobs_consents_retained:true,new_session_verified_in_synthetic_auth:true,actual_renderer:true,production_changed:false}));
 }

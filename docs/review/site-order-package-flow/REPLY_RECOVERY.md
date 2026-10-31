@@ -28,8 +28,13 @@ company. A separate delivery lock waits for storage to finish. The append-only
 cancellation barrier denies late confirmations or late workers after a proven
 cancelled result; a negative status snapshot is not a cancellation proof.
 Results may be inspected with the normal archive-read actor while the feature
-is OFF. UI/persistent reply journal integration is not included in this first
-source connection and remains unfinished.
+is OFF. The existing package page now opens the exact acceptance review and requires
+fresh explicit confirmation before the recovery commands. An identifier-only
+`reply_recovery` journal survives a recreated page/repository/session. It is
+written before confirmation HTTP, prevents another preview while unresolved,
+and is cleared only by the exact serialized accepted/cancelled barrier; a
+negative detail/status response does not clear it. No token, body, price or seal
+is stored in preferences. Current authorization remains server authoritative.
 
 ## Evidence and limits
 
@@ -47,3 +52,20 @@ native concurrency, full production catalog guards or a safe rollout. This is
 not a production migration. Actual dependency reconciliation and a guarded
 combined installation remain prerequisites; no existing deployed helper may be
 silently replaced with a fixture helper. Production HOLD and initial OFF remain.
+
+
+## Follow-up evidence (publication pending)
+
+Local changed composition: 295 package checks and 238 prerequisite consent
+checks passed, with actual canonical PDF. The original job SID is derived from
+the saved job (not an arbitrary Auth session row), then that old Auth row is
+removed before positive new-SID recovery. A separate positive case marks the
+old SID expiry metadata in the past. These Auth surroundings are synthetic;
+this is not a claim of live GoTrue expiry behavior.
+
+The Native-only extension requires four observed independent-connection lock
+waits: confirm before cancellation, cancellation before confirm, delivery before
+cancellation, and cancellation before delivery. Late cancelled confirmation is
+rejected, exact late delivery is rejected, and committed delivery is recognized.
+Native and Flutter results for the changed published head must still be obtained.
+No production installation, real authenticated delivery or iPhone proof exists.
