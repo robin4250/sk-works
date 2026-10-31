@@ -11,7 +11,9 @@ class DeltaTests(unittest.TestCase):
    ns=entry['nspname'];fn={'oid':20+i,'nspname':ns,'proname':m.NAME,'args':'2950','attributes_sha256':str(i+1)*64,'comment_sha256':m.EMPTY_SHA}
    self.after['snapshot']['functions'].append(fn)
    self.receipt.append({**fn,'owner':'postgres','lanname':'plpgsql' if ns=='private' else 'sql','catalog':entry['catalog'],'acl':[{'role':r,'grantor':'postgres','privilege':'EXECUTE','grant_option':False}for r in ['authenticated','postgres']]})
- def check(self):return m.check(self.before,self.after,self.receipt,self.seal,'a'*64)
+  self.before_export=m.export_sha(self.before['snapshot'])
+  self.binding={'contract':'independently_reviewed_guide_after_capture_v1','before_export_sha256':self.before_export,'after_export_sha256':m.export_sha(self.after['snapshot']),'endpoints_export_sha256':m.export_sha(self.receipt),'after_server_snapshot_sha256':self.after['snapshot_sha256'],'guide_seal_sha256':m.SEAL_SHA,'independent_review_receipt_sha256':'f'*64}
+ def check(self):return m.check(self.before,self.after,self.receipt,self.seal,'a'*64,self.before_export,self.binding)
  def test_exact_two_function_delta(self):
   self.assertEqual(self.check()['status'],'known_two_functions_only');self.assertFalse(self.check()['apply_authorized_by_tool'])
  def test_relation_or_existing_function_drift_rejected(self):
@@ -37,4 +39,12 @@ class DeltaTests(unittest.TestCase):
  def test_changed_before_or_server_rejected(self):
   self.before['snapshot_sha256']='e'*64
   with self.assertRaises(ValueError):self.check()
+ def test_both_captures_tampered_with_claimed_hashes_unchanged_rejected(self):
+  self.before['snapshot']['functions'][0]['attributes_sha256']='d'*64
+  self.after['snapshot']['functions'][0]['attributes_sha256']='d'*64
+  with self.assertRaisesRegex(ValueError,'before snapshot not bound'):self.check()
+ def test_after_and_receipt_export_not_reviewed_rejected(self):
+  self.receipt[0]['attributes_sha256']='e'*64
+  self.after['snapshot']['functions'][1]['attributes_sha256']='e'*64
+  with self.assertRaisesRegex(ValueError,'externally reviewed binding'):self.check()
 if __name__=='__main__':unittest.main()

@@ -91,3 +91,12 @@ capsule, regenerate a new second-stage guard with the same reviewed correction
 runtime SQL, verify its new hashes and independent review before applying the
 previously approved semantic scope. Unknown changes require investigation and
 any necessary new approval. The guide is not currently installed by this tool.
+
+The delta check binds the actual before snapshot to the already-reviewed
+proposal's canonical export digest, not just a self-reported server-hash string.
+After-capture and endpoint exports require a separate independently reviewed
+binding with their canonical digests, the after server digest and the review
+receipt digest. The caller must also supply that binding file's reviewed literal
+SHA256. The checker does not create or approve this binding. A changed before
+export, changed after/endpoints, or altered binding is rejected. No real after
+binding exists until the guide has actually committed and its readback is reviewed.
