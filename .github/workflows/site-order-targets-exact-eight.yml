@@ -1,0 +1,117 @@
+name: Registered targets on exact eight helpers
+on:
+  pull_request:
+    paths:
+      - 'docs/review/site-order-targets-exact-eight/**'
+      - 'docs/review/site-order-private-baseline/**'
+      - '.github/workflows/site-order-targets-exact-eight.yml'
+      - 'docs/candidates/company_seal_uploaded_png_20261020.sql.review-only'
+      - 'docs/review/collector-current-core-20261026/sources/reauthentication_proofs.sql'
+      - 'docs/review/site-order-private-baseline/current-generic-auth-functions.fixture.sql'
+      - 'supabase/migrations/20261009011357_company_seal_aoyagi_style.sql'
+      - 'supabase/migrations/20261010160154_company_seal_png_designs.sql'
+      - 'tool/security/worker_document_change_session/baseline.sql'
+permissions:
+  contents: read
+jobs:
+  targets-on-eight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy:
+      matrix:
+        engine: [pglite, postgres]
+    services:
+      postgres:
+        image: postgres:17.6
+        env:
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_document_consent_fixture
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/checkout@v4
+        with:
+          ref: 6a24114471a9c264fad1aeec5dd2222915ddbedf
+          path: .c-source
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: de4d4bb018e8c8ca56b0c85bde09fadebca312a4
+          path: .reply-source
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: f4c6da47e8c6bd894c920ab1d85399a4dc5da7bb
+          path: .history-source
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: 8cdcf2457e42eec495ac8f43e5b52aa21dfdf6f9
+          path: .targets-source
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: 8bd475b31f5b05788ea437f33e8825651ef54de0
+          path: .auth-source
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with: {node-version: '22.21.0'}
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts
+      - run: npm ci --prefix .targets-source/tool/site_order_edge_dependencies --ignore-scripts
+      - run: node --test docs/review/site-order-actual-eight/reconstruct.test.mjs
+      - run: node --check docs/review/site-order-targets-exact-eight/fixture.mjs
+      - name: Normal non-root runner and Native service process
+        env:
+          PG_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          test "$(id -u)" -ne 0
+          docker exec "$PG_CONTAINER" sh -c 'test "$(stat -c %u /proc/1)" -ne 0; test "$(id -u postgres)" -ne 0; test "$(stat -c %u /var/lib/postgresql/data/PG_VERSION)" -ne 0'
+      - name: Exact eight and C unchanged across directory reader and fixed ES256 HTTP
+        env:
+          SKO_CONSENT_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_document_consent_fixture
+        run: |
+          export SKO_SITE_HISTORY_SOURCE_ROOT="$GITHUB_WORKSPACE/.history-source"
+          export SKO_SITE_REPLY_RECOVERY_SOURCE_ROOT="$GITHUB_WORKSPACE/.reply-source"
+          export SKO_TRADE_C_SOURCE_ROOT="$GITHUB_WORKSPACE/.c-source"
+          export SKO_TARGET_SOURCE_ROOT="$GITHUB_WORKSPACE/.targets-source"
+          export SKO_ACTUAL_AUTH_SOURCE_ROOT="$GITHUB_WORKSPACE/.auth-source"
+          if [ '${{ matrix.engine }}' = 'postgres' ]; then
+            export SKO_TARGET_FIXTURE_RECEIPT_PATH="$GITHUB_WORKSPACE/build/target-exact-eight-native.json"
+          fi
+          if [ '${{ matrix.engine }}' = 'postgres' ]; then
+            node docs/review/site-order-targets-exact-eight/verify.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js" postgres
+          else
+            node docs/review/site-order-targets-exact-eight/verify.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: matrix.engine == 'postgres'
+        with:
+          name: target-exact-eight-native
+          path: build/target-exact-eight-native.json
+          if-no-files-found: error
+  sdk-and-input:
+    needs: targets-on-eight
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 8cdcf2457e42eec495ac8f43e5b52aa21dfdf6f9
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with: {name: target-exact-eight-native, path: build}
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/sites/site_order_workflow_repository.dart lib/features/sites/site_order_outgoing_entry_page.dart test/site_order_registered_targets_repository_test.dart test/site_order_outgoing_entry_page_test.dart
+      - name: Native composed receipts through actual SDK and RAM input UI
+        env:
+          SKO_TARGET_FIXTURE_RECEIPT_PATH: build/target-exact-eight-native.json
+        run: |
+          test -s "$SKO_TARGET_FIXTURE_RECEIPT_PATH"
+          flutter test test/site_order_registered_targets_repository_test.dart test/site_order_outgoing_entry_page_test.dart test/site_order_workflow_repository_test.dart
