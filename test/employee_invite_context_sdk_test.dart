@@ -48,6 +48,33 @@ Map<String, dynamic> result() => {
 class ObservedInviteRepository extends EmployeeInviteRepository {
   ObservedInviteRepository(super.client);
   final completed = Completer<void>();
+  final refreshed = Completer<void>();
+  int employeeLoads = 0, urlLoads = 0;
+  void _loaded() {
+    if (employeeLoads >= 2 && urlLoads >= 2 && !refreshed.isCompleted) {
+      refreshed.complete();
+      debugPrint('invite-ui actual post-create refresh completed');
+    }
+  }
+
+  @override
+  Future<List<InitialRegistrationEmployee>> loadRegisteredEmployees({
+    EmployeeInviteRequest? request,
+  }) async {
+    final value = await super.loadRegisteredEmployees(request: request);
+    employeeLoads++;
+    _loaded();
+    return value;
+  }
+
+  @override
+  Future<String> loadTestFlightUrl({EmployeeInviteRequest? request}) async {
+    final value = await super.loadTestFlightUrl(request: request);
+    urlLoads++;
+    _loaded();
+    return value;
+  }
+
   Future<EmployeeInviteResult> _observe(
     Future<EmployeeInviteResult> operation,
   ) async {
@@ -401,6 +428,7 @@ void main() {
       await tester.runAsync(() async {
         await tester.tap(find.text('送信'));
         await f.repository.completed.future;
+        await f.repository.refreshed.future;
       });
       await tester.pumpAndSettle();
       await tester.scrollUntilVisible(
