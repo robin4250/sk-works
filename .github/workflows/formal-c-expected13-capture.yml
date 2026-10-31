@@ -28,6 +28,8 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@v4
         with: {node-version: '22.14.0'}
+      - name: Public refusal tests only; private captures are never committed
+        run: python3 -B -m unittest discover -s tool/formal_c_rebind_review -p test_qualification.py -v
       - name: Verify frozen producer and all source hashes before execution
         run: python3 -B tool/formal_c_rebind_review/verify_expected_capture.py --source-root frozen-producer
       - run: npm ci --prefix frozen-producer/tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
