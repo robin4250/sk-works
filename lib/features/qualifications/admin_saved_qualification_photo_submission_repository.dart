@@ -81,8 +81,8 @@ class LiveAdminSavedQualificationPort implements AdminSavedQualificationPort {
   Future<void> check() async {
     await lease.ready();
     final counted = await client.from('company_members').select('company_id,role')
-      .eq('user_id',actor).limit(2).setHeader('Authorization','Bearer $_token')
-      .abortSignal(_retiredReads.future).count(CountOption.exact)
+      .eq('user_id',actor).limit(2).count(CountOption.exact)
+      .setHeader('Authorization','Bearer $_token').abortSignal(_retiredReads.future)
       .timeout(const Duration(seconds:30));
     await lease.ready();
     final membership=counted.data;

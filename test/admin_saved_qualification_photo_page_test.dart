@@ -104,6 +104,26 @@ void main(){
       await tester.pumpWidget(const SizedBox.shrink());await tester.pump();
     });
   }
+  testWidgets('parent disposal masks a confirmation retained in the navigator',(tester)async{
+    final p=Port();final target=AdminSavedQualificationTarget(row());
+    final visible=ValueNotifier(true);addTearDown(visible.dispose);
+    final repository=AdminSavedQualificationSubmissionRepository(p,target);
+    final saved=row();bool current()=>visible.value;
+    await tester.pumpWidget(MaterialApp(home:ValueListenableBuilder<bool>(
+      valueListenable:visible,builder:(_,show,__)=>show
+        ? AdminSavedQualificationPhotoPage(row:saved,current:current,repository:repository,
+            photoBuilder:(_,__)=>const Text('Synthetic retained image'))
+        : const Scaffold(body:Text('Parent replaced')))));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('残す写真・順番を選ぶ'));await tester.pumpAndSettle();
+    await tester.tap(find.text('選択を確認'));await tester.pumpAndSettle();
+    expect(find.text('申請を送信'),findsOneWidget);
+    visible.value=false;await tester.pumpAndSettle();
+    expect(find.text('申請を送信'),findsNothing);
+    expect(find.text('状態が変わりました'),findsOneWidget);
+    expect(p.calls,['admin_saved_photo_capability']);
+    expect(tester.takeException(),isNull);
+  });
   testWidgets('actual SDK host selection confirmation fixed baseline submit and receipt', (tester)async{
     late SaveWire f;
     late LiveAdminSavedQualificationPort port;

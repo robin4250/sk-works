@@ -171,6 +171,7 @@ class _AdminSavedQualificationPhotoPageState extends State<AdminSavedQualificati
   }
   @override
   void dispose(){
+    _retired=true;_scope.value=const AdminSavedQualificationPhotoScope();
     WidgetsBinding.instance.removeObserver(this);widget.invalidations?.removeListener(_invalidate);
     _port?.lease.removeListener(_invalidate);_port?.dispose();_scope.dispose();super.dispose();
   }
