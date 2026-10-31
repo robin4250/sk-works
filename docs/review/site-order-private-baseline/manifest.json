@@ -222,11 +222,11 @@
     "confirm_monthly_review"
   ],
   "remaining_gate": [
-    "complete relation/default/index/trigger/policy capture and exact contract review",
-    "committed current helper source equality receipt",
-    "native actual-helper minimal site composition",
-    "independent review",
-    "explicit production approval"
+    "Formal C three dependency functions are absent in the 2026-10-31 READ ONLY observation; preserve the separate approved-scope dependency and STOP",
+    "Native PostgreSQL 17.6 full composition with all eight actual helper bodies and a before/after contract matching the actual existing catalog",
+    "independent latest-head review",
+    "new outgoing and company/site history modules must be composed at their frozen source heads",
+    "explicit scoped production approval and separate production/runtime/iPhone verification"
   ],
   "public_fixture_actual_sources": {
     "private.uploaded_company_seal_snapshot(uuid)": "docs/candidates/company_seal_uploaded_png_20261020.sql.review-only",
@@ -249,5 +249,21 @@
     "public.companies",
     "public.company_members",
     "public.trade_companies"
-  ]
+  ],
+  "latest_readonly_observation": {
+    "captured_at": "2026-10-31T01:49:26.377209+00:00",
+    "server_version_num": "170006",
+    "actual_existing_functions": 10,
+    "actual_existing_relations": 15,
+    "all_eight_existing_helper_contracts_match": true,
+    "all_five_new_namespaces_absent": true,
+    "missing_formal_c_function_names": [
+      "private.require_trade_documents_master_feature",
+      "private.require_standalone_trade_document_access",
+      "private.standalone_trade_document_registration_context"
+    ],
+    "production_mutations": 0,
+    "business_rows_selected": 0,
+    "installation_ready": false
+  }
 }

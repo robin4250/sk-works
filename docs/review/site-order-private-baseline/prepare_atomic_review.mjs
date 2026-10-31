@@ -23,8 +23,6 @@ export function catalogSql(source,schemas){
 export function assertReceipts(before,after,hashes,manifest){
  if(!manifest?.existing_function_contracts||!manifest?.existing_relation_names||!manifest?.full_existing_contract)throw Error('pinned_existing_inventory_required');
  if(before?.kind!=='native-production-readonly-normalized-v1'||before.production_mutation!==false||!before.snapshot)throw Error('fresh_readonly_native_before_required');
- if(after?.kind!=='native-rehearsal-exact-current-helpers-v1'||after.synthetic_seal!==false||after.current_helper_bodies!==8||after.original_c_sha256!=='7796c2e7bcc7a9eca78f1b79ce8cfc87fcd978c1dc4a4ddb7a5a8ced17b597e5')throw Error('native_exact_eight_body_rehearsal_required');
- if(JSON.stringify(after.source_sha256)!==JSON.stringify(hashes))throw Error('rehearsal_source_mismatch');
  const functions=before.snapshot.functions??{},relations=before.snapshot.relations??{};
  const required=[...manifest.existing_function_contracts.map(f=>f.signature.split('(')[0]),...manifest.full_existing_contract.additional_function_names];
  if(JSON.stringify(Object.keys(functions).map(n=>n.split('(')[0]).sort())!==JSON.stringify(required.sort()))throw Error('complete_thirteen_function_before_required');
@@ -41,6 +39,8 @@ export function assertReceipts(before,after,hashes,manifest){
   if(name.split('(')[0]===legacy.function_name){if(f.source_md5!==legacy.before_md5)throw Error('legacy_before_body_changed');f.source_md5=legacy.after_md5;}
   if(name.split('(')[0]==='public.respond_site_share'&&f.source_md5!==legacy.public_wrapper_before_and_after_md5)throw Error('legacy_public_body_changed');
  }
+ if(after?.kind!=='native-rehearsal-exact-current-helpers-v1'||after.synthetic_seal!==false||after.current_helper_bodies!==8||after.original_c_sha256!=='7796c2e7bcc7a9eca78f1b79ce8cfc87fcd978c1dc4a4ddb7a5a8ced17b597e5')throw Error('native_exact_eight_body_rehearsal_required');
+ if(JSON.stringify(after.source_sha256)!==JSON.stringify(hashes))throw Error('rehearsal_source_mismatch');
  if(JSON.stringify(after.existing_after?.functions)!==JSON.stringify(expectedFunctions)||JSON.stringify(after.existing_after?.default_acls)!==JSON.stringify(before.snapshot.default_acls)||JSON.stringify(after.existing_after?.namespaces)!==JSON.stringify(before.snapshot.namespaces))throw Error('existing_function_or_acl_changed');
  if(!/^17[0-9]{4}$/.test(before.server_version_num??'')||after.server_version_num!==before.server_version_num)throw Error('matching_native_pg17_version_required');
  if(after.before_sha256!==sha(JSON.stringify(before.snapshot)))throw Error('rehearsal_before_mismatch');

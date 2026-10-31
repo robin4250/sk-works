@@ -39,3 +39,8 @@ test('full preflight emits a bounded READ ONLY metadata query',async()=>{
  const sql=await preflightQuery(new URL('../../../',import.meta.url).pathname);
  assert.match(sql,/^begin read only;/);assert.match(sql,/server_version_num/);assert.match(sql,/new_namespace_presence/);assert.doesNotMatch(sql,/\$1/);assert.match(sql,/site_share_inbox/);assert.match(sql,/respond_site_share/);
 });
+
+test('missing formal C stops before any rehearsal is supplied',()=>{
+ const missing=structuredClone(before);for(const n of ['private.require_trade_documents_master_feature','private.require_standalone_trade_document_access','private.standalone_trade_document_registration_context'])delete missing.snapshot.functions[n+'()'];
+ assert.throws(()=>assertReceipts(missing,undefined,{},pinned),/complete_thirteen_function_before_required/);
+});

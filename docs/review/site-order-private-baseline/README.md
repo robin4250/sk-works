@@ -78,3 +78,10 @@ The blocked builder now captures the legacy raw attributes into the required tem
 `capture_full_preflight.mjs ROOT` emits a bounded READ ONLY metadata query for this expanded contract and all five namespace-presence flags. It never connects or selects business rows. Fresh production and rehearsal receipts must use the same Native PostgreSQL 17 version; the builder rejects a missing or different version. No such qualifying actual-before/Native-eight-body-after pair has yet been produced.
 
 Expanded local results with the fixed recovery module: public PGlite **86 checks**, private exact-eight-body PGlite **98 checks**, Python **8 tests**, Node offline/scanner **11 tests**. These retain synthetic Auth/company/PNG rows and are not production authorization or Native actual-eight-body evidence.
+
+
+## Latest actual READ ONLY observation
+
+On 2026-10-31 at 01:49:26 UTC (10:49 JST), root reviewed the complete generated 8,193-byte query (SHA256 `e948ed3036d856fbfc8ca3ffcebe0e79bd29e719e85d6dcc4c4c97327b1b6bec`) and executed it READ ONLY. The result has Native PostgreSQL **17.6**, **10 existing functions**, **all 15 existing relations**, and **all five new namespaces absent**. All eight original helper body/owner/security/config/ACL contracts still match the earlier manifest; both legacy response body hashes match their expected before values. No business rows were selected and production writes were zero. The detailed metadata stays private.
+
+The three missing functions are formal C's `require_trade_documents_master_feature`, `require_standalone_trade_document_access` and `standalone_trade_document_registration_context`. Their source is not invalidated or rewritten: the separate formal-C scope has not been applied. The expanded atomic-review builder correctly rejects this 10-function snapshot because its baseline prerequisite is 13 functions. No projected post-C rehearsal is labeled as the actual production-before state, and no deployment approval is inferred from the READ ONLY query.
