@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -15,6 +16,25 @@ import 'package:sk_works/features/payroll/payment_certificates_page.dart';
 import 'package:sk_works/features/shared/financial_preview_chrome.dart';
 
 class _Printer extends PrintingPlatform {
+  LayoutCallback? layout;
+  Completer<bool>? completed;
+  @override
+  Future<bool> layoutPdf(
+    Printer? printer,
+    LayoutCallback onLayout,
+    String name,
+    PdfPageFormat format,
+    bool dynamicLayout,
+    bool usePrinterSettings,
+    OutputType outputType,
+    bool forceCustomPrintPaper,
+    bool windowsModernDialog,
+  ) {
+    layout = onLayout;
+    completed = Completer<bool>();
+    return completed!.future;
+  }
+
   @override
   Future<PrintingInfo> info() async =>
       const PrintingInfo(canPrint: true, canShare: true, canRaster: true);
@@ -35,11 +55,15 @@ class _Printer extends PrintingPlatform {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late PrintingPlatform original;
+  late _Printer printer;
   setUp(() {
     original = PrintingPlatform.instance;
-    PrintingPlatform.instance = _Printer();
+    printer = _Printer();
+    PrintingPlatform.instance = printer;
   });
   tearDown(() {
+    if (printer.completed != null && !printer.completed!.isCompleted)
+      printer.completed!.complete(false);
     PrintingPlatform.instance = original;
   });
   for (final payment in [false, true]) {
@@ -115,6 +139,47 @@ void main() {
             final preview = tester.widget<PdfPreview>(find.byType(PdfPreview));
             expect(preview.useActions, isFalse);
             expect(preview.initialPageFormat, PdfPageFormat.a4);
+          }
+          if (payment) {
+            await tester.tap(find.widgetWithText(OutlinedButton, '印刷'));
+            for (
+              var stage = 0;
+              stage < 100 && printer.layout == null;
+              stage++
+            ) {
+              await tester.runAsync(
+                () => Future<void>.delayed(const Duration(milliseconds: 20)),
+              );
+              await tester.pump();
+            }
+            expect(printer.layout, isNotNull);
+            final bytes = await printer.layout!(PdfPageFormat.a4);
+            expect(String.fromCharCodes(bytes.take(4)), '%PDF');
+            // A replaced document must invalidate the already handed native
+            // callback, even when the current actor remains the same.
+            await tester.pumpWidget(
+              MaterialApp(
+                home: PaymentCertificatePreviewPage(
+                  record: PaymentCertificateRecord(
+                    id: 'replacement',
+                    partnerCompanyName: 'Synthetic partner',
+                    periodStart: record.periodStart,
+                    periodEnd: record.periodEnd,
+                    grossAmount: 100,
+                    deductions: 0,
+                    netAmount: 100,
+                    status: 'preview',
+                    revision: 2,
+                  ),
+                ),
+              ),
+            );
+            await expectLater(
+              printer.layout!(PdfPageFormat.a4),
+              throwsStateError,
+            );
+            printer.completed!.complete(false);
+            await tester.pump();
           }
           expect(tester.takeException(), isNull);
           await tester.pumpWidget(const SizedBox.shrink());

@@ -351,17 +351,22 @@ class _PaymentCertificatePreviewPageState
     if (_sharing) return;
     final record = widget.record;
     final actorLease = TradeDocumentActorLease();
+    void verifyPrintTarget() {
+      actorLease.verify();
+      if (!mounted || !identical(widget.record, record)) {
+        throw StateError('書類を開き直してください。');
+      }
+    }
     setState(() => _sharing = true);
     try {
       final bytes = await _pdfBytes.get(() => PaymentCertificatePdfService.buildPdf(record));
-      actorLease.verify();
-      if (!mounted) throw StateError('画面を開き直してください。');
+      verifyPrintTarget();
       await Printing.layoutPdf(
         name: '${record.monthLabel}_${record.partnerCompanyName}_支払証明書.pdf',
         format: PdfPageFormat.a4,
-        onLayout: (_) async { actorLease.verify(); return bytes; },
+        onLayout: (_) async { verifyPrintTarget(); return bytes; },
       );
-      actorLease.verify();
+      verifyPrintTarget();
     } catch (_) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('印刷の結果を確認してください。')));
     } finally {
