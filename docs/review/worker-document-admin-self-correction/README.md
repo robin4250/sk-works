@@ -23,6 +23,7 @@ evidence. Production HOLD and all unrelated switches remain unchanged.
 | Action | Input beyond explicit company/target | Result |
 | --- | --- | --- |
 | capability | None | Exact purpose, actor, target, availability; new uploads false |
+| inspect | None | Authorized full current row, including updater and template binding, for reviewed CAS |
 | correct | Fixed request ID, full reviewed snapshot, reason, exact three metadata fields | Atomic correction and opaque ID-only receipt |
 | get | Fixed request ID | Applied/cancelled/unknown; unknown never means success |
 | reconcile_cancel | Fixed request ID | Returns applied, or records a cancellation tombstone fencing delayed corrections |
@@ -45,15 +46,26 @@ server-stored prepared body. The intended client persists ID-only recovery data
 before a single atomic `correct` request, and never stores notes, paths, snapshots,
 tokens or file bytes in its journal. Thus it adds no cleanup Cron dependency. A
 lost response must be reconciled under the same ID before a new command is made.
+The existing status list projection is insufficient for full-row CAS. The
+purpose-specific `inspect` RPC supplies the authorized full snapshot before
+the form is shown; updater/template/future columns are not discarded by CAS.
+Inactive requirements stop new inspection/correction. Committed receipts remain
+recoverable after a later requirement/status removal under current own active
+worker and company authority.
+
 The candidate includes a captured-session repository, ID-only journal with
 write/readback checks, and a management-correction form. These are not yet wired
-to the existing document entry. Dedicated client tests cover journal contents,
+to the existing document entry in this PR; stacked PR1675 supplies those entries
+and actor/company-scoped recovery independent of status-list rows. Pending IDs
+enter recovery-only before any capability/OFF check, never the employee path.
+Unknown/mismatched capabilities and unexpected Auth/ACL/helper errors stop
+rather than being treated as OFF. Dedicated client tests cover journal contents,
 uncertain results, mismatched receipts, retired scope and concurrent local calls.
 
 ## Remaining gates
 
 Before production approval: independent review; real helper/catalog/trigger/ACL
-composition; Native two-connection lock/cancellation tests; exact original object
+composition; exact original object
 retention proof; actual SDK captured-Bearer/session/target binding tests;
 visible management-correction reason/confirmation/error/recovery through the entry;
 health-expiry save through the actual entry; guarded OFF installer and unused-only

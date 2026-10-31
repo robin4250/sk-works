@@ -15,6 +15,8 @@ void main() {
     'id': target,
     'company_id': company,
     'notes': 'private original',
+    'updated_by': actor,
+    'template_version_id': null,
   };
   Map<String, dynamic> receipt(String status) => {
     'version': 1,
@@ -51,6 +53,31 @@ void main() {
         reason: 'private reason',
       );
 
+  test(
+    'malformed capability is unknown and never coerced to unavailable',
+    () async {
+      final base = <String, dynamic>{
+        'version': 1,
+        'contract': 'worker_document_admin_self_correction',
+        'company_id': company,
+        'target_id': target,
+        'actor_id': actor,
+        'available': false,
+        'new_upload_available': false,
+        'max_photos': 20,
+      };
+      for (final raw in [
+        null,
+        {...base, 'company_id': 'foreign'},
+        {...base, 'available': 'false'},
+        {...base, 'version': 1.0},
+      ]) {
+        final repository = create((action, data) async => raw);
+        await expectLater(repository.available(), throwsFormatException);
+      }
+      expect(await create((action, data) async => base).available(), false);
+    },
+  );
   test(
     'persist only IDs and verify journal before one write; applied clears it',
     () async {

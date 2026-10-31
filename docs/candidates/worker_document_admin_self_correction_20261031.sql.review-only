@@ -83,7 +83,7 @@ create function public.worker_document_admin_self_correction(p_action text,p_dat
 returns jsonb language plpgsql security definer set search_path='' as $$
 declare actor uuid:=auth.uid();sid uuid;cid uuid;wid uuid;rid uuid;target uuid;request uuid;
  oldrow jsonb;newrow jsonb;expected jsonb;patch jsonb;paths text[];oldpaths text[];p text;oid uuid;
- enabled boolean;conflict boolean;digest text;reason text;receipt jsonb;
+ enabled boolean;requirement_active boolean;conflict boolean;digest text;reason text;
  saved private.worker_document_admin_corrections%rowtype;
 begin
  sid:=private.require_reauthentication_session();
@@ -96,7 +96,7 @@ begin
  perform 1 from public.member_feature_permissions where company_id=cid and user_id=actor for share;
  if private.has_company_feature(cid,'can_manage_people') is not true then
   raise exception 'people permission required' using errcode='42501';end if;
- if p_action<>'capability' then
+ if p_action not in('capability','inspect') then
   request:=(p_data->>'request_id')::uuid;
   if request is null then raise exception 'fixed request ID required' using errcode='22023';end if;
   perform pg_advisory_xact_lock(hashtextextended('worker-document-admin-correction:'||request::text,0));
@@ -115,13 +115,22 @@ begin
  end if;
  perform 1 from public.workers where id=wid and company_id=cid and user_id=actor and status::text='active' for share;
  if not found then raise exception 'own active worker required' using errcode='42501';end if;
- perform 1 from public.document_requirements where id=rid and company_id=cid for share;
- if not found then raise exception 'current document requirement required' using errcode='42501';end if;
+ select is_active into requirement_active from public.document_requirements where id=rid and company_id=cid for share;
+ if not found and saved.request_id is null then raise exception 'current document requirement required' using errcode='42501';end if;
  select s.enabled into enabled from private.worker_document_admin_correction_state s where singleton for share;
  if p_action='capability' then
   if (select count(*) from jsonb_object_keys(p_data))<>2 then raise exception 'unexpected capability fields' using errcode='22023';end if;
   return jsonb_build_object('version',1,'contract','worker_document_admin_self_correction','company_id',cid,
-   'target_id',target,'actor_id',actor,'available',enabled is true,'new_upload_available',false,'max_photos',20);
+   'target_id',target,'actor_id',actor,'available',enabled is true and requirement_active is true,'new_upload_available',false,'max_photos',20);
+ end if;
+ if p_action='inspect' then
+  if enabled is not true or requirement_active is not true then raise exception 'administrator correction stopped' using errcode='55000';end if;
+  if (select count(*) from jsonb_object_keys(p_data))<>2 then raise exception 'exact inspection target required' using errcode='22023';end if;
+  select to_jsonb(s) into oldrow from public.worker_document_statuses s
+   where id=target and company_id=cid and worker_id=wid and requirement_id=rid for share;
+  if oldrow is null then raise exception 'document changed; reload' using errcode='40001';end if;
+  return jsonb_build_object('version',1,'contract','worker_document_admin_self_correction',
+   'company_id',cid,'target_id',target,'actor_id',actor,'snapshot',oldrow);
  end if;
  if p_action in('get','reconcile_cancel') then
   if (select count(*) from jsonb_object_keys(p_data))<>3 then raise exception 'ID-only recovery required' using errcode='22023';end if;
@@ -135,6 +144,7 @@ begin
   end if;
  elsif p_action='correct' then
   if enabled is not true then raise exception 'administrator correction stopped' using errcode='55000';end if;
+  if requirement_active is not true then raise exception 'active document requirement required' using errcode='55000';end if;
   if (select count(*) from jsonb_object_keys(p_data))<>6 or not(p_data ?& array['company_id','target_id','request_id','expected_snapshot','fields','reason'])
   then raise exception 'exact correction fields required' using errcode='22023';end if;
   expected:=p_data->'expected_snapshot';patch:=p_data->'fields';reason:=p_data->>'reason';

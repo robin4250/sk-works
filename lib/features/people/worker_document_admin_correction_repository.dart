@@ -62,6 +62,34 @@ class WorkerDocumentAdminCorrectionRepository {
   final void Function()? _dispose;
   bool _busy = false, _disposed = false;
   static final _busyTargets = <String>{};
+  static List<String> pendingTargets(
+    SharedPreferences preferences,
+    String actor,
+    String companyId,
+  ) {
+    final prefix = 'sko.document.admin.correction.v1:$actor:$companyId:';
+    final targets = <String>[];
+    for (final key in preferences.getKeys().where(
+      (key) => key.startsWith(prefix),
+    )) {
+      final target = key.substring(prefix.length);
+      final raw = jsonDecode(preferences.getString(key) ?? 'null');
+      if (!RegExp(r'^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$')
+              .hasMatch(target) ||
+          raw is! Map ||
+          raw.length != 5 ||
+          raw['version'] != 1 ||
+          raw['actor_id'] != actor ||
+          raw['company_id'] != companyId ||
+          raw['target_id'] != target ||
+          raw['request_id'] is! String) {
+        throw const FormatException('保存された変更IDを確認できません。');
+      }
+      targets.add(target);
+    }
+    return targets..sort();
+  }
+
   String get _key =>
       'sko.document.admin.correction.v1:$actor:$companyId:$targetId';
   Map<String, dynamic> get _target => {
@@ -104,16 +132,21 @@ class WorkerDocumentAdminCorrectionRepository {
     _current();
     final raw = await _rpc('capability', _target);
     _current();
-    return raw is Map &&
-        raw.length == 8 &&
-        raw['version'] == 1 &&
-        raw['contract'] == 'worker_document_admin_self_correction' &&
-        raw['company_id'] == companyId &&
-        raw['target_id'] == targetId &&
-        raw['actor_id'] == actor &&
-        raw['available'] == true &&
-        raw['new_upload_available'] == false &&
-        raw['max_photos'] == 20;
+    if (raw is! Map ||
+        raw.length != 8 ||
+        raw['version'] is! int ||
+        raw['version'] != 1 ||
+        raw['contract'] != 'worker_document_admin_self_correction' ||
+        raw['company_id'] != companyId ||
+        raw['target_id'] != targetId ||
+        raw['actor_id'] != actor ||
+        raw['available'] is! bool ||
+        raw['new_upload_available'] != false ||
+        raw['max_photos'] is! int ||
+        raw['max_photos'] != 20) {
+      throw const FormatException('管理訂正の利用状態を照合できません。');
+    }
+    return raw['available'] as bool;
   }
 
   String _receipt(Object? raw, String requestId) {
@@ -129,6 +162,36 @@ class WorkerDocumentAdminCorrectionRepository {
       throw const FormatException('変更結果を照合できません。');
     }
     return raw['status'] as String;
+  }
+
+  /// Existing list projections omit updated_by/template_version_id. Only this
+  /// authorized server snapshot may be used for the full-row CAS command.
+  Future<Map<String, dynamic>> inspect() async {
+    _current();
+    final raw = await _rpc('inspect', _target);
+    _current();
+    if (raw is! Map ||
+        raw.length != 6 ||
+        raw['version'] is! int ||
+        raw['version'] != 1 ||
+        raw['contract'] != 'worker_document_admin_self_correction' ||
+        raw['company_id'] != companyId ||
+        raw['target_id'] != targetId ||
+        raw['actor_id'] != actor ||
+        raw['snapshot'] is! Map) {
+      throw const FormatException('正式な書類状態を照合できません。');
+    }
+    final snapshot = Map<String, dynamic>.from(raw['snapshot'] as Map);
+    if (snapshot['id'] != targetId ||
+        snapshot['company_id'] != companyId ||
+        snapshot['worker_id'] is! String ||
+        snapshot['requirement_id'] is! String ||
+        snapshot['updated_at'] is! String ||
+        !snapshot.containsKey('updated_by') ||
+        !snapshot.containsKey('template_version_id')) {
+      throw const FormatException('正式な書類状態が不足しています。');
+    }
+    return jsonDecode(jsonEncode(snapshot)) as Map<String, dynamic>;
   }
 
   Future<void> _clear(String requestId) async {
@@ -173,6 +236,8 @@ class WorkerDocumentAdminCorrectionRepository {
             .hasMatch(requestId) ||
         expectedSnapshot['id'] != targetId ||
         expectedSnapshot['company_id'] != companyId ||
+        !expectedSnapshot.containsKey('updated_by') ||
+        !expectedSnapshot.containsKey('template_version_id') ||
         reason.trim().isEmpty ||
         reason != reason.trim() ||
         reason.length > 1000) {

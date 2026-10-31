@@ -13,10 +13,12 @@ class WorkerDocumentAdminCorrectionPage extends StatefulWidget {
     required this.repository,
     required this.snapshot,
     required this.documentName,
+    this.recoveryOnly = false,
   });
   final WorkerDocumentAdminCorrectionRepository repository;
   final Map<String, dynamic> snapshot;
   final String documentName;
+  final bool recoveryOnly;
   @override
   State<WorkerDocumentAdminCorrectionPage> createState() => _CorrectionState();
 }
@@ -44,6 +46,12 @@ class _CorrectionState extends State<WorkerDocumentAdminCorrectionPage> {
   Future<void> _load() async {
     try {
       _pending = widget.repository.pendingRequest() != null;
+      if (widget.recoveryOnly) {
+        if (!_pending) {
+          throw StateError('回復する変更IDがありません。');
+        }
+        return;
+      }
       final available = await widget.repository.available();
       if (mounted) {
         setState(() => _available = available);
@@ -192,7 +200,11 @@ class _CorrectionState extends State<WorkerDocumentAdminCorrectionPage> {
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: 12),
-          const Text('期限・備考・登録済み写真の並び順や除外を変更します。新しい写真の追加には対応していません。'),
+          Text(
+            widget.recoveryOnly
+                ? '前の変更結果だけを確認します。新しい変更は送信しません。'
+                : '期限・備考・登録済み写真の並び順や除外を変更します。新しい写真の追加には対応していません。',
+          ),
           if (!_available && !_pending)
             const Text('管理訂正は現在利用できません。原本は変更していません。'),
           if (_error != null)
@@ -200,30 +212,35 @@ class _CorrectionState extends State<WorkerDocumentAdminCorrectionPage> {
               padding: const EdgeInsets.symmetric(vertical: 12),
               child: Text(_error!),
             ),
-          TextField(
-            controller: _expiry,
-            enabled: _available && !_pending && !_busy,
-            textInputAction: TextInputAction.done,
-            onSubmitted: (_) => FocusScope.of(context).unfocus(),
-            decoration: const InputDecoration(labelText: '期限（YYYY-MM-DD／空欄可）'),
-          ),
-          TextField(
-            controller: _notes,
-            enabled: _available && !_pending && !_busy,
-            maxLength: 4000,
-            textInputAction: TextInputAction.done,
-            onSubmitted: (_) => FocusScope.of(context).unfocus(),
-            decoration: const InputDecoration(labelText: '備考'),
-          ),
-          TextField(
-            controller: _reason,
-            enabled: _available && !_pending && !_busy,
-            maxLength: 1000,
-            textInputAction: TextInputAction.done,
-            onSubmitted: (_) => FocusScope.of(context).unfocus(),
-            decoration: const InputDecoration(labelText: '変更理由（必須）'),
-          ),
-          for (var i = 0; i < _paths.length; i++)
+          if (!widget.recoveryOnly)
+            TextField(
+              controller: _expiry,
+              enabled: _available && !_pending && !_busy,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => FocusScope.of(context).unfocus(),
+              decoration: const InputDecoration(
+                labelText: '期限（YYYY-MM-DD／空欄可）',
+              ),
+            ),
+          if (!widget.recoveryOnly)
+            TextField(
+              controller: _notes,
+              enabled: _available && !_pending && !_busy,
+              maxLength: 4000,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => FocusScope.of(context).unfocus(),
+              decoration: const InputDecoration(labelText: '備考'),
+            ),
+          if (!widget.recoveryOnly)
+            TextField(
+              controller: _reason,
+              enabled: _available && !_pending && !_busy,
+              maxLength: 1000,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => FocusScope.of(context).unfocus(),
+              decoration: const InputDecoration(labelText: '変更理由（必須）'),
+            ),
+          for (var i = 0; !widget.recoveryOnly && i < _paths.length; i++)
             ListTile(
               title: Text('登録済み写真 ${i + 1}'),
               trailing: Row(

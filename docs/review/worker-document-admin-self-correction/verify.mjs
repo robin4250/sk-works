@@ -44,6 +44,9 @@ try{
  alter default privileges for role postgres in schema public grant execute on functions to anon,authenticated,service_role;`);
  await db.exec(await read('tool/security/worker_document_change_session/baseline.sql'));
  for(const m of ['20260918133000_add_worker_document_checklist.sql','20260918144500_add_worker_document_status_history.sql','20260919023500_harden_worker_document_rls.sql','20261003121632_allow_self_document_registration.sql','20261010222524_worker_document_multiple_photos.sql'])await db.exec(await read('supabase/migrations/'+m));
+ // Current production catalog has this additional column; list projections
+ // omit it and updated_by. Full-row CAS must preserve both rather than ignore.
+ await db.exec('alter table public.worker_document_statuses add column template_version_id uuid');
  await db.exec(`grant select on public.companies,public.company_members,public.workers,public.document_requirements,public.worker_document_status_history to authenticated;
  grant select,insert,update,delete on public.worker_document_statuses to authenticated;
  insert into public.companies(id) values('${company}');insert into auth.users(id) values('${owner}'),('${reviewer}');
@@ -64,6 +67,17 @@ try{
  await assert.rejects(rpc('correct',command));assert.deepEqual(await status(),original);
  pass('OFF installation changes no original and cannot correct');
  await db.exec('reset role');await db.exec('update private.worker_document_admin_correction_state set enabled=true');
+ await actor(owner,sid);
+ const inspected=await rpc('inspect',identity);assert.deepEqual(inspected.snapshot,original);
+ assert.ok(Object.hasOwn(inspected.snapshot,'updated_by'));assert.ok(Object.hasOwn(inspected.snapshot,'template_version_id'));
+ const projected={...original};delete projected.updated_by;delete projected.template_version_id;
+ await assert.rejects(rpc('correct',{...command,expected_snapshot:projected}));
+ pass('actual list projection cannot pass full-row CAS; authorized inspect includes updater and template binding');
+ await db.exec('reset role');await db.exec('update public.document_requirements set is_active=false');
+ await actor(owner,sid);assert.equal((await rpc('capability',identity)).available,false);
+ await assert.rejects(rpc('inspect',identity));await assert.rejects(rpc('correct',command));
+ await db.exec('reset role');await db.exec('update public.document_requirements set is_active=true');
+ pass('inactive requirements disable new correction without changing originals');
  await actor(reviewer,rsid);await assert.rejects(rpc('correct',command));
  pass('another administrator cannot use the administrator-own purpose');
  await db.exec('reset role');await db.exec(`update public.company_members set role='employee' where user_id='${owner}';
@@ -123,10 +137,10 @@ try{
  await actor(owner,uid(30));assert.deepEqual(await rpc('get',{...identity,request_id:uid(20)}),receipt);
  pass('no direct archive access; revoked SID rejected and legitimate new live SID reads same opaque receipt');
  await db.exec('reset role');await db.exec('begin');
- await db.query('delete from public.worker_document_statuses where id=$1',[target]);
+ await db.query('delete from public.document_requirements where id=$1',[req]);
  await actor(owner,uid(30));assert.deepEqual(await rpc('get',{...identity,request_id:uid(20)}),receipt);
  await db.exec('rollback');
- pass('committed ID-only receipt survives later status removal without relaxing current worker or company authority');
+ pass('committed ID-only receipt survives later requirement/status removal without relaxing current worker or company authority');
  await db.exec('reset role');await db.exec('update private.worker_document_admin_correction_state set enabled=false');
  await actor(owner,uid(30));assert.deepEqual(await rpc('reconcile_cancel',{...identity,request_id:uid(20)}),receipt);
  await assert.rejects(rpc('correct',{...command,request_id:uid(31),expected_snapshot:revised}));
