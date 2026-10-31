@@ -39,7 +39,7 @@ const server=http.createServer(async(req,res)=>{
   if(params.p_claim!==undefined && params.p_claim!==info.claim)throw Error('fixture claim');
   if(params.p_session!==undefined && params.p_session!==info.sid)throw Error('fixture SID');
   client=new Client({...config,application_name:'expense-bridge-'+who});await client.connect();
-  await client.query('begin');await client.query('set local role authenticated');
+  await client.query('begin');await client.query("set local statement_timeout='15s';set local lock_timeout='4s';set local idle_in_transaction_session_timeout='15s'");await client.query('set local role authenticated');
   const actor=who==='manager'?info.manager:info.applicant;const sid=who==='manager'?info.sid:info.applicantSid;
   await client.query("select set_config('test.uid',$1,true),set_config('test.sid',$2,true)",[actor,sid]);
   const current=(await client.query("select current_user role,auth.uid() actor,auth.jwt()->>'session_id' sid")).rows[0];
@@ -52,5 +52,7 @@ const server=http.createServer(async(req,res)=>{
  }catch(error){if(client)await client.query('rollback').catch(()=>{});reply(res,400,{code:error.code??'FIXTURE_INVALID',message:error.message});}
  finally{if(client)await client.end();}
 });
+server.requestTimeout=10000;server.headersTimeout=5000;server.timeout=20000;server.keepAliveTimeout=1000;server.maxRequestsPerSocket=20;
+server.on('error',error=>{console.error('Fixture HTTP startup failed:',error.code??'unknown');admin.end().finally(()=>{process.exitCode=1;});});
 server.listen(55439,'127.0.0.1',()=>console.log('EXPENSE_BRIDGE_READY synthetic Auth; actual isolated PostgreSQL SQL; deployable:false'));
 for(const signal of ['SIGINT','SIGTERM'])process.on(signal,()=>server.close(()=>{admin.end().finally(()=>process.exit(0));}));

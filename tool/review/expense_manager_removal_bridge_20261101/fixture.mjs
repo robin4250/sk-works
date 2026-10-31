@@ -6,7 +6,9 @@ import {fixtureTarget} from '../expense_manager_removal_20261101/fixture-target.
 export const id=n=>`00000000-0000-0000-0000-${String(n).padStart(12,'0')}`;
 export const info={company:id(1),worker:id(2),manager:id(3),applicant:id(9),sid:id(10),applicantSid:id(11),claim:id(100)};
 export async function prepare(Client){
- const config=fixtureTarget();const c=new Client(config);await c.connect();
+ const config={...fixtureTarget(),connectionTimeoutMillis:5000,query_timeout:17000};const c=new Client(config);
+ try{
+ await c.connect();await c.query("set statement_timeout='15s';set lock_timeout='4s';set idle_in_transaction_session_timeout='15s'");
  const target=(await c.query('select current_database() db,host(inet_server_addr()) ip,version() version')).rows[0];
  assert.equal(target.db,config.database);assert.equal(target.ip,process.env.SKO_EXPENSE_FIXTURE_SERVER_IP);assert.match(target.version,/PostgreSQL 17\.6\b/);
  assert.equal((await c.query("select count(*)::int n from pg_namespace where nspname in ('private','auth','storage')")).rows[0].n,0);
@@ -41,4 +43,5 @@ export async function prepare(Client){
  await c.query(`insert into private.expense_claims(id,company_id,applicant_id,applicant_name,created_by,incurred_on,description,amount_yen,receipt_object_path)
  values($1,$2,$3,'Bridge applicant',$4,date_trunc('month',current_date)::date,'Native bridge receipt',1234,'retained/bridge-original.png')`,[info.claim,info.company,info.worker,info.applicant]);
  return {config,admin:c};
+ }catch(error){await c.end().catch(()=>{});throw error;}
 }
