@@ -533,6 +533,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           ? SupabaseBackend.client.auth.currentUser?.id : null;
       if (!mounted) return;
       setState(() {
+        if (_tutorialUserId != userId || _tutorialCompanyId != companyId) {
+          _homeDocumentAttentionGeneration++;
+          _requiredDocumentAttention = const RequiredDocumentAttention(missingCount: 0,
+            missingNames: [], needsLicense: false, needsQualification: false, documentEvidenceUnavailable: true);
+        }
         _identity = identity;
         _tutorialUserId = userId;
         _tutorialCompanyId = companyId;
@@ -541,6 +546,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       if (!mounted) return;
       setState(() {
         _tutorialCompanyId = null; _tutorialUserId = null;
+        _homeDocumentAttentionGeneration++;
         _requiredDocumentAttention = const RequiredDocumentAttention(missingCount: 0,
           missingNames: [], needsLicense: false, needsQualification: false, documentEvidenceUnavailable: true);
         _identity = const HomeIdentity(role: 'viewer', companyName: 'SKO', displayName: 'ユーザー');
@@ -1471,6 +1477,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     );
 
     if (!mounted) return;
+    if (const {'profile', 'settings', 'company_documents', 'company_modules', 'payroll_adjustments'}.contains(key)) {
+      await _loadIdentity();
+    }
+    if (!mounted) return;
     setState(() => _tutorialRefreshToken++);
     await _loadRequiredDocumentAttention();
 
@@ -1495,12 +1505,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       await _loadWeatherLocation();
     }
     if (key == 'profile') {
-      await _loadIdentity();
       await _loadWeatherLocation();
     }
     if (key == 'payroll_adjustments') {
       await _loadPayrollAdjustmentAccess();
-      await _loadIdentity();
     }
   }
 
