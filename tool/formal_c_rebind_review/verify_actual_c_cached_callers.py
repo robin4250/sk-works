@@ -111,12 +111,21 @@ const setActor=async(conn,role)=>{
 };
 const literal=s=>"'"+String(s).replaceAll("'","''")+"'";
 const saveSQL="select public.save_trade_document_attachment('payment_certificate',$1,'1',0,$2::jsonb) v";
-const save=async(conn,mode,payload)=>mode==='plain'?
- (await conn.query(saveSQL,[document,JSON.stringify(payload)])).rows[0].v:
- (await conn.query('execute sko_cached_save('+literal(document)+','+literal(JSON.stringify(payload))+'::jsonb)')).rows[0].v;
-const work=async(conn,mode)=>mode==='plain'?
- (await conn.query("select public.trade_document_attachment_workspace('payment_certificate',$1,'1') v",[document])).rows[0].v:
- (await conn.query('execute sko_cached_workspace('+literal(document)+')')).rows[0].v;
+const modes=['plain','prepared_custom','prepared_generic'];
+const selectPlan=async(conn,mode)=>{
+ assert.ok(modes.includes(mode));
+ await conn.exec('set plan_cache_mode='+({plain:'auto',prepared_custom:'force_custom_plan',prepared_generic:'force_generic_plan'}[mode]));
+};
+const save=async(conn,mode,payload)=>{
+ await selectPlan(conn,mode);
+ return mode==='plain'?(await conn.query(saveSQL,[document,JSON.stringify(payload)])).rows[0].v:
+  (await conn.query('execute sko_cached_save('+literal(document)+','+literal(JSON.stringify(payload))+'::jsonb)')).rows[0].v;
+};
+const work=async(conn,mode)=>{
+ await selectPlan(conn,mode);
+ return mode==='plain'?(await conn.query("select public.trade_document_attachment_workspace('payment_certificate',$1,'1') v",[document])).rows[0].v:
+  (await conn.query('execute sko_cached_workspace('+literal(document)+')')).rows[0].v;
+};
 const txn=async(conn,action)=>{
  await conn.exec('begin');
  try {return {accepted:true,result:await action()};}
@@ -134,7 +143,7 @@ const basePayload={...earlyWork.defaults,issue_date:'2026-09-15',work_name:'Cach
 const invalids={terms:{...basePayload,contract_terms:{...reference,source_sha256:'0'.repeat(64)},form_fields:fresh()},form:{...basePayload,contract_terms:reference,form_fields:{...fresh(),payment_day:32}}};
 const observations=[];
 for(const [role,conn] of [['authenticated',authWarm],['postgres',ownerWarm]]){
- for(const mode of ['plain','prepared']){
+ for(const mode of modes){
   assert.equal((await work(conn,mode)).form_fields_schema_version,undefined);
   for(const [kind,payload] of Object.entries(invalids)){
    const before=await txn(conn,()=>save(conn,mode,payload));
@@ -168,7 +177,7 @@ assert.deepEqual(await callerSnapshot(),callerBefore,'C must not re-create or al
 assert.equal((await db.query("select count(*)::int n from private.master_feature_settings where feature_key='site_order_documents' and enabled")).rows[0].n,0);
 assert.deepEqual((await authWarm.query('select pg_backend_pid() pid,current_user role')).rows[0],backendBefore);
 for(const [role,conn] of [['authenticated',authWarm],['postgres',ownerWarm]]){
- for(const mode of ['plain','prepared']){
+ for(const mode of modes){
   assert.equal((await work(conn,mode)).form_fields_schema_version,2);
   for(const [kind,payload] of Object.entries(invalids)){
    const after=await txn(conn,()=>save(conn,mode,payload));
@@ -202,7 +211,11 @@ assert.equal(finalRows['private.trade_document_attachment_history'].length,0);
 for(const [table,rows] of Object.entries(beforeRows))if(table!=='private.trade_document_attachments')assert.deepEqual(finalRows[table],rows);
 const preparedEvidence=(await authWarm.query('select name,generic_plans,custom_plans from pg_prepared_statements where name in (\'sko_cached_save\',\'sko_cached_workspace\') order by name')).rows;
 assert.equal(preparedEvidence.length,2);
-report={contract:'sko.actual_C_cached_callers.v1',observations,preparedEvidence,server_version_num:170006,actual_C_receipt_functions:18,explicit_expected13_comparisons:13,after13_contract_unchanged:true,public_callers_unchanged:true,fixture_master_enabled_rows:0,actual_workspace_source_md5:'76d24c4ee4de18bed1605f2d4c151020',public_source_only_baseline:true,native_transport:'bounded direct pg; frozen Auth fixture helpers retained',authenticated_backend_role_unchanged:true,fresh_authenticated_save_succeeded:true,negative_rows_preserved:true,old_restore_executed:false,generic1711_executed:false,fixture_authentication_synthetic:true,real_GoTrue:false,privileged_direct_calls_are_separate_boundary:true,inflight_and_queue_proven:false,production:false,deployable:false};
+for(const evidence of preparedEvidence){
+ const minimum=evidence.name==='sko_cached_save'?4:2;
+ assert.ok(Number(evidence.generic_plans)>=minimum);assert.ok(Number(evidence.custom_plans)>=minimum);
+}
+report={contract:'sko.actual_C_cached_callers.v1',observations,preparedEvidence,cache_mode_choices:modes,server_version_num:170006,actual_C_receipt_functions:18,explicit_expected13_comparisons:13,after13_contract_unchanged:true,public_callers_unchanged:true,fixture_master_enabled_rows:0,actual_workspace_source_md5:'76d24c4ee4de18bed1605f2d4c151020',public_source_only_baseline:true,native_transport:'bounded direct pg; frozen Auth fixture helpers retained',authenticated_backend_role_unchanged:true,fresh_authenticated_save_succeeded:true,negative_rows_preserved:true,old_restore_executed:false,generic1711_executed:false,fixture_authentication_synthetic:true,real_GoTrue:false,privileged_direct_calls_are_separate_boundary:true,inflight_and_queue_proven:false,production:false,deployable:false};
 } finally {
  let cleanupFailures=0;
  for(const client of clients.reverse()){
