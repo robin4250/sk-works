@@ -73,7 +73,11 @@ class Fixture {
           );
         }
         if (request.url.path == '/rest/v1/company_members') {
-          return http.Response(jsonEncode(memberships), 200);
+          return http.Response(
+            jsonEncode(memberships),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
         }
         if (request.url.path ==
             '/rest/v1/rpc/initial_registration_employee_rows') {
@@ -129,7 +133,8 @@ class Fixture {
       email: 'fixture@example.invalid',
       password: 'synthetic',
     );
-    debugPrint('invite-sdk login complete');
+    await Future<void>.delayed(Duration.zero);
+    debugPrint('invite-sdk login complete and auth events settled');
   }
 
   Future<void> close() async {
