@@ -85,7 +85,7 @@ class QualifierTest(unittest.TestCase):
 
     def test_acl_privileges_roles_and_grant_options_fail(self):
         for field, bad in [('grantee', 'unknown'), ('grantable', True), ('grantable', 0),
-                           ('grantor', 'unknown'), ('privilege', 'ALL'), ('grantor_oid', 99)]:
+                           ('grantee', None), ('grantor', 'unknown'), ('privilege', 'ALL'), ('grantor_oid', 99)]:
             with self.subTest(field=field):
                 self.rejected(lambda x: x['current'][EXISTING]['acl'][0].__setitem__(field, bad))
         self.rejected(lambda x: x['current'][EXISTING]['acl'].append(copy.deepcopy(x['current'][EXISTING]['acl'][0])))

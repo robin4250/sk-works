@@ -379,6 +379,7 @@ def validate_catalog(rows):
             for acl in row['acl']:
                 exact_keys(acl, {'grantee', 'grantor', 'privilege', 'grantable'} | ACL_OIDS, 'ACL fields')
                 require(all(positive_oid(acl[k]) for k in ACL_OIDS), 'ACL OID')
+                require(all(type(acl[k]) is str for k in ('grantee', 'grantor', 'privilege')), 'ACL name type')
                 require(type(acl['grantable']) is bool, 'ACL grant option type')
                 require(acl['grantor_oid'] == row['owner_oid'], 'ACL grantor binding')
                 if acl['grantee'] == row['owner']:
