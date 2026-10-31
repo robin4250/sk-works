@@ -83,6 +83,9 @@ declare
   v_name text;
   v_relation text;
 begin
+  if jsonb_typeof(p_payload) is distinct from 'object' then
+    raise sqlstate '22023' using message='personnel_payload_object_required';
+  end if;
   perform pg_advisory_xact_lock(hashtextextended('sko:personnel-dob-v2:' || p_worker_id::text,0));
   select w.company_id into v_company
   from public.workers w where w.id=p_worker_id for update;
@@ -517,7 +520,7 @@ $$;
 revoke execute on function private.apply_worker_personnel_payload(uuid,jsonb,uuid) from public,anon,authenticated;
 
 do $catalog_guard$ declare item jsonb;begin
- for item in select value from jsonb_array_elements($catalog$[{"signature":"private.worker_personnel_payload(uuid)","return_type":"jsonb","volatility":"s","acl":null,"body_md5":"72cabfabfad5dcbb533d21d2a0605dae"},{"signature":"private.apply_worker_personnel_payload(uuid,jsonb,uuid)","return_type":"void","volatility":"v","acl":"{postgres=X/postgres}","body_md5":"5cb3ece45c9b51d2bf5a32b542546c21"},{"signature":"private.employee_personnel_view(uuid)","return_type":"jsonb","volatility":"s","acl":"{postgres=X/postgres,authenticated=X/postgres}","body_md5":"643dc0efdc35b6ab365f1ec31d053384"},{"signature":"public.save_worker_personnel_profile(uuid,jsonb)","return_type":"jsonb","volatility":"v","acl":"{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}","body_md5":"ce3ae9c1779b12a093e571b8c030a4c0"},{"signature":"public.decide_worker_personnel_change(uuid,boolean)","return_type":"jsonb","volatility":"v","acl":"{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}","body_md5":"42e5b55ceb81d293873c6e653b56e89f"}]$catalog$::jsonb) loop
+ for item in select value from jsonb_array_elements($catalog$[{"signature":"private.worker_personnel_payload(uuid)","return_type":"jsonb","volatility":"s","acl":null,"body_md5":"72cabfabfad5dcbb533d21d2a0605dae"},{"signature":"private.apply_worker_personnel_payload(uuid,jsonb,uuid)","return_type":"void","volatility":"v","acl":"{postgres=X/postgres}","body_md5":"9d700b1fe8176a04b19dc63e9305edcf"},{"signature":"private.employee_personnel_view(uuid)","return_type":"jsonb","volatility":"s","acl":"{postgres=X/postgres,authenticated=X/postgres}","body_md5":"643dc0efdc35b6ab365f1ec31d053384"},{"signature":"public.save_worker_personnel_profile(uuid,jsonb)","return_type":"jsonb","volatility":"v","acl":"{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}","body_md5":"ce3ae9c1779b12a093e571b8c030a4c0"},{"signature":"public.decide_worker_personnel_change(uuid,boolean)","return_type":"jsonb","volatility":"v","acl":"{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}","body_md5":"42e5b55ceb81d293873c6e653b56e89f"}]$catalog$::jsonb) loop
  if not exists(select 1 from pg_proc p where p.oid=to_regprocedure(item->>'signature')
  and md5(p.prosrc)=item->>'body_md5' and pg_get_userbyid(p.proowner)='postgres'
  and p.proacl::text is not distinct from item->>'acl'

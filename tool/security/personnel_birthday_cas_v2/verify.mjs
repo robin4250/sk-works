@@ -14,9 +14,12 @@ let source=original.split('const baseline=await capsule();')[0];
 source=source.replace('const here=path.dirname(fileURLToPath(import.meta.url));','const here='+JSON.stringify(path.dirname(foundation))+';');
 source += `
 await db.exec(fs.readFileSync(path.join(root,'supabase/migrations/20261016120458_personnel_write_permission_guard.sql'),'utf8'));
+// Synthetic bank preservation projection only; not banking authorization evidence.
+await db.exec("create table public.worker_private_bank_accounts(worker_id uuid primary key,company_id uuid not null,bank_name text not null,branch_name text not null,account_type text not null,account_number text not null,account_holder text not null,updated_at timestamptz not null);alter table public.worker_private_bank_accounts enable row level security;revoke all on public.worker_private_bank_accounts from public,anon,authenticated,service_role");
+await db.query("insert into public.worker_private_bank_accounts values($1,$2,'Synthetic bank','Synthetic branch','普通','1234567','SYNTHETIC HOLDER','2026-01-01T00:00:00Z')",[W,C]);
 await db.exec(fs.readFileSync(${JSON.stringify(path.resolve(dir,'../../../docs/review/personnel-birthday-cas-v2/install.wip.sql.review-only'))},'utf8'));
 const payload=async()=> (await db.query('select private.worker_personnel_payload($1) p',[W])).rows[0].p;
-const nonDob=async()=>({profile:(await db.query("select to_jsonb(p)-array['birth_date','updated_by','updated_at'] p from worker_personnel_profiles p where worker_id=$1",[W])).rows,family:(await db.query('select to_jsonb(f) f from worker_family_members f where worker_id=$1 order by id',[W])).rows,worker:(await db.query('select to_jsonb(w) w from workers w where id=$1',[W])).rows});
+const nonDob=async()=>({profile:(await db.query("select to_jsonb(p)-array['birth_date','updated_by','updated_at'] p from worker_personnel_profiles p where worker_id=$1",[W])).rows,family:(await db.query('select to_jsonb(f) f from worker_family_members f where worker_id=$1 order by id',[W])).rows,worker:(await db.query('select to_jsonb(w) w from workers w where id=$1',[W])).rows,bank:(await db.query('select to_jsonb(b) b from worker_private_bank_accounts b where worker_id=$1',[W])).rows});
 const p=await payload();
 assert.equal(p.birth_date_contract_version,2);
 const envelope={version:2,worker_id:W,company_id:C,expected_birth_date:p.birth_date,expected_personnel_digest:p.personnel_cas_digest};
@@ -135,8 +138,18 @@ await db.exec('reset role');assert.deepEqual(await nonDob(),pendingBefore);
 assert.equal((await db.query('select status from worker_personnel_change_requests where id=$1',[oldPending])).rows[0].status,'pending');
 assert.equal((await db.query('select count(*)::int n from worker_personnel_change_approvals where request_id=$1',[oldPending])).rows[0].n,0);
 
+
+for (const proposed of [null,[]]) {
+ const badRequest=(await db.query("insert into worker_personnel_change_requests(company_id,worker_id,requested_by,proposed,required_approvals) values($1,$2,$3,$4::jsonb,1) returning id",[C,W,actors.self,JSON.stringify(proposed)])).rows[0].id;
+ const beforeMalformed=await nonDob();await actor(actors.owner);
+ await assert.rejects(db.query('select public.decide_worker_personnel_change($1,true)',[badRequest]),e=>e.code==='22023');
+ await db.exec('reset role');assert.deepEqual(await nonDob(),beforeMalformed);
+ assert.equal((await db.query('select status from worker_personnel_change_requests where id=$1',[badRequest])).rows[0].status,'pending');
+ assert.equal((await db.query('select count(*)::int n from worker_personnel_change_approvals where request_id=$1',[badRequest])).rows[0].n,0);
+}
+
 await db.close();
-console.log('PASS 12 synthetic logical cases including combined snapshot conflict, explicit null clear and legacy pending rejection; Native concurrency and UI remain unverified');
+console.log('PASS 14 synthetic logical cases; bank/profile/family preservation, malformed-pending rollback; Native waits='+(process.env.SKO_PERSONNEL_FIXTURE_URL?'verified above':'not run')+'; real authentication/device unverified');
 `;
 const folder=fs.mkdtempSync(path.join(tmpdir(),'sko-dob-v2-'));const output=path.join(folder,'smoke.mjs');fs.writeFileSync(output,source);
 await import('node:child_process').then(({spawnSync})=>{const r=spawnSync(process.execPath,[output,process.argv[2]],{stdio:'inherit'});process.exitCode=r.status??1;fs.rmSync(folder,{recursive:true,force:true});});

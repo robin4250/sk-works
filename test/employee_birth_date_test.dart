@@ -62,7 +62,8 @@ void main(){
    }
    if(r.url.path.endsWith('/rpc/save_worker_personnel_profile')){
     saved=jsonDecode(r.body) as Map<String,dynamic>;
-    return fixture.Wire.json({'status':'pending','requires_approval':true});
+    return fixture.Wire.json({'status':'pending','requires_approval':true,'saved_directly':false,
+      'request_id':'60000000-0000-0000-0000-000000000030','required_approvals':1});
    }
    throw StateError('Unexpected fixture endpoint');
   };
@@ -83,5 +84,28 @@ void main(){
   await PeopleCloudRepository.forClient(w.client).savePersonnelProfile({'id':worker,'name':'Fixture'});
   expect((saved!['p_payload'] as Map).containsKey('birth_date'),false);
  });
+ for(final malformed in <Object>[
+  <String,dynamic>{},
+  {'status':'saved','requires_approval':true,'saved_directly':true},
+  {'status':'pending','requires_approval':true,'saved_directly':false,'request_id':'invalid','required_approvals':1},
+  {'status':'pending','requires_approval':true,'saved_directly':false,'request_id':'60000000-0000-0000-0000-000000000030','required_approvals':4},
+  <Object>[],
+ ]) { test('dirty birthday malformed result stays unknown without fallback: $malformed',()async{
+  final w=fixture.Wire();await w.seed();addTearDown(w.client.dispose);var saves=0;
+  w.respond=(r)async{
+   if(r.url.path.endsWith('/company_members'))return fixture.Wire.json([{'company_id':company,'role':'admin'}]);
+   if(r.url.path.endsWith('/rpc/employee_personnel_view')) {
+    return fixture.Wire.json({'company_id':company,'birth_date_contract_version':2,
+     'records':[{'id':worker,'active':true,'birthDateContractVersion':2,'personnelCasDigest':'0123456789abcdef0123456789abcdef'}]});
+   }
+   if(r.url.path.endsWith('/rpc/save_worker_personnel_profile')) {saves++;return fixture.Wire.json(malformed);}
+   throw StateError('Unexpected synthetic endpoint');
+  };
+  await expectLater(PeopleCloudRepository.forClient(w.client).savePersonnelProfile({
+   'id':worker,'name':'Fixture','birthDateSubmitted':true,'birthDate':'1980-02-29',
+   'birthDateContractVersion':2,'birthDateExpected':null,'personnelCasDigest':'0123456789abcdef0123456789abcdef','birthDateOnly':true},expectedCompany:company),throwsStateError);
+  expect(saves,1);expect(w.calls.where((r)=>r.url.path.endsWith('/rpc/save_worker_personnel_profile')),hasLength(1));
+ }); }
+
 }
 

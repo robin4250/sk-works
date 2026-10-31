@@ -31,9 +31,11 @@ class _EmployeePersonnelEditPageState extends State<EmployeePersonnelEditPage> {
   DateTime? _hireDate;
   DateTime? _birthDate;
   bool _birthDateDirty = false;
+  bool _birthdayIntentRetired = false;
   late final String _initialBirthdayFields;
-  bool get _canEditBirthday => widget.record.birthDateContractVersion == 2 &&
+  bool get _birthdaySupported => widget.record.birthDateContractVersion == 2 &&
       RegExp(r'^[0-9a-f]{32}$').hasMatch(widget.record.personnelCasDigest);
+  bool get _canEditBirthday => !_birthdayIntentRetired && _birthdaySupported;
   late final TextEditingController _phone;
   late final TextEditingController _address;
   late final TextEditingController _emergencyName;
@@ -167,7 +169,7 @@ class _EmployeePersonnelEditPageState extends State<EmployeePersonnelEditPage> {
 
   Future<void> _save() async {
     final repository = _repository;
-    if (repository == null || _saving) return;
+    if (repository == null || _saving || (_birthDateDirty && _birthdayIntentRetired)) return;
     if (_name.text.trim().isEmpty) {
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('名前を入力してください')));
@@ -209,7 +211,10 @@ class _EmployeePersonnelEditPageState extends State<EmployeePersonnelEditPage> {
     );
     if (confirmed != true || !mounted) return;
 
-    setState(() => _saving = true);
+    setState(() {
+      _saving = true;
+      if (_birthDateDirty) _birthdayIntentRetired = true;
+    });
     try {
       final session=widget.privacySession;
       if(session!=null){
@@ -314,7 +319,9 @@ class _EmployeePersonnelEditPageState extends State<EmployeePersonnelEditPage> {
           ListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text('生年月日'),
-            subtitle: Text(!_canEditBirthday
+            subtitle: Text(_birthdayIntentRetired && _birthDateDirty && !_saving
+                ? '入力内容を保持しています。一覧を更新して保存結果を確認してください。'
+                : !_birthdaySupported
                 ? '生年月日の登録は準備中です'
                 : _birthDate?.toIso8601String().substring(0, 10).replaceAll('-', '/') ?? '未登録'),
             trailing: _birthDate == null ? null : IconButton(
@@ -424,7 +431,7 @@ class _EmployeePersonnelEditPageState extends State<EmployeePersonnelEditPage> {
           ),
           const SizedBox(height: 18),
           FilledButton.icon(
-            onPressed: _saving || _loadingSaveMode ? null : _save,
+            onPressed: _saving || _loadingSaveMode || (_birthDateDirty && _birthdayIntentRetired) ? null : _save,
             icon: Icon(
               _directAdminSave ? Icons.save_outlined : Icons.approval_outlined,
             ),

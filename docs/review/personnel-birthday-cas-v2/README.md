@@ -6,7 +6,7 @@ The review-only installer replaces five canonical personnel functions, adds one 
 
 save, decide and private apply share a transaction-scoped worker advisory gate before mutable row locks. decide peeks identity, acquires the gate, then locks and rechecks its request. Final approval rechecks CAS. Direct private apply EXECUTE is narrowed while postgres SECURITY DEFINER public save/decide remain canonical callers. Exact five-function hashes, owners, attributes and ACLs are guarded. Unknown callers fail the installer. Privileged service_role direct DML remains outside this RPC serialization guarantee.
 
-New synthetic PGlite twelve logical cases pass: read version, narrow save, non-DOB/family-ID preservation, stale conflict, legacy explicit denial, direct authenticated apply denial, legacy omitted-DOB preservation, pending, and approval-time conflict with decision-row rollback. This is not Native concurrency, real authentication, Storage, SDK/UI or device evidence.
+New synthetic PGlite fourteen logical cases pass: read version, narrow save, non-DOB/family-ID preservation, stale conflict, legacy explicit denial, direct authenticated apply denial, legacy omitted-DOB preservation, pending, and approval-time conflict with decision-row rollback. This is not Native concurrency, real authentication, Storage, SDK/UI or device evidence.
 
 A dedicated CI suite now prepares PostgreSQL17.6 two-connection wait/phantom/revocation schedules; success is not yet confirmed. Outstanding before review completion: verified Native results; both Profile and Employee version2 transports now have source candidates; their analysis/SDK/widget evidence remains pending; full source review and latest CI. Both source writers now preserve original date/digest and choose narrow DOB-only versus combined intent. This new client source remains unverified; no version2 rollout is permitted. Production approval must be separate from the guide/document correction package.
 
@@ -14,3 +14,5 @@ Run only in a disposable synthetic fixture:
 `node tool/security/personnel_birthday_cas_v2/verify.mjs tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js`
 
 No rollback by deleting columns, historical rows, proposals or approvals is authorized.
+
+DOB response hardening now rejects malformed status/flags/pending identity instead of displaying saved. A dirty-DOB form retires its intent on attempt and retains draft input without same-form retry after an unknown result. This is not cross-restart durable outcome lookup/idempotency. Private apply rejects non-object legacy pending proposals before mutation; new rollback cases cover JSON null and array. The bank preservation row is a synthetic column projection, not real banking Auth/RLS/trigger/Storage evidence. Latest hardening CI/Native and independent review are pending.

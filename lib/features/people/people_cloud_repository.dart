@@ -587,6 +587,17 @@ class PeopleCloudRepository {
     );
     final raw = birthSubmitted ? await request.setHeader('Authorization', 'Bearer $token') : await request;
     checkBirthSession();
+    if (birthSubmitted && (raw is! Map ||
+        !const ['saved', 'unchanged', 'pending'].contains(raw['status']) ||
+        raw['requires_approval'] != (raw['status'] == 'pending') ||
+        raw['saved_directly'] != (raw['status'] == 'saved') ||
+        (raw['status'] == 'pending' &&
+          (raw['request_id'] is! String ||
+           !RegExp(r'^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$').hasMatch(raw['request_id'] as String) ||
+           raw['required_approvals'] is! int ||
+           (raw['required_approvals'] as int) < 1 || (raw['required_approvals'] as int) > 3)))) {
+      throw StateError('生年月日の保存結果を確認できません。入力内容を保持し、一覧を更新して結果を確認してください。');
+    }
     return raw is Map
         ? Map<String, dynamic>.from(raw)
         : const <String, dynamic>{};

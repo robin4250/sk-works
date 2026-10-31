@@ -42,7 +42,8 @@ void main() {
       expect(record.personnelCasDigest, isEmpty);
     });
   }
-  testWidgets('actual SDK loader mapping keeps initial CAS through DTO, editor and narrow save', (t) async {
+  for (final unknown in [false, true]) {
+  testWidgets('actual SDK loader mapping retains CAS and handles unknown=$unknown', (t) async {
     debugPrint('DOB_LOADER sdk-construction-start');
     final wire = (await t.runAsync(() async => fixture.Wire()))!;
     debugPrint('DOB_LOADER sdk-construction-complete');
@@ -57,6 +58,7 @@ void main() {
       debugPrint('DOB_LOADER teardown-client-complete');
     });
     Map<String, dynamic>? saved;
+    var saveCount = 0;
     final dispatched = Completer<void>();
     final editReturned = Completer<bool?>();
     wire.respond = (request) async {
@@ -92,7 +94,9 @@ void main() {
       }
       if (path.endsWith('/rpc/save_worker_personnel_profile')) {
         saved = Map<String, dynamic>.from(jsonDecode(request.body) as Map);
+        saveCount++;
         dispatched.complete();
+        if (unknown) { return fixture.Wire.json({}); }
         return fixture.Wire.json({'status': 'saved', 'requires_approval': false, 'saved_directly': true});
       }
       throw StateError('Unexpected synthetic SDK endpoint: $path');
@@ -116,6 +120,13 @@ void main() {
     debugPrint('DOB_LOADER widget-settled');
     final birthdayTile = find.ancestor(of: find.text('生年月日'), matching: find.byType(ListTile)).first;
     expect(t.widget<ListTile>(birthdayTile).onTap, isNotNull);
+    if (unknown) {
+      final nameField = find.byWidgetPredicate((widget) => widget is TextField && widget.decoration?.labelText == '名前');
+      await t.scrollUntilVisible(nameField, -500, scrollable: find.byType(Scrollable).first);
+      await t.enterText(nameField, 'Unsaved draft name');
+      FocusManager.instance.primaryFocus?.unfocus();
+      await t.pumpAndSettle();
+    }
     debugPrint('DOB_LOADER birthday-visible-start');
     await t.ensureVisible(find.byTooltip('生年月日を未登録に戻す'));
     debugPrint('DOB_LOADER birthday-visible-complete');
@@ -142,21 +153,43 @@ void main() {
     }
     await driveUntil(() => dispatched.isCompleted, 'actual SDK POST must arrive');
     debugPrint('DOB_LOADER save-dispatched');
-    await driveUntil(() => editReturned.isCompleted, 'editor save result must return');
-    final savedResult = await editReturned.future;
-    debugPrint('DOB_LOADER editor-result-returned');
-    await t.pumpAndSettle();
-    expect(savedResult, isTrue);
+    if (unknown) {
+      bool saveRetired() {
+        final labels = find.text('保存する');
+        final buttons = find.ancestor(of: labels, matching: find.byWidgetPredicate((widget) => widget is FilledButton));
+        return buttons.evaluate().any((element) => (element.widget as FilledButton).onPressed == null);
+      }
+      await driveUntil(saveRetired, 'unknown must retire the same form');
+      expect(editReturned.isCompleted, isFalse);
+      await t.tap(find.text('保存する'), warnIfMissed: false);
+      await t.pump();
+      await t.runAsync(() => Future<void>.delayed(Duration.zero));
+      expect(saveCount, 1, reason: 'unknown result must not resubmit');
+      const review = '入力内容を保持しています。一覧を更新して保存結果を確認してください。';
+      await t.scrollUntilVisible(find.text(review), -500, scrollable: find.byType(Scrollable).first);
+      expect(t.widget<ListTile>(find.ancestor(of: find.text('生年月日'), matching: find.byType(ListTile)).first).onTap, isNull);
+      final nameField = find.byWidgetPredicate((widget) => widget is TextField && widget.decoration?.labelText == '名前');
+      await t.scrollUntilVisible(nameField, -500, scrollable: find.byType(Scrollable).first);
+      expect(t.widget<TextField>(nameField).controller!.text, 'Unsaved draft name');
+      debugPrint('DOB_LOADER unknown-retired-draft-retained');
+    } else {
+      await driveUntil(() => editReturned.isCompleted, 'editor save result must return');
+      final savedResult = await editReturned.future;
+      debugPrint('DOB_LOADER editor-result-returned');
+      await t.pumpAndSettle();
+      expect(savedResult, isTrue);
+    }
     expect(saved, isNotNull);
     expect(saved!['p_worker_id'], worker);
     final payload = saved!['p_payload'] as Map;
     expect(payload['birth_date'], isNull);
-    expect(payload['_birth_date_mode'], 'only');
-    expect(payload.containsKey('family_members'), isFalse);
-    expect(payload.containsKey('name'), isFalse);
+    expect(payload['_birth_date_mode'], unknown ? 'combined' : 'only');
+    expect(payload.containsKey('family_members'), unknown);
+    expect(payload.containsKey('name'), unknown);
     expect((payload['_birth_date_cas'] as Map)['expected_birth_date'], '1980-02-29');
     expect((payload['_birth_date_cas'] as Map)['expected_personnel_digest'], digest);
     debugPrint('DOB_LOADER body-complete');
     await t.pumpWidget(const SizedBox.shrink());
   }, timeout: const Timeout(Duration(seconds: 45)));
+  }
 }
