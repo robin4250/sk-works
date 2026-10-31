@@ -105,8 +105,9 @@ class EmployeeInviteRepository {
     _observe(session);
     final generation = _generation;
     final captured = binding;
-    if (session == null || captured == null)
+    if (session == null || captured == null) {
       throw StateError('ログイン情報を確認してください。');
+    }
     Map row;
     try {
       final Object raw = await _client
@@ -336,8 +337,9 @@ class EmployeeInviteRepository {
       throw const FormatException('Unconfirmed invitation result');
     }
     final map = Map<String, dynamic>.from(raw);
-    if (map.containsKey('error') || map.containsKey('code'))
+    if (map.containsKey('error') || map.containsKey('code')) {
       throw const FormatException('Unconfirmed invitation result');
+    }
     final id = map['inviteId'],
         phone = map['phone'],
         password = map['temporaryPassword'];
@@ -361,10 +363,12 @@ class EmployeeInviteRepository {
     }
     if (expectedPhone != null) {
       var normalized = expectedPhone.replaceAll(RegExp(r'[\s()\-]'), '');
-      if (normalized.startsWith('0'))
+      if (normalized.startsWith('0')) {
         normalized = '+81${normalized.substring(1)}';
-      if (normalized != phone)
+      }
+      if (normalized != phone) {
         throw const FormatException('Invitation recipient changed');
+      }
     }
     final decoded = jsonDecode(qr);
     if (decoded is! Map ||
@@ -410,8 +414,9 @@ class EmployeeInviteRequest {
 
   void observeSession(Session? session) {
     try {
-      if (AppleSessionNavigationBinding.fromSession(session) != _binding)
+      if (AppleSessionNavigationBinding.fromSession(session) != _binding) {
         _retired = true;
+      }
     } catch (_) {
       _retired = true;
     }

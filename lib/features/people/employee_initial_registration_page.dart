@@ -178,8 +178,9 @@ class _EmployeeInitialRegistrationPageState
 
   void _sendDistribution(InitialRegistrationEmployee employee) {
     if (_loadedActor == null ||
-        SupabaseBackend.client.auth.currentUser?.id != _loadedActor)
+        SupabaseBackend.client.auth.currentUser?.id != _loadedActor) {
       return;
+    }
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => AppReferralPage(
