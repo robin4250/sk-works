@@ -131,11 +131,26 @@ List<AttentionCenterItem> mapRequiredDocumentAttention(Object? raw,
   if (raw is! Map || raw['missing_names'] is! List) {
     return const [];
   }
+  final unknown = raw['unknown_names'];
+  if (unknown != null && (unknown is! List ||
+      unknown.any((name) => name is! String || name.trim().isEmpty) ||
+      unknown.toSet().length != unknown.length ||
+      unknown.any((name) => (raw['missing_names'] as List).contains(name)))) {
+    throw const FormatException('Required-document evidence is inconsistent');
+  }
   return [for (final name in raw['missing_names'] as List)
     if (name is String && name.trim().isNotEmpty)
       AttentionCenterItem(
         id: name, source: 'required_document', title: name,
         state: AttentionCenterState.pending, actionKey: 'document_register',
+        metadata: {'document_name': name}, evidenceRank: 10,
+        actionable: _canOpen('document_register', availableActionKeys),
+      ),
+    if (unknown is List) for (final name in unknown)
+      AttentionCenterItem(
+        id: name as String, source: 'required_document', title: name,
+        body: '添付・登録情報を確認できません。再読み込みしてください。',
+        state: AttentionCenterState.unknown, actionKey: 'document_register',
         metadata: {'document_name': name}, evidenceRank: 10,
         actionable: _canOpen('document_register', availableActionKeys),
       ),
