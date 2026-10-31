@@ -39,7 +39,7 @@ let db;let nativeClient;
  await db.exec('alter default privileges revoke execute on functions from unexpected_fixture_role;');
  await db.exec(candidate);
  assert.deepEqual(await legacySnapshot(),originalLegacy);
- const login=async(s=sid)=>db.exec(`set test.uid='${actor}';set test.jwt='${JSON.stringify({sub:actor,role:'authenticated',session_id:s})}';`);
+ const login=async(s=sid)=>db.exec(`set test.uid='${actor}';set test.jwt='${JSON.stringify({sub:actor,role:'authenticated',session_id:s,exp:4102444800})}';`);
  await login();let count=0;
  const invoke=async(company,command,payload={},op=null,session=sid)=>{
   count++;
@@ -54,6 +54,22 @@ let db;let nativeClient;
  await assert.rejects(db.exec('select * from private.company_link_bound_operations'),/permission denied/);
  await assert.rejects(db.exec(`select private.require_company_link_bound_v1('${ids(1)}','${sid}')`),/permission denied/);
  await db.exec('reset role;');
+ const accountDefinition=(await db.query("select pg_get_functiondef('private.account_access_allowed()'::regprocedure) definition")).rows[0].definition;
+ for(const value of ['null::boolean','false']){
+  // Synthetic helper negative controls, restored exactly before business tests.
+  await db.exec(`create or replace function private.account_access_allowed() returns boolean language sql stable security definer set search_path='' as $$select ${value}$$;`);
+  await assert.rejects(invoke(ids(1),'workspace'),/context unavailable/);
+ }
+ await db.exec(accountDefinition);assert.deepEqual(await legacySnapshot(),originalLegacy);
+ for(const claims of [
+  {sub:actor,role:'authenticated',session_id:sid,exp:1},
+  {sub:actor,role:'service_role',session_id:sid,exp:4102444800},
+  {sub:ids(999),role:'authenticated',session_id:sid,exp:4102444800},
+ ]){
+  await db.exec(`set test.jwt='${JSON.stringify(claims)}';`);
+  await assert.rejects(invoke(ids(1),'workspace'),/context unavailable/);
+ }
+ await login();
  await invoke(ids(1),'set_enabled',{enabled:true},ids(201));
  await invoke(ids(2),'set_enabled',{enabled:true},ids(202));
  await invoke(ids(3),'set_enabled',{enabled:true},ids(203));
@@ -139,6 +155,29 @@ let db;let nativeClient;
    await expectedRejection;
    assert.equal((await invoke(ids(2),'result',{},ids(212))).state,'unobserved');
    console.log('NATIVE_COMPANY_LINK_SETTINGS_OFF_WAIT: 1');
+   await db.exec(`update private.trade_company_link_settings set enabled=true where company_id in('${ids(1)}','${ids(2)}');`);
+   await other.query(`set test.uid='${actor}';set test.jwt='${JSON.stringify({sub:actor,role:'authenticated',session_id:sid,exp:4102444800})}';`);
+   const gate=new Client();await gate.connect();
+   try{
+    await gate.query(`begin;select pg_advisory_xact_lock(hashtextextended('${ids(1)}',0));`);
+    const opposing=Promise.allSettled([
+     invoke(ids(1),'request',{...payload,target_company_id:ids(2)},ids(213)),
+     other.query(`select public.company_link_bound_v1('${ids(2)}','${sid}','${ids(214)}','request','${JSON.stringify({...payload,target_company_id:ids(1)})}'::jsonb)`),
+    ]);
+    observed=false;
+    for(let i=0;i<100&&!observed;i++){
+     await gate.query('select pg_stat_clear_snapshot()');
+     observed=(await gate.query(`select count(*)::integer n from pg_stat_activity where pid in(${mainPid},${pid}) and wait_event_type='Lock'`)).rows[0].n===2;
+    }
+    assert(observed,'opposing requests must both actually wait behind ordered pair gate');
+    await gate.query('commit');
+    const outcomes=await opposing;assert.equal(outcomes.filter(r=>r.status==='fulfilled').length,1);
+    assert.equal(outcomes.filter(r=>r.status==='rejected').length,1);
+    assert.equal(outcomes.find(r=>r.status==='rejected').reason.code,'23505','loser must be the preserved pending-pair unique constraint, not a deadlock or timeout');
+    assert.equal((await db.query(`select count(*)::integer n from private.trade_company_link_requests where status='pending'
+     and least(sender_company_id,target_company_id)='${ids(1)}' and greatest(sender_company_id,target_company_id)='${ids(2)}'`)).rows[0].n,1);
+    console.log('NATIVE_COMPANY_LINK_OPPOSING_REQUEST_WAIT: 1');
+   }finally{await gate.end();}
   }finally{await other.end();}
  }
  await login(sid2);
@@ -149,6 +188,7 @@ let db;let nativeClient;
  await assert.rejects(invoke(ids(2),'result',{},ids(204),sid2),/role unavailable/);
  await login();await db.exec(`update auth.sessions set not_after=clock_timestamp()-interval '1 minute' where id='${sid}';`);
  await assert.rejects(invoke(ids(1),'workspace'),/session unavailable/);
+ assert.deepEqual(await legacySnapshot(),originalLegacy);
  console.log(JSON.stringify({engine:native?'Native PostgreSQL synthetic fixture':'PGlite synthetic fixture',calls:count,result:'PASS',realAuth:false,production:false}));
  if(native)await nativeClient.end();else await db.close();
 })().catch(async e=>{console.error(e);if(nativeClient)await nativeClient.end();process.exitCode=1;});

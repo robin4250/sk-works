@@ -150,8 +150,12 @@ class TradeCompanyRepository {
   }
 
   Future<Map<String, dynamic>> linkWorkspace() async {
-    final raw = await _client.rpc('trade_company_link_workspace');
-    return Map<String, dynamic>.from(raw as Map);
+    final context = await openBoundLinkContext();
+    try {
+      return await context.workspace();
+    } finally {
+      await context.dispose();
+    }
   }
 
   Future<void> setLinkEnabled(bool enabled) async {

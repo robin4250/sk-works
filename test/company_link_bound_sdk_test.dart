@@ -18,7 +18,7 @@ const sid2 = '30000000-0000-0000-0000-000000000002';
 String token(String session) {
   String part(Object v) =>
       base64Url.encode(utf8.encode(jsonEncode(v))).replaceAll('=', '');
-  return '${part({'alg': 'ES256'})}.${part({'sub': actor, 'session_id': session, 'role': 'authenticated'})}.synthetic';
+  return '${part({'alg': 'ES256'})}.${part({'sub': actor, 'session_id': session, 'role': 'authenticated', 'exp': 4102444800})}.synthetic';
 }
 
 class Fixture {
