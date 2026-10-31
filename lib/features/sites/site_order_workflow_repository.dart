@@ -46,9 +46,9 @@ abstract class SiteOrderWorkflowApi extends ChangeNotifier {
   Future<Uint8List> original(String packageId, String kind);
   Future<Map<String, dynamic>> originalPayload(String packageId, String kind);
   Future<void> verify();
-  Future<bool> hasPendingReplyRecovery(String packageId) async => false;
-  Future<String?> reconcileReplyRecovery(String packageId) async => null;
-  Future<Map<String, dynamic>> previewReplyRecovery(String packageId) async =>
+  Future<bool> hasPendingReplyRecovery(String id) async => false;
+  Future<String?> reconcileReplyRecovery(String id) async => null;
+  Future<Map<String, dynamic>> previewReplyRecovery(String id) async =>
       throw StateError('請書の再確認を開始できません。');
   Future<Uint8List> renderReplyRecovery(Map<String, dynamic> preview) async =>
       throw StateError('請書の再確認を開始できません。');
@@ -325,8 +325,9 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
       );
       if (lease['package_id'] != id ||
           !_savedId(lease['lease_id']) ||
-          lease['status'] != 'reply_recovery_confirmed')
+          lease['status'] != 'reply_recovery_confirmed') {
         throw const SiteOrderResultUnknown();
+      }
       final outcome = _writeOutcome(
         await _call({
           'action': 'process_recovered_reply',
@@ -338,8 +339,9 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
       // Only the serialized delivery/cancellation barrier clears this journal.
       // A queued/unknown worker response remains quarantined across restarts.
       if (_map(outcome['result'])['status'] == 'recipient_stored') {
-        if (await reconcileReplyRecovery(id) != 'accepted')
+        if (await reconcileReplyRecovery(id) != 'accepted') {
           throw const SiteOrderResultUnknown();
+        }
       }
       return outcome;
     } catch (_) {
