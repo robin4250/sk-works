@@ -26,9 +26,24 @@ class _Repository implements CompanyDocumentExchangeRepository {
       'payload': {'name': '従業員'},
     },
     {
+      'id': 'qualification',
+      'payload_kind': 'qualification',
+      'payload': {'worker_name': '従業員', 'qualification_name': '資格名'},
+    },
+    {
       'id': 'new',
       'payload_kind': 'site_share',
       'payload': {'name': '専用現場'},
+    },
+    {
+      'id': 'signature',
+      'payload_kind': 'signature',
+      'payload': {'signer_name': '非表示署名者'},
+    },
+    {
+      'id': 'detail',
+      'payload_kind': 'personnel_detail',
+      'payload': {'name': '非表示社員詳細'},
     },
   ];
   @override
@@ -46,7 +61,9 @@ void main() {
     (tester) async {
       final repository = _Repository();
       await tester.pumpWidget(
-        MaterialApp(home: CompanyDeliveryInboxPage.forTesting(repository: repository)),
+        MaterialApp(
+          home: CompanyDeliveryInboxPage.forTesting(repository: repository),
+        ),
       );
       await tester.pumpAndSettle();
       await tester.tap(find.text('取引会社').first);
@@ -54,10 +71,14 @@ void main() {
       final boxes = tester
           .widgetList<CheckboxListTile>(find.byType(CheckboxListTile))
           .toList();
-      expect(boxes, hasLength(2));
-      expect(boxes.where((tile) => tile.onChanged != null), hasLength(1));
-      expect(find.text('この画面では操作できない受信データ'), findsOneWidget);
+      expect(boxes, hasLength(5));
+      expect(boxes.where((tile) => tile.onChanged != null), hasLength(2));
+      expect(find.text('従業員'), findsOneWidget);
+      expect(find.text('従業員 / 資格名'), findsOneWidget);
+      expect(find.text('この画面では操作できない受信データ'), findsNWidgets(3));
       expect(find.text('専用現場'), findsNothing);
+      expect(find.textContaining('非表示署名者'), findsNothing);
+      expect(find.text('非表示社員詳細'), findsNothing);
       await tester.tap(find.byTooltip('会社単位で一括保存'));
       await tester.pumpAndSettle();
       expect(find.textContaining('専用の承認画面で確認してください。'), findsOneWidget);

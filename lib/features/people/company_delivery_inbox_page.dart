@@ -783,17 +783,12 @@ class _ReceivedTransferItem {
         payload['name']?.toString() ?? '社員情報',
       'qualification' =>
         '${payload['worker_name']?.toString() ?? ''} / ${payload['qualification_name']?.toString() ?? '資格'}',
-      'signature' =>
-        (payload['report_date']?.toString() ?? '') + ' / ' +
-            (payload['site_name']?.toString() ?? '現場') + ' / ' +
-            (payload['signer_name']?.toString() ?? 'サイン'),
       _ => 'この画面では操作できない受信データ',
     };
     final category = switch (kind) {
       'personnel' =>
         _ReceivedTransferCategory.personnel,
       'qualification' => _ReceivedTransferCategory.qualifications,
-      'signature' => _ReceivedTransferCategory.signatures,
       _ => _ReceivedTransferCategory.unavailable,
     };
     return _ReceivedTransferItem(
