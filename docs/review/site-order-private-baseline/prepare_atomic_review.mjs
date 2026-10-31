@@ -15,21 +15,34 @@ export async function loadReplyRecovery(root){
  if(sha(sql)!==replyRecoveryContract.sha256)throw Error('reply_recovery_source_drift');
  transactionBody(sql);return {sql,...replyRecoveryContract};
 }
+export function legacyCaptureSql(){return "create temporary table site_order_legacy_expected(signature text primary key,attrs jsonb) on commit drop;insert into site_order_legacy_expected select case when p.oid='private.respond_site_share(uuid,boolean)'::regprocedure then 'private.respond_site_share(uuid,boolean)' else 'public.respond_site_share(uuid,boolean)'end,to_jsonb(p)-'prosrc' from pg_proc p where p.oid in('private.respond_site_share(uuid,boolean)'::regprocedure,'public.respond_site_share(uuid,boolean)'::regprocedure);";}
 export function catalogSql(source,schemas){
  if(!source.includes('$1::text[]'))throw Error('catalog_schema_parameter_missing');
  return source.trim().replace(/;$/,'').replaceAll('$1::text[]','array['+schemas.map(literal).join(',')+']::text[]');
 }
 export function assertReceipts(before,after,hashes,manifest){
- if(!manifest?.existing_function_contracts||!manifest?.existing_relation_names)throw Error('pinned_existing_inventory_required');
+ if(!manifest?.existing_function_contracts||!manifest?.existing_relation_names||!manifest?.full_existing_contract)throw Error('pinned_existing_inventory_required');
  if(before?.kind!=='native-production-readonly-normalized-v1'||before.production_mutation!==false||!before.snapshot)throw Error('fresh_readonly_native_before_required');
  if(after?.kind!=='native-rehearsal-exact-current-helpers-v1'||after.synthetic_seal!==false||after.current_helper_bodies!==8||after.original_c_sha256!=='7796c2e7bcc7a9eca78f1b79ce8cfc87fcd978c1dc4a4ddb7a5a8ced17b597e5')throw Error('native_exact_eight_body_rehearsal_required');
  if(JSON.stringify(after.source_sha256)!==JSON.stringify(hashes))throw Error('rehearsal_source_mismatch');
  const functions=before.snapshot.functions??{},relations=before.snapshot.relations??{};
- const required=[...manifest.existing_function_contracts.map(f=>f.signature.split('(')[0]),'private.require_trade_documents_master_feature','private.require_standalone_trade_document_access','private.standalone_trade_document_registration_context'];
- if(JSON.stringify(Object.keys(functions).map(n=>n.split('(')[0]).sort())!==JSON.stringify(required.sort()))throw Error('complete_eleven_function_before_required');
- if(JSON.stringify(Object.keys(relations).sort())!==JSON.stringify([...manifest.existing_relation_names].sort()))throw Error('complete_nine_relation_before_required');
- for(const f of manifest.existing_function_contracts){const entry=Object.entries(functions).find(([n])=>n.split('(')[0]===f.signature.split('(')[0]);if(entry[1].source_md5!==f.source_md5)throw Error('current_helper_body_drift');}
- if(JSON.stringify(after.existing_after?.functions)!==JSON.stringify(functions)||JSON.stringify(after.existing_after?.default_acls)!==JSON.stringify(before.snapshot.default_acls)||JSON.stringify(after.existing_after?.namespaces)!==JSON.stringify(before.snapshot.namespaces))throw Error('existing_function_or_acl_changed');
+ const required=[...manifest.existing_function_contracts.map(f=>f.signature.split('(')[0]),...manifest.full_existing_contract.additional_function_names];
+ if(JSON.stringify(Object.keys(functions).map(n=>n.split('(')[0]).sort())!==JSON.stringify(required.sort()))throw Error('complete_thirteen_function_before_required');
+ if(JSON.stringify(Object.keys(relations).sort())!==JSON.stringify([...manifest.existing_relation_names,...manifest.full_existing_contract.additional_relation_names].sort()))throw Error('complete_fifteen_relation_before_required');
+ for(const f of manifest.existing_function_contracts){
+  const actual=Object.entries(functions).find(([n])=>n.split('(')[0]===f.signature.split('(')[0])[1];
+  if(actual.source_md5!==f.source_md5)throw Error('current_helper_body_drift');
+  const acl=f.acl.map(a=>[a.grantor,a.grantee,a.privilege,a.grant_option]);
+  if(actual.owner!==f.owner||actual.prosecdef!==f.security_definer||actual.provolatile!==f.volatility||JSON.stringify(actual.proconfig)!==JSON.stringify(f.config)||JSON.stringify([...(actual.acl??[])].sort())!==JSON.stringify(acl.sort()))throw Error('current_helper_attributes_or_acl_drift');
+ }
+ const legacy=manifest.full_existing_contract.intended_legacy_change;
+ const expectedFunctions=structuredClone(functions);
+ for(const [name,f]of Object.entries(expectedFunctions)){
+  if(name.split('(')[0]===legacy.function_name){if(f.source_md5!==legacy.before_md5)throw Error('legacy_before_body_changed');f.source_md5=legacy.after_md5;}
+  if(name.split('(')[0]==='public.respond_site_share'&&f.source_md5!==legacy.public_wrapper_before_and_after_md5)throw Error('legacy_public_body_changed');
+ }
+ if(JSON.stringify(after.existing_after?.functions)!==JSON.stringify(expectedFunctions)||JSON.stringify(after.existing_after?.default_acls)!==JSON.stringify(before.snapshot.default_acls)||JSON.stringify(after.existing_after?.namespaces)!==JSON.stringify(before.snapshot.namespaces))throw Error('existing_function_or_acl_changed');
+ if(!/^17[0-9]{4}$/.test(before.server_version_num??'')||after.server_version_num!==before.server_version_num)throw Error('matching_native_pg17_version_required');
  if(after.before_sha256!==sha(JSON.stringify(before.snapshot)))throw Error('rehearsal_before_mismatch');
  if(!after.existing_after||!after.new_after)throw Error('full_after_catalogs_required');
  if(newSchemas.some(n=>(before.new_namespace_presence??{})[n]!==false))throw Error('all_new_namespaces_must_be_absent');
@@ -44,6 +57,7 @@ export function equalityGuard(query,expected,label){
 export async function prepare(root,{before,after,replyRecoveryRoot}={}){
  const read=p=>fs.readFile(path.join(root,p),'utf8');
  const manifest=JSON.parse(await read('docs/review/site-order-private-baseline/manifest.json'));
+ manifest.full_existing_contract=JSON.parse(await read('docs/review/site-order-private-baseline/full-existing-contract.json'));
  const core='docs/candidates/trade_document_bound_seal_consent_20261021.sql.review-only',api='docs/candidates/trade_document_confirmation_api_20261022.sql.review-only';
  const sources=await Promise.all([core,...siteSources].map(read));
  const apiText=await read(api),actor=apiText.match(/create function trade_document_confirmation_api_private\.actor\(\)[\s\S]*?end \$\$;/)?.[0];
@@ -60,7 +74,8 @@ export async function prepare(root,{before,after,replyRecoveryRoot}={}){
  const beforeSql=catalogSql(existing,['auth','private','public']);
  const newSql=catalogSql(catalog,newSchemas);
  const actorSql='create schema trade_document_confirmation_api_private;revoke all on schema trade_document_confirmation_api_private from public,anon,authenticated,service_role;'+actor+'revoke all on function trade_document_confirmation_api_private.actor() from public,anon,authenticated,service_role;';
- const sql=['-- BLOCKED REVIEW ONLY. Production HOLD remains; this is not an approved installer.','begin;',"set local search_path='';","do $$begin raise exception 'STOP: independent scoped approval and reviewed unblocking are required';end$$;",equalityGuard(beforeSql,before.snapshot,'site_baseline_before_catalog_changed'),equalityGuard(newSql,{namespaces:null,functions:null,relations:null},'site_baseline_new_namespace_already_exists'),transactionBody(sources[0]),actorSql,...sources.slice(1).map(transactionBody),equalityGuard(beforeSql,after.existing_after,'site_baseline_existing_after_changed'),equalityGuard(newSql,after.new_after,'site_baseline_new_after_changed'),'commit;'].join('\n');
+
+ const sql=['-- BLOCKED REVIEW ONLY. Production HOLD remains; this is not an approved installer.','begin;',"set local search_path='';","do $$begin raise exception 'STOP: independent scoped approval and reviewed unblocking are required';end$$;",equalityGuard(beforeSql,before.snapshot,'site_baseline_before_catalog_changed'),equalityGuard(newSql,{namespaces:null,functions:null,relations:null},'site_baseline_new_namespace_already_exists'),legacyCaptureSql(),transactionBody(sources[0]),actorSql,...sources.slice(1).map(transactionBody),equalityGuard(beforeSql,after.existing_after,'site_baseline_existing_after_changed'),equalityGuard(newSql,after.new_after,'site_baseline_new_after_changed'),'commit;'].join('\n');
  return {sql,manifest:{blocked_review_only:true,production_approved:false,source_sha256:hashes,before_sha256:sha(JSON.stringify(before.snapshot)),existing_after_sha256:sha(JSON.stringify(after.existing_after)),new_after_sha256:sha(JSON.stringify(after.new_after)),sql_sha256:sha(sql)}};
 }
 if(process.argv[1]===new URL(import.meta.url).pathname){

@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
+import {preflightStatement} from './capture_full_preflight.mjs';
 import {transactionBody} from './sql_transaction.mjs';
-import {catalogSql as inlineCatalogSql,equalityGuard,loadReplyRecovery} from './prepare_atomic_review.mjs';
+import {catalogSql as inlineCatalogSql,equalityGuard,loadReplyRecovery,legacyCaptureSql} from './prepare_atomic_review.mjs';
 const modules=['foundation','legacy-response-guard','approval','approval-consent','archive-read','delivery','read-surfaces','archive-payload','approval-operation','refusal'];
 const coreSchemas=['trade_document_consent_private','trade_document_confirmation_api_private'];
 const allSchemas=[...coreSchemas,'site_order_artifact_private','site_order_manager_private','site_order_package_private'];
@@ -11,9 +12,15 @@ const expectedReferenceFks=[
  ['public.companies','site_order_manager_private.document_scopes','document_scopes_company_id_fkey','company_id'],
  ['public.companies','site_order_manager_private.document_scopes','document_scopes_counterparty_company_id_fkey','counterparty_company_id'],
  ['public.trade_companies','site_order_manager_private.document_scopes','document_scopes_trade_company_id_fkey','trade_company_id'],
+ ['public.sites','site_order_manager_private.document_scopes','document_scopes_site_id_fkey','site_id'],
+ ['private.company_data_delivery_items','site_order_package_private.packages','packages_data_item_id_fkey','data_item_id'],
+ ['public.sites','site_order_package_private.approvals','approvals_accepted_site_id_fkey','accepted_site_id'],
+ ['public.sites','site_order_package_private.reply_intents','reply_intents_site_id_fkey','site_id'],
 ];
-const relationNames=['auth.users','auth.sessions','public.companies','public.company_members','public.trade_companies','private.account_deletion_access_restrictions','private.company_connections','private.company_seal_png_selection','private.company_seal_png_versions'];
+const relationNames=['auth.users','auth.sessions','public.companies','public.company_members','public.trade_companies','private.account_deletion_access_restrictions','private.company_connections','private.company_seal_png_selection','private.company_seal_png_versions','private.master_feature_settings','private.document_deliveries','private.company_data_delivery_items','private.site_share_inbox','public.sites','public.app_notifications'];
 export async function composeFull(db,{read,q,check,manifest}){
+ const fullContract=JSON.parse(await read('docs/review/site-order-private-baseline/full-existing-contract.json'));
+ const helperNames=[...manifest.existing_function_contracts.map(f=>f.signature.split('(')[0]),...fullContract.additional_function_names];
  await db.exec(`alter table public.sites alter column id set default gen_random_uuid();
  alter table public.sites add column customer_id uuid,add column formal_name text,add column address text,
  add column nearest_station text,add column representative_name text,add column representative_phone text,
@@ -27,17 +34,17 @@ export async function composeFull(db,{read,q,check,manifest}){
  await db.exec(await read('tool/fixtures/site_order_legacy_private_respond.fixture.sql'));
  await db.exec(await read('tool/fixtures/site_order_legacy_public_respond.fixture.sql'));
  await db.exec('revoke all on function public.respond_site_share(uuid,boolean) from public,anon;grant execute on function public.respond_site_share(uuid,boolean) to authenticated,service_role');
- await db.exec("create temporary table site_order_legacy_expected(signature text primary key,attrs jsonb);insert into site_order_legacy_expected select case when p.oid='private.respond_site_share(uuid,boolean)'::regprocedure then 'private.respond_site_share(uuid,boolean)' else 'public.respond_site_share(uuid,boolean)'end,to_jsonb(p)-'prosrc' from pg_proc p where p.oid in('private.respond_site_share(uuid,boolean)'::regprocedure,'public.respond_site_share(uuid,boolean)'::regprocedure)");
  await db.exec("set search_path=''");
  const existingCatalogSql=await read('docs/review/site-order-private-baseline/existing_catalog_normalized.sql');
  const existingBefore=await q(existingCatalogSql,[['auth','private','public']]);
- check(Object.keys(existingBefore.functions).length,11);check(Object.keys(existingBefore.relations).length,9);
+ check(Object.keys(existingBefore.functions).length,13);check(Object.keys(existingBefore.relations).length,15);
  const catalogSql=await read('docs/review/site-order-private-baseline/catalog_normalized.sql');
  const catalog=async schemas=>q(catalogSql,[schemas]);
  let allowedReferenceTriggers=[];
  const protectedCatalog=async()=>{
   const c=await catalog(['auth','private','public']);
-  const functions=Object.fromEntries(Object.entries(c.functions).filter(([name])=>manifest.existing_function_contracts.some(f=>name===f.signature||name.startsWith(f.signature.split('(')[0]+'('))));
+  const functions=Object.fromEntries(Object.entries(c.functions).filter(([name])=>helperNames.includes(name.split('(')[0])));
+  for(const [name,f]of Object.entries(functions))if(name.split('(')[0]===fullContract.intended_legacy_change.function_name&&f.source_md5===fullContract.intended_legacy_change.after_md5)f.source_md5=fullContract.intended_legacy_change.before_md5;
   const relations=Object.fromEntries(Object.entries(c.relations).filter(([name])=>relationNames.includes(name)));
   const additions=await db.query(`select t.tgname name,np.nspname||'.'||parent.relname parent,nc.nspname||'.'||child.relname child,k.conname constraint_name,
     pg_get_constraintdef(k.oid,true) constraint_definition,
@@ -71,7 +78,7 @@ export async function composeFull(db,{read,q,check,manifest}){
   }
   return {functions,relations,namespaces:c.namespaces,defaults:await q("select jsonb_agg((to_jsonb(d)-array['oid','defaclrole','defaclnamespace'])||jsonb_build_object('owner',pg_get_userbyid(defaclrole),'namespace',case when defaclnamespace=0 then null else defaclnamespace::regnamespace::text end)order by pg_get_userbyid(defaclrole),defaclnamespace::regnamespace::text,defaclobjtype) v from pg_default_acl d")};
  };
- const before=await protectedCatalog();check(Object.keys(before.functions).length,8);check(Object.keys(before.relations).length,9);
+ const before=await protectedCatalog();check(Object.keys(before.functions).length,13);check(Object.keys(before.relations).length,15);
  const paths=['docs/candidates/trade_document_bound_seal_consent_20261021.sql.review-only','docs/review/site-order-artifact-registration/private-register.sql.review-only','docs/review/site-order-manager-purpose/adapter.sql.review-only',...modules.map(n=>'docs/review/site-order-package-flow/'+n+'.sql.review-only')];
  const texts=await Promise.all(paths.map(read));
  const api=await read('docs/candidates/trade_document_confirmation_api_20261022.sql.review-only');
@@ -83,6 +90,7 @@ export async function composeFull(db,{read,q,check,manifest}){
  const bodies=texts.map(transactionBody);
  async function install(){
   await db.exec('begin');
+  await db.exec(legacyCaptureSql());
   await db.exec(bodies[0]);
   await db.exec('create schema trade_document_confirmation_api_private;revoke all on schema trade_document_confirmation_api_private from public,anon,authenticated,service_role;'+actor+'revoke all on function trade_document_confirmation_api_private.actor() from public,anon,authenticated,service_role');
   for(const body of bodies.slice(1))await db.exec(body);
@@ -119,7 +127,9 @@ export async function composeFull(db,{read,q,check,manifest}){
  }
  await db.exec('commit');check(await protectedCatalog(),before);
  const existingAfter=await q(existingCatalogSql,[['auth','private','public']]);
- check(existingAfter.functions,existingBefore.functions);check(existingAfter.default_acls,existingBefore.default_acls);check(existingAfter.namespaces,existingBefore.namespaces);
+ const expectedFunctions=structuredClone(existingBefore.functions);
+ for(const [name,f]of Object.entries(expectedFunctions))if(name.split('(')[0]===fullContract.intended_legacy_change.function_name){check(f.source_md5,fullContract.intended_legacy_change.before_md5);f.source_md5=fullContract.intended_legacy_change.after_md5;}
+ check(existingAfter.functions,expectedFunctions);check(existingAfter.default_acls,existingBefore.default_acls);check(existingAfter.namespaces,existingBefore.namespaces);
  const sqlGuard=equalityGuard(inlineCatalogSql(catalogSql,allSchemas),result,'site_new_catalog_changed');
  const oldGuard=equalityGuard(inlineCatalogSql(existingCatalogSql,['auth','private','public']),existingAfter,'site_existing_catalog_changed');
  await db.exec('begin');
@@ -130,6 +140,8 @@ export async function composeFull(db,{read,q,check,manifest}){
   let denied=false;try{await db.exec(sqlGuard);}catch(e){denied=e.code==='55000';}check(denied,true);
  }finally{await db.exec('rollback');}
  check(await newCatalog(),result);
+ const boundedQuery=preflightStatement(existingCatalogSql).replace(/^begin read only;set local search_path='';/,'').replace(/;commit;\n$/,'');
+ const captured=await q(boundedQuery);check(captured.production_mutation,false);check(Object.keys(captured.snapshot.functions).length,13);check(Object.keys(captured.snapshot.relations).length,15);
  return {modules_installed:12+(recovery?1:0),reply_recovery_source:recovery?{head:recovery.head,sha256:recovery.sha256}:null,core_namespaces:2,native_contract_capture:{before:existingBefore,after:existingAfter},catalog:result,protected_catalog:before,allowed_new_fk_reference_triggers:allowedReferenceTriggers,faults:faults.length,atomic_rollback:true,source_paths:paths};
 }
 function nNotIndex(name,catalog){return ['r','S'].includes(catalog.relations[name].relkind);}
