@@ -9,7 +9,16 @@ void main() {
     final edge = read('supabase/functions/create-employee-invite/index.ts');
     final app = read('lib/app_v2.dart');
 
-    expect(edge, contains('company_members?user_id=eq.'));
+    final contextSql = read(
+      'tool/staged/employee_invite_context.sql.review-only',
+    );
+    expect(edge, contains('employee_invite_operation_context'));
+    expect(contextSql, contains('m.company_id=p_company'));
+    expect(contextSql, contains('m.user_id=p_actor'));
+    expect(contextSql, contains("member_role not in('owner','admin','manager','viewer')"));
+    expect(contextSql, contains('s.id=p_session'));
+    expect(contextSql, contains('s.user_id=p_actor'));
+    expect(contextSql, contains('s.not_after'));
     expect(edge, isNot(contains('can_manage_people')));
     expect(app, contains("key: 'employee_register'"));
     expect(app, contains("SkoLanguageController.tr('従業員登録')"));
