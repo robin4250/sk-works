@@ -52,12 +52,16 @@ void main(){
  }
  testWidgets('admin confirms explicit future month; previous month is unavailable',(tester) async {
   final repository=FakePublicationRepository();addTearDown(repository.changes.close);
+  String currentJstMonth(){final value=DateTime.now().toUtc().add(const Duration(hours:9));return '${value.year}/${value.month}';}
+  final beforeMountMonth=currentJstMonth();
   await tester.pumpWidget(MaterialApp(home:Scaffold(body:CompanyCommonPayrollPublicationPanel(companyId:'company',repository:repository))));await tester.pumpAndSettle();
+  final afterMountMonth=currentJstMonth();
   await tester.tap(find.text('給与への適用月'));await tester.pumpAndSettle();
   expect(tester.widget<IconButton>(find.byKey(const ValueKey('common-publication-previous'))).onPressed,isNull);
   // Anchor to the panel's captured month. A later wall-clock read may cross JST midnight.
   final monthLabel=find.byWidgetPredicate((widget)=>widget is Text&&RegExp(r'^\d{4}/\d{1,2}$').hasMatch(widget.data??''));
   expect(monthLabel,findsOneWidget);
+  expect(tester.widget<Text>(monthLabel).data,anyOf(beforeMountMonth,afterMountMonth));
   final initialParts=tester.widget<Text>(monthLabel).data!.split('/');
   final next=DateTime(int.parse(initialParts[0]),int.parse(initialParts[1])+1);
   await tester.tap(find.byKey(const ValueKey('common-publication-next')));await tester.pumpAndSettle();
