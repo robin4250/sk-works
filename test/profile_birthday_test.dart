@@ -103,10 +103,22 @@ Future<void> showProfile(WidgetTester tester, Wire wire) async {
   await tester.pumpWidget(MaterialApp(home: ProfilePage(role: ManualRole.admin,
     repository: wire.repository)));
   await tester.pumpAndSettle();
+  expect(find.byType(ListView), findsOneWidget,
+    reason: find.byType(Text).evaluate().map((e) => (e.widget as Text).data).join(' | '));
+  await tester.scrollUntilVisible(find.byKey(const ValueKey('profile-birthday-field')),
+    400, scrollable: find.byType(Scrollable).first);
+  await tester.pumpAndSettle();
+}
+void disposeWidgetClient(WidgetTester tester, Wire wire) {
+  addTearDown(() async {
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.runAsync(wire.client.dispose);
+  });
 }
 Future<void> saveProfile(WidgetTester tester) async {
   final save = find.byKey(const ValueKey('profile-personnel-save'));
   await tester.scrollUntilVisible(save, 500, scrollable: find.byType(Scrollable).first);
+  await tester.pumpAndSettle();
   await tester.tap(save);
   await tester.pumpAndSettle();
   await tester.tap(find.text('確定して保存'));
@@ -210,7 +222,7 @@ void main() {
     expect(evidence.canEdit, isFalse); expect(w.writes.length, 1);
   });
   testWidgets('old database shows disabled own birthday without disabling unrelated save', (tester) async {
-    final w = Wire()..contract = null; addTearDown(w.client.dispose);
+    final w = Wire()..contract = null; disposeWidgetClient(tester, w);
     await tester.runAsync(() => w.login(sidA));
     await showProfile(tester, w);
     final field = tester.widget<TextField>(find.byKey(const ValueKey('profile-birthday-field')));
@@ -220,7 +232,7 @@ void main() {
     expect((w.writes.single['p_payload'] as Map).containsKey('birth_date'), isFalse);
   }, timeout: const Timeout(Duration(seconds: 45)));
   testWidgets('unmodified profile UI omits own birthday even when contract is enabled', (tester) async {
-    final w = Wire(); addTearDown(w.client.dispose);
+    final w = Wire(); disposeWidgetClient(tester, w);
     await tester.runAsync(() => w.login(sidA));
     await showProfile(tester, w);
     final field = tester.widget<TextField>(find.byKey(const ValueKey('profile-birthday-field')));
@@ -230,14 +242,29 @@ void main() {
     expect(w.birthday, '1980-01-15');
   }, timeout: const Timeout(Duration(seconds: 45)));
   testWidgets('explicit clear in profile UI submits null and preserves family birthday', (tester) async {
-    final w = Wire(); addTearDown(w.client.dispose);
+    final w = Wire(); disposeWidgetClient(tester, w);
     await tester.runAsync(() => w.login(sidA));
     await showProfile(tester, w);
     final clear = find.byKey(const ValueKey('profile-birthday-clear'));
     await tester.scrollUntilVisible(clear, 400, scrollable: find.byType(Scrollable).first);
+    await tester.pumpAndSettle();
     await tester.tap(clear); await tester.pumpAndSettle();
     await saveProfile(tester);
     expect((w.writes.single['p_payload'] as Map)['birth_date'], isNull);
     expect(((w.writes.single['p_payload'] as Map)['family_members'] as List).single['birth_date'], '2020-02-02');
+  }, timeout: const Timeout(Duration(seconds: 45)));
+  testWidgets('date picker selection is explicitly saved and read back as the own birthday', (tester) async {
+    final w = Wire(); disposeWidgetClient(tester, w);
+    await tester.runAsync(() => w.login(sidA));
+    await showProfile(tester, w);
+    final field = find.byKey(const ValueKey('profile-birthday-field'));
+    await tester.tap(field); await tester.pumpAndSettle();
+    expect(find.byType(DatePickerDialog), findsOneWidget);
+    await tester.tap(find.text('16').last); await tester.pumpAndSettle();
+    await tester.tap(find.text('OK')); await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(field).controller!.text, '1980-01-16');
+    await saveProfile(tester);
+    expect((w.writes.single['p_payload'] as Map)['birth_date'], '1980-01-16');
+    expect(w.birthday, '1980-01-16');
   }, timeout: const Timeout(Duration(seconds: 45)));
 }
