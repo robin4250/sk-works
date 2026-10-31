@@ -1,0 +1,26 @@
+name: Guide birthday official evidence review
+on:
+  pull_request:
+    paths:
+      - 'lib/features/tutorial/tutorial_evidence_repository.dart'
+      - 'test/tutorial_birthday_evidence_test.dart'
+      - 'test/tutorial_evidence_repository_test.dart'
+      - '.github/workflows/guide-birthday-evidence.yml'
+permissions:
+  contents: read
+jobs:
+  birthday-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: dart analyze lib/features/tutorial/tutorial_evidence_repository.dart test/tutorial_birthday_evidence_test.dart test/tutorial_evidence_repository_test.dart
+      - run: flutter test test/tutorial_birthday_evidence_test.dart test/tutorial_evidence_repository_test.dart test/tutorial_workspace_ui_test.dart test/canonical_document_guide_receipt_test.dart
