@@ -9,7 +9,7 @@ test('Invite failures preserve existing employees and omit raw upstream/cleanup 
  const actor='10000000-0000-0000-0000-000000000001',worker='40000000-0000-0000-0000-000000000001',authUser='50000000-0000-0000-0000-000000000001',company='30000000-0000-0000-0000-000000000001';
  const markers=['synthetic-person@example.invalid','synthetic-private-phone','synthetic-token-value','synthetic-password-value'];
  let handler,scenario,existingRow,newRow,bodyReads=0;const logs=[],calls=[];
- const initialRow={id:worker,name:'Synthetic Employee',phone:'07000000000',user_id:null,company_id:company,status:'inactive',unrelated_field:'preserve'};
+ const initialRow={id:worker,name:'Synthetic Employee',phone:'07000000000',user_id:null,company_id:company,status:'active',unrelated_field:'preserve'};
  globalThis.Deno={env:{get:name=>({SUPABASE_URL:'https://fixture.invalid',SUPABASE_SERVICE_ROLE_KEY:'fixture-service-key'}[name])},serve:value=>{handler=value;}};
  console.error=(...args)=>logs.push(args);
  function failure(status=409){const response=new Response(JSON.stringify({code:'23505',details:markers.join(' ')}),{status});const text=response.text.bind(response);response.text=async()=>{bodyReads++;return text();};return response;}
@@ -117,3 +117,4 @@ test('Invite failures preserve existing employees and omit raw upstream/cleanup 
   }
  }finally{globalThis.fetch=originalFetch;globalThis.Deno=originalDeno;console.error=originalError;}
 });
+

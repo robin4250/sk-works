@@ -24,7 +24,7 @@ const contextSQL=(account='true')=>prefix(account)+`select public.employee_invit
 
 test('actual HTTP handler binds selected company/live SID and never exposes uncertain credentials',async()=>{
  const originalFetch=globalThis.fetch,originalDeno=globalThis.Deno,originalError=console.error;
- const logs=[],calls=[];let handler,scenario='ok',contextCalls=0,issued=0,memberRole='owner',storedWorker=null,storedInvite=null;
+ const logs=[],calls=[];let handler,scenario='ok',contextCalls=0,issued=0,memberRole='owner',storedWorker=null,storedInvite=null,initialWorkerStatus='active';
  const ownAuthDeletes=[];
  if(sqlMode){
   sql(`create schema auth;create schema private;
@@ -54,7 +54,7 @@ test('actual HTTP handler binds selected company/live SID and never exposes unce
  const upstream=http.createServer(async(req,res)=>{
   let raw='';for await(const chunk of req)raw+=chunk;const body=raw?JSON.parse(raw):{};
   const url=new URL(req.url,'http://fixture.invalid'),path=url.pathname;
-  calls.push({path,method:req.method});
+  calls.push({path,method:req.method,body,query:url.searchParams.toString()});
   const reply=(value,status=200)=>{res.writeHead(status,{'content-type':'application/json'});res.end(JSON.stringify(value));};
   if(path==='/auth/v1/user')return reply({id:actor});
   if(path==='/rest/v1/company_members')return reply([{company_id:company,role:'owner'}]);
@@ -80,6 +80,7 @@ test('actual HTTP handler binds selected company/live SID and never exposes unce
    if(scenario==='phone-during-auth')storedWorker.phone='08000000000';
    if(scenario==='linked-during-auth')storedWorker.user_id='60000000-0000-0000-0000-000000000001';
    if(scenario==='company-during-auth')storedWorker.company_id=worker;
+   if(scenario==='retired-during-auth')storedWorker.status='inactive';
    return reply({id:authUser});
   }
   if(path==='/auth/v1/admin/users/'+authUser&&req.method==='DELETE'){ownAuthDeletes.push(authUser);return reply({});} 
@@ -146,7 +147,7 @@ test('actual HTTP handler binds selected company/live SID and never exposes unce
   await new Promise(r=>setImmediate(r));logs.length=0;
   await new Promise(r=>incoming.listen(0,'127.0.0.1',r));
   const endpoint=`http://127.0.0.1:${incoming.address().port}/`;
-  const send=payload=>{storedInvite=null;storedWorker={id:worker,company_id:company,affiliation:'employee',name:'Synthetic',phone:'07000000000',user_id:null,status:'inactive'};return originalFetch(endpoint,{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({name:'Synthetic',phone:'07000000000',companyId:company,sessionId:sid,operation:'create_bound_v1',...payload})});};
+  const send=payload=>{storedInvite=null;storedWorker={id:worker,company_id:company,affiliation:'employee',name:'Synthetic',phone:'07000000000',user_id:null,status:initialWorkerStatus};return originalFetch(endpoint,{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({name:'Synthetic',phone:'07000000000',companyId:company,sessionId:sid,operation:'create_bound_v1',...payload})});};
   contextCalls=0;issued=0;
   const inspected=await originalFetch(endpoint,{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({operation:'inspect_context',companyId:company,sessionId:sid})});
   assert.equal(inspected.status,200);assert.equal((await inspected.json()).capability,'employee_invite_bound_v1');assert.equal(issued,0);assert.equal(contextCalls,1);
@@ -174,6 +175,21 @@ test('actual HTTP handler binds selected company/live SID and never exposes unce
    }
   }
   scenario='ok';contextCalls=0;issued=0;
+  for(initialWorkerStatus of ['inactive',null,'unknown']){
+   calls.length=0;issued=0;ownAuthDeletes.length=0;contextCalls=0;
+   const response=await send({workerId:worker,expectedPhone:'07000000000'});
+   assert.equal(response.status,409);assert.equal(issued,0);
+   assert.equal(storedWorker.status,initialWorkerStatus);assert.equal(storedWorker.user_id,null);
+   assert.equal(storedInvite,null);assert.deepEqual(ownAuthDeletes,[]);
+   assert.equal(calls.some(c=>c.path==='/rest/v1/workers'&&c.method!=='GET'),false);
+  }
+  initialWorkerStatus='active';calls.length=0;contextCalls=0;issued=0;
+  assert.equal((await send({workerId:worker,expectedPhone:'07000000000'})).status,200);
+  const activeLink=calls.find(c=>c.path==='/rest/v1/workers'&&c.method==='PATCH');
+  assert.ok(activeLink);assert.equal(new URLSearchParams(activeLink.query).get('status'),'eq.active');
+  assert.equal('status'in activeLink.body,false);assert.equal(storedWorker.status,'active');
+  assert.equal(storedWorker.user_id,authUser);assert.equal(issued,1);
+  contextCalls=0;issued=0;
   assert.equal((await send({workerId:worker,expectedPhone:'08000000000'})).status,409);assert.equal(issued,0);
   for(memberRole of ['owner','admin','manager','viewer']) {
    if(sqlMode)sql(`update public.company_members set role='${memberRole}'`);
@@ -183,7 +199,7 @@ test('actual HTTP handler binds selected company/live SID and never exposes unce
   }
   memberRole='owner';if(sqlMode)sql("update public.company_members set role='owner'");
   if(!sqlMode){scenario='role-revoked';contextCalls=0;issued=0;assert.equal((await send({})).status,403);assert.equal(issued,0);}
-  for(scenario of ['phone-during-auth','linked-during-auth','company-during-auth']){
+  for(scenario of ['phone-during-auth','linked-during-auth','company-during-auth','retired-during-auth']){
    contextCalls=0;issued=0;ownAuthDeletes.length=0;logs.length=0;
    const response=await send({workerId:worker,expectedPhone:'07000000000'});
    assert.equal(response.status,409);assert.equal((await response.json()).code,'invite_worker_cas_no_write');
@@ -192,6 +208,7 @@ test('actual HTTP handler binds selected company/live SID and never exposes unce
    if(scenario==='linked-during-auth')assert.equal(storedWorker.user_id,'60000000-0000-0000-0000-000000000001');
    if(scenario==='phone-during-auth')assert.equal(storedWorker.phone,'08000000000');
    if(scenario==='company-during-auth')assert.equal(storedWorker.company_id,worker);
+   if(scenario==='retired-during-auth'){assert.equal(storedWorker.status,'inactive');assert.equal(storedWorker.user_id,null);}
   }
   for(scenario of ['patch-commit-ack-loss','post-commit-ack-loss','invite-commit-ack-loss','phone-after-link']){
    contextCalls=0;issued=0;ownAuthDeletes.length=0;logs.length=0;
@@ -227,3 +244,4 @@ test('actual HTTP handler binds selected company/live SID and never exposes unce
   await new Promise(r=>incoming.close(r));await new Promise(r=>upstream.close(r));
  }
 });
+
