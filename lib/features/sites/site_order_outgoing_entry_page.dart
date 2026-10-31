@@ -63,7 +63,7 @@ class _SiteOrderOutgoingEntryPageState extends State<SiteOrderOutgoingEntryPage>
       _local = siteOrderRequestId(),
       _request = siteOrderRequestId();
   int _step = 0, _generation = 0;
-  bool _busy = false, _retired = false;
+  bool _busy = true, _retired = false;
   String? _error, _trade;
   SiteOrderOutgoingEntries? _entries;
   Map<String, Object?>? _paperEdits;
@@ -98,7 +98,17 @@ class _SiteOrderOutgoingEntryPageState extends State<SiteOrderOutgoingEntryPage>
           throw StateError('登録会社を確認してください。');
         }
       }
-      widget.api.requireCurrent();
+      _admit();
+    } catch (_) {
+      _retire();
+    }
+  }
+
+  Future<void> _admit() async {
+    try {
+      await widget.api.verify();
+      _require();
+      if (mounted) setState(() => _busy = false);
     } catch (_) {
       _retire();
     }
@@ -436,6 +446,12 @@ class _SiteOrderOutgoingEntryPageState extends State<SiteOrderOutgoingEntryPage>
     appBar: AppBar(
       title: const Text('注文書の入力'),
       actions: [
+        if (_step == 0)
+          IconButton(
+            tooltip: 'キーボードを閉じる',
+            onPressed: () => FocusManager.instance.primaryFocus?.unfocus(),
+            icon: const Icon(Icons.keyboard_hide_outlined),
+          ),
         TextButton(
           onPressed: () => Navigator.pop(context),
           child: const Text('閉じる'),
