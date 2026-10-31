@@ -70,8 +70,9 @@ class Fixture {
                 }
               : {'state': 'committed', 'enabled': true};
           value = envelope(body, result);
-          if (command == 'workspace' && !workspaceLoaded.isCompleted)
+          if (command == 'workspace' && !workspaceLoaded.isCompleted) {
             workspaceLoaded.complete();
+          }
           if (badEnvelope) (value as Map)['company_id'] = sid2;
         } else {
           throw StateError('unexpected synthetic path');
@@ -273,11 +274,13 @@ void main() {
           AppLifecycleState.inactive,
         );
       } else {
-        if (change == 'repository')
+        if (change == 'repository') {
           repo = TradeCompanyRepository.forTesting(f.client);
+        }
         if (change == 'mode') mode = TradeCompanyPageMode.subcontractor;
-        if (change == 'request')
+        if (change == 'request') {
           initial = '40000000-0000-0000-0000-000000000001';
+        }
         await tester.pumpWidget(page());
       }
       await tester.pumpAndSettle();
@@ -288,10 +291,11 @@ void main() {
       await tester.tap(find.text('閉じる'));
       await tester.pumpAndSettle();
       expect(find.text('承認'), findsNothing);
-      if (change == 'background')
+      if (change == 'background') {
         tester.binding.handleAppLifecycleStateChanged(
           AppLifecycleState.resumed,
         );
+      }
       await tester.pumpWidget(const SizedBox());
     });
   }

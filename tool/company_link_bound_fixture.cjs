@@ -28,7 +28,17 @@ let db;let nativeClient;
  // Hashes describe this synthetic fixture only; not the deployed catalog.
  await db.exec(`set sko.company_link_bound.baseline_account='${hashes.account}';set sko.company_link_bound.baseline_attach='${hashes.attach}';`);
  const candidate=fs.readFileSync('tool/staged/company_link_bound.sql.review-only','utf8');
+ const legacySnapshot=async()=>(await db.query(`select p.oid::regprocedure::text signature,md5(pg_get_functiondef(p.oid)) body,p.proacl::text acl
+ from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+ where n.nspname in('private','public') and p.proname in('trade_link_company_admin_id','trade_company_link_workspace',
+ 'set_trade_company_link_enabled','search_trade_company_links','request_trade_company_link','respond_trade_company_link','attach_approved_trade_link') order by 1`)).rows;
+ const originalLegacy=await legacySnapshot();
+ await db.exec('create role unexpected_fixture_role;alter default privileges grant execute on functions to unexpected_fixture_role;');
+ await assert.rejects(db.exec(candidate),/ownership or ACL/);await db.exec('rollback;');
+ assert.equal((await db.query("select to_regclass('private.company_link_bound_operations') object")).rows[0].object,null);
+ await db.exec('alter default privileges revoke execute on functions from unexpected_fixture_role;');
  await db.exec(candidate);
+ assert.deepEqual(await legacySnapshot(),originalLegacy);
  const login=async(s=sid)=>db.exec(`set test.uid='${actor}';set test.jwt='${JSON.stringify({sub:actor,role:'authenticated',session_id:s})}';`);
  await login();let count=0;
  const invoke=async(company,command,payload={},op=null,session=sid)=>{
@@ -36,6 +46,14 @@ let db;let nativeClient;
   const v=(await db.query(`select public.company_link_bound_v1('${company}','${session}',${op?`'${op}'`:'null'},'${command}','${JSON.stringify(payload)}'::jsonb) value`)).rows[0].value;
   assert.equal(v.company_id,company);assert.equal(v.actor_id,actor);assert.equal(v.session_id,session);return v.value;
  };
+ for(const role of ['anon','service_role']){
+  await db.exec(`set role ${role};`);
+  await assert.rejects(invoke(ids(1),'workspace'),/permission denied/);await db.exec('reset role;');
+ }
+ await db.exec('set role authenticated;');await invoke(ids(1),'workspace');
+ await assert.rejects(db.exec('select * from private.company_link_bound_operations'),/permission denied/);
+ await assert.rejects(db.exec(`select private.require_company_link_bound_v1('${ids(1)}','${sid}')`),/permission denied/);
+ await db.exec('reset role;');
  await invoke(ids(1),'set_enabled',{enabled:true},ids(201));
  await invoke(ids(2),'set_enabled',{enabled:true},ids(202));
  await invoke(ids(3),'set_enabled',{enabled:true},ids(203));
@@ -106,6 +124,21 @@ let db;let nativeClient;
    await assert.rejects(invoke(ids(2),'workspace'),/role unavailable/);
    await db.exec(`update public.company_members set role='admin' where company_id='${ids(2)}' and user_id='${actor}'`);
    console.log('NATIVE_COMPANY_LINK_REVOKE_WAIT: 1');
+   await db.exec(`update private.trade_company_link_settings set enabled=true where company_id='${ids(1)}';`);
+   await other.query(`begin;select pg_advisory_xact_lock(hashtextextended('${ids(1)}',0));`);
+   const mainPid=(await db.query('select pg_backend_pid() pid')).rows[0].pid;
+   const requestWait=invoke(ids(2),'request',{...payload,target_company_id:ids(1)},ids(212));
+   const expectedRejection=assert.rejects(requestWait,/disabled/);
+   observed=false;
+   for(let i=0;i<100&&!observed;i++){
+    await other.query('select pg_stat_clear_snapshot()');
+    observed=(await other.query(`select wait_event_type='Lock' waiting from pg_stat_activity where pid=${mainPid}`)).rows[0]?.waiting===true;
+   }
+   assert(observed,'actual request must wait behind company pair gate');
+   await other.query(`update private.trade_company_link_settings set enabled=false where company_id='${ids(1)}';commit;`);
+   await expectedRejection;
+   assert.equal((await invoke(ids(2),'result',{},ids(212))).state,'unobserved');
+   console.log('NATIVE_COMPANY_LINK_SETTINGS_OFF_WAIT: 1');
   }finally{await other.end();}
  }
  await login(sid2);
