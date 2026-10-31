@@ -44,6 +44,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
   String? _error;
   bool _reloadOnResume=false;
   bool _refreshContactsOnResume=false;
+  int _personReturnRead = 0;
 
   @override
   void initState() {
@@ -148,6 +149,55 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
         _canViewPeople = false;
         _loading = false;
         _error = error.toString();
+      });
+    }
+  }
+
+  Future<void> _refreshAfterPersonReturn(PersonnelPrivacySession? session) async {
+    final repository = _repository;
+    if (!mounted || session == null || _privacy != session || repository == null) return;
+    final request = ++_personReturnRead;
+    setState(() {
+      _records.clear();
+      _canManagePeople = false;
+      _canViewPeople = false;
+      _loading = true;
+      _error = null;
+    });
+    try {
+      if (widget.companyId != null && widget.companyId != session.company) {
+        session.revoke();
+        throw const PersonnelScopeChanged();
+      }
+      await session.read();
+      final lease = session.epoch;
+      final rows = await repository.loadAll(expectedCompany: session.company);
+      await session.read();
+      session.verify(lease);
+      if (widget.companyId != null && widget.companyId != session.company) {
+        session.revoke();
+        throw const PersonnelScopeChanged();
+      }
+      if (!mounted || _privacy != session || request != _personReturnRead) return;
+      setState(() {
+        _records..clear()..addAll(rows.map((row) => PersonRecord.fromJson({...row,
+          'birthDate':'','birthDateContractVersion':0,'bloodType':'','address':'',
+          'emergencyName':'','emergencyRelation':'','emergencyPhone':'','emergencyAddress':'',
+          'familyComposition':'','familyMembers':<dynamic>[],
+        })));
+        _canManagePeople = session.snapshot!.canManage;
+        _canViewPeople = true;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted || _privacy != session || request != _personReturnRead) return;
+      setState(() {
+        _records.clear();
+        _canManagePeople = false;
+        _canViewPeople = false;
+        _loading = false;
+        _error = '社員一覧を確認できません。再読み込みしてください。';
+        if (!session.active && !session.revoked) _reloadOnResume = true;
       });
     }
   }
@@ -359,7 +409,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
                                     ),
                                     onTap: !_canViewPeople
                                         ? null
-                                        : () {
+                                        : () async {
                                             if (record.kind ==
                                                 PersonKind.partnerCompany) {
                                               _showDetails(record);
@@ -369,7 +419,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
                                             final session=_privacy, repository=_repository;
                                             final displayCompany=_companyName;
                                             final canManage=_canManagePeople, canView=_canViewPeople;
-                                            Navigator.of(context).push(
+                                            await Navigator.of(context).push<void>(
                                               MaterialPageRoute(
                                                 builder: (_) =>
                                                     EmployeePersonnelDetailPage(
@@ -383,6 +433,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
                                                 ),
                                               ),
                                             );
+                                            await _refreshAfterPersonReturn(session);
                                           },
                                   ),
                                 );
@@ -800,5 +851,6 @@ class _ErrorState extends StatelessWidget {
     );
   }
 }
+
 
 
