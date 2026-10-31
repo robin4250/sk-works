@@ -13,7 +13,7 @@ async function client(name=config.application_name){const c=new Client({...confi
 function pass(name){checks++;console.log(`PASS ${name}`);}
 const id=n=>`00000000-0000-0000-0000-${String(n).padStart(12,'0')}`;
 try{
- const c=await client();const server=(await c.query('select current_database() db,inet_server_addr()::text ip,version() version')).rows[0];
+ const c=await client();const server=(await c.query('select current_database() db,host(inet_server_addr()) ip,version() version')).rows[0];
  assert.equal(server.db,config.database);assert.equal(server.ip,process.env.SKO_EXPENSE_FIXTURE_SERVER_IP??'127.0.0.1');
  assert.match(server.version,/PostgreSQL 17\.6\b/);
  assert.equal((await c.query("select count(*)::int n from pg_namespace where nspname in ('private','auth','storage')")).rows[0].n,0);
