@@ -645,7 +645,9 @@ class _BulkManagementPanelState extends State<_BulkManagementPanel> with Widgets
       onClose: () {
         if (!mounted || !ownerNavigator.mounted || ownerRoute?.isCurrent != true ||
             !identical(ModalRoute.of(this.context), ownerRoute) ||
-            !identical(Navigator.of(this.context), ownerNavigator) || !ownerNavigator.canPop()) return;
+            !identical(Navigator.of(this.context), ownerNavigator) || !ownerNavigator.canPop()) {
+          return;
+        }
         ownerNavigator.pop();
       },
       builder: (context) => ValueListenableBuilder<int>(
