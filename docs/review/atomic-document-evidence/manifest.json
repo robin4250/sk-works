@@ -25,7 +25,7 @@
   "bundle_sources": {
     "catalog-fingerprint.sql": "af9e7f86ac0e54c2b28fffee2053605b6f1ee9151d8de209178c98fbeff9bcdc",
     "helper-contracts.json": "e8bf4bb4c665078f7f41ceef5a4fb6fe7a044dec67ad73a794b3c923cd810aa2",
-    "verify.mjs": "db2c6d159e538b3373c11ec747c3b577b7952523bd4ce466a7aa945ebcd67c84",
+    "verify.mjs": "0fea2bd922c4139e767b5bf626f3e73b5b59a45af1c0aad20aae990b8ac36475",
     "actual-generic-helper-fixture.sql": "06a08a6b0d66269780045e8bb5740c9358e8afd5b630cc23a532db8b6d87e594",
     "legacy-original.sql.review-only": "624d1763b701becd8fc505068a8567476ffb8ce03a2e524af397f058544676b0",
     "README.md": "33d4f111af678a9dd199a1ab116a555c8e4694b3b8c3fa53d0f97c5f48663276",

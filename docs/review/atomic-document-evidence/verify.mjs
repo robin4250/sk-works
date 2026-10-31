@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
 import pg from 'pg';
@@ -56,6 +57,8 @@ const before=await db.query("select pg_get_functiondef('public.current_user_requ
 await db.exec('alter default privileges in schema public grant execute on functions to anon,authenticated,service_role; create role unexpected_role');
 const query=await readFile(new URL('catalog-fingerprint.sql',root),'utf8');
 const manifest=JSON.parse(await readFile(new URL('manifest.json',root),'utf8'));
+assert.equal(createHash('sha256').update(install).digest('hex'),manifest.generated_sha256);
+for(const [name,digest] of Object.entries(manifest.bundle_sources)) assert.equal(createHash('sha256').update(await readFile(new URL(name,root))).digest('hex'),digest,'immutable bundle hash: '+name);
 // Only this isolated test string substitutes synthetic catalog fingerprints/version.
 // The checked-in production candidate remains pinned to the actual read-only capture.
 const fixtureHashes=(await db.query(query)).rows[0];
