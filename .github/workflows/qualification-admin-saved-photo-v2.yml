@@ -1,0 +1,40 @@
+name: Qualification retained-photo source connection review
+on:
+  pull_request:
+    paths:
+      - 'lib/features/qualifications/admin_saved_qualification_photo*.dart'
+      - 'lib/features/qualifications/qualification_cloud_page.dart'
+      - 'test/admin_saved_qualification_photo*.dart'
+      - 'docs/candidates/qualification_admin_baseline_attestation_v2_20261031.sql.review-only'
+      - 'tool/verify_qualification_admin_baseline_attestation_v2.mjs'
+      - '.github/workflows/qualification-admin-saved-photo-v2.yml'
+permissions:
+  contents: read
+jobs:
+  client:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: dart analyze lib/features/qualifications/admin_saved_qualification_photo_contract.dart lib/features/qualifications/admin_saved_qualification_photo_draft_page.dart lib/features/qualifications/admin_saved_qualification_photo_page.dart lib/features/qualifications/admin_saved_qualification_photo_submission_repository.dart lib/features/qualifications/qualification_cloud_page.dart test/admin_saved_qualification_photo_contract_test.dart test/admin_saved_qualification_photo_draft_page_test.dart test/admin_saved_qualification_photo_submission_repository_test.dart test/admin_saved_qualification_photo_live_sdk_test.dart test/admin_saved_qualification_photo_page_test.dart test/admin_saved_qualification_photo_entry_test.dart
+      - run: flutter test test/admin_saved_qualification_photo_contract_test.dart test/admin_saved_qualification_photo_draft_page_test.dart test/admin_saved_qualification_photo_submission_repository_test.dart test/admin_saved_qualification_photo_live_sdk_test.dart test/admin_saved_qualification_photo_page_test.dart test/admin_saved_qualification_photo_entry_test.dart test/qualification_registered_edit_hold_test.dart test/own_qualification_photo_contract_test.dart
+  baseline-attestation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.22.1'
+      - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
+      - run: node tool/verify_qualification_admin_baseline_attestation_v2.mjs tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js

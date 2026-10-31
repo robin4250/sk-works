@@ -10,10 +10,15 @@ import 'qualification_cloud_repository.dart';
 import 'qualification_send_page.dart';
 import 'qualification_certificate_page.dart';
 import 'qualification_certificate_repository.dart';
+import 'admin_saved_qualification_photo_page.dart';
 import '../shared/resource_registration_card.dart';
 
+typedef QualificationAdminPhotoBuilder = Widget Function(Map<String,dynamic>,bool Function(),Listenable,VoidCallback);
+
 class QualificationCloudPage extends StatefulWidget {
-  const QualificationCloudPage({super.key, this.repository, this.certificateRepository});
+  const QualificationCloudPage({super.key, this.repository, this.certificateRepository,this.adminPhotoBuilder});
+  @visibleForTesting
+  final QualificationAdminPhotoBuilder? adminPhotoBuilder;
   @visibleForTesting
   final QualificationCloudRepository? repository;
   @visibleForTesting
@@ -43,6 +48,8 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
   late final QualificationCertificateRepository? _certificateRepository;
   String _workerQuery = '';
   String _qualificationQuery = '';
+  Map<String,dynamic>? _adminPhotoRow;
+  bool Function()? _adminPhotoCurrent;
   String? _selectedWorkerId;
   String? _error;
 
@@ -145,6 +152,13 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
   @override
   Widget build(BuildContext context) {
     SkoLanguageController.watch(context);
+    final adminRow=_adminPhotoRow;
+    final adminCurrent=_adminPhotoCurrent;
+    if(adminRow!=null && adminCurrent!=null){
+      return widget.adminPhotoBuilder?.call(adminRow,adminCurrent,_galleryChanges,_closeAdminPhotos) ??
+        AdminSavedQualificationPhotoPage(row:adminRow,current:adminCurrent,
+          invalidations:_galleryChanges,onClose:_closeAdminPhotos);
+    }
     final now = DateTime.now();
     final masterById = {
       for (final row in _masters) row['id']?.toString() ?? '': row,
@@ -793,6 +807,21 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
               ))
                 Text(label),
               const SizedBox(height: 16),
+              if (_canManageWorkerQualifications && QualificationCloudRepository.ownPhotoAttachments(row).isNotEmpty)
+                OutlinedButton.icon(
+                  onPressed: () {
+                    final generation=_galleryGeneration;
+                    final capturedWorker=_selectedWorkerId;
+                    final captured=Map<String,dynamic>.from(row);
+                    Navigator.pop(sheetContext);
+                    setState((){
+                      _adminPhotoRow=captured;
+                      _adminPhotoCurrent=()=>mounted && identical(_adminPhotoRow,captured) &&
+                        generation==_galleryGeneration && capturedWorker==_selectedWorkerId;
+                    });
+                  },
+                  icon:const Icon(Icons.edit_note_outlined),
+                  label:const Text('保存済み写真の変更申請')),
               if (_canManageWorkerQualifications && _canEditCertificates)
                 OutlinedButton.icon(
                   onPressed: () async {
@@ -824,6 +853,12 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
         ),
       ),
     );
+  }
+
+  void _closeAdminPhotos(){
+    if(!mounted)return;
+    setState((){_adminPhotoRow=null;_adminPhotoCurrent=null;});
+    unawaited(_load());
   }
 
   Future<void> _delete(String id) async {

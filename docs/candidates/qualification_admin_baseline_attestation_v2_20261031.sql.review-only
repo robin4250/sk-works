@@ -1,0 +1,29 @@
+-- REVIEW ONLY. No production approval or automatic migration.
+-- Requires immutable #1241 candidate AND the exact ordered-baseline patch.
+-- Changes capability attestation only; prepare/approval/CAS/ACL stay unchanged.
+begin;
+do $patch$
+declare original text; definition text; patched text; objectid oid;
+begin
+ objectid:=to_regprocedure('private.admin_qualification_saved_photos(text,jsonb)');
+ if objectid is null or not exists(select 1 from pg_proc p join pg_language l on l.oid=p.prolang
+  where p.oid=objectid and md5(p.prosrc)='8db1b9ad7b141c6d132ae4252f363288'
+  and pg_get_userbyid(p.proowner)='postgres' and l.lanname='plpgsql'
+  and p.prosecdef and p.proconfig is not distinct from array['search_path=""']
+  and p.prorettype='jsonb'::regtype and not p.proretset and p.prokind='f'
+  and p.proargnames=array['p_action','p_data']::text[] and p.pronargdefaults=0
+  and p.proargdefaults is null and p.provariadic=0
+  and (select count(*) from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))))=1
+  and not exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a
+    where a.grantee<>p.proowner or a.grantor<>p.proowner or a.privilege_type<>'EXECUTE' or a.is_grantable))
+ then raise exception 'exact baseline-ready qualification source/authority required' using errcode='55000';end if;
+ select prosrc,pg_get_functiondef(oid) into original,definition from pg_proc where oid=objectid;
+ patched:=replace(original,$old$'version',1,'contract','qualification_admin_saved_photos'$old$,
+  $new$'version',2,'expected_photo_paths_required',true,'contract','qualification_admin_saved_photos'$new$);
+ if patched=original or md5(patched)<>'f6f3a2bd1210209062f27ff8c79052ac'
+ then raise exception 'qualification capability anchor changed' using errcode='55000';end if;
+ execute replace(definition,original,patched);
+ if md5((select prosrc from pg_proc where oid=objectid))<>'f6f3a2bd1210209062f27ff8c79052ac'
+ then raise exception 'qualification attestation changed' using errcode='55000';end if;
+end $patch$;
+commit;
