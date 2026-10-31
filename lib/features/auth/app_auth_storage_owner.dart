@@ -11,14 +11,16 @@ abstract interface class AuthSessionVault {
   Future<void> write(String envelope);
 }
 
-enum AuthStoragePhase { unopened, empty, ready, pending, unknown, blocked }
+enum AuthStoragePhase { unopened, empty, prepared, pending, unknown, blocked }
 
 class AuthStorageOutcome {
   const AuthStorageOutcome(this.phase);
   final AuthStoragePhase phase;
 }
 
-/// Storage fencing is not SDK session CAS. SDK adoption requires a separate owner.
+/// Copies opaque bytes only; prepared is NOT permission to restore a session.
+/// No durable logout tombstone/native CAS exists here. SDK adoption and restore
+/// require a separate owner and must remain disconnected.
 class AppAuthStorageOwner {
   AppAuthStorageOwner({required this.vault, required this.project,
     required this.readLegacy, required this.logoutPending});
@@ -29,11 +31,10 @@ class AppAuthStorageOwner {
   Future<void> _tail = Future<void>.value();
   int _generation = 0;
   AuthStoragePhase _phase = AuthStoragePhase.unopened;
-  String? _session;
   AuthStoragePhase get phase => _phase;
 
   /// Must run synchronously with logout admission, before any asynchronous work.
-  void retire() { _generation++; _session = null; _phase = AuthStoragePhase.blocked; }
+  void retire() { _generation++; _phase = AuthStoragePhase.blocked; }
 
   Future<T> _serial<T>(Future<T> Function() operation) {
     final result = _tail.then((_) => operation());
@@ -74,8 +75,7 @@ class AppAuthStorageOwner {
           _phase = AuthStoragePhase.pending;
           return AuthStorageOutcome(_phase);
         }
-        _session = record['session'] as String;
-        _phase = AuthStoragePhase.ready;
+        _phase = AuthStoragePhase.prepared;
         return AuthStorageOutcome(_phase);
       }
       final legacy = await readLegacy();
@@ -96,27 +96,17 @@ class AppAuthStorageOwner {
       if (!await _current(generation)) return _blocked();
       if (await vault.read() != committed) throw StateError('Unconfirmed secure commit.');
       if (!await _current(generation)) return _blocked();
-      _session = legacy;
-      _phase = AuthStoragePhase.ready;
+      _phase = AuthStoragePhase.prepared;
       return AuthStorageOutcome(_phase);
     } catch (_) {
-      _session = null;
       if (_phase != AuthStoragePhase.blocked) _phase = AuthStoragePhase.unknown;
       return AuthStorageOutcome(_phase);
     }
   });
 
   AuthStorageOutcome _blocked() {
-    _session = null; _phase = AuthStoragePhase.blocked;
+    _phase = AuthStoragePhase.blocked;
     return AuthStorageOutcome(_phase);
   }
 
-  /// A storage adapter-only capability; deliberately no public token getter.
-  Future<String?> _readForRestore() => _serial(() async {
-    final generation = _generation;
-    if (!await _current(generation)) { _blocked(); return null; }
-    if (_phase == AuthStoragePhase.empty) return null;
-    if (_phase != AuthStoragePhase.ready) throw StateError('Session storage unavailable.');
-    return _session;
-  });
 }

@@ -41,6 +41,9 @@ void main() {
     final owner = AppAuthStorageOwner(vault: NativeAuthSessionVault(project: 'project', channel: channel),
       project: 'project', readLegacy: () async => null, logoutPending: () async => false);
     final adapter = NativeAuthSessionStorage(owner);
+    await expectLater(adapter.initialize(), throwsStateError);
+    await expectLater(adapter.hasAccessToken(), throwsStateError);
+    await expectLater(adapter.accessToken(), throwsStateError);
     await expectLater(adapter.persistSession('synthetic'), throwsStateError);
     await expectLater(adapter.removePersistedSession(), throwsStateError);
   });

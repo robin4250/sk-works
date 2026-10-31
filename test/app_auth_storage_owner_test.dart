@@ -26,11 +26,11 @@ void main() {
     var reads = 0;
     final owner = AppAuthStorageOwner(vault: vault, project: 'project',
       readLegacy: () async { reads++; return legacy; }, logoutPending: () async => false);
-    expect((await owner.initialize()).phase, AuthStoragePhase.ready);
+    expect((await owner.initialize()).phase, AuthStoragePhase.prepared);
     expect(jsonDecode(vault.value!)['session'], legacy);
     final restarted = AppAuthStorageOwner(vault: vault, project: 'project',
       readLegacy: () async => throw StateError('must not fallback'), logoutPending: () async => false);
-    expect((await restarted.initialize()).phase, AuthStoragePhase.ready);
+    expect((await restarted.initialize()).phase, AuthStoragePhase.prepared);
     expect(reads, 1);
     expect(vault.writes, 2);
   });
@@ -46,11 +46,11 @@ void main() {
       final restarted = AppAuthStorageOwner(vault: vault, project: 'project',
         readLegacy: () async => throw StateError('no fallback'), logoutPending: () async => false);
       expect((await restarted.initialize()).phase,
-        failure == 1 ? AuthStoragePhase.pending : AuthStoragePhase.ready);
+        failure == 1 ? AuthStoragePhase.pending : AuthStoragePhase.prepared);
     });
   }
 
-  test('synchronous retirement during stage never commits or exposes ready', () async {
+  test('synchronous retirement during stage never commits or exposes prepared', () async {
     final vault = Vault()..pause = Completer<void>();
     final owner = AppAuthStorageOwner(vault: vault, project: 'project',
       readLegacy: () async => 'synthetic', logoutPending: () async => false);

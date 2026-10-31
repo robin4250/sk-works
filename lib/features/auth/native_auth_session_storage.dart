@@ -5,16 +5,14 @@ class NativeAuthSessionStorage extends LocalStorage {
   NativeAuthSessionStorage(this._owner);
   final AppAuthStorageOwner _owner;
   @override
-  Future<void> initialize() async {
-    final result = await _owner.initialize();
-    if (result.phase != AuthStoragePhase.ready && result.phase != AuthStoragePhase.empty) {
-      throw StateError('Secure session preparation unavailable.');
-    }
-  }
+  Future<void> initialize() => Future<void>.error(
+    StateError('SDK restore ownership is not connected (${_owner.phase.name}).'));
   @override
-  Future<bool> hasAccessToken() async => await _owner._readForRestore() != null;
+  Future<bool> hasAccessToken() => Future<bool>.error(
+    StateError('SDK restore ownership is not connected.'));
   @override
-  Future<String?> accessToken() => _owner._readForRestore();
+  Future<String?> accessToken() => Future<String?>.error(
+    StateError('SDK restore ownership is not connected.'));
   @override
   Future<void> persistSession(String value) => Future<void>.error(
     StateError('SDK writer ownership is not connected.'));
