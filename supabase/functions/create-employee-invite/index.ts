@@ -552,22 +552,15 @@ Deno.serve(async (req: Request) => {
     // Never compensate an uncertain REST write: worker/invite may have
     // committed before the response was lost. Preserve Auth, rows and the
     // pending activity for operator reconciliation; never return credentials.
-    // Exact CAS-zero is the only known no-link case. Even then verify BOTH
-    // reference sets before deleting only the Auth ID created by this attempt.
-    if (confirmedWorkerCasNoWrite && persistenceStage === 'worker') {
-      try {
-        const workers = await serviceFetch('/rest/v1/workers?user_id=eq.' + encodeURIComponent(authUserId) + '&select=id&limit=1');
-        const invites = await serviceFetch('/rest/v1/employee_registration_invites?auth_user_id=eq.' + encodeURIComponent(authUserId) + '&select=id&limit=1');
-        if (!workers.ok || !invites.ok) throw Error('reference_read_unknown');
-        const workerRows = await workers.json(), inviteRows = await invites.json();
-        if (!Array.isArray(workerRows) || !Array.isArray(inviteRows)) throw Error('reference_read_unknown');
-        if (workerRows.length === 0 && inviteRows.length === 0) {
-          const removed = await serviceFetch('/auth/v1/admin/users/' + encodeURIComponent(authUserId), {method:'DELETE'});
-          if (!removed.ok) console.error('employee invite auth cleanup unconfirmed', removed.status);
-        }
-      } catch { console.error('employee invite auth cleanup unconfirmed'); }
-    }
-    return json({error: '作成結果は未解決です。再作成せず管理者に確認してください。', code:'invite_result_unknown'}, 409);
+    // CAS-zero confirms no worker update by this attempt, but does not lock
+    // out a later link to the new Auth ID. No readback can authorize a safe
+    // cross-service delete here. Quarantine the created Auth/activity instead.
+    return json({
+      error: confirmedWorkerCasNoWrite
+        ? '従業員情報が変わりました。作成処理は未解決です。再作成せず管理者に確認してください。'
+        : '作成結果は未解決です。再作成せず管理者に確認してください。',
+      code: confirmedWorkerCasNoWrite ? 'invite_worker_cas_no_write' : 'invite_result_unknown',
+    }, 409);
   }
 });
 

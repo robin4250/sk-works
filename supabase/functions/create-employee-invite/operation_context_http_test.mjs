@@ -165,9 +165,9 @@ test('actual HTTP handler binds selected company/live SID and never exposes unce
   for(scenario of ['phone-during-auth','linked-during-auth','company-during-auth']){
    contextCalls=0;issued=0;ownAuthDeletes.length=0;logs.length=0;
    const response=await send({workerId:worker,expectedPhone:'07000000000'});
-   assert.equal(response.status,409);assert.equal((await response.json()).code,'invite_result_unknown');
+   assert.equal(response.status,409);assert.equal((await response.json()).code,'invite_worker_cas_no_write');
    assert.equal(storedInvite,null);assert.equal(issued,1);
-   assert.deepEqual(ownAuthDeletes,[authUser],'only own unreferenced Auth from CAS-zero is removed');
+   assert.deepEqual(ownAuthDeletes,[],'known CAS-zero cannot authorize a non-atomic Auth delete');
    if(scenario==='linked-during-auth')assert.equal(storedWorker.user_id,'60000000-0000-0000-0000-000000000001');
    if(scenario==='phone-during-auth')assert.equal(storedWorker.phone,'08000000000');
    if(scenario==='company-during-auth')assert.equal(storedWorker.company_id,worker);
