@@ -188,6 +188,17 @@ class EmployeeInviteRepository {
     final capability = inspection.data;
     if (inspection.status != 200 ||
         capability is! Map ||
+        capability.length != 5 ||
+        !capability.keys.every(
+          (key) => const {
+            'version',
+            'capability',
+            'actorId',
+            'companyId',
+            'sessionId',
+          }.contains(key),
+        ) ||
+        capability['version'] is! int ||
         capability['version'] != 1 ||
         capability['capability'] != 'employee_invite_bound_v1' ||
         capability['actorId'] != context.actorId ||

@@ -194,13 +194,14 @@ class Fixture {
             });
             return http.Response(
               jsonEncode(capability),
-              200,
+              inspectionStatus,
               headers: {'content-type': 'application/json'},
               request: request,
             );
           }
           expect(operation, 'create_bound_v1');
           invokes++;
+          if (!issued.isCompleted) issued.complete();
           expect(
             request.headers['Authorization'] == 'Bearer ${token(sid)}',
             isTrue,
@@ -227,8 +228,9 @@ class Fixture {
   late final SupabaseClient client;
   late final ObservedInviteRepository repository;
   String session = sid;
-  int invokes = 0, inspections = 0;
-  Object capability = {
+  int invokes = 0, inspections = 0, inspectionStatus = 200;
+  final issued = Completer<void>();
+  Object? capability = {
     'version': 1,
     'capability': 'employee_invite_bound_v1',
     'actorId': actor,
@@ -285,23 +287,48 @@ void main() {
     expect(f.invokes, 1);
   });
 
-  test('legacy or incomplete capability never starts create', () async {
-    final f = Fixture();
-    addTearDown(f.close);
-    await f.login();
-    f.capability = <String, dynamic>{};
-    final context = await f.repository.beginRequest();
-    await expectLater(
-      f.repository.createInvite(
-        name: 'Synthetic',
-        phone: '07000000000',
-        request: context,
-      ),
-      throwsStateError,
-    );
-    expect(f.inspections, 1);
-    expect(f.invokes, 0);
-  });
+  final validCapability = {
+    'version': 1,
+    'capability': 'employee_invite_bound_v1',
+    'actorId': actor,
+    'companyId': company,
+    'sessionId': sid,
+  };
+  final invalidCapabilities = <String, Object?>{
+    'missing': <String, dynamic>{},
+    'legacy-response': result(),
+    'legacy-http': {'error': 'upgrade required'},
+    'null': null,
+    'array': [],
+    'version-type': {...validCapability, 'version': '1'},
+    'old-capability': {...validCapability, 'capability': 'legacy'},
+    'actor': {...validCapability, 'actorId': worker},
+    'company': {...validCapability, 'companyId': worker},
+    'session': {...validCapability, 'sessionId': nextSid},
+    'extra-code': {...validCapability, 'code': 'failed'},
+    'extra-error': {...validCapability, 'error': 'failed'},
+    'extra-key': {...validCapability, 'unknown': true},
+  };
+  for (final entry in invalidCapabilities.entries) {
+    test('capability ${entry.key} never starts create', () async {
+      final f = Fixture();
+      addTearDown(f.close);
+      await f.login();
+      f.capability = entry.value;
+      if (entry.key == 'legacy-http') f.inspectionStatus = 400;
+      final context = await f.repository.beginRequest();
+      await expectLater(
+        f.repository.createInvite(
+          name: 'Synthetic',
+          phone: '07000000000',
+          request: context,
+        ),
+        throwsA(anything),
+      );
+      expect(f.inspections, 1);
+      expect(f.invokes, 0);
+    });
+  }
 
   test(
     'ambiguous membership and malformed row fail before invoking issuer',
@@ -403,7 +430,7 @@ void main() {
       expectedPhone: '07000000000',
       request: context,
     );
-    await Future<void>.delayed(Duration.zero);
+    await f.issued.future;
     f.session = nextSid;
     await f.login();
     f.session = sid;

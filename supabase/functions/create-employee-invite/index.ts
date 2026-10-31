@@ -128,7 +128,7 @@ function verifiedSession(req: Request, actor: string) {
 async function inviteContext(actor: string, session: string, company: string) {
   const raw = await accessRpc('employee_invite_operation_context',
     {p_actor: actor, p_session: session, p_company: company});
-  if (!raw || typeof raw !== 'object' || raw.version !== 1 ||
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw) || Object.keys(raw).length !== 5 || raw.version !== 1 ||
       raw.actor_id !== actor || raw.session_id !== session || raw.company_id !== company ||
       !['owner','admin','manager','viewer'].includes(raw.role)) throw Error('invite_context_unavailable');
   return raw;
@@ -171,7 +171,7 @@ Deno.serve(async (req: Request) => {
   catch { return json({error: '招待の利用状態を確認できません。'}, 503); }
   const callerRole = context.role;
   if (payload?.operation === 'inspect_context') {
-    if ('name' in payload || 'phone' in payload || 'workerId' in payload) return json({error:'invalid context inspection'},400);
+    if (Object.keys(payload).length !== 3 || !Object.keys(payload).every(key=>['operation','companyId','sessionId'].includes(key))) return json({error:'invalid context inspection'},400);
     return json({version:1,capability:'employee_invite_bound_v1',actorId:caller.id,companyId,sessionId});
   }
   if (payload?.operation !== 'create_bound_v1') return json({error:'招待機能を更新してください。'},400);
