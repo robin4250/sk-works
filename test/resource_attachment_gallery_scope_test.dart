@@ -63,7 +63,7 @@ void main() {
     });
   }
   for (final qualifications in [true, false]) {
-    test('${qualifications ? 'qualification' : 'document'} loaded metadata preserves existing company filters without additional query paths', () async {
+    test('${qualifications ? 'qualification' : 'document'} loaded metadata preserves company filters and gallery boundaries', () async {
       final fixture = _SessionFixture(); addTearDown(fixture.client.dispose);
       await fixture.login('20000000-0000-0000-0000-000000000002');
       fixture.requests.clear();
@@ -102,7 +102,12 @@ void main() {
         final data = await WorkerDocumentRepository.forTesting(fixture.client).loadOwnDocuments();
         expect(data['workers']!.single['company_id'],'company'); expect(data['statuses']!.single['company_id'],'company');
         expect(fixture.requests.map((request)=>request.url.path.split('/').last),
-          ['ensure_current_user_worker','workers','company_members','document_requirements','worker_document_exemption','workers','worker_document_statuses']);
+          ['company_members','ensure_current_user_worker','workers','company_members','document_requirements','worker_document_exemption','workers','worker_document_statuses']);
+        expect(fixture.requests.first.method, 'GET');
+        expect(fixture.requests.first.url.queryParameters['limit'], '2');
+        expect(fixture.requests[2].url.queryParameters['company_id'], 'eq.company');
+        expect(fixture.requests[2].url.queryParameters['user_id'], 'eq.${fixture.client.auth.currentUser!.id}');
+        expect(fixture.requests[2].url.queryParameters['status'], 'eq.active');
         for (final read in fixture.requests.where((request)=>request.url.path.endsWith('/worker_document_statuses') ||
             request.url.path.endsWith('/workers') && request.url.queryParameters['select'] != 'name')) {
           expect(read.url.queryParameters['select'],contains('company_id')); expect(read.url.queryParameters['company_id'],'eq.company');
@@ -113,3 +118,4 @@ void main() {
   }
 
 }
+

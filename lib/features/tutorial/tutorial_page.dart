@@ -71,7 +71,7 @@ class _TutorialPageState extends State<TutorialPage> with WidgetsBindingObserver
     }
     try {
       final loader = widget.loadSnapshot;
-      final repository = widget.repository ?? TutorialEvidenceRepository.maybeCreate();
+      final repository = widget.repository ?? TutorialEvidenceRepository.maybeCreate(companyId: widget.companyId);
       if (loader == null && repository == null) {
         throw StateError('Tutorial evidence unavailable');
       }

@@ -11,6 +11,7 @@ import 'worker_document_repository.dart';
 import 'worker_document_exemption.dart';
 import 'worker_document_display_status.dart';
 import 'worker_document_change_flow.dart';
+import 'worker_document_admin_correction_entry.dart';
 import 'worker_document_change_review_page.dart';
 import '../shared/resource_registration_card.dart';
 
@@ -210,6 +211,8 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
       appBar: AppBar(
         title: Text(SkoLanguageController.tr('従業員データ編集')),
         actions: [
+          IconButton(tooltip: '書類訂正の結果を確認', icon: const Icon(Icons.history_outlined),
+            onPressed: _loading ? null : _recoverAdminCorrections),
           IconButton(tooltip: '書類の変更申請一覧', icon: const Icon(Icons.fact_check_outlined),
             onPressed: _loading ? null : _openChangeReviews),
           IconButton(
@@ -1009,6 +1012,35 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
     }
   }
 
+  Future<void> _recoverAdminCorrections() async {
+    final repository = _repository;
+    final actor = repository?.actorId;
+    if (repository == null || actor == null) {
+      return;
+    }
+    try {
+      final membership = await repository.membership();
+      bool current() => mounted && repository.actorId == actor;
+      if (!mounted || !current()) {
+        return;
+      }
+      await recoverPendingWorkerDocumentAdminCorrections(
+        context: context,
+        pendingTargets: () => repository.pendingAdminCorrectionTargets(membership.companyId),
+        createRepository: (target) => repository.createAdminCorrectionRepository(
+          companyId: membership.companyId, targetId: target, isCurrentTarget: current),
+        isCurrent: current,
+      );
+      if (mounted) {
+        _reload();
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('書類訂正の結果を確認できません。変更IDは保持しています。')));
+      }
+    }
+  }
+
   Future<void> _editStatus(
     Map<String, dynamic> requirement,
     Map<String, dynamic>? current,
@@ -1036,6 +1068,35 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
       try {
         final membership = await repository.membership();
         if (!mounted || !changes.isCurrentActor || actor != repository.actorId || workerId != _selectedWorkerId) return;
+        final snapshot = Map<String, dynamic>.from(current ?? const {});
+        bool currentTarget() => mounted && actor == repository.actorId && workerId == _selectedWorkerId &&
+            snapshot['company_id'] == membership.companyId && snapshot['worker_id'] == workerId &&
+            _workers.any((row) => row['id'] == workerId && row['company_id'] == membership.companyId);
+        final adminCorrection = await repository.createAdminCorrectionRepository(
+          companyId: membership.companyId,
+          targetId: snapshot['id'] as String,
+          isCurrentTarget: currentTarget,
+        );
+        if (!mounted) {
+          adminCorrection.dispose();
+          return;
+        }
+        final handled = await openWorkerDocumentAdminCorrection(
+          context: context,
+          repository: adminCorrection,
+          snapshot: snapshot,
+          documentName: requirement['name']?.toString() ?? '書類',
+          isCurrentTarget: currentTarget,
+        );
+        if (handled) {
+          if (mounted) {
+            _reload();
+          }
+          return;
+        }
+        if (!mounted || !changes.isCurrentActor || !currentTarget()) {
+          return;
+        }
         await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => WorkerDocumentChangePage(
           repository: changes, actor: actor, companyId: membership.companyId, row: current!,
           signedUrl: repository.createSignedAttachmentUrl,
@@ -1455,6 +1516,7 @@ class WorkerDocumentEntryChoices extends StatelessWidget {
     ],
   );
 }
+
 
 
 

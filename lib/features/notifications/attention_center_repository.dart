@@ -2,6 +2,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
 import 'app_notification_repository.dart';
+import 'scoped_required_document_attention_repository.dart';
+import 'required_document_evidence.dart';
 import 'attention_center_item.dart';
 import 'notification_business_status.dart';
 
@@ -32,7 +34,7 @@ class AttentionCenterRepository {
     return AttentionCenterRepository._(SupabaseBackend.client, notifications);
   }
 
-  Future<AttentionCenterData> load({Set<String>? availableActionKeys}) async {
+  Future<AttentionCenterData> load({Set<String>? availableActionKeys, String? companyId, String? Function()? currentCompany}) async {
     final failures = <String>{};
     var notifications = const <AppNotificationRecord>[];
     final items = <AttentionCenterItem>[];
@@ -51,7 +53,7 @@ class AttentionCenterRepository {
       }),
       readSource('required_documents', () async {
         items.addAll(mapRequiredDocumentAttention(
-          await _client.rpc('current_user_required_document_attention'),
+          await ScopedRequiredDocumentAttentionRepository(_client).load(companyId: companyId, currentCompany: currentCompany),
           availableActionKeys: availableActionKeys,
         ));
       }),
@@ -128,14 +130,45 @@ AttentionCenterItem mapAttentionNotification(AppNotificationRecord item,
 
 List<AttentionCenterItem> mapRequiredDocumentAttention(Object? raw,
     {Set<String>? availableActionKeys}) {
+  if (raw is Map && raw.containsKey('evidence_contract_version')) {
+    final evidence = RequiredDocumentEvidenceSnapshot.fromJson(raw);
+    return [for (final item in evidence.items)
+      if (item.state == RequiredDocumentEvidenceState.missing || item.state == RequiredDocumentEvidenceState.unknown)
+        AttentionCenterItem(
+          id: '${evidence.companyId}:${evidence.workerId}:${item.id}', source: 'required_document',
+          title: evidence.labelFor(item), body: item.statusLabel,
+          state: item.state == RequiredDocumentEvidenceState.missing
+              ? AttentionCenterState.pending : AttentionCenterState.unknown,
+          actionKey: 'document_register',
+          metadata: {'document_name': item.name, 'requirement_id': item.id,
+            'company_id': evidence.companyId, 'worker_id': evidence.workerId}, evidenceRank: 10,
+          actionable: _canOpen('document_register', availableActionKeys),
+        ),
+    ];
+  }
   if (raw is! Map || raw['missing_names'] is! List) {
     return const [];
+  }
+  final unknown = raw['unknown_names'];
+  if (unknown != null && (unknown is! List ||
+      unknown.any((name) => name is! String || name.trim().isEmpty) ||
+      unknown.toSet().length != unknown.length ||
+      unknown.any((name) => (raw['missing_names'] as List).contains(name)))) {
+    throw const FormatException('Required-document evidence is inconsistent');
   }
   return [for (final name in raw['missing_names'] as List)
     if (name is String && name.trim().isNotEmpty)
       AttentionCenterItem(
         id: name, source: 'required_document', title: name,
         state: AttentionCenterState.pending, actionKey: 'document_register',
+        metadata: {'document_name': name}, evidenceRank: 10,
+        actionable: _canOpen('document_register', availableActionKeys),
+      ),
+    if (unknown is List) for (final name in unknown)
+      AttentionCenterItem(
+        id: name as String, source: 'required_document', title: name,
+        body: '添付・登録情報を確認できません。再読み込みしてください。',
+        state: AttentionCenterState.unknown, actionKey: 'document_register',
         metadata: {'document_name': name}, evidenceRank: 10,
         actionable: _canOpen('document_register', availableActionKeys),
       ),

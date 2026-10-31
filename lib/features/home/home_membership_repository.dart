@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
+import '../shared/trade_document_form_session.dart';
 
 class HomeIdentity {
   const HomeIdentity({
@@ -8,11 +9,13 @@ class HomeIdentity {
     required this.companyName,
     required this.displayName,
     this.permissions = const {},
+    this.companyId,
   });
 
   final String role;
   final String companyName;
   final String displayName;
+  final String? companyId;
   final Map<String, bool> permissions;
 
   bool get isAdmin => role == 'owner' || role == 'admin';
@@ -37,6 +40,7 @@ class HomeIdentity {
 
 class HomeMembershipRepository {
   HomeMembershipRepository._(this._client);
+  HomeMembershipRepository.forClient(this._client);
 
   final SupabaseClient _client;
 
@@ -49,7 +53,7 @@ class HomeMembershipRepository {
 
   Future<String> loadRole() async => (await loadIdentity()).role;
 
-  Future<HomeIdentity> loadIdentity() async {
+  Future<HomeIdentity> loadIdentity({String? companyId}) async {
     final user = _client.auth.currentUser;
     if (user == null) {
       return const HomeIdentity(
@@ -60,24 +64,22 @@ class HomeMembershipRepository {
       );
     }
 
-    final rows = await _client
-        .from('company_members')
-        .select('company_id, role')
-        .eq('user_id', user.id)
-        .limit(1);
-
-    if (rows.isEmpty) {
-      return HomeIdentity(
-        role: 'viewer',
-        companyName: 'SKO',
-        displayName: user.phone ?? user.email ?? 'ユーザー',
-        permissions: const {},
-      );
+    final captured = _client.auth.currentSession;
+    if (captured == null) { throw StateError('ログイン状態を確認してください。'); }
+    final lease = TradeDocumentFormSession(_client);
+    try {
+    await lease.ready();
+    final raw = await lease.readOwnMemberships();
+    if (raw is! List || raw.any((row) => row is! Map)) { throw StateError('会社を確認できません。'); }
+    final rows = raw.whereType<Map>().where((row) => companyId == null || row['company_id'] == companyId).toList();
+    if (rows.length != 1 || (companyId == null && raw.length != 1)) {
+      throw StateError('対象の会社を選択して開き直してください。');
     }
+    final selectedCompany = rows.single['company_id'];
+    if (selectedCompany is! String || selectedCompany.isEmpty) { throw StateError('会社を確認できません。'); }
 
     // Membership role is authoritative. Once it is loaded, optional home
     // enrichment must never downgrade owner/admin/manager to viewer.
-    final companyId = rows.first['company_id'] as String;
     final role = rows.first['role']?.toString() ?? 'viewer';
 
     List<dynamic> companies = const [];
@@ -85,8 +87,8 @@ class HomeMembershipRepository {
       companies = await _client
           .from('companies')
           .select('name')
-          .eq('id', companyId)
-          .limit(1);
+          .eq('id', selectedCompany)
+          .limit(1).setHeader('Authorization', 'Bearer ${captured.accessToken}');
     } catch (_) {
       // Company display data is optional for role resolution.
     }
@@ -97,22 +99,27 @@ class HomeMembershipRepository {
           .from('user_profiles')
           .select('display_name')
           .eq('user_id', user.id)
-          .limit(1);
+          .limit(1).setHeader('Authorization', 'Bearer ${captured.accessToken}');
     } catch (_) {
       // Profile display data is optional for role resolution.
     }
 
     dynamic permissionValue;
     try {
-      permissionValue = await _client.rpc('current_feature_permissions');
+      if (raw.length == 1) {
+        permissionValue = await _client.rpc('current_feature_permissions')
+            .setHeader('Authorization', 'Bearer ${captured.accessToken}');
+      }
     } catch (_) {
       // Feature permission enrichment must not erase the membership role.
     }
 
     dynamic payrollAdjustmentPermissionValue;
     try {
-      payrollAdjustmentPermissionValue =
-          await _client.rpc('current_payroll_adjustment_permissions');
+      if (raw.length == 1) {
+        payrollAdjustmentPermissionValue = await _client.rpc('current_payroll_adjustment_permissions')
+            .setHeader('Authorization', 'Bearer ${captured.accessToken}');
+      }
     } catch (_) {
       // Payroll permission enrichment must not erase the membership role.
     }
@@ -138,11 +145,14 @@ class HomeMembershipRepository {
         ? profiles.first['display_name'].toString()
         : user.phone ?? user.email ?? 'ユーザー';
 
+    await lease.ready();
     return HomeIdentity(
       role: role,
+      companyId: selectedCompany,
       companyName: companyName,
       displayName: displayName,
       permissions: permissions,
     );
+    } finally { lease.dispose(); }
   }
 }

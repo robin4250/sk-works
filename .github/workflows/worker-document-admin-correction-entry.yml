@@ -1,0 +1,64 @@
+name: Administrator own document correction entry
+on:
+  pull_request:
+    paths:
+      - 'lib/features/people/worker_document_admin_correction_*.dart'
+      - 'lib/features/people/worker_document_repository.dart'
+      - 'lib/features/people/worker_document_page.dart'
+      - 'lib/features/people/own_document_registration_page.dart'
+      - 'test/worker_document_admin_correction_entry_test.dart'
+      - 'test/worker_document_admin_correction_native_http_test.dart'
+      - 'docs/review/worker-document-admin-correction-entry/**'
+      - '.github/workflows/worker-document-admin-correction-entry.yml'
+permissions:
+  contents: read
+jobs:
+  native-http:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17.6
+        env: {POSTGRES_USER: postgres, POSTGRES_PASSWORD: fixture-only, POSTGRES_DB: sko_document_admin_fixture}
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_document_admin_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      SKO_DOCUMENT_ADMIN_FIXTURE_URL: postgres://postgres:fixture-only@127.0.0.1:5432/sko_document_admin_fixture
+      SKO_DOCUMENT_NATIVE_HTTP_CONTEXT: /tmp/document-admin-native-http-${{ github.run_id }}.json
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '24'}
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
+      - run: node docs/review/worker-document-admin-self-correction/verify.mjs "$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: '3.47.5', channel: stable, cache: true}
+      - run: flutter pub get --enforce-lockfile
+      - run: |
+          node docs/review/worker-document-admin-correction-entry/native-http.mjs "$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js" > "$RUNNER_TEMP/document-admin-native-http.log" 2>&1 &
+          for attempt in $(seq 1 100); do
+            if test -f "$SKO_DOCUMENT_NATIVE_HTTP_CONTEXT"; then break; fi
+            sleep 0.1
+          done
+          test -f "$SKO_DOCUMENT_NATIVE_HTTP_CONTEXT"
+      - run: flutter test test/worker_document_admin_correction_native_http_test.dart --reporter expanded
+  client:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: '3.47.5', channel: stable, cache: true}
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze
+      - run: >-
+          flutter test test/worker_document_admin_correction_entry_test.dart
+          test/worker_document_admin_correction_repository_test.dart
+          test/worker_document_managed_save_http_test.dart
+          test/worker_document_own_save_http_test.dart
+          test/own_document_registration_save_test.dart
+          test/worker_document_change_flow_test.dart --reporter expanded

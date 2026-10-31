@@ -1,0 +1,71 @@
+name: Required document attention evidence candidate
+on:
+  pull_request:
+    paths:
+      - 'docs/review/required-document-attention-evidence/**'
+      - 'lib/features/notifications/attention_center_repository.dart'
+      - 'test/attention_center_mapping_test.dart'
+      - 'lib/features/home/home_attention_repository.dart'
+      - 'lib/features/home/friendly_home_content.dart'
+      - 'lib/features/home/required_document_evidence_notice.dart'
+      - 'test/required_document_evidence_notice_test.dart'
+      - '.github/workflows/required-document-attention-evidence.yml'
+permissions:
+  contents: read
+jobs:
+  synthetic-pglite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.22.1'
+      - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
+      - run: |
+          ln -s "$PWD/tool/security/fixture_dependencies/node_modules" docs/review/required-document-attention-evidence/node_modules
+          node docs/review/required-document-attention-evidence/verify.mjs
+  synthetic-native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:17.6
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_attention_fixture
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      SKO_ATTENTION_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_attention_fixture
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.22.1'
+      - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
+      - run: |
+          ln -s "$PWD/tool/security/fixture_dependencies/node_modules" docs/review/required-document-attention-evidence/node_modules
+          node docs/review/required-document-attention-evidence/verify.mjs
+  client-unknown-state:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: dart analyze lib/features/notifications/attention_center_repository.dart lib/features/home/home_attention_repository.dart lib/features/home/friendly_home_content.dart lib/features/home/required_document_evidence_notice.dart test/attention_center_mapping_test.dart test/required_document_evidence_notice_test.dart
+      - run: flutter test test/attention_center_mapping_test.dart test/attention_center_item_test.dart test/required_document_evidence_notice_test.dart test/home_attention_red_count_contract_test.dart
