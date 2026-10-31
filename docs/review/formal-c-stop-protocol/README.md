@@ -1,0 +1,11 @@
+# Generic STOP/admission/cache observations — not a Formal C installer
+
+This candidate creates only the disposable `c_stop_fixture` schema in a dedicated localhost database. It neither executes nor modifies the retained Formal C capsule, Auth, production objects or master flags. A successful rehearsal does not make C deployable. In particular, the fixture admission table is a simulation and is absent from the retained C capsule.
+
+The Native schedules observe an already-admitted writer waiting on a real advisory lock; closing admission rejects a new guarded call but cannot erase the admitted operation. The wait must drain before treating it as complete. A separate old caller demonstrates that a newly introduced advisory lock does not protect callers that never acquire it. Prepared SQL and a warmed PL/pgSQL caller are observed across a synthetic function rename: their actual outcome is recorded rather than assuming plan invalidation. The retained old alias remains callable. Idle-in-transaction and prepared-transaction presence are checked separately.
+
+The prepared-transaction check observes zero; it is not an active prepared-transaction rejection schedule. Delayed accepted jobs, unknown callers, persistent production pools and hosted ingress ownership remain unresolved. No production admission closure, real queue drain or pool recycle is proven. Those are prerequisites requiring their own implementation, evidence and approval. Feature OFF alone is insufficient.
+
+Connections have bounded setup/query/statement/lock timeouts and all allocated clients enter cleanup, including connection and timeout-setup failures. Six failure-injection tests cover connect/setup failures at each of three allocations. These fake-driver tests are cleanup evidence only; Native completion is separate.
+
+Validation at first publication: six cleanup tests and syntax checks pass locally. Native runtime evidence and independent final review are pending. No production write, deployment, feature ON, session termination, privilege revocation or real partner operation is authorized.
