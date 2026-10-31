@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:printing/printing.dart';
+import 'package:crypto/crypto.dart' as crypto;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import '../../domain/company_seal_snapshot.dart';
@@ -505,7 +506,11 @@ class _Paper extends StatelessWidget {
       if (target.company == 'issuer' && payload['company_seal_enabled'] == true) {
         children.add(Positioned(left: target.rect.right - 41, top: target.rect.top + 5, width: 38, height: 38,
           child: IgnorePointer(child: _InputSealPreview(
-            key: ValueKey(jsonEncode([payload['company_seal_snapshot'], (payload['issuer'] as Map)['name']])),
+            // Digest the full immutable source so widget diagnostics never expose
+            // registered PNG bytes and a changed snapshot cannot reuse old output.
+            key: ValueKey(crypto.sha256.convert(utf8.encode(jsonEncode([
+              payload['company_seal_snapshot'], (payload['issuer'] as Map)['name'],
+            ]))).toString()),
             snapshot: payload['company_seal_snapshot'], issuerName: (payload['issuer'] as Map)['name'].toString(),
             requireScope: requireScope))));
       }
