@@ -52,7 +52,8 @@ void main(){
     await tester.pumpWidget(MaterialApp(home:ExpenseManagementPage(access:access,removals:removals)));
     await tester.runAsync(()=>access.loaded[0].future.timeout(const Duration(seconds:10)));await tester.pumpAndSettle();
     expect(find.text('Native bridge receipt'),findsOneWidget);expect(find.text('削除'),findsOneWidget);
-    await tester.ensureVisible(find.text('削除'));await tester.tap(find.text('削除'));await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('削除'));await tester.tap(find.text('削除'));await tester.pump(const Duration(milliseconds:400));
+    expect(find.text('経費を削除しますか？'),findsOneWidget);
     expect(find.textContaining('別途訂正が必要'),findsOneWidget);await tester.enterText(find.byType(TextField),'Native bridge only');await tester.tap(find.text('削除を確定'));await tester.pump();
     await tester.runAsync(()=>access.loaded[1].future.timeout(const Duration(seconds:10)));await tester.pumpAndSettle();
     expect(await tester.runAsync(()=>removals.pending(id(1))),isNotNull);
@@ -74,5 +75,5 @@ void main(){
     expect(trace.where((v)=>v['rpc']=='expense_manager_removal_result').length,1);
     expect(info['original']['amount_yen'],1234);expect(info['original']['receipt_object_path'],'retained/bridge-original.png');
     expect(info['synthetic_auth'],true);expect(info['deployable'],false);expect(tester.takeException(),null);
-  },skip:Platform.environment['SKO_EXPENSE_NATIVE_BRIDGE']!='fixture-only');
+  },skip:Platform.environment['SKO_EXPENSE_NATIVE_BRIDGE']!='fixture-only',timeout:const Timeout(Duration(seconds:90)));
 }

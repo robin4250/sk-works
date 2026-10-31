@@ -5,6 +5,9 @@ on:
       - 'tool/review/expense_manager_removal_bridge_20261101/**'
       - 'test/expense_manager_removal_bridge_test.dart'
       - '.github/workflows/expense-manager-removal-bridge.yml'
+concurrency:
+  group: expense-manager-removal-bridge-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
