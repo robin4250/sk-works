@@ -59,12 +59,13 @@ class SiteOrderOutgoingEntryPage extends StatefulWidget {
 class _SiteOrderOutgoingEntryPageState extends State<SiteOrderOutgoingEntryPage>
     with WidgetsBindingObserver {
   final _controllers = <String, TextEditingController>{};
+  final _retirementChanges = ValueNotifier<int>(0);
   late final List<SiteOrderRegisteredTarget> _targets;
   final _document = siteOrderRequestId(),
       _local = siteOrderRequestId(),
       _request = siteOrderRequestId();
   int _step = 0, _generation = 0;
-  bool _busy = true, _retired = false;
+  bool _busy = true, _retired = false, _confirming = false;
   String? _error, _trade;
   SiteOrderOutgoingEntries? _entries;
   Map<String, Object?>? _paperEdits;
@@ -125,6 +126,7 @@ class _SiteOrderOutgoingEntryPageState extends State<SiteOrderOutgoingEntryPage>
     if (_retired) return;
     _retired = true;
     _generation++;
+    _retirementChanges.value++;
     _entries = null;
     _paperEdits = null;
     _draft = null;
@@ -383,27 +385,44 @@ class _SiteOrderOutgoingEntryPageState extends State<SiteOrderOutgoingEntryPage>
       setState(() => _error = error.toString());
       return;
     }
-    setState(() => _busy = true);
+    setState(() {
+      _busy = true;
+      _confirming = true;
+    });
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialog) => AlertDialog(
-        title: const Text('注文内容の確認'),
-        content: Text(
-          '${body['work_name']}\n${(body['counterparty'] as Map)['name']}\n単価 ${row['unit_price_yen']}円／${row['unit']}\n発注金額 ${body['total_amount_yen']}円',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialog, false),
-            child: const Text('入力画面に戻る'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialog, true),
-            child: const Text('内容を確認'),
-          ),
-        ],
+      builder: (dialog) => AnimatedBuilder(
+        animation: _retirementChanges,
+        builder: (_, __) => _retired
+            ? AlertDialog(
+                title: const Text('画面を開き直してください。'),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialog, false),
+                    child: const Text('閉じる'),
+                  ),
+                ],
+              )
+            : AlertDialog(
+                title: const Text('注文内容の確認'),
+                content: Text(
+                  '${body['work_name']}\n${(body['counterparty'] as Map)['name']}\n単価 ${row['unit_price_yen']}円／${row['unit']}\n発注金額 ${body['total_amount_yen']}円',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialog, false),
+                    child: const Text('入力画面に戻る'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(dialog, true),
+                    child: const Text('内容を確認'),
+                  ),
+                ],
+              ),
       ),
     );
     if (!mounted || _retired) return;
+    setState(() => _confirming = false);
     if (confirmed != true) {
       setState(() => _busy = false);
       _backToInput();
@@ -444,6 +463,7 @@ class _SiteOrderOutgoingEntryPageState extends State<SiteOrderOutgoingEntryPage>
     _factory = null;
     _reviewed = null;
     _pdf = null;
+    _retirementChanges.dispose();
     super.dispose();
   }
 
@@ -468,7 +488,7 @@ class _SiteOrderOutgoingEntryPageState extends State<SiteOrderOutgoingEntryPage>
         ? Center(child: Text(_error ?? '開き直してください。'))
         : Column(
             children: [
-              if (_busy) const LinearProgressIndicator(),
+              if (_busy && !_confirming) const LinearProgressIndicator(),
               if (_error != null)
                 Padding(
                   padding: const EdgeInsets.all(12),

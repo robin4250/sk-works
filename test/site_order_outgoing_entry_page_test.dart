@@ -375,4 +375,35 @@ void main() {
       expect(find.text('後から追加'), findsNothing);
     },
   );
+  testWidgets(
+    'scope retirement removes recipient and amount from an open confirmation',
+    (tester) async {
+      final api = _Api(),
+          targets = [SiteOrderRegisteredTarget(id: _id(7), name: '登録表示名')];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SiteOrderOutgoingEntryPage(
+            api: api,
+            siteId: _id(3),
+            issueDate: '2026-10-31',
+            targets: targets,
+            initial: _input(),
+            render: (_) async => Uint8List.fromList('%PDF-synthetic'.codeUnits),
+            previewBuilder: (_) => const Text('合成PDF'),
+          ),
+        ),
+      );
+      await _inputDone(tester);
+      await _selectAndPreview(tester);
+      await tester.tap(find.text('注文内容を確認'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('正式な合成乙会社'), findsOneWidget);
+      api.expired = true;
+      api.notifyListeners();
+      await tester.pumpAndSettle();
+      expect(find.textContaining('正式な合成乙会社'), findsNothing);
+      expect(find.textContaining('120円'), findsNothing);
+      expect(find.text('画面を開き直してください。'), findsOneWidget);
+    },
+  );
 }
