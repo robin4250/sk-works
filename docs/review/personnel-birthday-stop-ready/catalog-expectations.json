@@ -1,0 +1,307 @@
+{
+  "original": [
+    {
+      "signature": "private.worker_personnel_payload(uuid)",
+      "return_type": "jsonb",
+      "volatility": "s",
+      "acl": null,
+      "body_md5": "bed654f3bbad4e8e432db77520681330",
+      "language": "sql",
+      "argument_names": [
+        "p_worker_id"
+      ]
+    },
+    {
+      "signature": "private.apply_worker_personnel_payload(uuid,jsonb,uuid)",
+      "return_type": "void",
+      "volatility": "v",
+      "acl": null,
+      "body_md5": "445ae541afb2fcb376d49dde1388a84f",
+      "language": "plpgsql",
+      "argument_names": [
+        "p_worker_id",
+        "p_payload",
+        "p_actor"
+      ]
+    },
+    {
+      "signature": "private.employee_personnel_view(uuid)",
+      "return_type": "jsonb",
+      "volatility": "s",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "body_md5": "ec7a06349ecc5d2420e89ecedf54f6e7",
+      "language": "plpgsql",
+      "argument_names": [
+        "p_company"
+      ]
+    },
+    {
+      "signature": "public.save_worker_personnel_profile(uuid,jsonb)",
+      "return_type": "jsonb",
+      "volatility": "v",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "body_md5": "c11956bf0845ab725312928c2422a7ab",
+      "language": "plpgsql",
+      "argument_names": [
+        "p_worker_id",
+        "p_payload"
+      ]
+    },
+    {
+      "signature": "public.decide_worker_personnel_change(uuid,boolean)",
+      "return_type": "jsonb",
+      "volatility": "v",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "body_md5": "93153d859f746b5e71dd28d37033737b",
+      "language": "plpgsql",
+      "argument_names": [
+        "p_request_id",
+        "p_approve"
+      ]
+    }
+  ],
+  "quiesced": [
+    {
+      "signature": "private.worker_personnel_payload(uuid)",
+      "return_type": "jsonb",
+      "volatility": "s",
+      "acl": null,
+      "body_md5": "bed654f3bbad4e8e432db77520681330",
+      "language": "sql",
+      "argument_names": [
+        "p_worker_id"
+      ]
+    },
+    {
+      "signature": "private.apply_worker_personnel_payload(uuid,jsonb,uuid)",
+      "return_type": "void",
+      "volatility": "v",
+      "acl": "{postgres=X/postgres}",
+      "body_md5": "445ae541afb2fcb376d49dde1388a84f",
+      "language": "plpgsql",
+      "argument_names": [
+        "p_worker_id",
+        "p_payload",
+        "p_actor"
+      ]
+    },
+    {
+      "signature": "private.employee_personnel_view(uuid)",
+      "return_type": "jsonb",
+      "volatility": "s",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "body_md5": "ec7a06349ecc5d2420e89ecedf54f6e7",
+      "language": "plpgsql",
+      "argument_names": [
+        "p_company"
+      ]
+    },
+    {
+      "signature": "public.save_worker_personnel_profile(uuid,jsonb)",
+      "return_type": "jsonb",
+      "volatility": "v",
+      "acl": "{postgres=X/postgres}",
+      "body_md5": "c11956bf0845ab725312928c2422a7ab",
+      "language": "plpgsql",
+      "argument_names": [
+        "p_worker_id",
+        "p_payload"
+      ]
+    },
+    {
+      "signature": "public.decide_worker_personnel_change(uuid,boolean)",
+      "return_type": "jsonb",
+      "volatility": "v",
+      "acl": "{postgres=X/postgres}",
+      "body_md5": "93153d859f746b5e71dd28d37033737b",
+      "language": "plpgsql",
+      "argument_names": [
+        "p_request_id",
+        "p_approve"
+      ]
+    }
+  ],
+  "ready": [
+    {
+      "signature": "private.worker_personnel_payload(uuid)",
+      "return_type": "jsonb",
+      "volatility": "s",
+      "acl": null,
+      "body_md5": "72cabfabfad5dcbb533d21d2a0605dae",
+      "language": "sql",
+      "argument_names": [
+        "p_worker_id"
+      ]
+    },
+    {
+      "signature": "private.apply_worker_personnel_payload(uuid,jsonb,uuid)",
+      "return_type": "void",
+      "volatility": "v",
+      "acl": "{postgres=X/postgres}",
+      "body_md5": "7beed5f37a4a4e441a330f8339a2d32c",
+      "language": "plpgsql",
+      "argument_names": [
+        "p_worker_id",
+        "p_payload",
+        "p_actor"
+      ]
+    },
+    {
+      "signature": "private.employee_personnel_view(uuid)",
+      "return_type": "jsonb",
+      "volatility": "s",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "body_md5": "643dc0efdc35b6ab365f1ec31d053384",
+      "language": "plpgsql",
+      "argument_names": [
+        "p_company"
+      ]
+    },
+    {
+      "signature": "public.save_worker_personnel_profile(uuid,jsonb)",
+      "return_type": "jsonb",
+      "volatility": "v",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "body_md5": "940659e04992b7a642e5df142d382341",
+      "language": "plpgsql",
+      "argument_names": [
+        "p_worker_id",
+        "p_payload"
+      ]
+    },
+    {
+      "signature": "public.decide_worker_personnel_change(uuid,boolean)",
+      "return_type": "jsonb",
+      "volatility": "v",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "body_md5": "eec51c576e13d15732b2156ba31bf16a",
+      "language": "plpgsql",
+      "argument_names": [
+        "p_request_id",
+        "p_approve"
+      ]
+    }
+  ],
+  "stopped": [
+    {
+      "signature": "private.worker_personnel_payload(uuid)",
+      "return_type": "jsonb",
+      "volatility": "s",
+      "acl": null,
+      "body_md5": "72239fc3852a7a51efc1249ec3deb44e",
+      "language": "sql",
+      "argument_names": [
+        "p_worker_id"
+      ]
+    },
+    {
+      "signature": "private.apply_worker_personnel_payload(uuid,jsonb,uuid)",
+      "return_type": "void",
+      "volatility": "v",
+      "acl": "{postgres=X/postgres}",
+      "body_md5": "7beed5f37a4a4e441a330f8339a2d32c",
+      "language": "plpgsql",
+      "argument_names": [
+        "p_worker_id",
+        "p_payload",
+        "p_actor"
+      ]
+    },
+    {
+      "signature": "private.employee_personnel_view(uuid)",
+      "return_type": "jsonb",
+      "volatility": "s",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "body_md5": "e44250b2713852bad1b519cb7061f1e3",
+      "language": "plpgsql",
+      "argument_names": [
+        "p_company"
+      ]
+    },
+    {
+      "signature": "public.save_worker_personnel_profile(uuid,jsonb)",
+      "return_type": "jsonb",
+      "volatility": "v",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "body_md5": "940659e04992b7a642e5df142d382341",
+      "language": "plpgsql",
+      "argument_names": [
+        "p_worker_id",
+        "p_payload"
+      ]
+    },
+    {
+      "signature": "public.decide_worker_personnel_change(uuid,boolean)",
+      "return_type": "jsonb",
+      "volatility": "v",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "body_md5": "eec51c576e13d15732b2156ba31bf16a",
+      "language": "plpgsql",
+      "argument_names": [
+        "p_request_id",
+        "p_approve"
+      ]
+    }
+  ],
+  "zeroUseReopened": [
+    {
+      "signature": "private.worker_personnel_payload(uuid)",
+      "return_type": "jsonb",
+      "volatility": "s",
+      "acl": null,
+      "body_md5": "bed654f3bbad4e8e432db77520681330",
+      "language": "sql",
+      "argument_names": [
+        "p_worker_id"
+      ]
+    },
+    {
+      "signature": "private.apply_worker_personnel_payload(uuid,jsonb,uuid)",
+      "return_type": "void",
+      "volatility": "v",
+      "acl": "{postgres=X/postgres,=X/postgres}",
+      "body_md5": "445ae541afb2fcb376d49dde1388a84f",
+      "language": "plpgsql",
+      "argument_names": [
+        "p_worker_id",
+        "p_payload",
+        "p_actor"
+      ]
+    },
+    {
+      "signature": "private.employee_personnel_view(uuid)",
+      "return_type": "jsonb",
+      "volatility": "s",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "body_md5": "ec7a06349ecc5d2420e89ecedf54f6e7",
+      "language": "plpgsql",
+      "argument_names": [
+        "p_company"
+      ]
+    },
+    {
+      "signature": "public.save_worker_personnel_profile(uuid,jsonb)",
+      "return_type": "jsonb",
+      "volatility": "v",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "body_md5": "c11956bf0845ab725312928c2422a7ab",
+      "language": "plpgsql",
+      "argument_names": [
+        "p_worker_id",
+        "p_payload"
+      ]
+    },
+    {
+      "signature": "public.decide_worker_personnel_change(uuid,boolean)",
+      "return_type": "jsonb",
+      "volatility": "v",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "body_md5": "93153d859f746b5e71dd28d37033737b",
+      "language": "plpgsql",
+      "argument_names": [
+        "p_request_id",
+        "p_approve"
+      ]
+    }
+  ]
+}

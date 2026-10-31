@@ -1,0 +1,63 @@
+name: Personnel birthday stop-ready isolated qualification
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'docs/review/personnel-birthday-stop-ready/**'
+      - 'tool/security/personnel_birthday_stop_ready/**'
+      - '.github/workflows/personnel-birthday-stop-ready.yml'
+permissions:
+  contents: read
+jobs:
+  pglite-synthetic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [stop, zero-use-reopen]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Assert nonroot fixture runner
+        run: test "$(id -u)" -ne 0
+      - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
+      - run: node tool/security/personnel_birthday_stop_ready/verify.mjs "$PWD/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js" "${{ matrix.scenario }}"
+  native-17-6-schedules:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [stop, zero-use-reopen]
+    env:
+      SKO_PERSONNEL_FIXTURE_URL: postgres://postgres:fixture-only@127.0.0.1:5432/sko_personnel_fixture
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      # The standard image entrypoint starts PostgreSQL as its nonroot postgres
+      # service account. No initdb patches, production connection, or credentials.
+      - run: docker run --detach --name sko-stop-ready-fixture -p 127.0.0.1:5432:5432 -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=fixture-only -e POSTGRES_DB=sko_personnel_fixture postgres:17.6 -c max_prepared_transactions=10
+      - run: for i in $(seq 1 40); do docker exec sko-stop-ready-fixture pg_isready -U postgres -d sko_personnel_fixture && exit 0; sleep 1; done; exit 1
+      - name: Assert PostgreSQL main process and data owner are nonroot
+        run: |
+          docker exec -i sko-stop-ready-fixture sh -e <<'FIXTURE_ASSERT'
+          test "$(cat /proc/1/comm)" = postgres
+          awk '/^Uid:/ {exit ($2==0 || $3==0 || $4==0 || $5==0)}' /proc/1/status
+          test "$(stat -c %u "$PGDATA/PG_VERSION")" -ne 0
+          cat "$PGDATA/PG_VERSION"
+          FIXTURE_ASSERT
+      - name: Assert nonroot fixture runner
+        run: test "$(id -u)" -ne 0
+      - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
+      - run: node tool/security/personnel_birthday_stop_ready/verify.mjs "$PWD/tool/security/personnel_rls/pg_adapter.mjs" "${{ matrix.scenario }}"
+      - if: always()
+        run: docker rm --force sko-stop-ready-fixture
