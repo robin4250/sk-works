@@ -21,7 +21,9 @@ void main() {
       await wire.seed();
       addTearDown(wire.client.dispose);
       wire.respond = (request) async {
-        if (request.url.path.endsWith('/company_members')) return fixture.Wire.json([{'company_id': company, 'role': 'admin'}]);
+        if (request.url.path.endsWith('/company_members')) {
+          return fixture.Wire.json([{'company_id': company, 'role': 'admin'}]);
+        }
         if (request.url.path.endsWith('/rpc/employee_personnel_view')) return fixture.Wire.json({
           'company_id': company, 'birth_date_contract_version': invalid['root'],
           'records': [{'id': worker, 'name': 'Synthetic employee', 'active': true,
@@ -47,7 +49,9 @@ void main() {
     Map<String, dynamic>? saved;
     wire.respond = (request) async {
       final path = request.url.path;
-      if (path.endsWith('/company_members')) return fixture.Wire.json([{'company_id': company, 'role': 'admin'}]);
+      if (path.endsWith('/company_members')) {
+        return fixture.Wire.json([{'company_id': company, 'role': 'admin'}]);
+      }
       if (path.endsWith('/rpc/people_management_records')) return fixture.Wire.json([
         {'id': worker, 'kind': 'employee', 'name': 'Old roster name', 'role': 'Old roster role', 'active': true},
       ]);
@@ -60,9 +64,15 @@ void main() {
             ]},
         ],
       });
-      if (path.endsWith('/workers')) return fixture.Wire.json([{'id': worker}]);
-      if (path.endsWith('/partner_companies') || path.endsWith('/rpc/list_employee_categories')) return fixture.Wire.json([]);
-      if (path.endsWith('/rpc/ensure_employee_categories')) return fixture.Wire.json({});
+      if (path.endsWith('/workers')) {
+        return fixture.Wire.json([{'id': worker}]);
+      }
+      if (path.endsWith('/partner_companies') || path.endsWith('/rpc/list_employee_categories')) {
+        return fixture.Wire.json([]);
+      }
+      if (path.endsWith('/rpc/ensure_employee_categories')) {
+        return fixture.Wire.json({});
+      }
       if (path.endsWith('/rpc/save_worker_personnel_profile')) {
         saved = Map<String, dynamic>.from(jsonDecode(request.body) as Map);
         return fixture.Wire.json({'status': 'saved', 'requires_approval': false, 'saved_directly': true});

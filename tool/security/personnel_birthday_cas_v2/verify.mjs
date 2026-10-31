@@ -113,8 +113,30 @@ if(process.env.SKO_PERSONNEL_FIXTURE_URL){
  }
 }
 
+
+const combinedSnapshot=await payload();
+const combined={...combinedSnapshot,address:'synthetic intended address',birth_date:'1983-04-05',_birth_date_mode:'combined',
+ _birth_date_cas:{version:2,worker_id:W,company_id:C,expected_birth_date:combinedSnapshot.birth_date,expected_personnel_digest:combinedSnapshot.personnel_cas_digest}};
+await db.query("update worker_personnel_profiles set address='synthetic concurrent address' where worker_id=$1",[W]);
+const combinedBefore=await nonDob();
+await actor(actors.owner);
+await assert.rejects(db.query('select public.save_worker_personnel_profile($1,$2)',[W,combined]),e=>e.code==='40001');
+await db.exec('reset role');assert.deepEqual(await nonDob(),combinedBefore);
+const clearSnapshot=await payload();
+const clear={birth_date:null,_birth_date_mode:'only',_birth_date_cas:{version:2,worker_id:W,company_id:C,expected_birth_date:clearSnapshot.birth_date,expected_personnel_digest:clearSnapshot.personnel_cas_digest}};
+const clearBefore=await nonDob();await actor(actors.owner);
+assert.equal((await db.query('select public.save_worker_personnel_profile($1,$2) r',[W,clear])).rows[0].r.status,'saved');
+await db.exec('reset role');assert.equal((await payload()).birth_date,null);assert.deepEqual(await nonDob(),clearBefore);
+await actor(actors.owner);await assert.rejects(db.query('select public.save_worker_personnel_profile($1,$2)',[W,clear]),e=>e.code==='40001');await db.exec('reset role');
+const oldPending=(await db.query("insert into worker_personnel_change_requests(company_id,worker_id,requested_by,proposed,required_approvals) values($1,$2,$3,$4,1) returning id",[C,W,actors.self,{birth_date:'1970-01-01'}])).rows[0].id;
+const pendingBefore=await nonDob();await actor(actors.owner);
+await assert.rejects(db.query('select public.decide_worker_personnel_change($1,true)',[oldPending]),e=>e.code==='22023');
+await db.exec('reset role');assert.deepEqual(await nonDob(),pendingBefore);
+assert.equal((await db.query('select status from worker_personnel_change_requests where id=$1',[oldPending])).rows[0].status,'pending');
+assert.equal((await db.query('select count(*)::int n from worker_personnel_change_approvals where request_id=$1',[oldPending])).rows[0].n,0);
+
 await db.close();
-console.log('PASS 9 synthetic compiler/narrow/conflict/legacy/ACL/preservation/pending/approval-CAS/rollback cases; Native concurrency and UI remain unverified');
+console.log('PASS 12 synthetic logical cases including combined snapshot conflict, explicit null clear and legacy pending rejection; Native concurrency and UI remain unverified');
 `;
 const folder=fs.mkdtempSync(path.join(tmpdir(),'sko-dob-v2-'));const output=path.join(folder,'smoke.mjs');fs.writeFileSync(output,source);
 await import('node:child_process').then(({spawnSync})=>{const r=spawnSync(process.execPath,[output,process.argv[2]],{stdio:'inherit'});process.exitCode=r.status??1;fs.rmSync(folder,{recursive:true,force:true});});
