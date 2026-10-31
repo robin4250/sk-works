@@ -4,6 +4,11 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:printing/printing.dart';
+// Pin-compatible native-raster fixture, not a visual or OS-rendering proof.
+// ignore: implementation_imports
+import 'package:printing/src/interface.dart' show PrintingPlatform;
+import 'package:sk_works/features/shared/company_seal_pdf.dart';
 import 'package:sk_works/features/shared/trade_document_touch_editor_page.dart';
 import 'package:sk_works/features/sites/site_order_outgoing_entries.dart';
 import 'package:sk_works/features/sites/site_order_outgoing_body_factory.dart';
@@ -11,6 +16,26 @@ import 'package:sk_works/features/sites/site_order_outgoing_journal.dart';
 import 'package:sk_works/domain/trade_document_terms_snapshot.dart';
 import 'package:sk_works/features/sites/site_order_outgoing_entry_page.dart';
 import 'package:sk_works/features/sites/site_order_workflow_repository.dart';
+
+class _InputSealPrinting extends PrintingPlatform {
+  int rasterCalls = 0;
+  @override
+  Stream<PdfRaster> raster(Uint8List document, List<int>? pages, double dpi) async* {
+    rasterCalls++;
+    expect(String.fromCharCodes(document.take(5)), '%PDF-');
+    yield PdfRaster(1, 1, Uint8List.fromList([255, 0, 0, 255]));
+  }
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+Future<void> _waitForInputSeal(WidgetTester tester) async {
+  final seal = find.byKey(const Key('trade-input-own-seal'));
+  for (var index = 0; index < 200 && seal.evaluate().isEmpty; index++) {
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+    await tester.pump(const Duration(milliseconds: 20));
+  }
+  expect(seal, findsOneWidget);
+}
 
 String _id(int n) => '10000000-0000-0000-0000-${n.toString().padLeft(12, '0')}';
 Map<String, String> _input() => {
@@ -146,6 +171,8 @@ Future<void> _selectAndPreview(WidgetTester tester) async {
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(() async { await CompanySealPdf.loadFont(); });
   setUp(() => SharedPreferences.setMockInitialValues({}));
   test('RAM input requires explicit unit price total and tax; identity patch is rejected', () {
     final input = _input()..['unit_price'] = '';
@@ -261,6 +288,10 @@ void main() {
   testWidgets(
     'shared paper editor changes survive returning to input and rebinding',
     (tester) async {
+      final originalPrinting = PrintingPlatform.instance;
+      final sealPrinting = _InputSealPrinting();
+      PrintingPlatform.instance = sealPrinting;
+      addTearDown(() { PrintingPlatform.instance = originalPrinting; });
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       final api = _Api(),
           targets = [SiteOrderRegisteredTarget(id: _id(7), name: '登録表示名')];
@@ -285,6 +316,11 @@ void main() {
       await _selectAndPreview(tester);
       await tester.tap(find.text('プレビューを編集'));
       await tester.pumpAndSettle();
+      // The current shared editor has an independent issuer-seal raster Future.
+      // Finish that boundary before leaving the route; input-retention remains
+      // the contract under test, not native visual correctness.
+      await _waitForInputSeal(tester);
+      expect(sealPrinting.rasterCalls, 1);
       final editor = tester.widget<TradeDocumentTouchEditorPage>(
         find.byType(TradeDocumentTouchEditorPage),
       );
