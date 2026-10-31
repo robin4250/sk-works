@@ -1,3 +1,4 @@
+import {bindFixtureHandler, contextResponse} from './operation_context_fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -14,6 +15,7 @@ test('actual issuer refuses disabled or unknown phone before creating any creden
  globalThis.fetch=async(url,options={})=>{
   const u=new URL(url);calls.push({path:u.pathname,method:options.method??'GET'});
   if(u.pathname==='/auth/v1/user')return Response.json({id:actor});
+  if(u.pathname==='/rest/v1/rpc/employee_invite_operation_context')return contextResponse(options);
   if(u.pathname==='/rest/v1/rpc/account_server_access_allowed')return Response.json(true);
   if(u.pathname==='/rest/v1/company_members')return Response.json([{company_id:company,role:'owner'}]);
   if(u.pathname==='/rest/v1/workers')return Response.json([{id:worker,name:'Synthetic',phone:'07000000000',user_id:linked?actor:null,status:'active'}]);
@@ -44,6 +46,7 @@ test('actual issuer refuses disabled or unknown phone before creating any creden
   const sourceUrl=new URL('./index.ts',import.meta.url);
   const source=fs.readFileSync(sourceUrl,'utf8').replace('import "jsr:@supabase/functions-js/edge-runtime.d.ts";','').replace(/from '([^']+\.mjs)'/g,(_,p)=>'from '+JSON.stringify(new URL(p,sourceUrl).href));
   await import('data:text/javascript;base64,'+Buffer.from(stripTypeScriptTypes(source,{mode:'strip'})).toString('base64'));
+  handler=bindFixtureHandler(handler);
   for(const existing of [false,true])for(scenario of ['disabled','missing','string','null','invalid','error','http','redirect','oversize-declared','oversize-stream','invalid-utf8']) {
    calls.length=0;logs.length=0;streamCancelled=false;linked=false;
    const response=await handler(new Request('https://fixture.invalid/invite',{method:'POST',headers:{authorization:'Bearer fixture-user'},body:JSON.stringify(existing?{workerId:worker}:{name:'Synthetic',phone:'07000000000'})}));

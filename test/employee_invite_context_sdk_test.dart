@@ -1,0 +1,157 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../lib/features/people/employee_initial_registration_page.dart';
+import '../lib/features/people/employee_invite_page.dart';
+import '../lib/features/people/employee_invite_repository.dart';
+
+const actor = '10000000-0000-0000-0000-000000000001';
+const company = '30000000-0000-0000-0000-000000000001';
+const worker = '40000000-0000-0000-0000-000000000001';
+const authUser = '50000000-0000-0000-0000-000000000001';
+const invite = '70000000-0000-0000-0000-000000000001';
+const sid = '80000000-0000-0000-0000-000000000001';
+const nextSid = '80000000-0000-0000-0000-000000000002';
+const fixturePassword = 'synthetic-private-credential';
+
+String token(String session) {
+  String part(Object v) => base64Url.encode(utf8.encode(jsonEncode(v))).replaceAll('=', '');
+  return '${part({'alg': 'ES256'})}.${part({'sub': actor, 'role': 'authenticated', 'session_id': session, 'exp': 4102444800})}.synthetic';
+}
+
+Map<String, dynamic> result() => {
+  'actorId': actor, 'sessionId': sid, 'companyId': company,
+  'workerId': worker, 'authUserId': authUser, 'inviteId': invite,
+  'name': 'Synthetic Employee', 'phone': '+817000000000',
+  'temporaryPassword': fixturePassword, 'smsSent': false,
+  'qrPayload': jsonEncode({'type': 'sko_employee_invite', 'inviteId': invite,
+    'phone': '+817000000000', 'password': fixturePassword}),
+};
+
+class Fixture {
+  Fixture() {
+    client = SupabaseClient('https://invite-fixture.invalid', 'public_fixture',
+      authOptions: const AuthClientOptions(autoRefreshToken: false),
+      httpClient: MockClient((request) async {
+        requests.add(request);
+        if (request.url.path == '/auth/v1/token') {
+          return http.Response(jsonEncode({'access_token': token(session),
+            'refresh_token': 'synthetic-refresh', 'token_type': 'bearer', 'expires_in': 3600,
+            'user': {'id': actor, 'aud': 'authenticated', 'created_at': '2026-10-31T00:00:00Z',
+              'app_metadata': <String, dynamic>{}, 'user_metadata': <String, dynamic>{}}}), 200);
+        }
+        if (request.url.path == '/rest/v1/company_members') {
+          return http.Response(jsonEncode(memberships), 200);
+        }
+        if (request.url.path == '/rest/v1/rpc/initial_registration_employee_rows') {
+          return http.Response(jsonEncode([{'id': worker, 'name': 'Synthetic Employee', 'phone': '07000000000', 'user_id': null}]), 200);
+        }
+        if (request.url.path == '/rest/v1/rpc/initial_registration_distribution_settings') {
+          return http.Response('{"testflight_url":""}', 200);
+        }
+        if (request.url.path == '/functions/v1/create-employee-invite') {
+          invokes++;
+          expect(request.headers['Authorization'], 'Bearer ${token(sid)}');
+          final body = jsonDecode(request.body) as Map;
+          expect(body['companyId'], company); expect(body['sessionId'], sid);
+          return await (pending?.future ?? Future.value(http.Response(jsonEncode(response), 200)));
+        }
+        throw StateError('Unexpected synthetic request');
+      }));
+    repository = EmployeeInviteRepository(client);
+  }
+  late final SupabaseClient client;
+  late final EmployeeInviteRepository repository;
+  String session = sid;
+  int invokes = 0;
+  Object response = result();
+  Completer<http.Response>? pending;
+  List<Object> memberships = [{'company_id': company, 'role': 'owner'}];
+  final requests = <http.Request>[];
+  Future<void> login() => client.auth.signInWithPassword(email: 'fixture@example.invalid', password: 'synthetic').then((_) {});
+  Future<void> close() => client.dispose();
+}
+
+void main() {
+  test('actual pinned SDK uses captured Bearer and exact company/SID and validates returned QR', () async {
+    final f = Fixture(); addTearDown(f.close); await f.login();
+    final context = await f.repository.beginRequest();
+    final value = await f.repository.createInvite(name: 'Synthetic Employee', phone: '07000000000', request: context);
+    expect(value.inviteId, invite); expect(value.temporaryPassword, fixturePassword);
+    expect(f.invokes, 1);
+  });
+
+  test('ambiguous membership and malformed row fail before invoking issuer', () async {
+    for (final rows in <List<Object>>[[], [{'company_id': company, 'role': 'owner'}, {'company_id': worker, 'role': 'owner'}], ['invalid'], [{'company_id': company, 'role': 'invented'}]]) {
+      final f = Fixture(); await f.login(); f.memberships = rows;
+      await expectLater(f.repository.beginRequest(), throwsStateError);
+      expect(f.invokes, 0); await f.close();
+    }
+  });
+
+  for (final invalid in ['empty', 'missing', 'qr-phone', 'qr-invite', 'qr-password', 'company', 'session', 'worker']) {
+    test('malformed success $invalid stays unresolved and does not recreate canonical recipient', () async {
+      final f = Fixture(); addTearDown(f.close); await f.login();
+      final value = result();
+      switch (invalid) {
+        case 'empty': f.response = <String, dynamic>{};
+        case 'missing': value.remove('temporaryPassword'); f.response = value;
+        case 'qr-phone':
+        case 'qr-invite':
+        case 'qr-password':
+          final qr = jsonDecode(value['qrPayload'] as String) as Map;
+          qr[invalid.substring(3) == 'invite' ? 'inviteId' : invalid.substring(3)] = 'mismatched';
+          value['qrPayload'] = jsonEncode(qr); f.response = value;
+        case 'company': value['companyId'] = worker; f.response = value;
+        case 'session': value['sessionId'] = nextSid; f.response = value;
+        case 'worker': value['workerId'] = 'invalid'; f.response = value;
+      }
+      final context = await f.repository.beginRequest();
+      await expectLater(f.repository.createInvite(name: 'Synthetic', phone: '07000000000', request: context), throwsStateError);
+      await expectLater(f.repository.createInvite(name: 'Synthetic', phone: '+81 70-0000-0000', request: context), throwsStateError);
+      expect(f.invokes, 1);
+    });
+  }
+
+  test('same actor replacement SID retires a late result and never reuses new ambient Bearer', () async {
+    final f = Fixture(); addTearDown(f.close); await f.login();
+    final context = await f.repository.beginRequest(); f.pending = Completer<http.Response>();
+    final creation = f.repository.createInviteForWorker(worker, request: context);
+    await Future<void>.delayed(Duration.zero);
+    f.session = nextSid; await f.login();
+    f.pending!.complete(http.Response(jsonEncode(result()), 200));
+    await expectLater(creation, throwsStateError);
+    expect(context.isCurrent, isFalse); expect(f.invokes, 1);
+  });
+
+  testWidgets('new employee page hides credentials immediately after same-user new SID', (tester) async {
+    final f = Fixture(); addTearDown(f.close); await f.login();
+    await tester.pumpWidget(MaterialApp(home: EmployeeInvitePage(repository: f.repository)));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).at(0), 'Synthetic Employee');
+    await tester.enterText(find.byType(TextField).at(1), '07000000000');
+    final create = find.byWidgetPredicate((w) => w is FilledButton);
+    await tester.ensureVisible(create.first); await tester.tap(create.first); await tester.pumpAndSettle();
+    expect(find.text(fixturePassword), findsOneWidget);
+    f.session = nextSid; await f.login(); await tester.pumpAndSettle();
+    expect(find.text(fixturePassword), findsNothing); expect(find.text('ログイン状態または会社が変わりました。画面を開き直してください。'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('existing worker page hides QR/password after same-user new SID', (tester) async {
+    final f = Fixture(); addTearDown(f.close); await f.login();
+    await tester.pumpWidget(MaterialApp(home: EmployeeInitialRegistrationPage(repository: f.repository)));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('送信')); await tester.tap(find.text('送信')); await tester.pumpAndSettle();
+    expect(find.text('初期パスワード: $fixturePassword'), findsOneWidget);
+    f.session = nextSid; await f.login(); await tester.pumpAndSettle();
+    expect(find.text('初期パスワード: $fixturePassword'), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+}

@@ -8,6 +8,13 @@ begin
  if to_regprocedure('public.account_server_access_allowed(uuid)') is null
  or to_regclass('auth.sessions') is null or to_regclass('public.company_members') is null
  then raise exception 'reviewed invite dependencies unavailable'; end if;
+ if not has_schema_privilege('service_role','private','USAGE') then
+ raise exception 'service private usage unavailable; no broad grant allowed'; end if;
+ -- Approved deployment package must supply a separately reviewed catalog digest;
+ -- this source candidate does not claim the live catalog has been approved.
+ if current_setting('sko.review.invite_baseline',true) is distinct from
+   (select md5(pg_get_functiondef('public.account_server_access_allowed(uuid)'::regprocedure)))
+ then raise exception 'invite account baseline not independently pinned'; end if;
 end $guard$;
 create function private.employee_invite_operation_context(p_actor uuid,p_session uuid,p_company uuid)
 returns jsonb language plpgsql stable security definer set search_path='' as $$
@@ -17,7 +24,10 @@ begin
  -- service-only lookup cannot be used by a client to assert another identity.
  if (auth.jwt()->>'role') is distinct from 'service_role' or p_actor is null
  or p_session is null or p_company is null then raise exception 'invite context denied' using errcode='42501'; end if;
- if not public.account_server_access_allowed(p_actor) then raise exception 'invite context denied' using errcode='42501'; end if;
+ if public.account_server_access_allowed(p_actor) is not true then raise exception 'invite context denied' using errcode='42501'; end if;
+ if not exists(select 1 from auth.users u where u.id=p_actor
+   and not coalesce(u.is_anonymous,false) and (u.banned_until is null or u.banned_until<=clock_timestamp()))
+ then raise exception 'invite actor unavailable' using errcode='42501'; end if;
  if not exists(select 1 from auth.sessions s where s.id=p_session and s.user_id=p_actor
    and (s.not_after is null or s.not_after>clock_timestamp()))
  then raise exception 'invite session unavailable' using errcode='42501'; end if;
@@ -39,4 +49,17 @@ revoke all on function public.employee_invite_operation_context(uuid,uuid,uuid) 
 grant execute on function public.employee_invite_operation_context(uuid,uuid,uuid) to service_role;
 -- No table or schema ACLs are broadened. Missing service private USAGE is a
 -- deployment preflight failure, not permission to grant private to clients.
+do $final$
+declare f record;
+begin
+ for f in select p.oid from pg_proc p where p.oid in
+  ('public.employee_invite_operation_context(uuid,uuid,uuid)'::regprocedure,
+   'private.employee_invite_operation_context(uuid,uuid,uuid)'::regprocedure)
+ loop
+  if exists(select 1 from pg_proc p cross join lateral aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a
+   where p.oid=f.oid and (a.grantee not in('postgres'::regrole::oid,'service_role'::regrole::oid)
+    or (a.grantee='service_role'::regrole::oid and a.is_grantable)))
+  then raise exception 'unexpected invite context ACL'; end if;
+ end loop;
+end $final$;
 commit;

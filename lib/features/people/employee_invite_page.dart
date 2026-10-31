@@ -10,10 +10,11 @@ import '../../international/language_controller.dart';
 import 'employee_invite_repository.dart';
 
 class EmployeeInvitePage extends StatefulWidget {
-  const EmployeeInvitePage({super.key, this.canAssignManagementRole = false, this.selectedCompanyId});
+  const EmployeeInvitePage({super.key, this.canAssignManagementRole = false, this.selectedCompanyId, this.repository});
 
   final bool canAssignManagementRole;
   final String? selectedCompanyId;
+  final EmployeeInviteRepository? repository;
 
   @override
   State<EmployeeInvitePage> createState() => _EmployeeInvitePageState();
@@ -22,7 +23,7 @@ class EmployeeInvitePage extends StatefulWidget {
 class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
   final _name = TextEditingController();
   final _phone = TextEditingController();
-  final _repository = EmployeeInviteRepository.maybeCreate();
+  late final EmployeeInviteRepository? _repository;
 
   bool _busy = false;
   bool _assigneeLoading = false;
@@ -62,6 +63,7 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
   @override
   void initState() {
     super.initState();
+    _repository = widget.repository ?? EmployeeInviteRepository.maybeCreate();
     _authSubscription = _repository?.authChanges.listen((_) {
       if (_request != null && !_request!.isCurrent) _invalidate();
     });
@@ -81,7 +83,7 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
     if (repository == null || !_current()) return;
     setState(() => _assigneeLoading = true);
     try {
-      final rows = await repository.loadCurrentApprovalAssignees();
+      final rows = await repository.loadCurrentApprovalAssignees(request: _request);
       if (!mounted || !_current()) return;
       setState(() {
         _currentApprovalAssignees = rows;

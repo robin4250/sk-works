@@ -59,6 +59,7 @@ class EmployeeInviteRepository {
 
   final SupabaseClient _client;
   final Set<String> _attempted = {};
+  String? get currentActorId => binding?.actorId;
   Stream<AuthState> get authChanges => _client.auth.onAuthStateChange;
   AppleSessionNavigationBinding? get binding =>
       AppleSessionNavigationBinding.fromSession(_client.auth.currentSession);
@@ -70,7 +71,7 @@ class EmployeeInviteRepository {
     final raw = await _client.from('company_members').select('company_id,role')
         .eq('user_id', captured.actorId)
         .setHeader('Authorization', 'Bearer ${session.accessToken}').retry(enabled: false);
-    if (binding != captured || raw is! List) throw StateError('ログイン状態が変わりました。');
+    if (binding != captured || raw is! List || raw.length != 1 || raw.single is! Map) throw StateError('ログイン状態が変わりました。');
     final rows = raw.whereType<Map>().where((r) => companyId == null || r['company_id'] == companyId).toList();
     if (rows.length != 1 || !_uuid.hasMatch(rows.single['company_id']?.toString() ?? '') ||
         !const {'owner','admin','manager','viewer'}.contains(rows.single['role'])) {
@@ -88,7 +89,8 @@ class EmployeeInviteRepository {
       {EmployeeInviteRequest? request}) async {
     final context = request ?? await beginRequest();
     context.check();
-    final recipient = body['workerId'] ?? body['phone'];
+    final rawPhone = body['phone']?.toString().replaceAll(RegExp(r'[\s()\-]'), '');
+    final recipient = body['workerId'] ?? (rawPhone?.startsWith('0') == true ? '+81${rawPhone!.substring(1)}' : rawPhone);
     final key = '${context.actorId}:${context.companyId}:$recipient';
     if (!_attempted.add(key)) throw StateError('作成結果が未解決です。再作成せず管理者に確認してください。');
     try {
@@ -112,8 +114,11 @@ class EmployeeInviteRepository {
     return EmployeeInviteRepository(SupabaseBackend.client);
   }
 
-  Future<List<ApprovalAssigneeOption>> loadCurrentApprovalAssignees() async {
-    final value = await _client.rpc('company_approval_assignee_rows');
+  Future<List<ApprovalAssigneeOption>> loadCurrentApprovalAssignees({EmployeeInviteRequest? request}) async {
+    final context = request ?? await beginRequest(); context.check();
+    final value = await _client.rpc('company_approval_assignee_rows')
+      .setHeader('Authorization', context.authorization).retry(enabled: false);
+    context.check();
     if (value is! List) return const [];
 
     return [
@@ -153,21 +158,29 @@ class EmployeeInviteRepository {
     }
   }
 
-  Future<String> loadTestFlightUrl() async {
-    final raw = await _client.rpc('initial_registration_distribution_settings');
+  Future<String> loadTestFlightUrl({EmployeeInviteRequest? request}) async {
+    final context = request ?? await beginRequest(); context.check();
+    final raw = await _client.rpc('initial_registration_distribution_settings')
+      .setHeader('Authorization', context.authorization).retry(enabled: false);
+    context.check();
     final map = raw is Map ? Map<String, dynamic>.from(raw) : const <String, dynamic>{};
     return map['testflight_url']?.toString() ?? '';
   }
 
-  Future<void> saveTestFlightUrl(String value) async {
+  Future<void> saveTestFlightUrl(String value, {EmployeeInviteRequest? request}) async {
+    final context = request ?? await beginRequest(); context.check();
     await _client.rpc(
       'save_initial_registration_distribution_settings',
       params: {'p_testflight_url': value.trim()},
-    );
+    ).setHeader('Authorization', context.authorization).retry(enabled: false);
+    context.check();
   }
 
-  Future<List<InitialRegistrationEmployee>> loadRegisteredEmployees() async {
-    final value = await _client.rpc('initial_registration_employee_rows');
+  Future<List<InitialRegistrationEmployee>> loadRegisteredEmployees({EmployeeInviteRequest? request}) async {
+    final context = request ?? await beginRequest(); context.check();
+    final value = await _client.rpc('initial_registration_employee_rows')
+      .setHeader('Authorization', context.authorization).retry(enabled: false);
+    context.check();
     final rows = value is List ? value : const <dynamic>[];
 
     return [
@@ -183,7 +196,7 @@ class EmployeeInviteRepository {
   }
 
   Future<EmployeeInviteResult> createInviteForWorker(
-    String workerId, {bool deliverSms = false, EmployeeInviteRequest? request}) =>
+    String workerId, {bool deliverSms = true, EmployeeInviteRequest? request}) =>
       _create({'workerId': workerId, 'deliverSms': deliverSms}, request: request);
 
   Future<EmployeeInviteResult> createInvite({
@@ -223,7 +236,7 @@ class EmployeeInviteRepository {
       if (normalized != phone) throw const FormatException('Invitation recipient changed');
     }
     final decoded = jsonDecode(qr);
-    if (decoded is! Map || decoded['type'] != 'sko_employee_invite' ||
+    if (decoded is! Map || decoded.length != 4 || decoded['type'] != 'sko_employee_invite' ||
         decoded['inviteId'] != id || decoded['phone'] != phone || decoded['password'] != password) {
       throw const FormatException('Unconfirmed invitation QR');
     }

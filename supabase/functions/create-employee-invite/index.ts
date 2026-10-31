@@ -343,7 +343,7 @@ Deno.serve(async (req: Request) => {
 
   const authPayload = await authResponse.json();
   const authUserId = authPayload?.id ?? authPayload?.user?.id;
-  if (!authUserId) return json({ error: "利用者IDを作成できませんでした。" }, 500);
+  if (!uuid.test(authUserId ?? '')) return json({ error: "利用者IDを確認できません。結果は未解決です。" }, 500);
 
   let persistedWorkerId: string | null = workerId;
   let linkedExistingWorker = false;
@@ -398,7 +398,7 @@ Deno.serve(async (req: Request) => {
       const workers = await workerResponse.json();
       persistedWorkerId = workers?.[0]?.id ?? null;
     }
-    if (!persistedWorkerId) throw new Error("worker id missing");
+    if (!uuid.test(persistedWorkerId ?? '')) throw new Error("worker id missing");
 
     persistenceStage = "invite";
     const inviteResponse = await serviceFetch(
@@ -425,7 +425,10 @@ Deno.serve(async (req: Request) => {
     }
 
     const invites = await inviteResponse.json();
-    const inviteId = invites?.[0]?.id;
+    if (!Array.isArray(invites) || invites.length !== 1 || !uuid.test(invites[0]?.id ?? '')) {
+      throw new Error('invite id missing');
+    }
+    const inviteId = invites[0].id;
     const qrPayload = JSON.stringify({
       type: "sko_employee_invite",
       inviteId,
@@ -486,8 +489,8 @@ Deno.serve(async (req: Request) => {
           if (!smsSent) {
             deliveryMessage = "SMS送信サービスがエラーを返しました。";
           }
-        } catch (error) {
-          console.error("employee invite sms delivery failed", error);
+        } catch {
+          console.error("employee invite sms delivery failed");
           deliveryMessage = "SMS送信サービスへ接続できませんでした。";
         }
       }

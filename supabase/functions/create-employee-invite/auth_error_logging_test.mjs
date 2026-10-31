@@ -1,3 +1,4 @@
+import {bindFixtureHandler, contextResponse} from './operation_context_fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -13,6 +14,7 @@ test('Auth failure logs only status and preserves response and account checks', 
   const u=new URL(url);calls.push({path:u.pathname,method:options.method??'GET'});
   if(u.pathname==='/auth/v1/settings')return Response.json({external:{phone:true}});
   if(u.pathname==='/auth/v1/user')return Response.json({id:'10000000-0000-0000-0000-000000000001'});
+  if(u.pathname==='/rest/v1/rpc/employee_invite_operation_context')return contextResponse(options);
   if(u.pathname==='/rest/v1/rpc/account_server_access_allowed')return Response.json(true);
   if(u.pathname==='/rest/v1/rpc/begin_account_server_activity')return Response.json('20000000-0000-0000-0000-000000000001');
   if(u.pathname==='/rest/v1/company_members')return Response.json([{company_id:'30000000-0000-0000-0000-000000000001',role:'owner'}]);
@@ -32,6 +34,7 @@ test('Auth failure logs only status and preserves response and account checks', 
    .replace(/from '([^']+\.mjs)'/g,(_,path)=>'from '+JSON.stringify(new URL(path,sourceUrl).href));
   const code=stripTypeScriptTypes(source,{mode:'strip'});
   await import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'));
+  handler=bindFixtureHandler(handler);
   assert.equal(typeof handler,'function');
   for(const status of [422,500]) {
    upstreamStatus=status;logs.length=0;calls.length=0;

@@ -1,0 +1,55 @@
+name: Employee invite captured context
+on:
+  pull_request:
+    paths:
+      - 'lib/features/people/employee_invite_repository.dart'
+      - 'lib/features/people/employee_invite_page.dart'
+      - 'lib/features/people/employee_initial_registration_page.dart'
+      - 'supabase/functions/create-employee-invite/**'
+      - 'tool/staged/employee_invite_context.sql.review-only'
+      - 'test/employee_invite_context_sdk_test.dart'
+      - '.github/workflows/employee-invite-context.yml'
+permissions:
+  contents: read
+jobs:
+  native-http:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:17.6
+        env:
+          POSTGRES_PASSWORD: synthetic_fixture_only
+          POSTGRES_DB: invite_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 3s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node --test supabase/functions/create-employee-invite/auth_error_logging_test.mjs supabase/functions/create-employee-invite/persistence_error_logging_test.mjs supabase/functions/create-employee-invite/provider_readiness_test.mjs
+      - run: node --test supabase/functions/create-employee-invite/operation_context_http_test.mjs
+        env:
+          SKO_INVITE_NATIVE_FIXTURE: '1'
+          PGHOST: '127.0.0.1'
+          PGPORT: '5432'
+          PGUSER: postgres
+          PGPASSWORD: synthetic_fixture_only
+          PGDATABASE: invite_fixture
+  sdk-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.47.5'
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: git diff --exit-code -- pubspec.lock
+      - run: flutter analyze lib/features/people/employee_invite_repository.dart lib/features/people/employee_invite_page.dart lib/features/people/employee_initial_registration_page.dart test/employee_invite_context_sdk_test.dart
+      - run: flutter test test/employee_invite_context_sdk_test.dart test/employee_invite_localization_contract_test.dart test/employee_invite_role_selection_contract_test.dart --reporter expanded
