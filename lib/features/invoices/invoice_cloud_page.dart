@@ -813,25 +813,20 @@ class _InvoicePreviewPageState extends State<InvoicePreviewPage> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    body: InvoicePdfPreviewPage(
+  Widget build(BuildContext context) => InvoicePdfPreviewPage(
       key: ValueKey(_revision),
       invoices: [widget.invoice],
       allowLegacyApprovalInitialization: widget.allowLegacyApprovalInitialization,
       approvalFromNotification: widget.approvalFromNotification,
       approvalNotificationId: widget.approvalNotificationId,
       title: SkoLanguageController.isEnglish ? 'Invoice Preview' : '請求書プレビュー',
-    ),
-    bottomNavigationBar: _approvals == null || widget.invoice.invoiceId.isEmpty
-        ? null
-        : SafeArea(
-            child: TextButton.icon(
-              onPressed: _busy ? null : _manageApprovals,
-              icon: const Icon(Icons.fact_check_outlined),
-              label: const Text('承認履歴・印影設定'),
-            ),
-          ),
-  );
+      additionalActions: [
+        if (_approvals != null && widget.invoice.invoiceId.isNotEmpty)
+          TextButton.icon(onPressed: _busy ? null : _manageApprovals,
+            icon: const Icon(Icons.fact_check_outlined, size: 20),
+            label: const Text('承認履歴・印影設定')),
+      ],
+    );
 }
 
 class _ErrorState extends StatelessWidget {
