@@ -27,7 +27,7 @@ alter table private.company_data_delivery_items enable row level security;
 create table private.document_delivery_items(id uuid primary key default gen_random_uuid(),delivery_id uuid,name text,bucket text,path text,company_path jsonb,source_item_id uuid,expires_at date,photo_order integer);
 create table private.company_delivery_saved_items(company_id uuid,item_key text,saved_by uuid,saved_at timestamptz,primary key(company_id,item_key));
 create table private.document_receive_codes(code uuid primary key,company_id uuid,created_by uuid,expires_at timestamptz default now()+interval '1 day',used_at timestamptz);
-create table public.app_notifications(company_id uuid,recipient_user_id uuid,kind text,title text,body text,action_key text,action_id uuid);
+create table public.app_notifications(id uuid primary key default gen_random_uuid(),company_id uuid,recipient_user_id uuid,kind text,title text,body text,action_key text,action_id uuid);
 create table site_order_artifact_private.render_jobs(id uuid primary key);
 create table site_order_artifact_private.pdf_records(receipt_id uuid primary key);
 ${packageDDL}
@@ -123,6 +123,46 @@ assert((await db.query('select private.site_share_inbox() v')).rows[0].v.length=
 await deny(()=>db.query('select public.respond_site_share($1,true)',[id(13)]),'0A000');
 await deny(()=>db.query('select public.respond_site_share($1,false)',[id(13)]),'0A000');
 await deny(()=>db.query('select private.site_payment_pair($1,$2)',[id(13),id(2)]),'22023');
+// Retain actual ten caller bodies only in the disposable test; not install sources.
+await db.exec(`create table private.site_payment_proposals(id uuid primary key,shared_item_id uuid);
+create table private.site_contract_seals(proposal_id uuid,company_id uuid,actor_id uuid,action text);
+create table private.site_contract_notification_outbox(id uuid primary key,proposal_id uuid,event text,company_id uuid);
+create table private.site_contract_notification_receipts(notification_id uuid,outbox_id uuid,recipient_user_id uuid);
+insert into private.site_payment_proposals values('${id(80)}','${id(13)}');
+insert into private.site_contract_seals values('${id(80)}','${id(2)}','${id(1)}','approved');
+insert into private.site_contract_notification_outbox values('${id(81)}','${id(80)}','terms_approved','${id(2)}');
+insert into public.app_notifications(id,company_id,recipient_user_id,action_key,action_id) values('${id(82)}','${id(2)}','${id(1)}','site_payment_agreement','${id(13)}');
+insert into private.site_contract_notification_receipts values('${id(82)}','${id(81)}','${id(1)}');`);
+const callers=JSON.parse(await fs.readFile('tool/site_order_compatibility/payment-callers.fixture.json','utf8'));
+for(const f of callers){
+ await db.exec(f.definition);
+ assert((await db.query('select md5(prosrc) h from pg_proc where oid=$1::regprocedure',[f.signature])).rows[0].h===f.body_md5,'actual caller body unchanged');
+}
+await db.exec(`create trigger actual_contract_notice after insert on private.site_contract_notification_outbox for each row execute function private.deliver_site_contract_notification()`);
+const callerState=async()=>JSON.stringify((await db.query(`select
+ (select jsonb_agg(to_jsonb(p) order by id) from private.site_payment_proposals p) proposals,
+ (select jsonb_agg(to_jsonb(n) order by id) from private.site_contract_notification_outbox n) outbox,
+ (select jsonb_agg(to_jsonb(n) order by id) from public.app_notifications n) notifications,
+ (select jsonb_agg(to_jsonb(s) order by data_item_id) from private.site_share_inbox s) inbox`)).rows);
+const callerBefore=await callerState();
+const blockedCalls=[
+ ['select private.approve_sealed_site_contract($1,$2,1,$3)',[id(80),id(2),'not-used']],
+ ['select private.confirm_site_payment_terms($1,$2)',[id(80),id(2)]],
+ ['select private.preview_site_contract_seal($1,$2,$3)',[id(13),id(2),id(90)]],
+ ["select private.propose_site_payment_terms($1,$2,1,'{}'::jsonb)",[id(13),id(2)]],
+ ['select private.saved_site_payment_document($1,$2)',[id(80),id(2)]],
+ ["select private.send_sealed_site_contract($1,$2,1,'{}'::jsonb,'not-used')",[id(13),id(2)]],
+ ['select private.site_contract_workspace($1,$2)',[id(13),id(2)]],
+ ['select private.get_site_contract_notification_target($1)',[id(82)]],
+ ['select private.site_payment_agreement_workspace($1,$2)',[id(13),id(2)]],
+ ["insert into private.site_contract_notification_outbox values($1,$2,'terms_approved',$3)",[id(83),id(80),id(2)]],
+];
+for(const [sql,args] of blockedCalls){
+ let error;try{await db.query(sql,args);}catch(e){error=e;}
+ assert(error?.code==='22023'&&error.message.includes('専用の承認経路'),'actual caller rejected by exact pair boundary');
+ assert(callerBefore===await callerState(),'blocked caller preserves proposals/outbox/notifications/inbox');
+}
+
 await db.exec(`insert into sites values('${id(31)}','${id(3)}','legacy source'),('${id(32)}','${id(2)}','legacy recipient');
 insert into private.company_connections values('${id(3)}','${id(2)}','accepted');
 insert into private.site_payment_agreement_rollout values('${id(3)}',true),('${id(2)}',true);
@@ -143,5 +183,5 @@ packet.items=[{kind:'received_data',id:id(11)},{kind:'received_data',id:id(12)},
 await db.query("select private.company_document_exchange('send',$1::jsonb)",[JSON.stringify(packet)]);
 assert((await db.query('select count(*)::int n from private.company_data_delivery_items where delivery_id=$1',[id(51)])).rows[0].n===2,'old structured retransfers preserved');
 assert((await db.query('select path from private.document_delivery_items where delivery_id=$1',[id(51)])).rows[0].path==='preserved','old file attachment retransfer preserved');
-console.log(JSON.stringify({checks,production_changed:false,synthetic_surrounding_schema:true,actual_catalog_consumer_definitions:true,native}));
+console.log(JSON.stringify({checks,production_changed:false,synthetic_surrounding_schema:true,actual_catalog_consumer_definitions:true,actual_private_payment_callers:10,payment_caller_rows_preserved:true,native_lock_wait_checked:native,real_auth:false,full_production_schema:false,native}));
 }finally{await db.close();}
