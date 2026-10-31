@@ -63,7 +63,7 @@ class _SiteOrderOriginalReviewPageState
     try {
       widget.api.requireCurrent();
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _generation++;
           _invalid = true;
@@ -73,19 +73,21 @@ class _SiteOrderOriginalReviewPageState
           _status = null;
           _agreed = false;
         });
+      }
     }
   }
 
   void _current(int generation) {
     widget.api.requireCurrent();
-    if (!mounted || _invalid || _hidden || generation != _generation)
+    if (!mounted || _invalid || _hidden || generation != _generation) {
       throw StateError('scope retired');
+    }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _generation++;
           _hidden = true;
@@ -94,6 +96,7 @@ class _SiteOrderOriginalReviewPageState
           _bytes = null;
           _agreed = false;
         });
+      }
     } else if (mounted && !_invalid) {
       setState(() => _hidden = false);
       _load();
@@ -102,13 +105,14 @@ class _SiteOrderOriginalReviewPageState
 
   Future<void> _load() async {
     final generation = ++_generation;
-    if (mounted)
+    if (mounted) {
       setState(() {
         _busy = true;
         _agreed = false;
         _review = null;
         _bytes = null;
       });
+    }
     try {
       final status = await widget.api.inspectOutgoingExecution(
         widget.reference,
@@ -151,7 +155,7 @@ class _SiteOrderOriginalReviewPageState
             : '原本はまだ確認できません。';
       });
     } catch (_) {
-      if (mounted && !_invalid && generation == _generation)
+      if (mounted && !_invalid && generation == _generation) {
         setState(() {
           _status = null;
           _review = null;
@@ -160,8 +164,11 @@ class _SiteOrderOriginalReviewPageState
           _allowed = false;
           _message = '保存状態を確認できません。再送せず照会してください。';
         });
+      }
     } finally {
-      if (mounted && generation == _generation) setState(() => _busy = false);
+      if (mounted && generation == _generation) {
+        setState(() => _busy = false);
+      }
     }
   }
 
@@ -171,8 +178,9 @@ class _SiteOrderOriginalReviewPageState
         _hidden ||
         !_allowed ||
         _registerStarted ||
-        _status?.originalSaved != false)
+        _status?.originalSaved != false) {
       return;
+    }
     final generation = _generation;
     setState(() {
       _busy = true;
@@ -180,8 +188,9 @@ class _SiteOrderOriginalReviewPageState
       _agreed = false;
     });
     try {
-      if (!await widget.api.canMutateOutgoingReference(widget.reference))
+      if (!await widget.api.canMutateOutgoingReference(widget.reference)) {
         throw StateError('disabled');
+      }
       _current(generation);
       await widget.api.registerOutgoingOriginal(
         widget.reference,
@@ -192,10 +201,13 @@ class _SiteOrderOriginalReviewPageState
       _current(generation);
       await _load();
     } catch (_) {
-      if (mounted && !_invalid)
+      if (mounted && !_invalid) {
         setState(() => _message = '原本保存の結果を照会してください。同じ処理は再実行しません。');
+      }
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() => _busy = false);
+      }
     }
   }
 
@@ -233,10 +245,13 @@ class _SiteOrderOriginalReviewPageState
 
   bool get _completeTerms {
     final body = _review?.body;
-    if (body == null || body['form_fields'] is! Map) return false;
-    final rows = (body['form_fields'] as Map)['rows'];
-    if (rows is! List || rows.isEmpty || rows.any((r) => r is! Map))
+    if (body == null || body['form_fields'] is! Map) {
       return false;
+    }
+    final rows = (body['form_fields'] as Map)['rows'];
+    if (rows is! List || rows.isEmpty || rows.any((r) => r is! Map)) {
+      return false;
+    }
     final active = rows
         .where(
           (r) =>
@@ -250,7 +265,9 @@ class _SiteOrderOriginalReviewPageState
               r['amount_yen'] != null,
         )
         .toList();
-    if (active.isEmpty) return false;
+    if (active.isEmpty) {
+      return false;
+    }
     return active.every(
       (row) =>
           row is Map &&
@@ -273,10 +290,11 @@ class _SiteOrderOriginalReviewPageState
         _shareStarted ||
         _review?.sameSession != true ||
         _bytes == null ||
-        _status?.sharingState != 'not_observed')
+        _status?.sharingState != 'not_observed') {
       return;
+    }
     final generation = _generation, review = _review!;
-    _agreed = false;
+    setState(() => _agreed = false);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialog) => AnimatedBuilder(
@@ -320,16 +338,18 @@ class _SiteOrderOriginalReviewPageState
         !mounted ||
         _invalid ||
         _hidden ||
-        generation != _generation)
+        generation != _generation) {
       return;
+    }
     setState(() {
       _busy = true;
       _shareStarted = true;
       _agreed = false;
     });
     try {
-      if (!await widget.api.canMutateOutgoingReference(widget.reference))
+      if (!await widget.api.canMutateOutgoingReference(widget.reference)) {
         throw StateError('disabled');
+      }
       _current(generation);
       await widget.api.shareOutgoingOriginal(
         widget.reference,
@@ -340,17 +360,20 @@ class _SiteOrderOriginalReviewPageState
       _current(generation);
       await _load();
     } catch (_) {
-      if (mounted && !_invalid)
+      if (mounted && !_invalid) {
         setState(() => _message = '共有結果が未確認です。再送せず状態を照会してください。');
+      }
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() => _busy = false);
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
-      title: const Text('注文書の原本・共有確認'),
+      title: Text(_review?.body['work_name']?.toString() ?? '注文書の原本・共有確認'),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),

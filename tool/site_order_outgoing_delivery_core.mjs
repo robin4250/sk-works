@@ -106,7 +106,7 @@ export async function reviewOutgoingOriginal(db,identity,claims,{bytes=false}={}
   const pdf=new Uint8Array(row.pdf_bytes);
   if(pdf.byteLength!==status.pdf_byte_length||pdf.byteLength>20*1024*1024
    ||new TextDecoder().decode(pdf.subarray(0,5))!=='%PDF-')throw Error('outgoing_original_bytes_changed');
-  const digest=Buffer.from(await crypto.subtle.digest('SHA-256',pdf)).toString('hex');
+  const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',pdf)),byte=>byte.toString(16).padStart(2,'0')).join('');
   if(digest!==status.pdf_sha256)throw Error('outgoing_original_bytes_changed');
   if(bytes)return pdf;
   // The approved job snapshot is authoritative, even if company fields or rates
