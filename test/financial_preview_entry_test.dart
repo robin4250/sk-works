@@ -17,92 +17,30 @@ import 'package:sk_works/features/payroll/payment_certificate_repository.dart';
 import 'package:sk_works/features/payroll/payment_certificates_page.dart';
 import 'package:sk_works/features/shared/financial_preview_chrome.dart';
 
-// Fonts are served from the repository asset through an in-memory HttpClient.
-// This keeps Google-font HTTP fallback timeouts out of the widget FakeAsync
-// clock and makes repeated real-page mounts deterministic without a network.
-class _FontHttp extends HttpOverrides {
-  final Uint8List bytes = File('assets/fonts/company-seal/NotoSansJP-Bold.ttf')
-      .readAsBytesSync();
+// The public printing cache supplies repository font bytes without a network
+// request or PdfMemoryCache's 20-minute eviction Timer in widget FakeAsync.
+class _FontCache extends PdfBaseCache {
+  final Uint8List bytes = File('assets/fonts/company-seal/NotoSansJP-Bold.ttf').readAsBytesSync();
+  final seen = <String>{};
   @override
-  HttpClient createHttpClient(SecurityContext? context) => _FontClient(bytes);
-}
-
-class _FontClient implements HttpClient {
-  _FontClient(this.bytes);
-  final Uint8List bytes;
-  @override
-  Future<HttpClientRequest> openUrl(String method, Uri url) async {
-    if (method != 'GET' ||
-        url.scheme != 'https' ||
-        url.host != 'fonts.gstatic.com') {
-      throw StateError('Unexpected fixture request');
+  Future<Uint8List> resolve({required String name, required Uri uri,
+    bool cache = true, Map<String, String>? headers}) async {
+    if (!const {'NotoSansJP-Regular', 'NotoSansJP-Bold'}.contains(name) || uri.host != 'fonts.gstatic.com') {
+      throw StateError('Unexpected fixture font');
     }
-    return _FontRequest(bytes);
+    seen.add(name);
+    return bytes;
   }
-
   @override
-  Future<HttpClientRequest> getUrl(Uri url) => openUrl('GET', url);
+  Future<void> add(String key, Uint8List bytes) async {}
   @override
-  dynamic noSuchMethod(Invocation invocation) => null;
-}
-
-class _Headers implements HttpHeaders {
+  Future<Uint8List?> get(String key) async => null;
   @override
-  void forEach(void Function(String, List<String>) action) {}
+  Future<bool> contains(String key) async => false;
   @override
-  dynamic noSuchMethod(Invocation invocation) => null;
-}
-
-class _FontRequest implements HttpClientRequest {
-  _FontRequest(this.bytes);
-  final Uint8List bytes;
+  Future<void> remove(String key) async {}
   @override
-  final HttpHeaders headers = _Headers();
-  @override
-  Future<void> addStream(Stream<List<int>> stream) async {
-    await stream.drain<void>();
-  }
-
-  @override
-  Future<HttpClientResponse> close() async => _FontResponse(bytes);
-  @override
-  dynamic noSuchMethod(Invocation invocation) => null;
-}
-
-class _FontResponse extends Stream<List<int>> implements HttpClientResponse {
-  _FontResponse(this.bytes);
-  final Uint8List bytes;
-  @override
-  int get statusCode => 200;
-  @override
-  bool get isRedirect => false;
-  @override
-  bool get persistentConnection => false;
-  @override
-  String get reasonPhrase => 'OK';
-  @override
-  List<RedirectInfo> get redirects => const [];
-  @override
-  int get contentLength => bytes.length;
-  @override
-  HttpClientResponseCompressionState get compressionState =>
-      HttpClientResponseCompressionState.notCompressed;
-  @override
-  final HttpHeaders headers = _Headers();
-  @override
-  StreamSubscription<List<int>> listen(
-    void Function(List<int>)? onData, {
-    Function? onError,
-    void Function()? onDone,
-    bool? cancelOnError,
-  }) => Stream<List<int>>.value(bytes).listen(
-    onData,
-    onError: onError,
-    onDone: onDone,
-    cancelOnError: cancelOnError,
-  );
-  @override
-  dynamic noSuchMethod(Invocation invocation) => null;
+  Future<void> clear() async {}
 }
 
 class _Raster extends PdfRaster {
@@ -155,9 +93,12 @@ class _Printer extends PrintingPlatform {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late PrintingPlatform original;
+  late PdfBaseCache originalCache;
   late _Printer printer;
   setUp(() {
     original = PrintingPlatform.instance;
+    originalCache = PdfBaseCache.defaultCache;
+    PdfBaseCache.defaultCache = _FontCache();
     printer = _Printer();
     PrintingPlatform.instance = printer;
   });
@@ -166,12 +107,13 @@ void main() {
       printer.completed!.complete(false);
     }
     PrintingPlatform.instance = original;
+    PdfBaseCache.defaultCache = originalCache;
   });
   for (final payment in [false, true]) {
     for (final narrow in [false, true]) {
       testWidgets(
         'actual ${payment ? 'payment' : 'invoice'} entry keeps one compact footer narrow=$narrow',
-        (tester) async => HttpOverrides.runWithHttpOverrides(() async {
+        (tester) async {
           tester.view.physicalSize = Size(narrow ? 320 : 430, 932);
           tester.view.devicePixelRatio = 1;
           addTearDown(tester.view.resetPhysicalSize);
@@ -259,6 +201,7 @@ void main() {
               await tester.pump();
             }
             expect(printer.layout, isNotNull);
+            expect((PdfBaseCache.defaultCache as _FontCache).seen, containsAll(['NotoSansJP-Regular', 'NotoSansJP-Bold']));
             final bytes = await printer.layout!(PdfPageFormat.a4);
             expect(String.fromCharCodes(bytes.take(4)), '%PDF');
             // A replaced document must invalidate the already handed native
@@ -307,7 +250,7 @@ void main() {
           await tester.runAsync(
             () => Future<void>.delayed(const Duration(milliseconds: 20)),
           );
-        }, _FontHttp()),
+        },
       );
     }
   }

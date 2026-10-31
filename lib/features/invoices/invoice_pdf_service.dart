@@ -1402,7 +1402,8 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                       builder: (context) => SafeArea(child: SingleChildScrollView(
                         child: InvoicePreviewGuidance(initiallyExpanded: true,
                           needsStampSurname: approvals.any((row) => row.stampSurname == null))))),
-                    icon: const Icon(Icons.help_outline, size: 22)),
+                    icon: Icon(approvals.any((row) => row.stampSurname == null)
+                        ? Icons.info_outline : Icons.help_outline, size: 22)),
                 ],
                 status: [
                   if (previewData.missingAcceptanceCount > 0)
