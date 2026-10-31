@@ -43,7 +43,7 @@ Map<String, dynamic> _context() => {
     'corporate_number': '',
     'phone': '002',
   },
-  'site': {
+  'site': <String, dynamic>{
     'name': '合成工事',
     'address': '合成現場住所',
     'period_start': '2026-10-01',
