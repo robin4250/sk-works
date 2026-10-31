@@ -5,7 +5,8 @@ const id='00000000-0000-0000-0000-000000009304';
 const pdf=Buffer.from('%PDF-1.7\nimmutable-manager-original\n%%EOF');
 function database({original=false,accessDenied=false,scopeDenied=false,jobMissing=false,commitUnknown=false}={}){
  const calls=[];return{calls,async query(sql,args){calls.push({sql,args});
-  if(sql==='select session_user as role')return{rows:[{role:'postgres'}]};
+  if(sql==="select to_regclass('site_order_outgoing_private.prepared_operations') is not null as present")return {rows:[{present:false}]};
+ if(sql==='select session_user as role')return{rows:[{role:'postgres'}]};
   if(sql==='select private.require_standalone_trade_document_access()'&&accessDenied)throw Error('private detail must not escape');
   if(sql.startsWith('select j.evidence'))return{rows:jobMissing?[]:[{evidence:{body:{scope:'site'}}}]};
   if(sql.startsWith('select site_order_manager_private.require_actor')&&scopeDenied)throw Error('scope denied');

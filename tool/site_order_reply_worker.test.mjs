@@ -5,6 +5,7 @@ const id='00000000-0000-0000-0000-000000000001',job='00000000-0000-0000-0000-000
 const claims={sub:id,role:'authenticated',session_id:id};
 function database(failCommit=0){let commits=0;const calls=[];const bytes=new TextEncoder().encode('%PDF-fixed immutable original');
  return {calls,async query(sql,args){calls.push({sql,args});
+ if(sql==="select to_regclass('site_order_outgoing_private.prepared_operations') is not null as present")return {rows:[{present:false}]};
  if(sql==='select session_user as role')return {rows:[{role:'postgres'}]};
  if(sql.includes('ready_reply($1)'))return {rows:[{result:{job_id:job,request_id:id}}]};
  if(sql.startsWith('select j.evidence'))return {rows:[{evidence:{private:true}}]};

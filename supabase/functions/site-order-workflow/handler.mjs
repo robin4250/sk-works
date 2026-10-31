@@ -1,3 +1,4 @@
+import {requireLegacyNonOutgoingJob} from '../../../tool/site_order_outgoing_execution_contract.mjs';
 import {registerManagerCanonicalSiteOrderJob,processCanonicalSiteOrderReply,processRecoveredSiteOrderReply} from '../../../tool/site_order_canonical_core.mjs';
 const uuid=/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/;
 const commands={
@@ -65,6 +66,10 @@ export function createSiteOrderHandler({verify,connect,render}){
    const role=(await db.query('select session_user as role')).rows[0]?.role;
    if(role!=='postgres')throw Error('internal_connection_required');
    await db.query("select set_config('request.jwt.claims',$1,true)",[JSON.stringify(claims)]);
+   if(b.action==='send_order'){
+    await db.query("select set_config('request.jwt.claim.sub','',true),set_config('request.jwt.claim','',true)");
+    await requireLegacyNonOutgoingJob(db,b.job_id);
+   }
    const result=(await db.query(c.sql,c.keys.map(k=>b[k]))).rows[0]?.result;
    if(result===undefined||result===null)throw Error('result_required');
    let pdfBytes;
