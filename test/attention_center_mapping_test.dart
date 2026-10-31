@@ -36,6 +36,19 @@ void main() {
     expect(items.first.metadata['document_name'], '免許証');
     expect(items.first.deduplicationKey, isNot(items.last.deduplicationKey));
   });
+  test('unknown document evidence remains visible without fabricating a pending obligation', () {
+    final items = mapRequiredDocumentAttention({'missing_names': ['synthetic missing'],
+      'unknown_names': ['synthetic unknown']});
+    final snapshot = AttentionCenterSnapshot(items, now: DateTime(2026, 10, 31));
+    expect(snapshot.unresolvedCount, 1);
+    expect(snapshot.items.singleWhere((item) => item.title == 'synthetic unknown').state,
+      AttentionCenterState.unknown);
+    expect(snapshot.items.any((item) => item.state == AttentionCenterState.completed), isFalse);
+    for (final invalid in ['invalid', [''], ['synthetic missing'], ['duplicate', 'duplicate']]) {
+      expect(() => mapRequiredDocumentAttention({'missing_names': ['synthetic missing'],
+        'unknown_names': invalid}), throwsFormatException);
+    }
+  });
   test('generation issues retain exact payload and do not invent deadline', () {
     final items = mapGenerationAttention({'issues': [{'type': 'missing_rate',
       'key': 'worker-a', 'message': '単価を設定', 'action_key': 'payroll_settings',

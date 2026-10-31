@@ -3,7 +3,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../data/supabase_backend.dart';
 import '../people/worker_document_exemption.dart';
 import '../people/worker_document_photos.dart';
-import '../auth/app_auth_mutation_gateway.dart';
+import '../shared/trade_document_form_session.dart';
+import '../notifications/required_document_evidence.dart';
+import '../notifications/scoped_required_document_attention_repository.dart';
 
 enum TutorialEvidenceState { unknown, missing, saved, notApplicable }
 
@@ -80,18 +82,18 @@ class TutorialEvidenceRepository {
   final DateTime _today;
 
   /// Explicit client boundary for SDK contract verification; no global state.
-  factory TutorialEvidenceRepository.forClient(SupabaseClient client, {DateTime? today}) {
+  factory TutorialEvidenceRepository.forClient(SupabaseClient client, {DateTime? today, String? companyId}) {
     final actor = client.auth.currentUser?.id;
     if (actor == null) { throw StateError('Document evidence requires a session'); }
-    return TutorialEvidenceRepository(_SupabaseTutorialEvidenceSource(client, actor), today: today);
+    return TutorialEvidenceRepository(_SupabaseTutorialEvidenceSource(client, actor, companyId: companyId), today: today);
   }
 
-  static TutorialEvidenceRepository? maybeCreate() {
+  static TutorialEvidenceRepository? maybeCreate({String? companyId}) {
     if (!SupabaseBackend.isInitialized) { return null; }
     final client = SupabaseBackend.client;
     final user = client.auth.currentUser;
     if (user == null) { return null; }
-    return TutorialEvidenceRepository(_SupabaseTutorialEvidenceSource(client, user.id));
+    return TutorialEvidenceRepository(_SupabaseTutorialEvidenceSource(client, user.id, companyId: companyId));
   }
 
   static DateTime _japanToday() {
@@ -132,12 +134,16 @@ class TutorialEvidenceRepository {
   Future<TutorialEvidenceSnapshot> load({
     required Set<String> availableActionKeys,
   }) async {
-    final member = await _read(_source.membership);
+    final original = _source;
+    final source = original is _SupabaseTutorialEvidenceSource
+        ? await original.capture() : original;
+    try {
+    final member = await _read(source.membership);
     final role = member?['role']?.toString();
     final companyId = member?['company_id']?.toString();
     final tasks = <TutorialEvidenceTask>[];
     if (availableActionKeys.contains('profile')) {
-      final profile = await _read(_source.profile);
+      final profile = await _read(source.profile);
       tasks.add(TutorialEvidenceTask(
         key: 'personal_profile',
         actionKey: 'profile',
@@ -146,7 +152,7 @@ class TutorialEvidenceRepository {
           _field(profile, 'phone', label: '電話番号', evidencePrefix: profile?['user_id']?.toString()),
         ],
       ));
-      final personnel = await _read(_source.personnel);
+      final personnel = await _read(source.personnel);
       tasks.add(TutorialEvidenceTask(
         key: 'personnel_profile',
         actionKey: 'profile',
@@ -171,7 +177,7 @@ class TutorialEvidenceRepository {
     }
     if ((role == 'owner' || role == 'admin') &&
         availableActionKeys.contains('company_documents')) {
-      final company = await _read(_source.company);
+      final company = await _read(source.company);
       tasks.add(TutorialEvidenceTask(
         key: 'company_profile',
         actionKey: 'company_documents',
@@ -194,7 +200,7 @@ class TutorialEvidenceRepository {
     if (availableActionKeys.contains('document_register')) {
       final docs = companyId == null || companyId.isEmpty
           ? null
-          : await _read(() => _source.documents(companyId));
+          : await _read(() => source.documents(companyId));
       tasks.add(TutorialEvidenceTask(
         key: 'required_documents',
         actionKey: 'document_register',
@@ -206,7 +212,7 @@ class TutorialEvidenceRepository {
     // an unavailable read must prevent an unsupported completion claim.
     if ((role == 'owner' || role == 'admin' || role == 'manager') &&
         companyId != null && companyId.isNotEmpty &&
-        _source is TutorialSetupEvidenceSource) {
+        source is TutorialSetupEvidenceSource) {
       for (final entry in <String, String>{
         'trade_companies': '取引会社', 'subcontractors': '下請け会社',
         'site_register': '現場', 'payroll_settings': '個別給与設定',
@@ -217,7 +223,7 @@ class TutorialEvidenceRepository {
         }
         List<Map<String, dynamic>>? rows;
         try {
-          rows = await (_source as TutorialSetupEvidenceSource)
+          rows = await (source as TutorialSetupEvidenceSource)
               .setupRows(entry.key, companyId);
         } catch (_) {
           // RLS rejection and unavailable data must not become missing data.
@@ -233,7 +239,7 @@ class TutorialEvidenceRepository {
       }
     }
     if (companyId != null && companyId.isNotEmpty &&
-        _source is TutorialOperationalEvidenceSource) {
+        source is TutorialOperationalEvidenceSource) {
       final actions = <String, String>{
         if ((role == 'owner' || role == 'admin') &&
             availableActionKeys.contains('payroll_settings'))
@@ -248,7 +254,7 @@ class TutorialEvidenceRepository {
         }
         Map<String, dynamic>? evidence;
         try {
-          evidence = await (_source as TutorialOperationalEvidenceSource)
+          evidence = await (source as TutorialOperationalEvidenceSource)
               .operationalEvidence(entry.key, companyId);
         } catch (_) {
           // Missing grants or network data are unknown, never saved evidence.
@@ -260,7 +266,9 @@ class TutorialEvidenceRepository {
         ));
       }
     }
+    if (source is _SupabaseTutorialEvidenceSource) { await source.finish(); }
     return TutorialEvidenceSnapshot(role: role, tasks: tasks);
+    } finally { if (source is _SupabaseTutorialEvidenceSource) { source.close(); } }
   }
 
   static List<TutorialEvidenceCheckpoint> operationalCheckpoints(
@@ -359,6 +367,24 @@ class TutorialEvidenceRepository {
     Map<String, dynamic>? docs, {
     required DateTime today,
   }) {
+    final canonical = docs?['canonical_evidence'];
+    if (canonical is Map) {
+      final evidence = RequiredDocumentEvidenceSnapshot.fromJson(canonical);
+      if (evidence.items.isEmpty) {
+        return const [TutorialEvidenceCheckpoint('documents', TutorialEvidenceState.notApplicable, label: '必須書類')];
+      }
+      return [for (final item in evidence.items) TutorialEvidenceCheckpoint(
+        'document:${item.id}', switch (item.state) {
+          RequiredDocumentEvidenceState.saved => TutorialEvidenceState.saved,
+          RequiredDocumentEvidenceState.missing => TutorialEvidenceState.missing,
+          RequiredDocumentEvidenceState.unknown => TutorialEvidenceState.unknown,
+          RequiredDocumentEvidenceState.exempt => TutorialEvidenceState.notApplicable,
+        },
+        label: item.state == RequiredDocumentEvidenceState.exempt
+            ? '${evidence.labelFor(item)}（提出免除）' : evidence.labelFor(item),
+        evidenceKey: item.evidenceKey, statusLabel: item.statusLabel.isEmpty ? null : item.statusLabel,
+      )];
+    }
     const unknown = [TutorialEvidenceCheckpoint('documents', TutorialEvidenceState.unknown, label: '必須書類')];
     if (docs == null || docs['worker_id'] == null ||
         docs['worker_id'].toString().isEmpty ||
@@ -469,44 +495,75 @@ class TutorialEvidenceRepository {
 }
 
 class _SupabaseTutorialEvidenceSource implements TutorialEvidenceSource, TutorialSetupEvidenceSource, TutorialOperationalEvidenceSource {
-  _SupabaseTutorialEvidenceSource(this.client, this.userId);
+  _SupabaseTutorialEvidenceSource(this.client, this.userId, {this.companyId});
 
   final SupabaseClient client;
   final String userId;
+  final String? companyId;
+  TradeDocumentFormSession? _lease;
+  String? _capturedToken;
+  List<Map<String,dynamic>> _members = const [];
+  bool _legacyCompanyRpcAllowed = false;
+
+  Future<_SupabaseTutorialEvidenceSource> capture() async {
+    if (client.auth.currentUser?.id != userId) { throw StateError('ログイン状態が変わりました。'); }
+    final scoped = _SupabaseTutorialEvidenceSource(client, userId, companyId: companyId);
+    scoped._capturedToken = client.auth.currentSession?.accessToken;
+    scoped._lease = TradeDocumentFormSession(client);
+    try {
+      await scoped._lease!.ready();
+      final raw = await scoped._lease!.readOwnMemberships();
+      if (raw is! List || raw.any((row) => row is! Map)) { throw StateError('会社を確認できません。'); }
+      scoped._members = raw.map((row) => Map<String,dynamic>.from(row as Map)).toList();
+      scoped._legacyCompanyRpcAllowed = scoped._members.length == 1 &&
+          (companyId == null || scoped._members.single['company_id'] == companyId);
+      return scoped;
+    } catch (_) { scoped.close(); rethrow; }
+  }
+  Future<void> finish() async { await _lease!.ready(); }
+  void close() { _lease?.dispose(); }
+  Future<Object?> _rpc(String name) async {
+    if (!_legacyCompanyRpcAllowed) { return null; }
+    return _lease!.rpc(name, const {});
+  }
+
 
   @override
   Future<Map<String, dynamic>?> operationalEvidence(String key, String companyId) async {
     if (key == 'company_payroll_policy') {
-      final policy = await client.rpc('payroll_company_policy');
+      final policy = await _rpc('payroll_company_policy');
       if (policy is! Map || policy['can_manage_settings'] != true) {
         return null;
       }
-      final reviewers = await client.rpc('payroll_confirmation_candidates');
+      final reviewers = await _rpc('payroll_confirmation_candidates');
       return {...Map<String, dynamic>.from(policy), 'reviewers': reviewers};
     }
     if (key == 'company_document_selection') {
-      final permissions = await client.rpc('current_feature_permissions');
+      final permissions = await _rpc('current_feature_permissions');
       if (permissions is! Map || permissions['can_manage_people'] != true) {
         return null;
       }
+      _lease!.requireScope();
       final rows = await client.from('document_requirements')
-          .select('id,name,scope,is_required').eq('company_id', companyId).eq('is_active', true);
+          .select('id,name,scope,is_required').eq('company_id', companyId).eq('is_active', true).setHeader('Authorization', 'Bearer $_capturedToken');
       return {'rows': rows};
     }
+    _lease!.requireScope();
     final worker = await client.from('workers').select('id')
-        .eq('company_id', companyId).eq('user_id', userId).eq('status', 'active').maybeSingle();
+        .eq('company_id', companyId).eq('user_id', userId).eq('status', 'active').maybeSingle().setHeader('Authorization', 'Bearer $_capturedToken');
     if (worker == null) {
       return null;
     }
+    _lease!.requireScope();
     final rows = await client.from('worker_qualifications').select('id')
-        .eq('company_id', companyId).eq('worker_id', worker['id']);
+        .eq('company_id', companyId).eq('worker_id', worker['id']).setHeader('Authorization', 'Bearer $_capturedToken');
     return {'rows': rows};
   }
 
   @override
   Future<List<Map<String, dynamic>>?> setupRows(String actionKey, String companyId) async {
     if (actionKey == 'trade_companies' || actionKey == 'subcontractors') {
-      final raw = await client.rpc('trade_company_workspace');
+      final raw = await _rpc('trade_company_workspace');
       if (raw is! List) { return null; }
       final roles = actionKey == 'trade_companies'
           ? {'customer', 'both'} : {'subcontractor', 'both'};
@@ -515,7 +572,8 @@ class _SupabaseTutorialEvidenceSource implements TutorialEvidenceSource, Tutoria
           {'id': row['id'], 'name': row['name'], 'configured': true}];
     }
     if (actionKey == 'site_register') {
-      final rows = await client.from('sites').select('id,name').eq('company_id', companyId);
+      _lease!.requireScope();
+      final rows = await client.from('sites').select('id,name').eq('company_id', companyId).setHeader('Authorization', 'Bearer $_capturedToken');
       return [for (final row in rows) {...row, 'configured': true}];
     }
     final payroll = actionKey == 'payroll_settings';
@@ -523,7 +581,7 @@ class _SupabaseTutorialEvidenceSource implements TutorialEvidenceSource, Tutoria
     if (payroll) {
       // Use the same eligible-worker workspace as the existing settings page;
       // never infer payroll eligibility from all company workers.
-      final raw = await client.rpc('payroll_workspace');
+      final raw = await _rpc('payroll_workspace');
       if (raw is! Map || raw['permissions'] is! Map ||
           (raw['permissions'] as Map)['edit'] != true || raw['workers'] is! List) {
         return null;
@@ -531,11 +589,13 @@ class _SupabaseTutorialEvidenceSource implements TutorialEvidenceSource, Tutoria
       targets = [for (final row in (raw['workers'] as List).whereType<Map>())
         Map<String, dynamic>.from(row)];
     } else {
+      _lease!.requireScope();
       targets = await client.from('partner_companies').select('id,name')
-          .eq('company_id', companyId).eq('status', 'active');
+          .eq('company_id', companyId).eq('status', 'active').setHeader('Authorization', 'Bearer $_capturedToken');
     }
+    _lease!.requireScope();
     final settings = await client.from(payroll ? 'worker_payroll_settings' : 'partner_payment_settings')
-        .select(payroll ? 'worker_id' : 'partner_company_id').eq('company_id', companyId);
+        .select(payroll ? 'worker_id' : 'partner_company_id').eq('company_id', companyId).setHeader('Authorization', 'Bearer $_capturedToken');
     final savedIds = settings.map((row) => row[payroll ? 'worker_id' : 'partner_company_id']?.toString()).toSet();
     // Explicit persisted settings, including legitimate zero rates, count.
     return [for (final row in targets)
@@ -543,108 +603,47 @@ class _SupabaseTutorialEvidenceSource implements TutorialEvidenceSource, Tutoria
   }
 
   @override
-  Future<Map<String, dynamic>?> membership() async => await client
-      .from('company_members').select('company_id,role')
-      .eq('user_id', userId).maybeSingle();
+  Future<Map<String, dynamic>?> membership() async {
+    _lease!.requireScope();
+    final selected = _members.where((row) => companyId == null || row['company_id'] == companyId).toList();
+    return selected.length == 1 && (companyId != null || _members.length == 1) ? selected.single : null;
+  }
 
   @override
   Future<Map<String, dynamic>?> profile() async {
+    _lease!.requireScope();
     final row = await client.from('user_profiles').select('user_id,display_name,phone')
-        .eq('user_id', userId).maybeSingle();
+        .eq('user_id', userId).maybeSingle().setHeader('Authorization', 'Bearer $_capturedToken');
     return row ?? {'user_id': userId, 'display_name': null, 'phone': null};
   }
 
   Future<Map<String, dynamic>?> _mapRpc(String name) async {
-    final raw = await client.rpc(name);
+    final raw = await _rpc(name);
     return raw is Map ? Map<String, dynamic>.from(raw) : null;
   }
 
   @override
-  Future<Map<String, dynamic>?> personnel() => _mapRpc('current_worker_personnel_profile');
+  Future<Map<String, dynamic>?> personnel() async {
+    final member = await membership();
+    final selectedCompany = member?['company_id'];
+    if (!_legacyCompanyRpcAllowed || selectedCompany is! String) { return null; }
+    _lease!.requireScope();
+    final workers = await client.from('workers').select('id')
+        .eq('company_id', selectedCompany).eq('user_id', userId).eq('status', 'active')
+        .limit(2).setHeader('Authorization', 'Bearer $_capturedToken');
+    if (workers.length != 1) { return null; }
+    final row = await _mapRpc('current_worker_personnel_profile');
+    return row?['worker_id'] == workers.single['id'] ? row : null;
+  }
 
   @override
   Future<Map<String, dynamic>?> company() => _mapRpc('company_data_state');
 
   @override
   Future<Map<String, dynamic>?> documents(String companyId) async {
-    final session = client.auth.currentSession;
-    final gateway = AppAuthMutationGateway.forClient(client);
-    final epoch = await gateway.externalFlowAdmission();
-    void check() {
-      if (session == null || session.user.id != userId || epoch == null ||
-          !gateway.isExternalFlowCurrent(epoch) || session.isExpired ||
-          client.auth.currentSession?.accessToken != session.accessToken) {
-        throw StateError('Document evidence session changed');
-      }
-    }
-    check();
-    final headers = {'Authorization': 'Bearer ${session!.accessToken}'};
-    final worker = await client.from('workers').select('id')
-        .eq('user_id', userId).eq('company_id', companyId)
-        .eq('status', 'active').maybeSingle().setHeader('Authorization', headers['Authorization']!);
-    check();
-    if (worker == null) { return null; }
-    final workerId = worker['id'];
-    final requirements = await client.from('document_requirements')
-        .select('id,name,is_active,is_required,expiry_required')
-        .eq('company_id', companyId).eq('is_active', true).eq('is_required', true)
-        .setHeader('Authorization', headers['Authorization']!);
-    check();
-    Future<List<Map<String, dynamic>>> readStatuses(bool multiplePhotos) async {
-      check();
-      final rows = await client.from('worker_document_statuses')
-          .select('id,requirement_id,worker_id,status,expires_at,attachment_path'
-              '${multiplePhotos ? ',attachment_paths' : ''}')
-          .eq('company_id', companyId).eq('worker_id', workerId)
-          .setHeader('Authorization', headers['Authorization']!);
-      check();
-      return rows;
-    }
-    List<Map<String, dynamic>> statuses;
-    try {
-      statuses = await readStatuses(true);
-    } on PostgrestException catch (error) {
-      if ((error.code != '42703' && error.code != 'PGRST204') ||
-          !error.message.contains('attachment_paths')) {
-        rethrow;
-      }
-      // Only a proven absent new column permits the legacy read. Auth/RLS and
-      // network errors remain unknown; every retry retains the original scope.
-      statuses = await readStatuses(false);
-    }
-    check();
-    List<Map<String, dynamic>> exemptions = [];
-    try {
-      final raw = await client.rpc('worker_document_exemption', params: {
-        'p_action': 'list', 'p_data': {'company_id': companyId},
-      }).setHeader('Authorization', headers['Authorization']!);
-      check();
-      if (raw is! Map || raw['capability_version'] != 1 || raw['items'] is! List) {
-        throw StateError('Exemption evidence unavailable');
-      }
-      exemptions = (raw['items'] as List).map((row) => Map<String, dynamic>.from(row as Map)).toList();
-    } on PostgrestException catch (error) {
-      if (error.code != 'PGRST202' || !error.message.contains('worker_document_exemption')) rethrow;
-    }
-    Map<String, dynamic>? bank;
-    var bankKnown = false;
-    if (requirements.any((row) => row['name'] == '銀行口座情報')) {
-      try {
-        bank = await client.from('worker_private_bank_accounts')
-            .select('worker_id,company_id,updated_at')
-            .eq('worker_id', workerId).eq('company_id', companyId)
-            .maybeSingle().setHeader('Authorization', headers['Authorization']!);
-        check();
-        bankKnown = true;
-      } catch (_) {
-        // A denied/unavailable private account read is never absence or success.
-        check();
-      }
-    }
-    check();
-    return {'worker_id': workerId, 'company_id': companyId,
-      'requirements': requirements, 'statuses': statuses,
-      'exemptions': exemptions, 'bank_account_known': bankKnown,
-      'bank_account_metadata': bank};
+    _lease!.requireScope();
+    final receipt = await ScopedRequiredDocumentAttentionRepository(client).load(companyId: companyId);
+    _lease!.requireScope();
+    return {'canonical_evidence': receipt};
   }
 }
