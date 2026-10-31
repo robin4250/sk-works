@@ -17,7 +17,12 @@ let db;let nativeClient;
  assert(begin>0&&end>begin);await db.exec(legacyFixture.slice(begin+15,end));
  const legacySql=fs.readFileSync('supabase/migrations/20261015005238_company_link_requests.sql','utf8');
  await db.exec(legacySql);
- await db.exec(`create table auth.sessions(id uuid primary key,user_id uuid,not_after timestamptz);
+ await db.exec(`create role supabase_auth_admin;
+ create table auth.users(id uuid primary key,is_anonymous boolean not null default false,banned_until timestamptz);
+ alter table auth.users owner to supabase_auth_admin;alter table auth.users enable row level security;
+ grant select,update on auth.users to postgres;
+ insert into auth.users values('${actor}',false,null);
+ create table auth.sessions(id uuid primary key,user_id uuid,not_after timestamptz);
  create function auth.jwt() returns jsonb language sql as $$select current_setting('test.jwt')::jsonb$$;
  grant usage on schema private,auth to authenticated;
  insert into auth.sessions values('${sid}','${actor}',null),('${sid2}','${actor}',null);
@@ -76,6 +81,23 @@ let db;let nativeClient;
   await assert.rejects(invoke(ids(1),'workspace'),/context unavailable/);
  }
  await login();
+ for(const change of [
+  `update auth.users set is_anonymous=true where id='${actor}'`,
+  `update auth.users set banned_until=clock_timestamp()+interval '1 day' where id='${actor}'`,
+  `delete from auth.users where id='${actor}'`,
+ ]){
+  await db.exec(change);
+  await assert.rejects(invoke(ids(1),'workspace'),/Auth actor unavailable/);
+  await assert.rejects(invoke(ids(1),'set_enabled',{enabled:false},ids(230)),/Auth actor unavailable/);
+  await assert.rejects(invoke(ids(1),'result',{},ids(230)),/Auth actor unavailable/);
+  assert.equal((await db.query('select count(*)::integer n from private.company_link_bound_operations')).rows[0].n,0);
+  assert.equal((await db.query(`select count(*)::integer n from auth.sessions where user_id='${actor}' and id='${sid}'`)).rows[0].n,1);
+  await db.exec(`insert into auth.users values('${actor}',false,null)
+   on conflict(id) do update set is_anonymous=false,banned_until=null;`);
+ }
+ await db.exec(`update auth.users set banned_until=clock_timestamp()-interval '1 day' where id='${actor}'`);
+ assert.equal((await invoke(ids(1),'workspace')).available,true);
+ await db.exec(`update auth.users set banned_until=null where id='${actor}'`);
  await invoke(ids(1),'set_enabled',{enabled:true},ids(201));
  await invoke(ids(2),'set_enabled',{enabled:true},ids(202));
  await invoke(ids(3),'set_enabled',{enabled:true},ids(203));
@@ -146,6 +168,34 @@ let db;let nativeClient;
   const {Client}=require('pg'),other=new Client();await other.connect();
   try{
    const pid=(await other.query('select pg_backend_pid() pid')).rows[0].pid;
+   const actorMainPid=(await db.query('select pg_backend_pid() pid')).rows[0].pid;
+   for(const [field,value,operation] of [['is_anonymous','true',217],['banned_until',"clock_timestamp()+interval '1 day'",218]]){
+    await other.query(`begin;update auth.users set ${field}=${value} where id='${actor}'`);
+    const denied=assert.rejects(invoke(ids(2),'set_enabled',{enabled:false},ids(operation)),/Auth actor unavailable/);
+    let actorWait=false;
+    for(let i=0;i<100&&!actorWait;i++){
+     await other.query('select pg_stat_clear_snapshot()');
+     actorWait=(await other.query(`select wait_event_type='Lock' waiting from pg_stat_activity where pid=${actorMainPid}`)).rows[0]?.waiting===true;
+    }
+    assert(actorWait,'Auth actor update must be observed after an actual row-lock wait');
+    await other.query('commit');await denied;
+    await db.exec(`update auth.users set is_anonymous=false,banned_until=null where id='${actor}'`);
+    assert.equal((await invoke(ids(2),'result',{},ids(operation))).state,'unobserved');
+   }
+   console.log('NATIVE_COMPANY_LINK_AUTH_STATE_BEFORE_WAIT_DENY: 2');
+   await db.exec('begin');await invoke(ids(2),'set_enabled',{enabled:true},ids(219));
+   const actorBan=other.query(`update auth.users set banned_until=clock_timestamp()+interval '1 day' where id='${actor}'`);
+   let banWait=false;
+   for(let i=0;i<100&&!banWait;i++){
+    await db.query('select pg_stat_clear_snapshot()');
+    banWait=(await db.query(`select wait_event_type='Lock' waiting from pg_stat_activity where pid=${pid}`)).rows[0]?.waiting===true;
+   }
+   assert(banWait,'Auth ban must serialize after an already authorized mutation SHARE lock');
+   await db.exec('commit');await actorBan;
+   await assert.rejects(invoke(ids(2),'workspace'),/Auth actor unavailable/);
+   await db.exec(`update auth.users set banned_until=null where id='${actor}'`);
+   assert.equal((await invoke(ids(2),'result',{},ids(219))).state,'committed');
+   console.log('NATIVE_COMPANY_LINK_AUTH_BAN_AFTER_MUTATION_WAIT: 1');
    await db.exec('begin');await invoke(ids(2),'set_enabled',{enabled:true},ids(215));
    const gateStop=other.query('update private.company_link_bound_control set enabled=false');
    let gateWait=false;

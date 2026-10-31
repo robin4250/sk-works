@@ -28,6 +28,15 @@ begin
  if not has_schema_privilege('authenticated','private','USAGE') then
   raise exception 'existing private schema privilege requires independent review';
  end if;
+ if to_regclass('auth.users') is null
+  or not has_table_privilege('postgres','auth.users','SELECT')
+  or not has_table_privilege('postgres','auth.users','UPDATE')
+  or (select count(*) from pg_attribute a where a.attrelid='auth.users'::regclass
+   and not a.attisdropped and (
+    (a.attname='id' and a.atttypid='uuid'::regtype and a.attnotnull)
+    or (a.attname='is_anonymous' and a.atttypid='boolean'::regtype and a.attnotnull)
+    or (a.attname='banned_until' and a.atttypid='timestamptz'::regtype)))<>3
+ then raise exception 'current Auth user metadata requires independent review'; end if;
 end $guard$;
 
 -- Separate rollout gate. This never changes any existing company's link setting.
@@ -77,6 +86,11 @@ begin
   or private.account_access_allowed() is not true then
   raise exception 'company-link context unavailable' using errcode='42501';
  end if;
+ -- Check the authoritative Auth row, not stale token/user_metadata claims.
+ -- User-first lock order also prevents ban/anonymous changes between check and write.
+ perform 1 from auth.users u where u.id=actor and u.is_anonymous is false
+  and (u.banned_until is null or u.banned_until<=clock_timestamp()) for share;
+ if not found then raise exception 'company-link Auth actor unavailable' using errcode='42501'; end if;
  -- Locks prevent a concurrent role/SID removal passing between check and write.
  perform 1 from auth.sessions s where s.id=p_session and s.user_id=actor
   and (s.not_after is null or s.not_after>clock_timestamp()) for share;
