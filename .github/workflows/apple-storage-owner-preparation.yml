@@ -1,0 +1,38 @@
+name: Apple storage owner preparation (unconnected)
+on:
+  pull_request:
+    paths:
+      - 'lib/features/auth/app_auth_storage_owner.dart'
+      - 'lib/features/auth/native_auth_session_storage.dart'
+      - 'tool/ios/auth_session_storage.swift'
+      - 'tool/ios/tests/auth_storage_flutter_typecheck_stub.swift'
+      - 'test/app_auth_storage_owner_test.dart'
+      - 'test/native_auth_session_storage_test.dart'
+      - '.github/workflows/apple-storage-owner-preparation.yml'
+permissions:
+  contents: read
+jobs:
+  storage-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: git diff --exit-code -- pubspec.lock
+      - run: dart analyze lib/features/auth/app_auth_storage_owner.dart lib/features/auth/native_auth_session_storage.dart test/app_auth_storage_owner_test.dart test/native_auth_session_storage_test.dart
+      - run: flutter test test/app_auth_storage_owner_test.dart test/native_auth_session_storage_test.dart --reporter expanded
+  native-typecheck:
+    runs-on: macos-15
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile native Foundation/Security preparation without executing Keychain
+        run: |
+          mkdir -p "$RUNNER_TEMP/auth-storage-typecheck"
+          swiftc -emit-module -module-name Flutter tool/ios/tests/auth_storage_flutter_typecheck_stub.swift -emit-module-path "$RUNNER_TEMP/auth-storage-typecheck/Flutter.swiftmodule"
+          swiftc -typecheck -I "$RUNNER_TEMP/auth-storage-typecheck" tool/ios/auth_session_storage.swift
