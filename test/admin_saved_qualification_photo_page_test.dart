@@ -120,7 +120,8 @@ void main(){
     expect(find.text('申請を送信'),findsOneWidget);
     visible.value=false;await tester.pumpAndSettle();
     expect(find.text('申請を送信'),findsNothing);
-    expect(find.text('状態が変わりました'),findsOneWidget);
+    expect(find.textContaining('2件から 2件'),findsNothing);
+    expect(find.text('Parent replaced'),findsOneWidget);
     expect(p.calls,['admin_saved_photo_capability']);
     expect(tester.takeException(),isNull);
   });

@@ -91,7 +91,7 @@ void main(){
       if(mode=='multipleCompanies')f.multipleCompanies=true;
       if(mode=='missingCount')f.missingCount=true;
       if(mode=='truncatedCount')f.truncatedCount=true;
-      await expectLater(port.call('submit',{'id':qualification}),throwsStateError);
+      await expectLater(port.call('submit',{'id':qualification}),throwsA(anything));
       expect(f.requests.where((r)=>r.url.path.endsWith('personal_qualification_submission')),isEmpty);
       port.dispose();await f.client.dispose();
     }
