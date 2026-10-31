@@ -1,4 +1,5 @@
 import '../notifications/attention_center_repository.dart';
+import '../notifications/attention_center_item.dart';
 
 class RequiredDocumentAttention {
   const RequiredDocumentAttention({
@@ -11,6 +12,8 @@ class RequiredDocumentAttention {
     this.generationIssueMessages = const [],
     this.unresolvedCountOverride,
     this.notificationPreviews = const [],
+    this.unknownDocumentNames = const [],
+    this.documentEvidenceUnavailable = false,
   });
 
   final int missingCount;
@@ -23,6 +26,9 @@ class RequiredDocumentAttention {
 
   final int? unresolvedCountOverride;
   final List<String> notificationPreviews;
+  final List<String> unknownDocumentNames;
+  final bool documentEvidenceUnavailable;
+  bool get hasUnknownDocumentEvidence => documentEvidenceUnavailable || unknownDocumentNames.isNotEmpty;
 
   int get unresolvedCount => unresolvedCountOverride ??
       (missingCount + paidLeaveApprovalCount + generationIssueCount);
@@ -45,6 +51,10 @@ class HomeAttentionRepository {
     final documents = pending.where((item) => item.source == 'required_document');
     final generation = pending.where((item) => item.source == 'generation_setting');
     return RequiredDocumentAttention(
+      unknownDocumentNames: data.snapshot.items.where((item) =>
+          item.source == 'required_document' && item.state == AttentionCenterState.unknown)
+          .map((item) => item.title).toList(),
+      documentEvidenceUnavailable: data.unavailableSources.contains('required_documents'),
       notificationPreviews: pending
           .map(
             (item) => item.body.trim().isEmpty
