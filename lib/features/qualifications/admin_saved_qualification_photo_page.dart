@@ -6,7 +6,12 @@ import 'admin_saved_qualification_photo_submission_repository.dart';
 
 /// Registered retained-photo changes only. No metadata or new-upload controls.
 class AdminSavedQualificationPhotoPage extends StatefulWidget {
-  const AdminSavedQualificationPhotoPage({super.key,required this.row,required this.current});
+  const AdminSavedQualificationPhotoPage({super.key,required this.row,required this.current,
+    this.repository,this.photoBuilder});
+  @visibleForTesting
+  final AdminSavedQualificationSubmissionRepository? repository;
+  @visibleForTesting
+  final Widget Function(BuildContext,String)? photoBuilder;
   final Map<String,dynamic> row;
   final bool Function() current;
   @override
@@ -30,11 +35,16 @@ class _AdminSavedQualificationPhotoPageState extends State<AdminSavedQualificati
   }
   Future<void> _open() async {
     try {
-      if (!SupabaseBackend.isInitialized || !widget.current()) throw StateError('資格の表示状態を確認してください。');
-      final target=AdminSavedQualificationTarget(widget.row);
-      final port=LiveAdminSavedQualificationPort(SupabaseBackend.client,target,current:widget.current);
-      _port=port;port.lease.addListener(_invalidate);
-      final repository=AdminSavedQualificationSubmissionRepository(port,target);
+      if (!widget.current() || (widget.repository==null && !SupabaseBackend.isInitialized)) {
+        throw StateError('資格の表示状態を確認してください。');
+      }
+      final target=widget.repository?.target ?? AdminSavedQualificationTarget(widget.row);
+      final port=widget.repository?.port ??
+        LiveAdminSavedQualificationPort(SupabaseBackend.client,target,current:widget.current);
+      if(port is LiveAdminSavedQualificationPort){
+        _port=port;port.lease.addListener(_invalidate);
+      }
+      final repository=widget.repository ?? AdminSavedQualificationSubmissionRepository(port,target);
       _repository=repository;
       final cap=await repository.capability();
       final journal=await repository.journal();
@@ -53,6 +63,7 @@ class _AdminSavedQualificationPhotoPageState extends State<AdminSavedQualificati
     if(mounted && !_retired)setState(()=>_journal=value);
   }
   Widget _photo(BuildContext context,String path) {
+    if(widget.photoBuilder!=null)return widget.photoBuilder!(context,path);
     final port=_port;
     if(port==null || _retired)return const Text('写真を再確認してください。');
     return FutureBuilder<String>(
@@ -67,8 +78,9 @@ class _AdminSavedQualificationPhotoPageState extends State<AdminSavedQualificati
       });
   }
   Future<void> _edit() async {
-    final repo=_repository,port=_port;
-    if(repo==null || port==null || _retired || _busy || _journal!=null || !_cap.available)return;
+    final repo=_repository;
+    if(repo==null || _retired || _busy || _journal!=null || !_cap.available)return;
+    final port=repo.port;
     final selected=await Navigator.of(context).push<AdminSavedQualificationPhotoDraft>(
       MaterialPageRoute(builder:(_)=>AdminSavedQualificationPhotoDraftPage(
         capability:_cap,companyId:repo.target.company,actorId:port.actor,targetId:repo.target.id,
