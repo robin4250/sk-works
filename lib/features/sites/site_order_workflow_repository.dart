@@ -100,6 +100,7 @@ abstract class SiteOrderWorkflowApi extends ChangeNotifier {
   Future<SiteOrderConsentObservation> inspectOutgoingConsent(SiteOrderConsentReference reference) async =>
       throw StateError('注文の結果を確認できません。');
   Future<bool> canMutateOutgoingReference(SiteOrderConsentReference reference) async => false;
+  Future<SiteOrderExecutionObservation> resolveOutgoingExecutionForReview(SiteOrderConsentReference reference, {required String jobId}) async => throw StateError('保存した注文の共有先を確認できません。');
   Future<SiteOrderExecutionObservation> inspectOutgoingExecution(SiteOrderConsentReference reference,
       {required String jobId, required String recipientCompanyId}) async =>
       throw StateError('原本の保存状態を確認できません。');
@@ -374,6 +375,18 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
       SiteOrderOriginalReview review) async {
     final raw=await _call(reference.command('original_bytes'),outgoing:true);
     return review.verifyBytes(raw);
+  }
+
+  @override
+  Future<SiteOrderExecutionObservation> resolveOutgoingExecutionForReview(
+      SiteOrderConsentReference reference, {required String jobId}) async {
+    await verify();
+    final result=_map(_map(await _call(reference.command('original_status'),outgoing:true))['result']);
+    final recipient=result['recipient_company_id'];
+    if(!SiteOrderPendingPrepare.validId(recipient))throw StateError('保存した共有先を照合できません。');
+    // First pin is from the immutable server purpose, never today's directory.
+    return SiteOrderExecutionObservation.decode(result,reference,_company!,jobId:jobId,
+      recipientCompanyId:recipient as String);
   }
 
   @override

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -49,6 +50,27 @@ class _SiteOrderOriginalReviewPageState
     widget.api.addListener(_scope);
     WidgetsBinding.instance.addObserver(this);
     _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant SiteOrderOriginalReviewPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.api != widget.api ||
+        jsonEncode(oldWidget.reference.toJson()) !=
+            jsonEncode(widget.reference.toJson()) ||
+        oldWidget.jobId != widget.jobId ||
+        oldWidget.recipientCompanyId != widget.recipientCompanyId) {
+      oldWidget.api.removeListener(_scope);
+      // Never adopt another purpose/API into an existing preview or dialog.
+      _generation++;
+      _invalid = true;
+      _review = null;
+      _status = null;
+      _bytes = null;
+      _agreed = false;
+      _allowed = false;
+      _dialogScope.value++;
+    }
   }
 
   @override

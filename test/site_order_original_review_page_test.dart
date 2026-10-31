@@ -9,6 +9,7 @@ import 'package:sk_works/features/sites/site_order_original_review.dart';
 import 'package:sk_works/features/sites/site_order_original_review_page.dart';
 import 'package:sk_works/features/sites/site_order_outgoing_consent.dart';
 import 'package:sk_works/features/sites/site_order_outgoing_execution.dart';
+import 'package:sk_works/features/sites/site_order_outgoing_recovery_page.dart';
 import 'package:sk_works/features/sites/site_order_outgoing_journal.dart';
 import 'package:sk_works/features/sites/site_order_workflow_repository.dart';
 
@@ -45,7 +46,9 @@ class Api extends SiteOrderWorkflowApi {
       retired = false,
       shared = false,
       unknown = false,
-      saved = true;
+      saved = true,
+      missingRate = false,
+      consentNotObserved = false;
   int shares = 0, registers = 0, reads = 0;
   @override
   bool get invalidated => retired;
@@ -99,7 +102,11 @@ class Api extends SiteOrderWorkflowApi {
     (e['body'] as Map)['transaction_id'] = id(2);
     (e['body'] as Map)['form_fields'] = {
       'rows': [
-        {'unit_price_yen': 100, 'unit': '人日', 'quantity': '1'},
+        {
+          'unit_price_yen': missingRate ? null : 100,
+          'unit': '人日',
+          'quantity': '1',
+        },
       ],
     };
     return SiteOrderOriginalReview.decode(
@@ -164,6 +171,68 @@ class Api extends SiteOrderWorkflowApi {
     shares++;
     if (unknown) throw const SiteOrderResultUnknown();
     shared = true;
+    return observation();
+  }
+
+  @override
+  Future<List<SiteOrderPendingPrepare>> pendingOutgoing(String siteId) async =>
+      [];
+  @override
+  Future<List<SiteOrderConsentReference>> pendingOutgoingConsents(
+    String siteId,
+  ) async => [reference];
+  @override
+  Future<SiteOrderConsentObservation> inspectOutgoingConsent(
+    SiteOrderConsentReference r,
+  ) async {
+    final value = raw();
+    return SiteOrderConsentObservation.decode(
+      consentNotObserved
+          ? {
+              'contract_version': 1,
+              'operation_state': 'decision_not_observed',
+              'retry_automatically': false,
+              'can_send': false,
+              'journal_clearable': false,
+              'read_only': true,
+              'same_session': sameSession,
+            }
+          : {
+              for (final key in [
+                'contract_version',
+                'preview_id',
+                'operation_id',
+                'job_id',
+                'company_id',
+                'site_id',
+                'document_id',
+                'local_document_id',
+                'trade_company_id',
+                'request_id',
+                'body_hash',
+                'render_hash',
+              ])
+                key: value[key],
+              'operation_state': 'decision_job_prepared',
+              'decision_request_id': id(9),
+              'original_registered': false,
+              'sent': false,
+              'can_send': false,
+              'journal_clearable': false,
+              'retry_automatically': false,
+            },
+      reference,
+      company,
+    );
+  }
+
+  @override
+  Future<SiteOrderExecutionObservation> resolveOutgoingExecutionForReview(
+    SiteOrderConsentReference r, {
+    required String jobId,
+  }) async {
+    reads++;
+    expect(jobId, id(10));
     return observation();
   }
 
@@ -279,6 +348,93 @@ void main() {
       expect(api.shares, 0);
     },
   );
+  testWidgets(
+    'recovery pins server purpose recipient and stays available OFF with new SID',
+    (tester) async {
+      final api = Api()
+        ..allowed = false
+        ..sameSession = false;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SiteOrderOutgoingRecoveryPage(api: api, siteId: id(1)),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('押印確認の保存結果を照会'));
+      await tester.pumpAndSettle();
+      expect(find.text('保存原本・共有状態を確認'), findsOneWidget);
+      expect(api.reads, 1);
+      expect(api.shares, 0);
+      expect(api.registers, 0);
+      expect(find.textContaining('共有はまだ'), findsNothing);
+    },
+  );
+  testWidgets('unobserved consent never opens original or starts a mutation', (
+    tester,
+  ) async {
+    final api = Api()..consentNotObserved = true;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SiteOrderOutgoingRecoveryPage(api: api, siteId: id(1)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('押印確認の保存結果を照会'));
+    await tester.pumpAndSettle();
+    expect(find.text('保存原本・共有状態を確認'), findsNothing);
+    expect(api.reads, 0);
+    expect(api.shares, 0);
+    expect(api.registers, 0);
+  });
+  for (final changed in ['api', 'reference', 'job', 'recipient']) {
+    testWidgets(
+      'reused page rejects changed $changed identity without adopting data',
+      (tester) async {
+        final api = Api();
+        await pump(tester, api);
+        final other = Api();
+        final nextRef = SiteOrderConsentReference(
+          prepare: reference.prepare,
+          previewId: id(97),
+          operationId: id(98),
+          decisionId: id(99),
+          bodyHash: 'b' * 64,
+        );
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SiteOrderOriginalReviewPage(
+              api: changed == 'api' ? other : api,
+              reference: changed == 'reference' ? nextRef : reference,
+              jobId: changed == 'job' ? id(90) : id(10),
+              recipientCompanyId: changed == 'recipient' ? id(91) : recipient,
+              previewBuilder: (_) => const Text('must not show old PDF'),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('must not show old PDF'), findsNothing);
+        expect(find.textContaining('会社・ログイン状態を確認'), findsOneWidget);
+        expect(find.text('共有内容を最終確認'), findsNothing);
+        expect(other.reads, 0);
+        expect(api.shares, 0);
+        expect(other.shares, 0);
+      },
+    );
+  }
+  testWidgets('missing rate stays visibly unset and cannot open final share', (
+    tester,
+  ) async {
+    final api = Api()..missingRate = true;
+    await pump(tester, api);
+    expect(find.textContaining('未設定'), findsOneWidget);
+    await tester.tap(find.byType(CheckboxListTile));
+    await tester.pump();
+    final button = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, '共有内容を最終確認'),
+    );
+    expect(button.onPressed, isNull);
+    expect(api.shares, 0);
+  });
   testWidgets('unknown original registration cannot be repeated', (
     tester,
   ) async {

@@ -166,6 +166,11 @@ void main() {
             jobId: data['job_id'],
             recipientCompanyId: data['recipient_company_id'],
           );
+          final resolved = await repository.resolveOutgoingExecutionForReview(
+            reference,
+            jobId: data['job_id'],
+          );
+          expect(resolved.recipientCompanyId, data['recipient_company_id']);
           final review = await repository.reviewOutgoingOriginal(
             reference,
             jobId: data['job_id'],
@@ -182,7 +187,7 @@ void main() {
           expect(observed.retryAutomatically, false);
           await expectLater(execute(), throwsStateError);
           expect(wire.mutations, 1);
-          expect(wire.statuses, 1);
+          expect(wire.statuses, 2);
         } finally {
           repository.dispose();
           await client.dispose();

@@ -16,6 +16,8 @@ recipient's unobserved approval. Company/session retirement and lifecycle hiding
 mask the PDF, body and an open confirmation dialog.
 
 Early source candidate. Widget tests, actual Native reader/SDK composition and
-latest CI are not yet verified. Recovery-list entrance, verified terminal local
+latest CI are not yet verified. Recovery-list entrance now resolves an observed decision job and pins its
+recipient from immutable server status, never current directory guesses.
+Verified terminal local
 journal clearing and new revision/reconsent editing remain unfinished. There is
 no production change, real invitation/send, feature enablement or iPhone proof.
