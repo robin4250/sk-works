@@ -1,0 +1,24 @@
+name: Attendance management bulk calendar
+on:
+  pull_request:
+    paths:
+      - 'lib/features/attendance/attendance_management_page.dart'
+      - 'test/attendance_management_bulk_calendar_test.dart'
+      - '.github/workflows/attendance-management-bulk-calendar.yml'
+permissions:
+  contents: read
+jobs:
+  bulk-calendar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.47.5'
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: git diff --exit-code -- pubspec.lock
+      - run: flutter analyze lib/features/attendance/attendance_management_page.dart test/attendance_management_bulk_calendar_test.dart
+      - run: flutter test test/attendance_management_bulk_calendar_test.dart test/attendance_management_report_navigation_test.dart test/attendance_management_error_message_test.dart test/attendance_management_page_contract_test.dart --reporter expanded
