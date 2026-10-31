@@ -204,10 +204,18 @@ Future<void> _pump(
           seen?.add(old);
           return Builder(
             builder: (context) => Scaffold(
-              body: FilledButton(
-                onPressed: () =>
-                    Navigator.pop(context, _input(old == null ? 10 : 60)),
-                child: const Text('記入して確定'),
+              body: Column(
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('入力を閉じる'),
+                  ),
+                  FilledButton(
+                    onPressed: () =>
+                        Navigator.pop(context, _input(old == null ? 10 : 60)),
+                    child: const Text('記入して確定'),
+                  ),
+                ],
               ),
             ),
           );
@@ -369,4 +377,29 @@ void main() {
       expect(api.confirms, 1);
     },
   );
+  testWidgets('retired input cancellation never enables old-ID preparation', (
+    tester,
+  ) async {
+    final api = _Api();
+    await _pump(tester, api);
+    await _prepare(tester);
+    final old = api.prepared!.pending;
+    await tester.tap(find.text('入力画面に戻る'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('準備を停止して入力へ'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('入力を閉じる'));
+    await tester.pumpAndSettle();
+    expect(find.text('押印前の内容を確認'), findsNothing);
+    expect(api.prepares, 1);
+    await tester.tap(find.text('入力画面に戻る'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('記入して確定'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('押印前の内容を確認'));
+    await tester.pumpAndSettle();
+    expect(api.prepares, 2);
+    expect(api.prepared!.pending.documentId, isNot(old.documentId));
+    expect(api.prepared!.pending.requestId, isNot(old.requestId));
+  });
 }

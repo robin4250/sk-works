@@ -79,7 +79,42 @@ class _Wire extends http.BaseClient {
   final expiry = DateTime.now().millisecondsSinceEpoch ~/ 1000 + 3600;
   String mode = 'valid';
   int mutations = 0;
-  int statuses = 0;
+  int statuses = 0, prepareMutations = 0, prepareStatuses = 0;
+  Map<String, dynamic> preparedReceipt({required bool observation}) {
+    final identity = data['identity'] as Map;
+    final preview = data['preview'] as Map;
+    final result = data['prepared'] is Map
+        ? Map<String, dynamic>.from(data['prepared'] as Map)
+        : <String, dynamic>{
+            'contract_version': 1,
+            'operation_state': 'prepared_review_required',
+            'operation_id': preview['operation_id'],
+            'company_id': data['company'],
+            'request_id': identity['request_id'],
+            'site_id': identity['site_id'],
+            'document_id': identity['document_id'],
+            'local_document_id': identity['local_id'],
+            'trade_company_id': identity['trade_id'],
+            'body_hash': preview['body_hash'],
+            'source_hash': preview['source_hash'],
+            'seal_hash': preview['seal_hash'],
+            'prepared_at': '2026-10-31T00:00:00Z',
+            'retired': false,
+            'journal_clearable': false,
+            'retry_automatically': false,
+            'may_prepare_again': false,
+            'can_send': false,
+          };
+    result.remove('same_session');
+    result.remove('requires_fresh_review');
+    if (observation) {
+      result['same_session'] = mode != 'different-prepare-session';
+      result['requires_fresh_review'] = true;
+    }
+    if (mode == 'advanced-prepare') result['operation_state'] = 'advanced';
+    return result;
+  }
+
   String token() {
     String part(Object value) =>
         base64Url.encode(utf8.encode(jsonEncode(value))).replaceAll('=', '');
@@ -107,6 +142,31 @@ class _Wire extends http.BaseClient {
       body = [
         {'company_id': data['company'], 'role': 'manager'},
       ];
+    } else if (request.url.path ==
+        '/rest/v1/rpc/standalone_trade_document_access') {
+      expect(
+        request.headers['Authorization'] ?? request.headers['authorization'],
+        'Bearer ${token()}',
+      );
+      final receipt = {
+        'contract_version': 1,
+        'context_contract_version': 1,
+        'actor_id': data['actor'],
+        'company_id': data['company'],
+        'session_id': data['session'],
+        'role': 'manager',
+        'master_enabled': true,
+        'can_generate': true,
+      };
+      if (mode == 'gate-off') {
+        status = 403;
+        body = {'message': 'master_feature_disabled'};
+      } else {
+        if (mode == 'gate-forged-company') receipt['company_id'] = _id(900);
+        if (mode == 'gate-forged-session') receipt['session_id'] = _id(901);
+        if (mode == 'gate-extra') receipt['untrusted'] = true;
+        body = receipt;
+      }
     } else {
       expect(request.url.path, '/functions/v1/site-order-workflow/outgoing');
       final command = jsonDecode((request as http.Request).body) as Map;
@@ -114,7 +174,32 @@ class _Wire extends http.BaseClient {
       for (final entry in identity.entries) {
         expect(command[entry.key], entry.value);
       }
-      if (command['action'] == 'preview_unsigned') {
+      if (command['action'] == 'prepare') {
+        prepareMutations++;
+        expect(command.length, 8);
+        expect(
+          command['body'],
+          data['input_body'] ?? (data['preview'] as Map)['body'],
+        );
+        final p = await SharedPreferences.getInstance();
+        expect(
+          p
+              .getKeys()
+              .where((k) => k.startsWith('sko.site_order.outgoing.v1.'))
+              .length,
+          1,
+        );
+        if (mode == 'prepare-unknown') {
+          status = 409;
+          body = {'error': 'result_unknown'};
+        } else {
+          body = {'result': preparedReceipt(observation: false)};
+        }
+      } else if (command['action'] == 'status') {
+        prepareStatuses++;
+        expect(command.length, 6);
+        body = {'result': preparedReceipt(observation: true)};
+      } else if (command['action'] == 'preview_unsigned') {
         expect(command.length, 6);
         body = {'result': data['preview']};
       } else {
@@ -306,7 +391,91 @@ void main() {
       await client.dispose();
     }
   });
+  Future<void> prepareAccept(Map<String, dynamic> data) async {
+    final wire = _Wire(data)..mode = 'prepare-unknown';
+    final (client, repository) = await _repository(wire);
+    final entry = _prepare(data);
+    try {
+      expect(await repository.canCreateOutgoing(), true);
+      final input = Map<String, dynamic>.from(
+        (data['input_body'] ?? (data['preview'] as Map)['body']) as Map,
+      );
+      // Synthetic case uses the same identity relationship as the real Native artifact.
+      input['transaction_id'] = entry.documentId;
+      wire.data['input_body'] = input;
+      await expectLater(
+        repository.prepareUnsignedOutgoing(
+          entry,
+          input,
+          data['connection_fingerprint'] as String? ?? 'a' * 64,
+        ),
+        throwsA(isA<SiteOrderResultUnknown>()),
+      );
+      expect(wire.prepareMutations, 1);
+      await expectLater(
+        repository.prepareUnsignedOutgoing(entry, input, 'a' * 64),
+        throwsStateError,
+      );
+      expect(wire.prepareMutations, 1);
+      expect(
+        (await repository.pendingOutgoing(entry.siteId)).single.toJson(),
+        entry.toJson(),
+      );
+      wire.mode = 'valid';
+      expect(
+        await repository.inspectUnsignedForReview(entry),
+        'prepared_review_required',
+      );
+      expect(wire.prepareMutations, 1);
+      expect(wire.prepareStatuses, 1);
+      wire.mode = 'different-prepare-session';
+      await expectLater(
+        repository.inspectUnsignedForReview(entry),
+        throwsA(isA<SiteOrderResultUnknown>()),
+      );
+      expect(wire.prepareMutations, 1);
+    } finally {
+      repository.dispose();
+      await client.dispose();
+    }
+  }
+
+  test(
+    'actual SDK journals prepare before uncertain write and resolves only same-SID status',
+    () => prepareAccept(_synthetic()),
+  );
+  for (final mode in [
+    'gate-off',
+    'gate-forged-company',
+    'gate-forged-session',
+    'gate-extra',
+  ]) {
+    test('creation gate $mode fails closed without a write', () async {
+      final wire = _Wire(_synthetic())..mode = mode;
+      final (client, repository) = await _repository(wire);
+      try {
+        expect(await repository.canCreateOutgoing(), false);
+        expect(wire.prepareMutations, 0);
+      } finally {
+        repository.dispose();
+        await client.dispose();
+      }
+    });
+  }
   final native = Platform.environment['SKO_CONSENT_RECEIPT_PATH'];
+  test(
+    'Native prepared status crosses actual SDK prepare quarantine and review gate',
+    () async {
+      await prepareAccept(
+        Map<String, dynamic>.from(
+          jsonDecode(await File(native!).readAsString()) as Map,
+        ),
+      );
+    },
+    skip: native == null
+        ? 'dedicated CI supplies Native receipt artifact'
+        : false,
+  );
   test(
     'Native ES256 SQL receipt crosses actual SDK and journal decoding',
     () async {

@@ -145,8 +145,9 @@ class _SiteOrderOutgoingRecoveryPageState
             : '押印確認の結果は未確認です。再実行せず記録を保持しています。',
       );
     } catch (_) {
-      if (mounted && !_retired)
+      if (mounted && !_retired) {
         setState(() => _message = '押印確認の結果を確認できません。再実行せず記録を保持しています。');
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }

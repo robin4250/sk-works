@@ -39,6 +39,7 @@ class _SiteOrderOutgoingComposePageState
   final _scopeChanges = ValueNotifier<int>(0);
   bool _busy = true, _retired = false, _allowed = false, _pending = false;
   bool _prepareStarted = false, _decisionStarted = false, _agreed = false;
+  bool _needsFreshInput = false;
   int _generation = 0;
   String? _message;
   SiteOrderReviewedInput? _input;
@@ -175,8 +176,18 @@ class _SiteOrderOutgoingComposePageState
       if (result.pending.siteId != widget.siteId) {
         throw StateError('現場が変わりました。');
       }
+      final previous = _input;
+      if (_needsFreshInput &&
+          previous != null &&
+          (result.pending.documentId == previous.pending.documentId ||
+              result.pending.localId == previous.pending.localId ||
+              result.pending.requestId == previous.pending.requestId)) {
+        throw StateError('新しい入力確認が必要です。');
+      }
+
       setState(() {
         _input = result;
+        _needsFreshInput = false;
         _message = null;
         _preview = null;
         _pdf = null;
@@ -194,7 +205,12 @@ class _SiteOrderOutgoingComposePageState
   }
 
   Future<void> _prepare() async {
-    if (_busy || _retired || _input == null || _prepareStarted || !_allowed) {
+    if (_busy ||
+        _retired ||
+        _input == null ||
+        _prepareStarted ||
+        _needsFreshInput ||
+        !_allowed) {
       return;
     }
     final input = _input!;
@@ -291,6 +307,7 @@ class _SiteOrderOutgoingComposePageState
     }
     setState(() {
       _prepareStarted = false;
+      _needsFreshInput = true;
       _preview = null;
       _pdf = null;
       _agreed = false;
@@ -563,7 +580,10 @@ class _SiteOrderOutgoingComposePageState
                         onPressed: _busy ? null : _openInput,
                         child: Text(_input == null ? '注文書を入力' : '入力画面に戻る'),
                       ),
-                    if (_input != null && !_prepareStarted && _allowed)
+                    if (_input != null &&
+                        !_prepareStarted &&
+                        !_needsFreshInput &&
+                        _allowed)
                       FilledButton(
                         onPressed: _busy ? null : _prepare,
                         child: const Text('押印前の内容を確認'),

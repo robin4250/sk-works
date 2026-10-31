@@ -100,8 +100,9 @@ class SiteOrderOutgoingConsentPreview {
   /// The server seal is checked independently and never accepted from input.
   bool matchesPreparedBody(Map<String, dynamic> input) {
     if (input.containsKey('company_seal_snapshot') ||
-        input.containsKey('company_seal_enabled'))
+        input.containsKey('company_seal_enabled')) {
       return false;
+    }
     Object? ordered(Object? value) {
       if (value is Map) {
         final keys = value.keys.cast<String>().toList()..sort();
