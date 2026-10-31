@@ -117,7 +117,9 @@ void main() {
           for (
             var stage = 0;
             stage < 100 &&
-                find.byType(FinancialPreviewChrome).evaluate().isEmpty;
+                (find.byType(FinancialPreviewChrome).evaluate().isEmpty ||
+                    (!payment &&
+                        find.byType(InteractiveViewer).evaluate().isEmpty));
             stage++
           ) {
             await tester.runAsync(
@@ -126,6 +128,7 @@ void main() {
             await tester.pump();
           }
           expect(find.byType(FinancialPreviewChrome), findsOneWidget);
+          if (!payment) expect(find.byType(InteractiveViewer), findsOneWidget);
           expect(find.byType(Scaffold), findsOneWidget);
           final viewport = tester.getSize(
             find.byKey(const ValueKey('financial_preview_document_viewport')),
@@ -157,8 +160,16 @@ void main() {
             expect(String.fromCharCodes(bytes.take(4)), '%PDF');
             // A replaced document must invalidate the already handed native
             // callback, even when the current actor remains the same.
+            final originalState = tester.state(
+              find.byType(PaymentCertificatePreviewPage),
+            );
             await tester.pumpWidget(
               MaterialApp(
+                builder: (context, child) => MediaQuery(
+                  data: MediaQuery.of(context)
+                      .copyWith(textScaler: TextScaler.linear(narrow ? 2 : 1)),
+                  child: child!,
+                ),
                 home: PaymentCertificatePreviewPage(
                   record: PaymentCertificateRecord(
                     id: 'replacement',
@@ -173,6 +184,13 @@ void main() {
                   ),
                 ),
               ),
+            );
+            expect(
+              identical(
+                tester.state(find.byType(PaymentCertificatePreviewPage)),
+                originalState,
+              ),
+              isTrue,
             );
             await expectLater(
               printer.layout!(PdfPageFormat.a4),
