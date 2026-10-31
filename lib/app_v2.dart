@@ -197,6 +197,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     displayName: 'ユーザー',
   );
   int _tutorialRefreshToken = 0;
+  int _homeDocumentAttentionGeneration = 0;
   String? _tutorialCompanyId;
   String? _tutorialUserId;
   int _selectedIndex = 0;
@@ -335,6 +336,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // The gateway owns the registered region's calendar, including day changes.
     _loadWeatherLocation();
     _loadAttendanceUpdateBadge();
+    _refreshRequiredDocumentScope();
+  }
+
+  Future<void> _refreshRequiredDocumentScope() async {
+    await _loadIdentity();
+    await _loadRequiredDocumentAttention();
   }
 
   Future<void> _loadHomeData() async {
@@ -344,12 +351,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       _loadUsage(),
       _loadHomeLayout(),
       _loadHomeAppearance(),
-      _loadRequiredDocumentAttention(),
       _loadHomeAttendanceStatus(),
       _loadPayrollAdjustmentAccess(),
       _syncLanguage(),
     ]);
-    await Future.wait([_loadWeatherLocation(), _loadAttendanceUpdateBadge()]);
+    await Future.wait([_loadRequiredDocumentAttention(), _loadWeatherLocation(), _loadAttendanceUpdateBadge()]);
   }
 
   Future<void> _loadWeatherLocation() async {
@@ -522,20 +528,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     try {
       final identity = await repository.loadIdentity();
       if (!mounted) return;
-      String? companyId;
+      final companyId = identity.companyId;
       final userId = SupabaseBackend.isInitialized
           ? SupabaseBackend.client.auth.currentUser?.id : null;
-      if (userId != null) {
-        try {
-          final rows = await SupabaseBackend.client.from('company_members')
-              .select('company_id').eq('user_id', userId).limit(1);
-          if (rows.isNotEmpty) {
-            companyId = rows.first['company_id']?.toString();
-          }
-        } catch (_) {
-          // Optional guide scope must never prevent authoritative identity loading.
-        }
-      }
       if (!mounted) return;
       setState(() {
         _identity = identity;
@@ -543,16 +538,33 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         _tutorialCompanyId = companyId;
       });
     } catch (_) {
-      // Keep the safest default if identity loading fails.
+      if (!mounted) return;
+      setState(() {
+        _tutorialCompanyId = null; _tutorialUserId = null;
+        _requiredDocumentAttention = const RequiredDocumentAttention(missingCount: 0,
+          missingNames: [], needsLicense: false, needsQualification: false, documentEvidenceUnavailable: true);
+        _identity = const HomeIdentity(role: 'viewer', companyName: 'SKO', displayName: 'ユーザー');
+      });
     }
   }
 
   Future<void> _loadRequiredDocumentAttention() async {
+    final request = ++_homeDocumentAttentionGeneration;
     final repository = _homeAttentionRepository;
-    if (repository == null) return;
+    final company = _tutorialCompanyId;
+    final actor = _tutorialUserId;
+    if (repository == null || company == null || actor == null) {
+      if (mounted && repository != null) {
+        setState(() => _requiredDocumentAttention = const RequiredDocumentAttention(
+          missingCount: 0, missingNames: [], needsLicense: false, needsQualification: false,
+          documentEvidenceUnavailable: true));
+      }
+      return;
+    }
     try {
-      final value = await repository.loadRequiredDocumentAttention();
-      if (!mounted) return;
+      final value = await repository.loadRequiredDocumentAttention(companyId: company,
+        currentCompany: () => _tutorialCompanyId);
+      if (!mounted || request != _homeDocumentAttentionGeneration || company != _tutorialCompanyId || actor != _tutorialUserId) return;
       setState(() {
         _requiredDocumentAttention = value;
         _tutorialRefreshToken++;
@@ -1339,7 +1351,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           onOpenRadar: _openWeatherRadar, onOpenAttribution: _openWeatherReference);
         break;
       case 'notifications':
-        page = const NotificationsPage();
+        page = NotificationsPage(companyId: _tutorialCompanyId, currentCompany: () => _tutorialCompanyId);
         break;
       case 'profile':
         page = ProfilePage(

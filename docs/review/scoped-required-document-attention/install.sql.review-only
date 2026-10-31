@@ -1,0 +1,173 @@
+-- REVIEW ONLY: production HOLD. Creates a new scoped read-only endpoint; legacy RPC is untouched.
+begin;
+do $guard$
+declare expected jsonb; actual jsonb; helper regprocedure;
+begin
+ if to_regprocedure('public.current_user_required_document_attention_for_company(uuid)') is not null
+   or to_regprocedure('private.current_user_required_document_attention_for_company(uuid)') is not null then
+  raise exception 'Scoped attention endpoint already exists: inspect receipt' using errcode='55000';
+ end if;
+ if md5(pg_get_functiondef('public.current_user_required_document_attention()'::regprocedure))
+  is distinct from '14b46befef97443d365a3c2642fe649b' then
+  raise exception 'Legacy attention contract changed' using errcode='55000';
+ end if;
+ for expected in select value from jsonb_array_elements($contracts$[{"signature":"auth.jwt()","body_md5":"2db09c3fc855ba90e71d3ae28cfadae3","owner":"supabase_auth_admin","security_definer":false,"config":null,"acl":[{"grantee":"PUBLIC","grantor":"supabase_auth_admin","privilege":"EXECUTE","grant_option":false},{"grantee":"postgres","grantor":"supabase_auth_admin","privilege":"EXECUTE","grant_option":false},{"grantee":"supabase_auth_admin","grantor":"supabase_auth_admin","privilege":"EXECUTE","grant_option":false},{"grantee":"dashboard_user","grantor":"supabase_auth_admin","privilege":"EXECUTE","grant_option":false}]},{"signature":"auth.uid()","body_md5":"cdef18c69c4f4cbbced2eaf81e628b49","owner":"supabase_auth_admin","security_definer":false,"config":null,"acl":[{"grantee":"PUBLIC","grantor":"supabase_auth_admin","privilege":"EXECUTE","grant_option":false},{"grantee":"supabase_auth_admin","grantor":"supabase_auth_admin","privilege":"EXECUTE","grant_option":false},{"grantee":"dashboard_user","grantor":"supabase_auth_admin","privilege":"EXECUTE","grant_option":false}]},{"signature":"private.account_access_allowed()","body_md5":"aeca25db212c043c472334026bd98724","owner":"postgres","security_definer":true,"config":["search_path=\"\""],"acl":[{"grantee":"postgres","grantor":"postgres","privilege":"EXECUTE","grant_option":false},{"grantee":"anon","grantor":"postgres","privilege":"EXECUTE","grant_option":false},{"grantee":"authenticated","grantor":"postgres","privilege":"EXECUTE","grant_option":false},{"grantee":"service_role","grantor":"postgres","privilege":"EXECUTE","grant_option":false}]},{"signature":"private.account_deletion_barrier_key(uuid)","body_md5":"84db8dfee728dd9187f3c05b29e29e1a","owner":"postgres","security_definer":false,"config":["search_path=\"\""],"acl":[{"grantee":"postgres","grantor":"postgres","privilege":"EXECUTE","grant_option":false},{"grantee":"authenticated","grantor":"postgres","privilege":"EXECUTE","grant_option":false},{"grantee":"service_role","grantor":"postgres","privilege":"EXECUTE","grant_option":false}]},{"signature":"private.require_reauthentication_session()","body_md5":"b5c8e2f259a99b3c69694ad0640080e5","owner":"postgres","security_definer":true,"config":["search_path=\"\""],"acl":[{"grantee":"postgres","grantor":"postgres","privilege":"EXECUTE","grant_option":false}]}]$contracts$::jsonb) loop
+  helper:=to_regprocedure(expected->>'signature');
+  if helper is null then raise exception 'Attention authentication dependency missing' using errcode='55000'; end if;
+  select jsonb_build_object('body_md5',md5(p.prosrc),'owner',pg_get_userbyid(p.proowner),
+    'security_definer',p.prosecdef,'config',p.proconfig,
+    'acl',coalesce((select jsonb_agg(jsonb_build_object(
+      'grantee',case when a.grantee=0 then 'PUBLIC' else pg_get_userbyid(a.grantee) end,
+      'grantor',pg_get_userbyid(a.grantor),'privilege',a.privilege_type,'grant_option',a.is_grantable))
+      from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a),'[]'::jsonb))
+  into actual from pg_proc p where p.oid=helper;
+  if (actual-'acl') is distinct from (expected-array['signature','acl'])
+    or not ((actual->'acl') @> (expected->'acl') and (actual->'acl') <@ (expected->'acl'))
+    or jsonb_array_length(actual->'acl')<>jsonb_array_length(expected->'acl') then
+   raise exception 'Attention authentication dependency changed' using errcode='55000';
+  end if;
+ end loop;
+ if not has_schema_privilege('authenticated','private','USAGE') then
+  raise exception 'Existing private usage required, do not broaden schema grants' using errcode='55000';
+ end if;
+end $guard$;
+create temporary table sko_attention_scoped_before on commit drop as
+ select p.oid,to_jsonb(p) as attributes from pg_proc p where p.oid in (
+ 'public.current_user_required_document_attention()'::regprocedure,
+ 'private.require_reauthentication_session()'::regprocedure,
+ 'private.account_access_allowed()'::regprocedure,
+ 'private.account_deletion_barrier_key(uuid)'::regprocedure,'auth.uid()'::regprocedure,'auth.jwt()'::regprocedure);
+CREATE FUNCTION private.current_user_required_document_attention_for_company(p_company_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare
+  v_user_id uuid := auth.uid();
+  v_session uuid;
+  members integer;
+  workers integer;
+  v_company_id uuid;
+  v_worker_id uuid;
+  v_missing_names text[];
+  v_missing_count integer;
+  v_unknown_count integer;
+  v_unknown_names text[];
+begin
+  v_session := private.require_reauthentication_session();
+  if p_company_id is null then raise exception 'Company required' using errcode='22023'; end if;
+  perform 1 from public.company_members m
+    where m.company_id=p_company_id and m.user_id=v_user_id for share;
+  select count(*) into members from public.company_members m
+    where m.company_id=p_company_id and m.user_id=v_user_id;
+  if members<>1 then raise exception 'Company membership is not unique or authorized' using errcode='42501'; end if;
+  perform 1 from public.workers w
+    where w.company_id=p_company_id and w.user_id=v_user_id and w.status::text='active' for share;
+  select count(*),min(w.id::text)::uuid into workers,v_worker_id from public.workers w
+    where w.company_id=p_company_id and w.user_id=v_user_id and w.status::text='active';
+  if workers<>1 then raise exception 'Active worker is not unique or authorized' using errcode='42501'; end if;
+  v_company_id:=p_company_id;
+  with evidence as (
+    select dr.id,dr.name,dr.sort_order,
+      case
+        when nullif(btrim(dr.name),'') is null then 'unknown'
+        when dr.name = '銀行口座情報' then case
+          when exists (select 1 from public.worker_private_bank_accounts ba
+            where ba.worker_id=v_worker_id and ba.company_id=v_company_id and ba.updated_at is not null)
+          then 'saved' when exists (select 1 from public.worker_private_bank_accounts ba
+            where ba.worker_id=v_worker_id and ba.company_id=v_company_id) then 'unknown' else 'missing' end
+        when statuses.row_count > 1 then 'unknown'
+        when statuses.row_count = 0 then 'missing'
+        when statuses.item->>'status' in ('not_submitted','missing','expired') then 'missing'
+        when statuses.item->>'status' not in ('submitted','verified')
+          or statuses.item->>'status' is null then 'unknown'
+        when photo.valid is null then 'unknown'
+        when not photo.valid then 'missing'
+        when dr.expiry_required is true and nullif(statuses.item->>'expires_at','') is null then 'missing'
+        when (statuses.item->>'expires_at')::date < (current_timestamp at time zone 'Asia/Tokyo')::date then 'missing'
+        else 'saved'
+      end as state
+    from public.document_requirements dr
+    left join lateral (
+      select count(*) row_count,(jsonb_agg(to_jsonb(wds)))->0 item
+      from public.worker_document_statuses wds
+      where wds.requirement_id=dr.id and wds.worker_id=v_worker_id and wds.company_id=v_company_id
+    ) statuses on true
+    left join lateral (
+      select case
+        when statuses.item->'attachment_paths' is null
+          or statuses.item->'attachment_paths'='null'::jsonb
+          or statuses.item->'attachment_paths'='[]'::jsonb
+        then nullif(btrim(statuses.item->>'attachment_path'),'') is not null
+        when jsonb_typeof(statuses.item->'attachment_paths')='array' then case
+          when exists (select 1 from jsonb_array_elements(statuses.item->'attachment_paths') photo
+            where jsonb_typeof(photo)<>'string' or nullif(btrim(photo #>> '{}'),'') is null)
+            or (select count(*)<>count(distinct photo #>> '{}')
+              from jsonb_array_elements(statuses.item->'attachment_paths') photo)
+          then null else true end
+        else null
+      end valid
+    ) photo on true
+    where dr.company_id=v_company_id and dr.is_active and dr.is_required
+      and not exists (select 1 from private.worker_document_exemptions e
+        where e.company_id=v_company_id and e.worker_id=v_worker_id and e.requirement_id=dr.id and e.active)
+  )
+  select count(*) filter(where state='missing')::integer,
+    coalesce(array_agg(name order by sort_order,name) filter(where state='missing'),array[]::text[]),
+    count(*) filter(where state='unknown')::integer,
+    coalesce(array_agg(name order by sort_order,name) filter(where state='unknown'),array[]::text[])
+  into v_missing_count,v_missing_names,v_unknown_count,v_unknown_names
+  from evidence;
+
+  if (select count(*) from public.company_members m
+      where m.company_id=v_company_id and m.user_id=v_user_id)<>1
+    or (select count(*) from public.workers w where w.company_id=v_company_id
+      and w.user_id=v_user_id and w.status::text='active')<>1
+    or private.require_reauthentication_session() is distinct from v_session then
+    raise exception 'Document scope changed' using errcode='40001';
+  end if;
+  return jsonb_build_object(
+    'capability_version',1,'company_id',v_company_id,'worker_id',v_worker_id,
+    'actor_id',v_user_id,'session_id',v_session,
+    'unknown_count',coalesce(v_unknown_count,0),
+    'unknown_names',to_jsonb(coalesce(v_unknown_names,array[]::text[])),
+    'missing_count', coalesce(v_missing_count, 0),
+    'missing_names', to_jsonb(coalesce(v_missing_names, array[]::text[])),
+    'needs_license', exists (
+      select 1
+      from unnest(coalesce(v_missing_names, array[]::text[])) n
+      where n like '%免許%'
+    ),
+    'needs_qualification', exists (
+      select 1
+      from unnest(coalesce(v_missing_names, array[]::text[])) n
+      where n like '%資格%'
+    )
+  );
+end;
+$function$
+;
+revoke all on function private.current_user_required_document_attention_for_company(uuid) from public,anon,authenticated,service_role;
+grant execute on function private.current_user_required_document_attention_for_company(uuid) to authenticated;
+create function public.current_user_required_document_attention_for_company(p_company_id uuid)
+returns jsonb language sql security invoker set search_path='' as $wrapper$
+ select private.current_user_required_document_attention_for_company(p_company_id)
+$wrapper$;
+revoke all on function public.current_user_required_document_attention_for_company(uuid) from public,anon,authenticated,service_role;
+grant execute on function public.current_user_required_document_attention_for_company(uuid) to authenticated;
+do $post$
+begin
+ if exists(select 1 from pg_temp.sko_attention_scoped_before b left join pg_proc p on p.oid=b.oid
+   where to_jsonb(p) is distinct from b.attributes) then
+  raise exception 'Existing attention/authentication objects changed' using errcode='55000';
+ end if;
+ if exists(select 1 from pg_proc p cross join lateral aclexplode(p.proacl) a
+   where p.oid in ('public.current_user_required_document_attention_for_company(uuid)'::regprocedure,
+      'private.current_user_required_document_attention_for_company(uuid)'::regprocedure)
+   and (a.is_grantable or a.privilege_type<>'EXECUTE' or a.grantee not in (
+      'postgres'::regrole,'authenticated'::regrole) or a.grantor<>'postgres'::regrole)) then
+  raise exception 'Scoped attention ACL changed' using errcode='55000';
+ end if;
+end $post$;
+commit;

@@ -1,0 +1,143 @@
+[
+  {
+    "signature": "auth.jwt()",
+    "body_md5": "2db09c3fc855ba90e71d3ae28cfadae3",
+    "owner": "supabase_auth_admin",
+    "security_definer": false,
+    "config": null,
+    "acl": [
+      {
+        "grantee": "PUBLIC",
+        "grantor": "supabase_auth_admin",
+        "privilege": "EXECUTE",
+        "grant_option": false
+      },
+      {
+        "grantee": "postgres",
+        "grantor": "supabase_auth_admin",
+        "privilege": "EXECUTE",
+        "grant_option": false
+      },
+      {
+        "grantee": "supabase_auth_admin",
+        "grantor": "supabase_auth_admin",
+        "privilege": "EXECUTE",
+        "grant_option": false
+      },
+      {
+        "grantee": "dashboard_user",
+        "grantor": "supabase_auth_admin",
+        "privilege": "EXECUTE",
+        "grant_option": false
+      }
+    ]
+  },
+  {
+    "signature": "auth.uid()",
+    "body_md5": "cdef18c69c4f4cbbced2eaf81e628b49",
+    "owner": "supabase_auth_admin",
+    "security_definer": false,
+    "config": null,
+    "acl": [
+      {
+        "grantee": "PUBLIC",
+        "grantor": "supabase_auth_admin",
+        "privilege": "EXECUTE",
+        "grant_option": false
+      },
+      {
+        "grantee": "supabase_auth_admin",
+        "grantor": "supabase_auth_admin",
+        "privilege": "EXECUTE",
+        "grant_option": false
+      },
+      {
+        "grantee": "dashboard_user",
+        "grantor": "supabase_auth_admin",
+        "privilege": "EXECUTE",
+        "grant_option": false
+      }
+    ]
+  },
+  {
+    "signature": "private.account_access_allowed()",
+    "body_md5": "aeca25db212c043c472334026bd98724",
+    "owner": "postgres",
+    "security_definer": true,
+    "config": [
+      "search_path=\"\""
+    ],
+    "acl": [
+      {
+        "grantee": "postgres",
+        "grantor": "postgres",
+        "privilege": "EXECUTE",
+        "grant_option": false
+      },
+      {
+        "grantee": "anon",
+        "grantor": "postgres",
+        "privilege": "EXECUTE",
+        "grant_option": false
+      },
+      {
+        "grantee": "authenticated",
+        "grantor": "postgres",
+        "privilege": "EXECUTE",
+        "grant_option": false
+      },
+      {
+        "grantee": "service_role",
+        "grantor": "postgres",
+        "privilege": "EXECUTE",
+        "grant_option": false
+      }
+    ]
+  },
+  {
+    "signature": "private.account_deletion_barrier_key(uuid)",
+    "body_md5": "84db8dfee728dd9187f3c05b29e29e1a",
+    "owner": "postgres",
+    "security_definer": false,
+    "config": [
+      "search_path=\"\""
+    ],
+    "acl": [
+      {
+        "grantee": "postgres",
+        "grantor": "postgres",
+        "privilege": "EXECUTE",
+        "grant_option": false
+      },
+      {
+        "grantee": "authenticated",
+        "grantor": "postgres",
+        "privilege": "EXECUTE",
+        "grant_option": false
+      },
+      {
+        "grantee": "service_role",
+        "grantor": "postgres",
+        "privilege": "EXECUTE",
+        "grant_option": false
+      }
+    ]
+  },
+  {
+    "signature": "private.require_reauthentication_session()",
+    "body_md5": "b5c8e2f259a99b3c69694ad0640080e5",
+    "owner": "postgres",
+    "security_definer": true,
+    "config": [
+      "search_path=\"\""
+    ],
+    "acl": [
+      {
+        "grantee": "postgres",
+        "grantor": "postgres",
+        "privilege": "EXECUTE",
+        "grant_option": false
+      }
+    ]
+  }
+]
