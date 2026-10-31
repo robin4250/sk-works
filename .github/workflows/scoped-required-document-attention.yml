@@ -12,6 +12,9 @@ on:
       - 'lib/app_v2.dart'
       - 'test/scoped_required_document_attention_test.dart'
       - 'test/tutorial_bank_account_evidence_test.dart'
+      - 'test/canonical_document_guide_receipt_test.dart'
+      - 'test/required_document_evidence_test.dart'
+      - 'lib/features/notifications/required_document_evidence.dart'
       - '.github/workflows/scoped-required-document-attention.yml'
 permissions:
   contents: read
@@ -46,6 +49,7 @@ jobs:
           --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
     env:
       SKO_SCOPED_ATTENTION_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_scoped_attention_fixture
+      SKO_WRITE_CANONICAL_FIXTURE: '1'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -57,7 +61,14 @@ jobs:
       - run: |
           ln -s "$PWD/tool/security/fixture_dependencies/node_modules" docs/review/scoped-required-document-attention/node_modules
           node docs/review/scoped-required-document-attention/verify.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: canonical-document-receipts-${{ github.run_id }}-${{ github.run_attempt }}
+          path: docs/review/scoped-required-document-attention/canonical-receipts.generated.json
+          if-no-files-found: error
+          retention-days: 3
   scoped-sdk-and-ui:
+    needs: actual-helpers-native
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -69,6 +80,12 @@ jobs:
           flutter-version: '3.47.5'
           channel: stable
           cache: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: canonical-document-receipts-${{ github.run_id }}-${{ github.run_attempt }}
+          path: tool/security/canonical-evidence-fixtures
       - run: flutter pub get --enforce-lockfile
-      - run: dart analyze lib/features/notifications/scoped_required_document_attention_repository.dart lib/features/notifications/attention_center_repository.dart lib/features/notifications/notifications_page.dart lib/features/home/home_membership_repository.dart lib/features/home/home_attention_repository.dart lib/features/tutorial/tutorial_evidence_repository.dart lib/features/tutorial/tutorial_home_card.dart lib/features/tutorial/tutorial_page.dart lib/app_v2.dart test/scoped_required_document_attention_test.dart
-      - run: flutter test test/scoped_required_document_attention_test.dart test/attention_center_mapping_test.dart test/required_document_evidence_notice_test.dart test/tutorial_workspace_ui_test.dart test/tutorial_bank_account_evidence_test.dart test/tutorial_evidence_repository_test.dart test/home_identity_role_preservation_contract_test.dart
+      - run: dart analyze lib/features/notifications/scoped_required_document_attention_repository.dart lib/features/notifications/attention_center_repository.dart lib/features/notifications/notifications_page.dart lib/features/home/home_membership_repository.dart lib/features/home/home_attention_repository.dart lib/features/tutorial/tutorial_evidence_repository.dart lib/features/tutorial/tutorial_home_card.dart lib/features/tutorial/tutorial_page.dart lib/app_v2.dart lib/features/notifications/required_document_evidence.dart test/required_document_evidence_test.dart test/canonical_document_guide_receipt_test.dart test/scoped_required_document_attention_test.dart
+      - run: flutter test test/scoped_required_document_attention_test.dart test/attention_center_mapping_test.dart test/required_document_evidence_notice_test.dart test/tutorial_workspace_ui_test.dart test/tutorial_bank_account_evidence_test.dart test/tutorial_evidence_repository_test.dart test/home_identity_role_preservation_contract_test.dart test/required_document_evidence_test.dart test/canonical_document_guide_receipt_test.dart
+        env:
+          SKO_CANONICAL_RECEIPTS_FIXTURE: tool/security/canonical-evidence-fixtures/canonical-receipts.generated.json

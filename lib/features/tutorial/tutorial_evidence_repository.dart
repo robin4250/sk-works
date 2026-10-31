@@ -3,8 +3,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../data/supabase_backend.dart';
 import '../people/worker_document_exemption.dart';
 import '../people/worker_document_photos.dart';
-import '../auth/app_auth_mutation_gateway.dart';
 import '../shared/trade_document_form_session.dart';
+import '../notifications/required_document_evidence.dart';
+import '../notifications/scoped_required_document_attention_repository.dart';
 
 enum TutorialEvidenceState { unknown, missing, saved, notApplicable }
 
@@ -366,6 +367,24 @@ class TutorialEvidenceRepository {
     Map<String, dynamic>? docs, {
     required DateTime today,
   }) {
+    final canonical = docs?['canonical_evidence'];
+    if (canonical is Map) {
+      final evidence = RequiredDocumentEvidenceSnapshot.fromJson(canonical);
+      if (evidence.items.isEmpty) {
+        return const [TutorialEvidenceCheckpoint('documents', TutorialEvidenceState.notApplicable, label: '必須書類')];
+      }
+      return [for (final item in evidence.items) TutorialEvidenceCheckpoint(
+        'document:${item.id}', switch (item.state) {
+          RequiredDocumentEvidenceState.saved => TutorialEvidenceState.saved,
+          RequiredDocumentEvidenceState.missing => TutorialEvidenceState.missing,
+          RequiredDocumentEvidenceState.unknown => TutorialEvidenceState.unknown,
+          RequiredDocumentEvidenceState.exempt => TutorialEvidenceState.notApplicable,
+        },
+        label: item.state == RequiredDocumentEvidenceState.exempt
+            ? '${evidence.labelFor(item)}（提出免除）' : evidence.labelFor(item),
+        evidenceKey: item.evidenceKey, statusLabel: item.statusLabel.isEmpty ? null : item.statusLabel,
+      )];
+    }
     const unknown = [TutorialEvidenceCheckpoint('documents', TutorialEvidenceState.unknown, label: '必須書類')];
     if (docs == null || docs['worker_id'] == null ||
         docs['worker_id'].toString().isEmpty ||
@@ -487,6 +506,7 @@ class _SupabaseTutorialEvidenceSource implements TutorialEvidenceSource, Tutoria
   bool _legacyCompanyRpcAllowed = false;
 
   Future<_SupabaseTutorialEvidenceSource> capture() async {
+    if (client.auth.currentUser?.id != userId) { throw StateError('ログイン状態が変わりました。'); }
     final scoped = _SupabaseTutorialEvidenceSource(client, userId, companyId: companyId);
     scoped._capturedToken = client.auth.currentSession?.accessToken;
     scoped._lease = TradeDocumentFormSession(client);
@@ -621,90 +641,9 @@ class _SupabaseTutorialEvidenceSource implements TutorialEvidenceSource, Tutoria
 
   @override
   Future<Map<String, dynamic>?> documents(String companyId) async {
-    final session = client.auth.currentSession;
-    final gateway = AppAuthMutationGateway.forClient(client);
-    final epoch = await gateway.externalFlowAdmission();
-    void check() {
-      _lease!.requireScope();
-      if (session == null || session.user.id != userId || epoch == null ||
-          !gateway.isExternalFlowCurrent(epoch) || session.isExpired ||
-          client.auth.currentSession?.accessToken != session.accessToken) {
-        throw StateError('Document evidence session changed');
-      }
-    }
-    check();
-    final headers = {'Authorization': 'Bearer ${session!.accessToken}'};
     _lease!.requireScope();
-    final worker = await client.from('workers').select('id')
-        .eq('user_id', userId).eq('company_id', companyId)
-        .eq('status', 'active').maybeSingle().setHeader('Authorization', headers['Authorization']!);
-    check();
-    if (worker == null) { return null; }
-    final workerId = worker['id'];
+    final receipt = await ScopedRequiredDocumentAttentionRepository(client).load(companyId: companyId);
     _lease!.requireScope();
-    final requirements = await client.from('document_requirements')
-        .select('id,name,is_active,is_required,expiry_required')
-        .eq('company_id', companyId).eq('is_active', true).eq('is_required', true)
-        .setHeader('Authorization', headers['Authorization']!);
-    check();
-    Future<List<Map<String, dynamic>>> readStatuses(bool multiplePhotos) async {
-      check();
-      _lease!.requireScope();
-      final rows = await client.from('worker_document_statuses')
-          .select('id,requirement_id,worker_id,status,expires_at,attachment_path'
-              '${multiplePhotos ? ',attachment_paths' : ''}')
-          .eq('company_id', companyId).eq('worker_id', workerId)
-          .setHeader('Authorization', headers['Authorization']!);
-      check();
-      return rows;
-    }
-    List<Map<String, dynamic>> statuses;
-    try {
-      statuses = await readStatuses(true);
-    } on PostgrestException catch (error) {
-      if ((error.code != '42703' && error.code != 'PGRST204') ||
-          !error.message.contains('attachment_paths')) {
-        rethrow;
-      }
-      // Only a proven absent new column permits the legacy read. Auth/RLS and
-      // network errors remain unknown; every retry retains the original scope.
-      statuses = await readStatuses(false);
-    }
-    check();
-    List<Map<String, dynamic>> exemptions = [];
-    try {
-      _lease!.requireScope();
-      final raw = await client.rpc('worker_document_exemption', params: {
-        'p_action': 'list', 'p_data': {'company_id': companyId},
-      }).setHeader('Authorization', headers['Authorization']!);
-      check();
-      if (raw is! Map || raw['capability_version'] != 1 || raw['items'] is! List) {
-        throw StateError('Exemption evidence unavailable');
-      }
-      exemptions = (raw['items'] as List).map((row) => Map<String, dynamic>.from(row as Map)).toList();
-    } on PostgrestException catch (error) {
-      if (error.code != 'PGRST202' || !error.message.contains('worker_document_exemption')) rethrow;
-    }
-    Map<String, dynamic>? bank;
-    var bankKnown = false;
-    if (requirements.any((row) => row['name'] == '銀行口座情報')) {
-      try {
-        _lease!.requireScope();
-        bank = await client.from('worker_private_bank_accounts')
-            .select('worker_id,company_id,updated_at')
-            .eq('worker_id', workerId).eq('company_id', companyId)
-            .maybeSingle().setHeader('Authorization', headers['Authorization']!);
-        check();
-        bankKnown = true;
-      } catch (_) {
-        // A denied/unavailable private account read is never absence or success.
-        check();
-      }
-    }
-    check();
-    return {'worker_id': workerId, 'company_id': companyId,
-      'requirements': requirements, 'statuses': statuses,
-      'exemptions': exemptions, 'bank_account_known': bankKnown,
-      'bank_account_metadata': bank};
+    return {'canonical_evidence': receipt};
   }
 }

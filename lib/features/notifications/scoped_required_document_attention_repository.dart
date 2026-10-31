@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../auth/secondary_reset_session_guard.dart';
+import 'required_document_evidence.dart';
 import '../shared/trade_document_form_session.dart';
 
 /// Read-only evidence bound to the displayed company and one captured live SDK session.
@@ -36,6 +37,7 @@ class ScopedRequiredDocumentAttentionRepository {
           raw['missing_names'] is! List || raw['unknown_names'] is! List) {
         throw StateError('書類の確認結果を照合できません。');
       }
+      RequiredDocumentEvidenceSnapshot.fromJson(raw);
       return Map<String, dynamic>.from(raw);
     } finally { lease.dispose(); }
   }

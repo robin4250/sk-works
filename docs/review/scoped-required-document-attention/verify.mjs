@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
 import pg from 'pg';
 const root = new URL('./', import.meta.url);
@@ -7,15 +7,6 @@ const helperContracts = JSON.parse(await readFile(new URL('helper-contracts.json
 const helpers = await readFile(new URL('actual-generic-helper-fixture.sql',root),'utf8');
 const install = await readFile(new URL('install.sql.review-only',root),'utf8');
 const legacy = await readFile(new URL('../required-document-attention-evidence/before.sql.review-only',root),'utf8');
-const source = await readFile(new URL('scoped-function.sql.review-only',root),'utf8');
-const preceding = await readFile(new URL('../required-document-attention-evidence/after.sql.review-only',root),'utf8');
-const evidenceQuery=s=>s.slice(s.indexOf('  with evidence as'),s.indexOf('  from evidence;')+'  from evidence;'.length);
-const finiteDateGuard = `        when nullif(statuses.item->>'expires_at','') is not null and (
-          statuses.item->>'expires_at' !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
-          or left(statuses.item->>'expires_at',4)='0000') then 'unknown'
-`;
-assert.equal(evidenceQuery(source).replace(finiteDateGuard,''),evidenceQuery(preceding),
-  'scoped endpoint reuses the reviewed evidence query plus the explicit finite-date guard');
 
 let db;
 const fixtureUrl=process.env.SKO_SCOPED_ATTENTION_FIXTURE_URL;
@@ -49,6 +40,7 @@ insert into company_members values('${company}','${actor}','owner');
 insert into workers values('${worker}','${actor}','${company}','active');
 insert into document_requirements values('${req}','${company}','synthetic insurance',1,true,true,false);
 insert into worker_document_statuses values('${req}','${req}','${worker}','${company}','submitted',null,null,array['synthetic/a','synthetic/b']);`);
+await db.exec("alter table public.document_requirements add column scope text not null default 'internal'");
 await db.exec(helpers);
 const quote=s=>'"'+s.replaceAll('"','""')+'"';
 for(const c of helperContracts){
@@ -65,9 +57,20 @@ await assert.rejects(db.exec(install),/authentication dependency changed/);
 await db.exec('rollback; revoke execute on function private.require_reauthentication_session() from authenticated');
 await db.exec(install);
 assert.deepEqual((await db.query("select pg_get_functiondef('public.current_user_required_document_attention()'::regprocedure) def")).rows,before.rows);
-let checks=3;
+let checks=2;
+const samples=[];
 async function claims(extra={}){await db.query("select set_config('request.jwt.claims',$1,false)",[JSON.stringify({sub:actor,role:'authenticated',session_id:sid,is_anonymous:false,...extra})]);}
-async function read(cid=company){await db.exec('set role authenticated');try{return (await db.query('select public.current_user_required_document_attention_for_company($1::uuid) value',[cid])).rows[0].value;}finally{await db.exec('reset role');}}
+async function read(cid=company){await db.exec('set role authenticated');try{
+ const result=(await db.query('select public.current_user_required_document_attention_for_company($1::uuid) value',[cid])).rows[0].value;
+ assert.equal(result.evidence_contract_version,1);
+ const count=state=>result.items.filter(i=>i.state===state).length;
+ assert.equal(result.required_count,result.items.length-count('exempt'));
+ for(const state of ['saved','missing','unknown','exempt'])assert.equal(result[state+'_count'],count(state));
+ for(const state of ['missing','unknown'])assert.deepEqual([...result[state+'_names']].sort(),result.items.filter(i=>i.state===state).map(i=>i.name).sort());
+ assert.equal(new Set(result.items.map(i=>i.requirement_id)).size,result.items.length);
+ assert.ok(result.items.filter(i=>i.state==='saved').every(i=>typeof i.evidence_key==='string'&&i.evidence_key.length>0));
+ samples.push(result);return result;
+}finally{await db.exec('reset role');}}
 async function denied(message,cid=company){await assert.rejects(read(cid),/reauthentication_required|not unique or authorized|Company required/);checks++;}
 await claims();let data=await read();assert.equal(data.capability_version,1);assert.equal(data.company_id,company);assert.equal(data.worker_id,worker);assert.equal(data.actor_id,actor);assert.equal(data.session_id,sid);assert.equal(data.missing_count,0);assert.equal(data.unknown_count,0);checks++;
 await denied('foreign company',other);
@@ -99,8 +102,19 @@ await db.exec("update worker_document_statuses set expires_at=null,attachment_pa
 await db.exec(`insert into private.worker_document_exemptions values('${other}','${worker}','${req}',true)`);assert.equal((await read()).missing_count,1);checks++;
 await db.exec(`insert into private.worker_document_exemptions values('${company}','${worker}','${req}',true)`);assert.equal((await read()).missing_count,0);checks++;
 await db.exec('update private.worker_document_exemptions set active=false');assert.equal((await read()).missing_count,1);checks++;
+await db.exec(`insert into document_requirements(id,company_id,name,sort_order,is_active,is_required,expiry_required,scope)
+ values('10000000-0000-0000-0000-000000000077','${company}','synthetic insurance',2,true,true,false,'upstream')`);
+const sameNames=await read();assert.equal(sameNames.missing_count,2);assert.equal(sameNames.items.length,2);
+assert.equal(new Set(sameNames.items.map(i=>i.requirement_id)).size,2);checks++;
+await db.exec("delete from document_requirements where id='10000000-0000-0000-0000-000000000077'");
+
 await db.exec("update worker_document_statuses set attachment_paths=array['synthetic/a','synthetic/a']");assert.equal((await read()).unknown_count,1);checks++;
+await db.exec("update document_requirements set name='銀行口座情報';delete from worker_document_statuses");
+await db.exec(`insert into worker_private_bank_accounts(worker_id,company_id) values('${worker}','${company}')`);
+const bankSaved=await read();assert.equal(bankSaved.saved_count,1);assert.equal(bankSaved.items[0].state,'saved');checks++;
+await db.exec("update worker_private_bank_accounts set updated_at='infinity'");assert.equal((await read()).unknown_count,1);checks++;
 for(const role of ['anon','service_role']){await db.exec(`set role ${role}`);await assert.rejects(db.query('select public.current_user_required_document_attention_for_company($1)',[company]),/permission denied/);await db.exec('reset role');checks++;}
 await assert.rejects(db.exec(install),/already exists/);await db.exec('rollback');checks++;
 console.log(JSON.stringify({engine:fixtureUrl?'native-postgres-17.6':'pglite-0.3.14',checks,actual_helper_bodies:5,synthetic_auth_rows:true,real_gotrue:false,production_writes:0,legacy_rpc_unchanged:true}));
+if(process.env.SKO_WRITE_CANONICAL_FIXTURE==='1') await writeFile(new URL('canonical-receipts.generated.json',root),JSON.stringify(samples,null,2));
 await db.close();
