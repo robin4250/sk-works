@@ -140,6 +140,18 @@ export async function verifyExecution(db,{q,check,UA,A,B,sid,sid2,make,prepare,p
  const historicalResult=(await historicalStatus.json()).result;check(historicalResult.sharing_state,'unresolved');check(historicalResult.package_id,null);
  check(await counts(),historicalCounts);
  check(await q('select count(*)::int v from site_order_package_private.packages where source_job_id=$1',[historical.r.job_id]),1);
+ // A new price revision cannot reuse the old approval or original for sharing.
+ const newPrice=await fresh(840);check((await post('register_outgoing_original',newPrice.identity)).status,200);
+ const oldPriceHash=await q('select pdf_sha256 v from site_order_artifact_private.pdf_records where job_id=$1',[newPrice.r.job_id]);
+ const revisedBody=JSON.parse(JSON.stringify(newPrice.x.body));
+ revisedBody.total_amount_yen+=1;
+ await q("select site_order_manager_private.prepare_site_document($1,$2,$3,'order',$4,1,$5::jsonb)v",[newPrice.x.context.site_id,newPrice.x.doc,newPrice.x.context.trade_company_id,newPrice.x.context.connection_fingerprint,JSON.stringify(revisedBody)]);
+ const rendersBeforeOldRetry=renders;
+ check((await post('register_outgoing_original',newPrice.identity)).status,403);check(renders,rendersBeforeOldRetry);
+ check((await post('share_confirmed',newPrice.identity,{extra:{confirmed:true}})).status,403);
+ check(await q('select count(*)::int v from site_order_package_private.packages where source_job_id=$1',[newPrice.r.job_id]),0);
+ check(await q('select count(*)::int v from trade_document_consent_private.consents where document_id=$1 and revision=2',[newPrice.x.doc]),0);
+ check(await q('select pdf_sha256 v from site_order_artifact_private.pdf_records where job_id=$1',[newPrice.r.job_id]),oldPriceHash);
  check(closed,connections);
- console.log(JSON.stringify({outgoing_execution_source_only:true,native_real_waits:nativeWaits,late_notice_rollback:true,foreign_legacy_package_not_adopted:true,actual_canonical_pdf:true,same_original_bytes:true,register_ack_loss_reconciled:true,share_ack_loss_reconciled:true,one_package:true,one_notice_set:true,legacy_owned_routes_rejected:true,connections_closed:closed,renders,real_GoTrue:false,production_changed:false}));
+ console.log(JSON.stringify({outgoing_execution_source_only:true,native_real_waits:nativeWaits,late_notice_rollback:true,foreign_legacy_package_not_adopted:true,new_price_requires_new_consent:true,actual_canonical_pdf:true,same_original_bytes:true,register_ack_loss_reconciled:true,share_ack_loss_reconciled:true,one_package:true,one_notice_set:true,legacy_owned_routes_rejected:true,connections_closed:closed,renders,real_GoTrue:false,production_changed:false}));
 }

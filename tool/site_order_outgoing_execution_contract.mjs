@@ -54,6 +54,10 @@ export async function requireOutgoingExecutionSource(db,identity,jobId){
  context#>>'{own_seal,seal_hash}' seal_hash
  from(select site_order_manager_private.outgoing_context($1,$2) context)s`,[operation.site_id,operation.trade_company_id])).rows[0];
  if(!current||current.source_hash!==operation.source_sha256||current.seal_hash!==operation.seal_sha256)throw Error('outgoing_execution_source_changed');
+ const evidenceCurrent=(await db.query(`select j.evidence is not distinct from
+  site_order_manager_private.render_approved(j.document_id,j.document_revision,j.company_id,false) as valid
+  from site_order_artifact_private.render_jobs j where j.id=$1`,[jobId])).rows[0]?.valid;
+ if(evidenceCurrent!==true)throw Error('outgoing_current_approval_changed');
  return operation;
 }
 
