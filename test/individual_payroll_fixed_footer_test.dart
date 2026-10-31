@@ -157,7 +157,7 @@ void main() {
       final repository = _Repository(client);
       await open(tester, repository, section, PayrollItemUnit.month);
       final label = section == PayrollItemSection.earning ? '支給1 金額' : '控除1 金額';
-      final field = find.byWidgetPredicate((widget) => widget is TextFormField && widget.decoration?.labelText == label);
+      final field = find.widgetWithText(TextFormField, label);
       await tester.ensureVisible(field);
       await tester.enterText(field, '789');
       tester.view.viewInsets = const FakeViewPadding(bottom: 300);
