@@ -107,6 +107,9 @@ class PayrollReviewRepository {
 
     return PayrollReviewWorkspace(
       rosterIdentitiesComplete:
+          value['workers'] is List &&
+          value['statements'] is List &&
+          statements.every((statement) => statement is Map) &&
           workers.every(
             (worker) =>
                 worker is Map && _payrollWorkerId(worker['id']).isNotEmpty,

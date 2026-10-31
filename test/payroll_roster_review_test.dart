@@ -227,6 +227,21 @@ void main() {
     },
   );
 
+  test(
+    'partial or malformed RPC lists cannot infer missing employees',
+    () async {
+      for (final key in ['workers', 'statements']) {
+        final malformed = payload()..[key] = 'invalid-list';
+        expect((await readRpc(malformed)).canCompareRoster, isFalse);
+      }
+      final partial = payload();
+      (partial['statements'] as List).add('invalid-statement');
+      final workspace = await readRpc(partial);
+      expect(workspace.items.length, 6);
+      expect(workspace.canCompareRoster, isFalse);
+    },
+  );
+
   testWidgets(
     'late response from an earlier month cannot replace the selected month',
     (tester) async {
