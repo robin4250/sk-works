@@ -115,7 +115,6 @@ Future<void> saveProfile(WidgetTester tester) async {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  group('profile own birthday', () {
 
   test('old contract cannot save own birthday or substitute the family birthday', () async {
     final w = Wire()..contract = null; addTearDown(w.client.dispose); await w.login(sidA);
@@ -219,7 +218,7 @@ void main() {
     expect(find.text('生年月日の登録は準備中です。'), findsOneWidget);
     await saveProfile(tester);
     expect((w.writes.single['p_payload'] as Map).containsKey('birth_date'), isFalse);
-  });
+  }, timeout: const Timeout(Duration(seconds: 45)));
   testWidgets('unmodified profile UI omits own birthday even when contract is enabled', (tester) async {
     final w = Wire(); addTearDown(w.client.dispose);
     await tester.runAsync(() => w.login(sidA));
@@ -229,7 +228,7 @@ void main() {
     await saveProfile(tester);
     expect((w.writes.single['p_payload'] as Map).containsKey('birth_date'), isFalse);
     expect(w.birthday, '1980-01-15');
-  });
+  }, timeout: const Timeout(Duration(seconds: 45)));
   testWidgets('explicit clear in profile UI submits null and preserves family birthday', (tester) async {
     final w = Wire(); addTearDown(w.client.dispose);
     await tester.runAsync(() => w.login(sidA));
@@ -240,6 +239,5 @@ void main() {
     await saveProfile(tester);
     expect((w.writes.single['p_payload'] as Map)['birth_date'], isNull);
     expect(((w.writes.single['p_payload'] as Map)['family_members'] as List).single['birth_date'], '2020-02-02');
-  });
   }, timeout: const Timeout(Duration(seconds: 45)));
 }
