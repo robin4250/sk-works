@@ -79,7 +79,8 @@ test('actual HTTP handler binds selected company/live SID and never exposes unce
  });
  await new Promise(r=>upstream.listen(0,'127.0.0.1',r));
  const origin=`http://127.0.0.1:${upstream.address().port}`;
- globalThis.Deno={env:{get:name=>({SUPABASE_URL:origin,SUPABASE_SERVICE_ROLE_KEY:'synthetic-service-key'}[name])},serve:value=>{handler=value;}};
+ globalThis.fetch=(url,options)=>{if(scenario==='sms-throw'&&String(url).endsWith('/sms-fixture'))throw Error('synthetic-private-upstream-error');return originalFetch(url,options);};
+ globalThis.Deno={env:{get:name=>({SUPABASE_URL:origin,SUPABASE_SERVICE_ROLE_KEY:'synthetic-service-key',SKO_EMPLOYEE_INVITE_SMS_WEBHOOK:origin+'/sms-fixture',SKO_TESTFLIGHT_URL:'https://fixture.invalid/distribution'}[name])},serve:value=>{handler=value;}};
  console.error=(...args)=>logs.push(args);
  const sourceUrl=new URL('./index.ts',import.meta.url);
  const source=fs.readFileSync(sourceUrl,'utf8').replace('import "jsr:@supabase/functions-js/edge-runtime.d.ts";','')
@@ -139,6 +140,11 @@ test('actual HTTP handler binds selected company/live SID and never exposes unce
   assert.equal(value.workerId,worker);assert.equal(value.authUserId,authUser);
   const qr=JSON.parse(value.qrPayload);assert.equal(qr.inviteId,value.inviteId);assert.equal(qr.password,value.temporaryPassword);
   assert.equal(issued,1);assert.equal(contextCalls,4);assert.deepEqual(logs,[]);
+  scenario='sms-throw';contextCalls=0;issued=0;
+  response=await send({deliverSms:true});assert.equal(response.status,200);
+  value=await response.json();assert.equal(value.smsSent,false);
+  assert.deepEqual(logs,[['employee invite sms delivery failed']]);
+  assert.equal(JSON.stringify(logs).includes('synthetic-private-upstream-error'),false);
  }finally{
   globalThis.fetch=originalFetch;globalThis.Deno=originalDeno;console.error=originalError;
   await new Promise(r=>incoming.close(r));await new Promise(r=>upstream.close(r));

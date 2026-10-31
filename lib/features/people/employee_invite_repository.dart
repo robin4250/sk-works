@@ -70,11 +70,20 @@ class EmployeeInviteRepository {
   bool _disposed = false;
   void _observe(Session? session) {
     AppleSessionNavigationBinding? value;
-    try { value = AppleSessionNavigationBinding.fromSession(session); } catch (_) { value = null; }
-    if (value != _observedBinding) { _generation++; _observedBinding = value; }
+    try {
+      value = AppleSessionNavigationBinding.fromSession(session);
+    } catch (_) {
+      value = null;
+    }
+    if (value != _observedBinding) {
+      _generation++;
+      _observedBinding = value;
+    }
   }
+
   Future<void> dispose() async {
-    _disposed = true; _generation++;
+    _disposed = true;
+    _generation++;
     await _subscription?.cancel();
   }
 
@@ -82,8 +91,13 @@ class EmployeeInviteRepository {
   String? get currentActorId => binding?.actorId;
   Stream<AuthState> get authChanges => _client.auth.onAuthStateChange;
   AppleSessionNavigationBinding? get binding {
-    try { return AppleSessionNavigationBinding.fromSession(_client.auth.currentSession); }
-    catch (_) { return null; }
+    try {
+      return AppleSessionNavigationBinding.fromSession(
+        _client.auth.currentSession,
+      );
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<EmployeeInviteRequest> beginRequest({String? companyId}) async {
@@ -91,44 +105,86 @@ class EmployeeInviteRepository {
     _observe(session);
     final generation = _generation;
     final captured = binding;
-    if (session == null || captured == null) throw StateError('ログイン情報を確認してください。');
+    if (session == null || captured == null)
+      throw StateError('ログイン情報を確認してください。');
     Map row;
     try {
-      final Object raw = await _client.from('company_members').select('company_id,role')
+      final Object raw = await _client
+          .from('company_members')
+          .select('company_id,role')
           .eq('user_id', captured.actorId)
-          .setHeader('Authorization', 'Bearer ${session.accessToken}').retry(enabled: false);
-      if (_disposed || _generation != generation || binding != captured ||
-          raw is! List || raw.length != 1 || raw.single is! Map) throw const FormatException();
+          .setHeader('Authorization', 'Bearer ${session.accessToken}')
+          .retry(enabled: false);
+      if (_disposed ||
+          _generation != generation ||
+          binding != captured ||
+          raw is! List ||
+          raw.length != 1 ||
+          raw.single is! Map) {
+        throw const FormatException();
+      }
       row = raw.single as Map;
       if ((companyId != null && row['company_id'] != companyId) ||
           !_uuid.hasMatch(row['company_id']?.toString() ?? '') ||
-          !const {'owner','admin','manager','viewer'}.contains(row['role'])) throw const FormatException();
+          !const {
+            'owner',
+            'admin',
+            'manager',
+            'viewer',
+          }.contains(row['role'])) {
+        throw const FormatException();
+      }
     } catch (_) {
       throw StateError('対象会社を一意に確認できません。会社を選び直してください。');
     }
-    final request = EmployeeInviteRequest._(captured, row['company_id'] as String,
-      session.accessToken, () => !_disposed && _generation == generation && binding == captured);
+    final request = EmployeeInviteRequest._(
+      captured,
+      row['company_id'] as String,
+      session.accessToken,
+      () => !_disposed && _generation == generation && binding == captured,
+    );
     request.check();
     return request;
   }
 
-  static final _uuid = RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$');
+  static final _uuid = RegExp(
+    r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+  );
 
-  Future<EmployeeInviteResult> _create(Map<String, dynamic> body,
-      {EmployeeInviteRequest? request}) async {
+  Future<EmployeeInviteResult> _create(
+    Map<String, dynamic> body, {
+    EmployeeInviteRequest? request,
+  }) async {
     final context = request ?? await beginRequest();
     context.check();
-    final rawPhone = body['phone']?.toString().replaceAll(RegExp(r'[\s()\-]'), '');
-    final recipient = body['workerId'] ?? (rawPhone?.startsWith('0') == true ? '+81${rawPhone!.substring(1)}' : rawPhone);
+    final rawPhone = body['phone']?.toString().replaceAll(
+      RegExp(r'[\s()\-]'),
+      '',
+    );
+    final recipient =
+        body['workerId'] ??
+        (rawPhone?.startsWith('0') == true
+            ? '+81${rawPhone!.substring(1)}'
+            : rawPhone);
     final key = '${context.actorId}:${context.companyId}:$recipient';
     if (!_attempted.add(key)) throw StateError('作成結果が未解決です。再作成せず管理者に確認してください。');
     try {
-      final response = await _client.functions.invoke('create-employee-invite',
+      final response = await _client.functions.invoke(
+        'create-employee-invite',
         headers: {'Authorization': context.authorization},
-        body: {...body, 'companyId': context.companyId, 'sessionId': context.sessionId});
+        body: {
+          ...body,
+          'companyId': context.companyId,
+          'sessionId': context.sessionId,
+        },
+      );
       context.check();
-      return _resultFromResponse(response, request: context,
-          expectedWorker: body['workerId'] as String?, expectedPhone: (body['expectedPhone'] ?? body['phone']) as String?);
+      return _resultFromResponse(
+        response,
+        request: context,
+        expectedWorker: body['workerId'] as String?,
+        expectedPhone: (body['expectedPhone'] ?? body['phone']) as String?,
+      );
     } catch (_) {
       // No credentials or password journal. This process retains only the intent
       // block; no receipt exists to safely recreate an uncertain remote result.
@@ -136,17 +192,21 @@ class EmployeeInviteRepository {
     }
   }
 
-
   static EmployeeInviteRepository? maybeCreate() {
     if (!SupabaseBackend.isInitialized) return null;
     if (SupabaseBackend.client.auth.currentUser == null) return null;
     return EmployeeInviteRepository(SupabaseBackend.client);
   }
 
-  Future<List<ApprovalAssigneeOption>> loadCurrentApprovalAssignees({EmployeeInviteRequest? request}) async {
-    final context = request ?? await beginRequest(); context.check();
-    final value = await _client.rpc('company_approval_assignee_rows')
-      .setHeader('Authorization', context.authorization).retry(enabled: false);
+  Future<List<ApprovalAssigneeOption>> loadCurrentApprovalAssignees({
+    EmployeeInviteRequest? request,
+  }) async {
+    final context = request ?? await beginRequest();
+    context.check();
+    final value = await _client
+        .rpc('company_approval_assignee_rows')
+        .setHeader('Authorization', context.authorization)
+        .retry(enabled: false);
     context.check();
     if (value is! List) return const [];
 
@@ -174,10 +234,7 @@ class EmployeeInviteRepository {
     try {
       await _client.rpc(
         'register_employee_preregistration',
-        params: {
-          'p_name': trimmedName,
-          'p_phone': trimmedPhone,
-        },
+        params: {'p_name': trimmedName, 'p_phone': trimmedPhone},
       );
     } on PostgrestException catch (error) {
       if (error.message.contains('employee phone already registered')) {
@@ -188,27 +245,44 @@ class EmployeeInviteRepository {
   }
 
   Future<String> loadTestFlightUrl({EmployeeInviteRequest? request}) async {
-    final context = request ?? await beginRequest(); context.check();
-    final raw = await _client.rpc('initial_registration_distribution_settings')
-      .setHeader('Authorization', context.authorization).retry(enabled: false);
+    final context = request ?? await beginRequest();
     context.check();
-    final map = raw is Map ? Map<String, dynamic>.from(raw) : const <String, dynamic>{};
+    final raw = await _client
+        .rpc('initial_registration_distribution_settings')
+        .setHeader('Authorization', context.authorization)
+        .retry(enabled: false);
+    context.check();
+    final map = raw is Map
+        ? Map<String, dynamic>.from(raw)
+        : const <String, dynamic>{};
     return map['testflight_url']?.toString() ?? '';
   }
 
-  Future<void> saveTestFlightUrl(String value, {EmployeeInviteRequest? request}) async {
-    final context = request ?? await beginRequest(); context.check();
-    await _client.rpc(
-      'save_initial_registration_distribution_settings',
-      params: {'p_testflight_url': value.trim()},
-    ).setHeader('Authorization', context.authorization).retry(enabled: false);
+  Future<void> saveTestFlightUrl(
+    String value, {
+    EmployeeInviteRequest? request,
+  }) async {
+    final context = request ?? await beginRequest();
+    context.check();
+    await _client
+        .rpc(
+          'save_initial_registration_distribution_settings',
+          params: {'p_testflight_url': value.trim()},
+        )
+        .setHeader('Authorization', context.authorization)
+        .retry(enabled: false);
     context.check();
   }
 
-  Future<List<InitialRegistrationEmployee>> loadRegisteredEmployees({EmployeeInviteRequest? request}) async {
-    final context = request ?? await beginRequest(); context.check();
-    final value = await _client.rpc('initial_registration_employee_rows')
-      .setHeader('Authorization', context.authorization).retry(enabled: false);
+  Future<List<InitialRegistrationEmployee>> loadRegisteredEmployees({
+    EmployeeInviteRequest? request,
+  }) async {
+    final context = request ?? await beginRequest();
+    context.check();
+    final value = await _client
+        .rpc('initial_registration_employee_rows')
+        .setHeader('Authorization', context.authorization)
+        .retry(enabled: false);
     context.check();
     final rows = value is List ? value : const <dynamic>[];
 
@@ -225,60 +299,102 @@ class EmployeeInviteRepository {
   }
 
   Future<EmployeeInviteResult> createInviteForWorker(
-    String workerId, {required String expectedPhone, bool deliverSms = true, EmployeeInviteRequest? request}) =>
-      _create({'workerId': workerId, 'expectedPhone': expectedPhone, 'deliverSms': deliverSms}, request: request);
-
-  Future<EmployeeInviteResult> createInvite({
-    required String name, required String phone, String requestedRole = 'viewer',
-    bool requestedApprovalAssignee = false, String? replaceApprovalAssigneeUserId,
+    String workerId, {
+    required String expectedPhone,
+    bool deliverSms = true,
     EmployeeInviteRequest? request,
   }) => _create({
-    'name': name.trim(), 'phone': phone.trim(), 'requestedRole': requestedRole,
+    'workerId': workerId,
+    'expectedPhone': expectedPhone,
+    'deliverSms': deliverSms,
+  }, request: request);
+
+  Future<EmployeeInviteResult> createInvite({
+    required String name,
+    required String phone,
+    String requestedRole = 'viewer',
+    bool requestedApprovalAssignee = false,
+    String? replaceApprovalAssigneeUserId,
+    EmployeeInviteRequest? request,
+  }) => _create({
+    'name': name.trim(),
+    'phone': phone.trim(),
+    'requestedRole': requestedRole,
     'requestedApprovalAssignee': requestedApprovalAssignee,
     'replaceApprovalAssigneeUserId': replaceApprovalAssigneeUserId,
     'deliverSms': false,
   }, request: request);
 
-  EmployeeInviteResult _resultFromResponse(FunctionResponse response, {
-    required EmployeeInviteRequest request, String? expectedWorker, String? expectedPhone,
+  EmployeeInviteResult _resultFromResponse(
+    FunctionResponse response, {
+    required EmployeeInviteRequest request,
+    String? expectedWorker,
+    String? expectedPhone,
   }) {
     final raw = response.data;
     if (response.status < 200 || response.status >= 300 || raw is! Map) {
       throw const FormatException('Unconfirmed invitation result');
     }
     final map = Map<String, dynamic>.from(raw);
-    if (map.containsKey('error') || map.containsKey('code')) throw const FormatException('Unconfirmed invitation result');
-    final id = map['inviteId'], phone = map['phone'], password = map['temporaryPassword'];
+    if (map.containsKey('error') || map.containsKey('code'))
+      throw const FormatException('Unconfirmed invitation result');
+    final id = map['inviteId'],
+        phone = map['phone'],
+        password = map['temporaryPassword'];
     final qr = map['qrPayload'];
-    if (!_uuid.hasMatch(id is String ? id : '') || phone is! String ||
-        !RegExp(r'^\+81(?:70|80|90)\d{8}$').hasMatch(phone) || password is! String ||
-        password.isEmpty || qr is! String || map['name'] is! String ||
-        map['name'].toString().trim().isEmpty || map['smsSent'] is! bool ||
-        map['companyId'] != request.companyId || map['actorId'] != request.actorId ||
-        map['sessionId'] != request.sessionId || !_uuid.hasMatch(map['workerId']?.toString() ?? '') ||
+    if (!_uuid.hasMatch(id is String ? id : '') ||
+        phone is! String ||
+        !RegExp(r'^\+81(?:70|80|90)\d{8}$').hasMatch(phone) ||
+        password is! String ||
+        password.isEmpty ||
+        qr is! String ||
+        map['name'] is! String ||
+        map['name'].toString().trim().isEmpty ||
+        map['smsSent'] is! bool ||
+        map['companyId'] != request.companyId ||
+        map['actorId'] != request.actorId ||
+        map['sessionId'] != request.sessionId ||
+        !_uuid.hasMatch(map['workerId']?.toString() ?? '') ||
         !_uuid.hasMatch(map['authUserId']?.toString() ?? '') ||
         (expectedWorker != null && map['workerId'] != expectedWorker)) {
       throw const FormatException('Unconfirmed invitation result');
     }
     if (expectedPhone != null) {
       var normalized = expectedPhone.replaceAll(RegExp(r'[\s()\-]'), '');
-      if (normalized.startsWith('0')) normalized = '+81${normalized.substring(1)}';
-      if (normalized != phone) throw const FormatException('Invitation recipient changed');
+      if (normalized.startsWith('0'))
+        normalized = '+81${normalized.substring(1)}';
+      if (normalized != phone)
+        throw const FormatException('Invitation recipient changed');
     }
     final decoded = jsonDecode(qr);
-    if (decoded is! Map || decoded.length != 4 || decoded['type'] != 'sko_employee_invite' ||
-        decoded['inviteId'] != id || decoded['phone'] != phone || decoded['password'] != password) {
+    if (decoded is! Map ||
+        decoded.length != 4 ||
+        decoded['type'] != 'sko_employee_invite' ||
+        decoded['inviteId'] != id ||
+        decoded['phone'] != phone ||
+        decoded['password'] != password) {
       throw const FormatException('Unconfirmed invitation QR');
     }
-    return EmployeeInviteResult(inviteId: id as String, name: map['name'] as String,
-      phone: phone, temporaryPassword: password, qrPayload: qr,
-      smsSent: map['smsSent'] as bool, testFlightUrl: map['testFlightUrl'] as String?,
-      deliveryMessage: map['deliveryMessage'] as String?);
+    return EmployeeInviteResult(
+      inviteId: id as String,
+      name: map['name'] as String,
+      phone: phone,
+      temporaryPassword: password,
+      qrPayload: qr,
+      smsSent: map['smsSent'] as bool,
+      testFlightUrl: map['testFlightUrl'] as String?,
+      deliveryMessage: map['deliveryMessage'] as String?,
+    );
   }
 }
 
 class EmployeeInviteRequest {
-  EmployeeInviteRequest._(this._binding, this.companyId, this._token, this._current);
+  EmployeeInviteRequest._(
+    this._binding,
+    this.companyId,
+    this._token,
+    this._current,
+  );
   final AppleSessionNavigationBinding _binding;
   final String companyId;
   final String _token;
@@ -291,9 +407,17 @@ class EmployeeInviteRequest {
     if (!_current()) _retired = true;
     return !_retired;
   }
+
   void observeSession(Session? session) {
-    try { if (AppleSessionNavigationBinding.fromSession(session) != _binding) _retired = true; }
-    catch (_) { _retired = true; }
+    try {
+      if (AppleSessionNavigationBinding.fromSession(session) != _binding)
+        _retired = true;
+    } catch (_) {
+      _retired = true;
+    }
   }
-  void check() { if (!isCurrent) throw StateError('ログイン状態が変わりました。画面を開き直してください。'); }
+
+  void check() {
+    if (!isCurrent) throw StateError('ログイン状態が変わりました。画面を開き直してください。');
+  }
 }

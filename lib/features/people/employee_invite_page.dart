@@ -10,7 +10,12 @@ import '../../international/language_controller.dart';
 import 'employee_invite_repository.dart';
 
 class EmployeeInvitePage extends StatefulWidget {
-  const EmployeeInvitePage({super.key, this.canAssignManagementRole = false, this.selectedCompanyId, this.repository});
+  const EmployeeInvitePage({
+    super.key,
+    this.canAssignManagementRole = false,
+    this.selectedCompanyId,
+    this.repository,
+  });
 
   final bool canAssignManagementRole;
   final String? selectedCompanyId;
@@ -39,24 +44,34 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
 
   void _invalidate() {
     if (!mounted || _invalidated) return;
-    setState(() { _invalidated = true; _result = null; _name.clear(); _phone.clear();
-      _error = 'ログイン状態または会社が変わりました。画面を開き直してください。'; });
+    setState(() {
+      _invalidated = true;
+      _result = null;
+      _name.clear();
+      _phone.clear();
+      _error = 'ログイン状態または会社が変わりました。画面を開き直してください。';
+    });
   }
+
   bool _current() => !_invalidated && _request?.isCurrent == true;
   Future<void> _bindContext() async {
     try {
-      final request = await _repository?.beginRequest(companyId: widget.selectedCompanyId);
+      final request = await _repository?.beginRequest(
+        companyId: widget.selectedCompanyId,
+      );
       if (!mounted || _invalidated || request == null) return;
       setState(() => _request = request);
       if (widget.canAssignManagementRole) await _loadApprovalAssignees();
-    } catch (_) { _invalidate(); }
+    } catch (_) {
+      _invalidate();
+    }
   }
+
   @override
   void didUpdateWidget(covariant EmployeeInvitePage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.selectedCompanyId != widget.selectedCompanyId) _invalidate();
   }
-
 
   String _tr(String ja, String en) => SkoLanguageController.isEnglish ? en : ja;
 
@@ -85,7 +100,9 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
     if (repository == null || !_current()) return;
     setState(() => _assigneeLoading = true);
     try {
-      final rows = await repository.loadCurrentApprovalAssignees(request: _request);
+      final rows = await repository.loadCurrentApprovalAssignees(
+        request: _request,
+      );
       if (!mounted || !_current()) return;
       setState(() {
         _currentApprovalAssignees = rows;
@@ -224,7 +241,10 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
         replaceApprovalAssigneeUserId: _replaceApprovalAssigneeUserId,
         request: _request,
       );
-      if (!mounted || !_current()) { _invalidate(); return; }
+      if (!mounted || !_current()) {
+        _invalidate();
+        return;
+      }
       setState(() {
         _busy = false;
         _result = result;
@@ -250,12 +270,18 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
             'SKOアプリを開き、初期パスワードでログインしてください。初回ログイン後に本パスワードを設定します。';
 
   Future<void> _share(EmployeeInviteResult result) async {
-    if (!_current() || !identical(result, _result)) { _invalidate(); return; }
+    if (!_current() || !identical(result, _result)) {
+      _invalidate();
+      return;
+    }
     await SharePlus.instance.share(ShareParams(text: _shareText(result)));
   }
 
   Future<void> _sendEmployeeSms(EmployeeInviteResult result) async {
-    if (!_current() || !identical(result, _result)) { _invalidate(); return; }
+    if (!_current() || !identical(result, _result)) {
+      _invalidate();
+      return;
+    }
     final phone = result.phone.trim();
     if (phone.isEmpty) return;
     final body =
@@ -276,9 +302,8 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
       }
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('SMS作成画面を開けませんでした。')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('SMS作成画面を開けませんでした。')));
     }
   }
 
@@ -493,7 +518,10 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
                       const SizedBox(height: 12),
                       OutlinedButton.icon(
                         onPressed: () async {
-                          if (!_current() || !identical(result, _result)) { _invalidate(); return; }
+                          if (!_current() || !identical(result, _result)) {
+                            _invalidate();
+                            return;
+                          }
                           await Clipboard.setData(
                             ClipboardData(text: result.temporaryPassword),
                           );
