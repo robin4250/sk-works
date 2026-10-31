@@ -10,10 +10,11 @@ import 'people_page.dart';
 import 'personnel_family_member.dart';
 
 class EmployeePersonnelEditPage extends StatefulWidget {
-  const EmployeePersonnelEditPage({super.key, required this.record,this.privacySession});
+  const EmployeePersonnelEditPage({super.key, required this.record,this.privacySession,this.repository});
 
   final PersonRecord record;
   final PersonnelPrivacySession? privacySession;
+  final PeopleCloudRepository? repository;
 
   @override
   State<EmployeePersonnelEditPage> createState() =>
@@ -21,7 +22,7 @@ class EmployeePersonnelEditPage extends StatefulWidget {
 }
 
 class _EmployeePersonnelEditPageState extends State<EmployeePersonnelEditPage> {
-  final _repository = PeopleCloudRepository.maybeCreate();
+  late final PeopleCloudRepository? _repository;
 
   late final TextEditingController _name;
   late final TextEditingController _role;
@@ -55,6 +56,7 @@ class _EmployeePersonnelEditPageState extends State<EmployeePersonnelEditPage> {
   @override
   void initState() {
     super.initState();
+    _repository = widget.repository ?? PeopleCloudRepository.maybeCreate();
     final record = widget.record;
     _name = TextEditingController(text: record.name);
     _role = TextEditingController(text: record.role);

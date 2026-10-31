@@ -140,7 +140,7 @@ class _ProfilePageState extends State<ProfilePage> {
       _name.text = data.displayName;
       _phone.text = ProfileRepository.domesticJapanesePhoneValue(data.phone);
       _personalSkoId.text = data.personalSkoId;
-      _workerId = personnel?['worker_id']?.toString();
+      _workerId = birthday?.canEdit == true ? birthday!.workerId : personnel?['worker_id']?.toString();
       _employeeNumber = personnel?['employee_number']?.toString() ?? '';
       _department = personnel?['department']?.toString() ?? '';
       _hireDate = personnel?['hire_date']?.toString() ?? '';

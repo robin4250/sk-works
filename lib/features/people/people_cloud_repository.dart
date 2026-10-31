@@ -340,11 +340,11 @@ class PeopleCloudRepository {
           return {
             'id': value['id'],
             'kind': value['kind'],
-            'name': value['name'] ?? '',
+            'name': personnel['name'] ?? value['name'] ?? '',
             'companyName': value['company_name'] ?? '',
             'phone': personnel['phone'] ?? value['phone'] ?? '',
             'email': value['email'] ?? '',
-            'role': value['role'] ?? '',
+            'role': personnel['role'] ?? value['role'] ?? '',
             'employeeCategoryId': personnel['employeeCategoryId'],
             'employeeCategoryName': personnel['employeeCategoryName'] ?? '',
             'employeeNumber':
@@ -352,6 +352,7 @@ class PeopleCloudRepository {
             'department': personnel['department'] ?? dates['department'] ?? '',
             'birthDate': personnel['birthDate'] ?? personnel['birth_date'] ?? '',
             'birthDateContractVersion': personnel['birthDateContractVersion'] ?? personnel['birth_date_contract_version'] ?? 0,
+            'personnelCasDigest': personnel['personnelCasDigest'] ?? '',
             'hireDate': personnel['hireDate'] ?? dates['hire_date'] ?? '',
             'notes': value['notes'] ?? '',
             'active': value['active'] == true,

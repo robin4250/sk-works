@@ -286,4 +286,30 @@ void main() {
     expect(tester.widget<TextField>(find.byKey(const ValueKey('profile-birthday-field'))).enabled, isFalse);
     expect(w.writes.length, 1);
   }, timeout: const Timeout(Duration(seconds: 45)));
+  test('legacy version1 date is visible but never writable', () async {
+    final w = Wire()..contract = 1; addTearDown(w.client.dispose); await w.login(sidA);
+    final evidence = await w.load(); addTearDown(evidence.dispose);
+    expect(evidence.birthDate, '1980-01-15'); expect(evidence.canEdit, isFalse);
+    await expectLater(w.save(evidence, '1981-01-01'), throwsStateError);
+    expect(w.writes, isEmpty);
+  });
+  test('combined edit keeps original digest and rejects a newly changed snapshot', () async {
+    final w = Wire(); addTearDown(w.client.dispose); await w.login(sidA);
+    final evidence = await w.load(); addTearDown(evidence.dispose);
+    w.digest = 'fedcba9876543210fedcba9876543210';
+    await expectLater(w.save(evidence, '1981-01-01'), throwsStateError);
+    expect(w.writes, isEmpty);
+  });
+  test('birthday-only save never copies fresh family and keeps original CAS evidence', () async {
+    final w = Wire(); addTearDown(w.client.dispose); await w.login(sidA);
+    final evidence = await w.load(); addTearDown(evidence.dispose);
+    w.digest = 'fedcba9876543210fedcba9876543210';
+    await w.repository.savePersonnelProfile(workerId: worker, birthdayEvidence: evidence,
+      birthdayOnly: true, payload: {...payload(), 'birth_date': '1981-01-01'});
+    final wire = w.writes.single['p_payload'] as Map;
+    expect(wire.containsKey('family_members'), isFalse);
+    expect(wire['_birth_date_mode'], 'only');
+    expect((wire['_birth_date_cas'] as Map)['expected_personnel_digest'], '0123456789abcdef0123456789abcdef');
+  });
+
 }
