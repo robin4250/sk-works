@@ -82,6 +82,14 @@ abstract class SiteOrderWorkflowApi extends ChangeNotifier {
       throw StateError('注文の準備結果を確認できません。');
   Future<String> retireOutgoing(SiteOrderPendingPrepare entry, {required bool confirmed}) async =>
       throw StateError('注文の準備停止を確認できません。');
+  Future<bool> canCreateOutgoing() async => false;
+  Future<void> prepareUnsignedOutgoing(SiteOrderPendingPrepare entry,
+      Map<String, dynamic> body, String connectionFingerprint) async =>
+      throw StateError('注文の準備を保存できません。');
+  Future<String> inspectUnsignedForReview(SiteOrderPendingPrepare entry) async =>
+      throw StateError('同じログイン状態の準備結果を確認できません。');
+  Future<Uint8List> renderUnsignedOutgoing(SiteOrderOutgoingConsentPreview preview) async =>
+      throw StateError('注文の押印前表示を確認できません。');
   Future<List<SiteOrderConsentReference>> pendingOutgoingConsents(String siteId) async => const [];
   Future<SiteOrderOutgoingConsentPreview> previewUnsignedOutgoing(SiteOrderPendingPrepare entry) async =>
       throw StateError('注文の押印前確認を開始できません。');
@@ -221,6 +229,67 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
   }
 
   @override
+  Future<bool> canCreateOutgoing() async {
+    await verify();
+    try {
+      final value = _map(await _session.rpc('standalone_trade_document_access', {}));
+      await verify();
+      return _exactKeys(value, const {'contract_version', 'actor_id', 'session_id',
+        'company_id', 'role', 'master_enabled', 'can_generate', 'context_contract_version'}) &&
+        value['contract_version'] == 1 && value['context_contract_version'] == 1 &&
+        value['actor_id'] == _actor && value['company_id'] == _company &&
+        value['session_id'] == _capturedSessionId && _capturedSessionId != null &&
+        value['role'] == _role && value['master_enabled'] == true && value['can_generate'] == true;
+    } catch (_) {
+      await verify();
+      return false;
+    }
+  }
+
+  @override
+  Future<void> prepareUnsignedOutgoing(SiteOrderPendingPrepare entry,
+      Map<String, dynamic> body, String connectionFingerprint) async {
+    final immutable = Map<String, dynamic>.from(jsonDecode(jsonEncode(body)) as Map);
+    await verify();
+    if (entry.sessionId != _capturedSessionId ||
+        immutable['transaction_id'] != entry.documentId ||
+        immutable['issuer_company_id'] != _company || immutable['kind'] != 'order' ||
+        immutable.containsKey('company_seal_snapshot') || immutable.containsKey('company_seal_enabled') ||
+        !RegExp(r'^[a-f0-9]{64}$').hasMatch(connectionFingerprint) ||
+        utf8.encode(jsonEncode(immutable)).length > 32768) {
+      throw StateError('注文の入力元が変わりました。');
+    }
+    await _outgoingJournal.begin(_actor, _company!, entry);
+    await verify();
+    final value = _map(_map(await _call({...entry.command('prepare'),
+      'connection_fingerprint': connectionFingerprint, 'body': immutable},
+      write: true, outgoing: true))['result']);
+    if (!_exactKeys(value, const {'contract_version', 'operation_state', 'operation_id',
+      'company_id', 'request_id', 'site_id', 'document_id', 'local_document_id',
+      'trade_company_id', 'body_hash', 'source_hash', 'seal_hash', 'prepared_at',
+      'retired', 'journal_clearable', 'retry_automatically', 'may_prepare_again', 'can_send'}) ||
+      value['contract_version'] != 1 || value['operation_state'] != 'prepared_review_required' ||
+      value['company_id'] != _company || value['request_id'] != entry.requestId ||
+      value['site_id'] != entry.siteId || value['document_id'] != entry.documentId ||
+      value['local_document_id'] != entry.localId || value['trade_company_id'] != entry.tradeId ||
+      !_savedId(value['operation_id']) || value['retired'] != false ||
+      value['journal_clearable'] != false || value['retry_automatically'] != false ||
+      value['may_prepare_again'] != false || value['can_send'] != false ||
+      value['prepared_at'] is! String || DateTime.tryParse(value['prepared_at']) == null ||
+      !['body_hash', 'source_hash', 'seal_hash'].every((k) => value[k] is String && RegExp(r'^[a-f0-9]{64}$').hasMatch(value[k]))) {
+      throw const SiteOrderResultUnknown();
+    }
+  }
+
+  @override
+  Future<Uint8List> renderUnsignedOutgoing(SiteOrderOutgoingConsentPreview preview) async {
+    await verify();
+    final bytes = await preview.render();
+    await verify();
+    return bytes;
+  }
+
+  @override
   Future<List<SiteOrderConsentReference>> pendingOutgoingConsents(String siteId) async {
     await verify();
     final entries = await _consentJournal.read(_actor, _company!, siteId);
@@ -307,8 +376,12 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
   Future<String> _outgoingState(
     SiteOrderPendingPrepare entry, {
     required bool retire,
+    bool requireSameSession = false,
   }) async {
     await verify();
+    if (requireSameSession && entry.sessionId != _capturedSessionId) {
+      throw StateError('ログイン状態が変わりました。結果照会から確認してください。');
+    }
     final actor = _actor, company = _company!;
     final saved = await _outgoingJournal.read(actor, company, entry.siteId);
     if (!saved.any(
@@ -348,6 +421,10 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
         }.contains(state)) {
       throw const SiteOrderResultUnknown();
     }
+    if (requireSameSession && state != 'retired' &&
+        (value['same_session'] != true || value['requires_fresh_review'] != true)) {
+      throw const SiteOrderResultUnknown();
+    }
     if (state == 'retired') {
       if (value['retired'] != true ||
           value['order_cancelled'] != false ||
@@ -370,6 +447,10 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
     }
     return state as String;
   }
+
+  @override
+  Future<String> inspectUnsignedForReview(SiteOrderPendingPrepare entry) =>
+      _outgoingState(entry, retire: false, requireSameSession: true);
 
   @override
   Future<String> inspectOutgoing(SiteOrderPendingPrepare entry) =>

@@ -40,6 +40,7 @@ class SiteOrderOutgoingEntryPage extends StatefulWidget {
     required this.issueDate,
     this.targets,
     this.initial = const {},
+    this.initialReviewed,
     this.previewBuilder,
     this.render,
   });
@@ -48,6 +49,9 @@ class SiteOrderOutgoingEntryPage extends StatefulWidget {
   @visibleForTesting
   final List<SiteOrderRegisteredTarget>? targets;
   final Map<String, String> initial;
+
+  /// RAM-only return-to-input contents; all document/request IDs are regenerated.
+  final SiteOrderReviewedInput? initialReviewed;
   @visibleForTesting
   final Widget Function(Uint8List)? previewBuilder;
   @visibleForTesting
@@ -80,9 +84,45 @@ class _SiteOrderOutgoingEntryPageState extends State<SiteOrderOutgoingEntryPage>
     WidgetsBinding.instance.addObserver(this);
     widget.api.addListener(_scopeChanged);
     _targets = List.unmodifiable(widget.targets ?? const []);
+    final previous = widget.initialReviewed?.body;
+    final firstRow = previous == null
+        ? null
+        : ((previous['form_fields'] as Map)['rows'] as List).first as Map;
+    if (previous != null) {
+      _trade = widget.initialReviewed!.pending.tradeId;
+      _paperEdits = {
+        for (final key in [
+          'issue_date',
+          'order_date',
+          'work_name',
+          'work_address',
+          'period_start',
+          'period_end',
+          'payment_conditions',
+          'notes',
+          'intro_text',
+          'acceptance_text',
+          'form_fields',
+          'total_amount_yen',
+          'tax_amount_yen',
+        ])
+          key: previous[key],
+      };
+    }
     for (final key in SiteOrderOutgoingEntries.labels.keys) {
+      final Object? previousValue;
+      if (previous == null) {
+        previousValue = null;
+      } else if (key == 'unit_price') {
+        previousValue = firstRow?['unit_price_yen'];
+      } else if (key == 'quantity' || key == 'unit') {
+        previousValue = firstRow?[key];
+      } else {
+        previousValue = previous[key];
+      }
       _controllers[key] = TextEditingController(
         text:
+            previousValue?.toString() ??
             widget.initial[key] ??
             (key == 'quantity'
                 ? '1'
@@ -157,7 +197,8 @@ class _SiteOrderOutgoingEntryPageState extends State<SiteOrderOutgoingEntryPage>
     if (oldWidget.api != widget.api ||
         oldWidget.siteId != widget.siteId ||
         oldWidget.issueDate != widget.issueDate ||
-        !identical(oldWidget.targets, widget.targets)) {
+        !identical(oldWidget.targets, widget.targets) ||
+        !identical(oldWidget.initialReviewed, widget.initialReviewed)) {
       oldWidget.api.removeListener(_scopeChanged);
       _retire();
     }

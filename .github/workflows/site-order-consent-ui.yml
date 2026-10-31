@@ -1,0 +1,44 @@
+name: Outgoing input prepare and consent UI
+on:
+  pull_request:
+    paths:
+      - 'lib/features/sites/site_order_outgoing*.dart'
+      - 'lib/features/sites/site_order_workflow_page.dart'
+      - 'lib/features/sites/site_order_workflow_repository.dart'
+      - 'test/site_order_outgoing*.dart'
+      - 'test/site_order_workflow*.dart'
+      - 'docs/review/site-order-outgoing-ui/**'
+      - '.github/workflows/site-order-consent-ui.yml'
+permissions:
+  contents: read
+jobs:
+  composed-ui-sdk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: '3.47.5', channel: stable, cache: true}
+      - run: flutter pub get --enforce-lockfile
+      - name: Input preservation, server review, explicit consent and uncertain results
+        run: >-
+          flutter test
+          test/site_order_outgoing_compose_page_test.dart
+          test/site_order_outgoing_entry_page_test.dart
+          test/site_order_outgoing_recovery_test.dart
+          test/site_order_outgoing_consent_repository_test.dart
+          test/site_order_workflow_page_test.dart
+          test/site_order_workflow_repository_test.dart
+          test/site_order_registered_targets_repository_test.dart
+          test/site_order_outgoing_body_factory_test.dart
+      - name: Actual changed UI and SDK sources
+        run: >-
+          flutter analyze
+          lib/features/sites/site_order_outgoing_compose_page.dart
+          lib/features/sites/site_order_outgoing_consent_preview.dart
+          lib/features/sites/site_order_outgoing_entry_page.dart
+          lib/features/sites/site_order_outgoing_recovery_page.dart
+          lib/features/sites/site_order_workflow_page.dart
+          lib/features/sites/site_order_workflow_repository.dart
+          test/site_order_outgoing_compose_page_test.dart

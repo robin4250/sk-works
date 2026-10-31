@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'site_order_outgoing_journal.dart';
+import 'site_order_outgoing_consent.dart';
 import 'site_order_workflow_repository.dart';
 
 /// Recovery stays available while generation is OFF. It cannot prepare, sign,
@@ -21,6 +22,7 @@ class SiteOrderOutgoingRecoveryPage extends StatefulWidget {
 class _SiteOrderOutgoingRecoveryPageState
     extends State<SiteOrderOutgoingRecoveryPage> {
   List<SiteOrderPendingPrepare> _entries = const [];
+  List<SiteOrderConsentReference> _decisions = const [];
   bool _busy = true, _retired = false, _readSucceeded = false;
   String? _message;
   @override
@@ -35,6 +37,7 @@ class _SiteOrderOutgoingRecoveryPageState
     setState(() {
       _retired = true;
       _entries = const [];
+      _decisions = const [];
       _message = 'ログイン・会社の状態が変わりました。開き直してください。';
     });
   }
@@ -46,6 +49,7 @@ class _SiteOrderOutgoingRecoveryPageState
       oldWidget.api.removeListener(_changed);
       _retired = true;
       _entries = const [];
+      _decisions = const [];
       _message = '現場が変わりました。開き直してください。';
     }
   }
@@ -55,9 +59,14 @@ class _SiteOrderOutgoingRecoveryPageState
     _readSucceeded = false;
     try {
       final entries = await widget.api.pendingOutgoing(widget.siteId);
+      final decisions = await widget.api.pendingOutgoingConsents(widget.siteId);
       if (!mounted || _retired || widget.api.invalidated) return;
       setState(() {
-        _entries = entries;
+        _decisions = decisions;
+        final requests = decisions.map((d) => d.prepare.requestId).toSet();
+        _entries = entries
+            .where((e) => !requests.contains(e.requestId))
+            .toList(growable: false);
         _readSucceeded = true;
       });
     } catch (_) {
@@ -121,6 +130,28 @@ class _SiteOrderOutgoingRecoveryPageState
     }
   }
 
+  Future<void> _inspectDecision(SiteOrderConsentReference reference) async {
+    if (_busy || _retired || widget.api.invalidated) return;
+    setState(() {
+      _busy = true;
+      _message = null;
+    });
+    try {
+      final result = await widget.api.inspectOutgoingConsent(reference);
+      if (!mounted || _retired || widget.api.invalidated) return;
+      setState(
+        () => _message = result.observed
+            ? '押印内容の確認を保存しています。注文の共有はまだ行っていません。'
+            : '押印確認の結果は未確認です。再実行せず記録を保持しています。',
+      );
+    } catch (_) {
+      if (mounted && !_retired)
+        setState(() => _message = '押印確認の結果を確認できません。再実行せず記録を保持しています。');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   @override
   void dispose() {
     widget.api.removeListener(_changed);
@@ -148,10 +179,33 @@ class _SiteOrderOutgoingRecoveryPageState
             child: Text(_message!),
           ),
         if (_busy) const LinearProgressIndicator(),
-        if (!_busy && _readSucceeded && _entries.isEmpty && !_retired)
+        if (!_busy &&
+            _readSucceeded &&
+            _entries.isEmpty &&
+            _decisions.isEmpty &&
+            !_retired)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 16),
             child: Text('確認待ちの準備記録はありません。'),
+          ),
+        for (final reference in _decisions)
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text('確認待ちの押印内容'),
+                  Text('識別番号 ${reference.prepare.requestId}'),
+                  OutlinedButton(
+                    onPressed: _busy || _retired
+                        ? null
+                        : () => _inspectDecision(reference),
+                    child: const Text('押印確認の保存結果を照会'),
+                  ),
+                ],
+              ),
+            ),
           ),
         for (final entry in _entries)
           Card(
