@@ -40,7 +40,7 @@ void main(){
   testWidgets('actual frozen Native JSON crosses SDK, removal journal, management UI and applicant notice without a second mutation',(tester)async{
     SharedPreferences.setMockInitialValues({});
     await tester.binding.setSurfaceSize(const Size(800,1600));addTearDown(()=>tester.binding.setSurfaceSize(null));
-    final transport=IOClient(RealLoopbackHttp().createHttpClient(null));addTearDown(transport.close);
+    final transport=IOClient(RealLoopbackHttp().createHttpClient(null)..findProxy=(_)=>'DIRECT');addTearDown(transport.close);
     SupabaseClient sdk(String actor)=>SupabaseClient('http://127.0.0.1:55439','fixture-only',httpClient:transport,
       headers:{'x-fixture-actor':actor,'x-fixture-unknown-first-delete-result':'1'},authOptions:const AuthClientOptions(autoRefreshToken:false));
     final manager=sdk('manager'),applicant=sdk('applicant');addTearDown(manager.dispose);addTearDown(applicant.dispose);

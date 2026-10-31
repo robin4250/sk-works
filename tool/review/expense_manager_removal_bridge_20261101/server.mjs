@@ -20,9 +20,10 @@ const server=http.createServer(async(req,res)=>{
    const original=(await admin.query('select amount_yen,receipt_object_path,withdrawn,revision from private.expense_claims where id=$1',[info.claim])).rows[0];
    return reply(res,200,{...info,...counts,original,trace,synthetic_auth:true,deployable:false});
   }
-  const match=/^\/rest\/v1\/rpc\/([a-z_]+)$/.exec(req.url??'');const route=match&&routes[match[1]];
+  const match=/^\/rest\/v1\/rpc\/([a-z_]+)$/.exec(req.url??'');const route=match&&Object.hasOwn(routes,match[1])?routes[match[1]]:null;
   if(req.method!=='POST' || !route)return reply(res,404,{code:'FIXTURE_ROUTE',message:'unavailable'});
   if(req.headers.apikey!=='fixture-only' || req.headers.authorization!=='Bearer fixture-only')return reply(res,403,{code:'FIXTURE_AUTH',message:'synthetic fixture credentials required'});
+  if(!/^application\/json(?:;.*)?$/i.test(req.headers['content-type']??''))throw Error('JSON content type required');
   const who=req.headers['x-fixture-actor'];if(!['manager','applicant'].includes(who))throw Error('actor');
   let body='';for await(const chunk of req){body+=chunk;if(Buffer.byteLength(body)>8192)throw Error('body size');}
   const params=JSON.parse(body);if(!params || Array.isArray(params) || typeof params!=='object' || Object.keys(params).length!==route.keys.length || !route.keys.every(k=>Object.hasOwn(params,k)))throw Error('exact body required');
