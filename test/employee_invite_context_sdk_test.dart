@@ -45,6 +45,54 @@ Map<String, dynamic> result() => {
   }),
 };
 
+class ObservedInviteRepository extends EmployeeInviteRepository {
+  ObservedInviteRepository(super.client);
+  final completed = Completer<void>();
+  Future<EmployeeInviteResult> _observe(
+    Future<EmployeeInviteResult> operation,
+  ) async {
+    try {
+      return await operation;
+    } finally {
+      if (!completed.isCompleted) completed.complete();
+      debugPrint('invite-sdk operation completed');
+    }
+  }
+
+  @override
+  Future<EmployeeInviteResult> createInvite({
+    required String name,
+    required String phone,
+    String requestedRole = 'viewer',
+    bool requestedApprovalAssignee = false,
+    String? replaceApprovalAssigneeUserId,
+    EmployeeInviteRequest? request,
+  }) => _observe(
+    super.createInvite(
+      name: name,
+      phone: phone,
+      requestedRole: requestedRole,
+      requestedApprovalAssignee: requestedApprovalAssignee,
+      replaceApprovalAssigneeUserId: replaceApprovalAssigneeUserId,
+      request: request,
+    ),
+  );
+  @override
+  Future<EmployeeInviteResult> createInviteForWorker(
+    String workerId, {
+    required String expectedPhone,
+    bool deliverSms = true,
+    EmployeeInviteRequest? request,
+  }) => _observe(
+    super.createInviteForWorker(
+      workerId,
+      expectedPhone: expectedPhone,
+      deliverSms: deliverSms,
+      request: request,
+    ),
+  );
+}
+
 class Fixture {
   Fixture() {
     client = SupabaseClient(
@@ -70,6 +118,8 @@ class Fixture {
               },
             }),
             200,
+            headers: {'content-type': 'application/json'},
+            request: request,
           );
         }
         if (request.url.path == '/rest/v1/company_members') {
@@ -92,6 +142,8 @@ class Fixture {
               },
             ]),
             200,
+            headers: {'content-type': 'application/json'},
+            request: request,
           );
         }
         if (request.url.path ==
@@ -122,10 +174,10 @@ class Fixture {
         throw StateError('Unexpected synthetic request');
       }),
     );
-    repository = EmployeeInviteRepository(client);
+    repository = ObservedInviteRepository(client);
   }
   late final SupabaseClient client;
-  late final EmployeeInviteRepository repository;
+  late final ObservedInviteRepository repository;
   String session = sid;
   int invokes = 0;
   Object response = result();
@@ -317,7 +369,7 @@ void main() {
       await tester.ensureVisible(create.first);
       await tester.runAsync(() async {
         await tester.tap(create.first);
-        await Future<void>.delayed(Duration.zero);
+        await f.repository.completed.future;
       });
       await tester.pumpAndSettle();
       expect(find.text(fixturePassword), findsOneWidget);
@@ -348,7 +400,7 @@ void main() {
       await tester.ensureVisible(find.text('送信'));
       await tester.runAsync(() async {
         await tester.tap(find.text('送信'));
-        await Future<void>.delayed(Duration.zero);
+        await f.repository.completed.future;
       });
       await tester.pumpAndSettle();
       await tester.scrollUntilVisible(
