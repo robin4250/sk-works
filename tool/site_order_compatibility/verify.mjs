@@ -1,13 +1,13 @@
 // Disposable actual-consumer compatibility fixture. Never connects to production.
 import fs from 'node:fs/promises';
 const native=process.argv[2]==='postgres';
-let db;
+let db,connectionsOpened=0,connectionsClosed=0;
 if(native){
  const url=new URL(process.env.SKO_COMPAT_FIXTURE_URL);
  if(url.hostname!=='127.0.0.1'||url.pathname!=='/sko_order_compat_fixture')throw Error('isolated localhost fixture only');
  const pg=await import(process.env.SKO_PG_MODULE);const Client=pg.Client??pg.default.Client;
- const client=new Client({connectionString:url.href,application_name:'sko-compat-owner'});await client.connect();
- db={query:(...a)=>client.query(...a),exec:s=>client.query(s),close:()=>client.end(),openPeer:async()=>{const peer=new Client({connectionString:url.href,application_name:'sko-compat-peer',statement_timeout:5000,lock_timeout:3000});await peer.connect();return peer;}};
+ const client=new Client({connectionString:url.href,application_name:'sko-compat-owner'});try{await client.connect();connectionsOpened++;}catch(error){await client.end();throw error;}
+ db={query:(...a)=>client.query(...a),exec:s=>client.query(s),close:async()=>{await client.end();connectionsClosed++;},openPeer:async()=>{const peer=new Client({connectionString:url.href,application_name:'sko-compat-peer',statement_timeout:5000,lock_timeout:3000});try{await peer.connect();connectionsOpened++;const end=peer.end.bind(peer);peer.end=async()=>{await end();connectionsClosed++;};return peer;}catch(error){await peer.end();throw error;}}};
 }else{const {PGlite}=await import(process.env.SKO_PGLITE_MODULE);db=new PGlite();}
 let checks=0;
 const assert=(v,message)=>{if(!v)throw Error(message);checks++;};
@@ -104,6 +104,47 @@ if(native){
   assert(initial===await rows(),'lock failure rows unchanged');
  }finally{await peer.query('rollback');await peer.end();}
 }
+if(native){
+ // Exact installer lock order against the reverse order in another transaction.
+ // Extend deadlock detection only in this isolated fixture so the pinned 2s
+ // installer lock_timeout wins deterministically; do not change the patch.
+ let peer,observer,ownerWork,peerWork;
+ try{
+  peer=await db.openPeer();observer=await db.openPeer();
+  await db.exec("set deadlock_timeout='10s'");
+  await peer.query("set deadlock_timeout='10s';begin;lock table site_order_package_private.packages in row exclusive mode");
+  const peerPid=(await peer.query('select pg_backend_pid() pid')).rows[0].pid;
+  ownerWork=db.exec(patch).then(()=>({ok:true}),error=>({error}));
+  let ownerWaiting=false;
+  for(let i=0;i<30;i++){
+   const state=await observer.query("select wait_event_type from pg_stat_activity where application_name='sko-compat-owner'");
+   if(state.rows.some(r=>r.wait_event_type==='Lock')){ownerWaiting=true;break;}
+   await new Promise(resolve=>setTimeout(resolve,20));
+  }
+  assert(ownerWaiting,'installer package-share lock really waits');
+  peerWork=peer.query('lock table private.company_data_delivery_items in row exclusive mode').then(()=>({ok:true}),error=>({error}));
+  let reverseWaiting=false;
+  for(let i=0;i<30;i++){
+   const state=await observer.query('select wait_event_type from pg_stat_activity where pid=$1',[peerPid]);
+   if(state.rows.some(r=>r.wait_event_type==='Lock')){reverseWaiting=true;break;}
+   await new Promise(resolve=>setTimeout(resolve,20));
+  }
+  assert(reverseWaiting,'reverse transaction data lock really waits');
+  const ownerOutcome=await ownerWork;
+  assert(ownerOutcome.error?.code==='55P03','exact installer reverse lock bounded timeout');
+  await db.exec('rollback');
+  const peerOutcome=await peerWork;
+  assert(peerOutcome.ok===true,'reverse transaction unblocks after installer rollback');
+  await peer.query('rollback');
+  assert(hashesBefore===await sourceHashes(),'reverse lock failure source unchanged');
+  assert(initial===await rows(),'reverse lock failure rows unchanged');
+ }finally{
+  if(ownerWork)await ownerWork;
+  await db.exec('rollback;reset deadlock_timeout');
+  if(peerWork)await peerWork;
+  if(peer){await peer.query('rollback');await peer.end();}if(observer)await observer.end();
+ }
+}
 await db.exec(patch);assert(before===await attrs(),'function OID/ACL/attributes preserved');assert(initial===await rows(),'existing rows unchanged');
 await db.exec(`insert into private.company_data_delivery_items(id,delivery_id,payload_kind,payload) values('${id(13)}','${id(10)}','site_share','{}');insert into site_order_package_private.packages values('${id(20)}','${id(3)}','${id(2)}','${id(1)}','${id(70)}','${id(71)}','${id(60)}','${id(61)}','${id(13)}','{}',now());insert into private.site_share_inbox values('${id(13)}','${id(2)}','pending',now(),null)`);
 await deny(()=>db.exec(`insert into private.company_data_delivery_items(id,delivery_id,payload_kind,payload) values('${id(99)}','${id(10)}','unknown','{}')`),'23514');
@@ -183,5 +224,5 @@ packet.items=[{kind:'received_data',id:id(11)},{kind:'received_data',id:id(12)},
 await db.query("select private.company_document_exchange('send',$1::jsonb)",[JSON.stringify(packet)]);
 assert((await db.query('select count(*)::int n from private.company_data_delivery_items where delivery_id=$1',[id(51)])).rows[0].n===2,'old structured retransfers preserved');
 assert((await db.query('select path from private.document_delivery_items where delivery_id=$1',[id(51)])).rows[0].path==='preserved','old file attachment retransfer preserved');
-console.log(JSON.stringify({checks,production_changed:false,synthetic_surrounding_schema:true,actual_catalog_consumer_definitions:true,actual_private_payment_callers:10,payment_caller_rows_preserved:true,native_lock_wait_checked:native,real_auth:false,full_production_schema:false,native}));
-}finally{await db.close();}
+console.log(JSON.stringify({checks,production_changed:false,synthetic_surrounding_schema:true,actual_catalog_consumer_definitions:true,actual_private_payment_callers:10,payment_caller_rows_preserved:true,native_lock_wait_checked:native,installer_reverse_lock_cycle_checked:native,actual_sender_concurrency_proven:false,real_auth:false,full_production_schema:false,native}));
+}finally{await db.close();if(native){if(connectionsOpened!==connectionsClosed)throw Error('fixture connection leak');console.log(JSON.stringify({native_connections_opened:connectionsOpened,native_connections_closed:connectionsClosed}));}}
