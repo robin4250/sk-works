@@ -32,6 +32,8 @@ language plpgsql security definer set search_path='' as $$
 begin raise exception 'Expense removal history is immutable' using errcode='55000';end $$;
 create trigger expense_manager_removal_immutable before update or delete on private.expense_manager_removals
  for each row execute function private.expense_manager_removal_immutable();
+create trigger expense_manager_removal_truncate_guard before truncate on private.expense_manager_removals
+ for each statement execute function private.expense_manager_removal_immutable();
 revoke all on function private.expense_manager_removal_immutable() from public,anon,authenticated,service_role;
 
 create function private.expense_removal_live_actor() returns uuid
@@ -68,7 +70,7 @@ begin
  if not found then raise exception 'Expense removal access unavailable' using errcode='42501';end if;
  select role::text into role_name from public.company_members
   where company_id=p_company and user_id=auth.uid() for share;
- if not found or role_name not in ('owner','admin','manager') then
+ if not found or role_name is null or role_name not in ('owner','admin','manager') then
   raise exception 'Expense removal access unavailable' using errcode='42501';end if;
  select approver_ids into selected from private.expense_approval_settings where company_id=p_company for share;
  if not found or not coalesce(auth.uid()=any(selected),false)

@@ -61,6 +61,10 @@ try{
  await createClaim(100);
  await assert.rejects(remove(200,100),/OFF/);assert.deepEqual(await counts(),{removals:0,notices:0});pass('default OFF prevents deletion and notification');
  await c.query('update private.expense_manager_removal_state set enabled=true');
+ await c.query('update company_members set role=null where company_id=$1 and user_id=$2',[company,manager]);
+ await assert.rejects(remove(200,100),/access unavailable/);
+ await c.query("update company_members set role='owner' where company_id=$1 and user_id=$2",[company,manager]);
+ pass('NULL manager role fails closed even when selected as an approver');
  const first=await remove(200,100);assert.equal(first.manager_deleted,true);assert.equal(first.financial_state,'withdrawn_unfinalized');
  assert.equal(first.notification_state,'stored');assert.equal(first.correction_required,false);
  const row=(await c.query('select * from private.expense_claims where id=$1',[id(100)])).rows[0];
@@ -144,7 +148,7 @@ try{
  await c.query('update private.expense_manager_removal_state set enabled=false');
  assert.deepEqual((await api.query('select public.expense_manager_removal_result($1,$2) value',[id(200),company])).rows[0].value,first);
  assert.deepEqual(await remove(200,100),first);await assert.rejects(remove(220,103),/OFF/);pass('OFF stops new work but permits authorized result-only reconciliation');
- await assert.rejects(c.query('update private.expense_manager_removals set result=result'),/immutable/);pass('deletion audit cannot be edited');
+ await assert.rejects(c.query('update private.expense_manager_removals set result=result'),/immutable/);await assert.rejects(c.query('truncate private.expense_manager_removals'),/immutable/);pass('deletion audit cannot be edited or truncated');
  for(const role of ['anon','service_role'])assert.equal((await c.query('select has_function_privilege($1,$2,\'EXECUTE\') value',[role,'public.expense_manager_remove(uuid,uuid,uuid,integer,uuid,text)'])).rows[0].value,false);
  assert.deepEqual(await digest(),beforeFunctions);pass('financial function definitions, owner/ACL and final snapshot readers remain unchanged');
  // Deliberate RED: the unchanged shared reader can still show a consumed row.
