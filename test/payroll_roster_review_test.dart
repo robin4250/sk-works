@@ -21,7 +21,7 @@ Map<String, dynamic> payload({String role = 'owner', bool missingId = false}) =>
       'period_start': '2026-10-01',
       'workers': [
         for (var i = 0; i < 9; i++)
-          {
+          <String, dynamic>{
             'id': workerId(i),
             'name': i == 8 ? 'Same name' : 'Employee $i',
             'visible_to_manager': false,
