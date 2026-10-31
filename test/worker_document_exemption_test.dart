@@ -112,6 +112,17 @@ void main() {
     expect(repo.writes, 2); expect(repo.exemption!['active'], false);
     expect(repo.status, retained); expect(find.text('提出免除'), findsNothing);
   });
+  testWidgets('submitted required document without attachment stays incomplete in managed view', (tester) async {
+    repo.status.remove('attachment_path');
+    await open(tester);
+    final card = tester.widget<ResourceRegistrationCard>(find.byKey(
+      const ValueKey('managed-document:admin:worker:requirement')));
+    expect(card.statusLabel, '添付待ち');
+    expect(card.registered, false);
+    expect(card.onAction, isNotNull);
+    expect(repo.status['status'], 'submitted');
+    expect(repo.writes, 0);
+  });
   testWidgets('worker role and disabled backend do not offer exemption action', (tester) async {
     repo.manager = false;
     await open(tester);

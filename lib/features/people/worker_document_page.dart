@@ -9,6 +9,7 @@ import '../common/data_date_labels.dart';
 import 'personnel_export_page.dart';
 import 'worker_document_repository.dart';
 import 'worker_document_exemption.dart';
+import 'worker_document_display_status.dart';
 import 'worker_document_change_flow.dart';
 import 'worker_document_change_review_page.dart';
 import '../shared/resource_registration_card.dart';
@@ -378,12 +379,13 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                                 updatedAt: status?['updated_at']);
                               final exemption = documentExemptionFor(_exemptions, workerId, requirement['id']?.toString());
                               final exempt = exemption?['active'] == true;
+                              final display = workerDocumentDisplayStatus(requirement, status, effectiveStatus: effective);
                               return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                               ResourceRegistrationCard(
                                 key: ValueKey('managed-document:$actor:$workerId:${requirement['id']}'),
                                 title: requirement['name']?.toString() ?? '書類',
-                                icon: Icons.description_outlined, registered: exempt || status != null,
-                                statusLabel: exempt ? '提出免除' : status == null ? '未登録' : '登録済み',
+                                icon: Icons.description_outlined, registered: exempt || display.complete,
+                                statusLabel: exempt ? '提出免除' : display.label,
                                 dateLabel: dates.isEmpty ? '' : dates.first,
                                 detailLabel: [if (exempt) '免除理由：${exemption!['reason']}',
                                   if (!exempt) resourceDocumentReviewLabel(effective),
