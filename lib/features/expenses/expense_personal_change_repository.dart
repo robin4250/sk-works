@@ -13,6 +13,7 @@ class ExpensePersonalChange {
     ExpenseClaim claim, {
     ExpenseSubmission? edit,
   }) {
+    if (claim.managerDeleted) throw StateError('管理者削除済みです。原本は変更せず削除履歴を確認してください。');
     if (claim.withdrawn) throw StateError('取り下げ済みです。');
     final token =
         edit ??
@@ -173,3 +174,4 @@ class ExpensePersonalChangeRepository implements ExpensePersonalChangeAccess {
     if (!await prefs.remove(key)) throw StateError('保存済みです。同じ変更を再確認してください。');
   }
 }
+
