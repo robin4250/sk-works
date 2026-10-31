@@ -1,12 +1,14 @@
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
 import '../auth/app_auth_mutation_gateway.dart';
 import 'worker_document_photos.dart';
 import 'worker_document_change_repository.dart';
+import 'worker_document_admin_correction_repository.dart';
 
 class WorkerDocumentRepository {
   WorkerDocumentRepository._(this._client);
@@ -16,7 +18,33 @@ class WorkerDocumentRepository {
 
   final SupabaseClient _client;
   WorkerDocumentChangeRepository createChangeRepository() => WorkerDocumentChangeRepository(_client);
+  Future<WorkerDocumentAdminCorrectionRepository> createAdminCorrectionRepository({
+    required String companyId,
+    required String targetId,
+    required bool Function() isCurrentTarget,
+  }) async {
+    final preferences = await SharedPreferences.getInstance();
+    if (!isCurrentTarget()) {
+      throw StateError('ログイン・会社・書類の状態が変わりました。');
+    }
+    return WorkerDocumentAdminCorrectionRepository(
+      client: _client,
+      companyId: companyId,
+      targetId: targetId,
+      preferences: preferences,
+      isCurrentTarget: isCurrentTarget,
+    );
+  }
   String? get actorId => _client.auth.currentUser?.id;
+  Future<List<String>> pendingAdminCorrectionTargets(String companyId) async {
+    final actor = actorId;
+    final current = await captureAttachmentReadScope();
+    final preferences = await SharedPreferences.getInstance();
+    if (actor == null || actorId != actor || !current()) {
+      throw StateError('ログイン状態が変わりました。');
+    }
+    return WorkerDocumentAdminCorrectionRepository.pendingTargets(preferences, actor, companyId);
+  }
   Stream<AuthState> get attachmentAuthChanges => _client.auth.onAuthStateChange;
   Future<bool Function()> captureAttachmentReadScope() async {
     final session = _client.auth.currentSession;
@@ -1169,4 +1197,5 @@ class WorkerDocumentRepository {
     requireActor();
   }
 }
+
 
