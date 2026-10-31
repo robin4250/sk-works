@@ -19,21 +19,28 @@ class ProfilePage extends StatefulWidget {
   const ProfilePage({
     super.key,
     required this.role,
+    this.repository,
   });
 
   final ManualRole role;
+  final ProfileRepository? repository;
 
   @override
   State<ProfilePage> createState() => _ProfilePageState();
 }
 
 class _ProfilePageState extends State<ProfilePage> {
-  final _repository = ProfileRepository.maybeCreate();
+  late final ProfileRepository? _repository;
   final _picker = ImagePicker();
   final _name = TextEditingController();
   final _phone = TextEditingController();
   final _personalSkoId = TextEditingController();
   final _personnelName = TextEditingController();
+  final _personnelBirth = TextEditingController();
+  ProfileBirthdayEvidence? _birthdayEvidence;
+  String? _birthdayError;
+  bool _birthDateDirty = false;
+  int _birthdayLoadGeneration = 0;
   final _personnelRole = TextEditingController();
   final _personnelPhone = TextEditingController();
   final _personnelAddress = TextEditingController();
@@ -57,15 +64,19 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   void initState() {
     super.initState();
+    _repository = widget.repository ?? ProfileRepository.maybeCreate();
     _load();
   }
 
   @override
   void dispose() {
+    _birthdayLoadGeneration++;
+    _releaseBirthdayEvidence();
     _name.dispose();
     _phone.dispose();
     _personalSkoId.dispose();
     _personnelName.dispose();
+    _personnelBirth.dispose();
     _personnelRole.dispose();
     _personnelPhone.dispose();
     _personnelAddress.dispose();
@@ -78,6 +89,10 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Future<void> _load() async {
+    final generation = ++_birthdayLoadGeneration;
+    _releaseBirthdayEvidence();
+    _birthDateDirty = false;
+    _birthdayError = null;
     final repository = _repository;
     if (repository == null) {
       setState(() {
@@ -99,7 +114,25 @@ class _ProfilePageState extends State<ProfilePage> {
       ]);
       final data = values[0] as ProfileData;
       final personnel = values[1] as Map<String, dynamic>?;
-      if (!mounted) return;
+      ProfileBirthdayEvidence? birthday;
+      String? birthdayError;
+      final ownWorker = personnel?['worker_id'];
+      if (ownWorker is String && ownWorker.isNotEmpty && data.companyId.isNotEmpty) {
+        try {
+          birthday = await repository.loadOwnBirthday(
+            workerId: ownWorker, companyId: data.companyId);
+        } catch (_) {
+          birthdayError = '生年月日の登録情報を確認できません。再読み込みしてください。';
+        }
+      }
+      if (!mounted || generation != _birthdayLoadGeneration) {
+        birthday?.dispose();
+        return;
+      }
+      _birthdayEvidence = birthday;
+      birthday?.addListener(_birthdayChanged);
+      _birthdayError = birthdayError;
+      _personnelBirth.text = birthday?.birthDate ?? '';
       _name.text = data.displayName;
       _phone.text = ProfileRepository.domesticJapanesePhoneValue(data.phone);
       _personalSkoId.text = data.personalSkoId;
@@ -143,12 +176,48 @@ class _ProfilePageState extends State<ProfilePage> {
         _loading = false;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || generation != _birthdayLoadGeneration) return;
       setState(() {
         _loading = false;
         _error = error.toString();
       });
     }
+  }
+
+  void _releaseBirthdayEvidence() {
+    final evidence = _birthdayEvidence;
+    _birthdayEvidence = null;
+    evidence?.removeListener(_birthdayChanged);
+    evidence?.dispose();
+  }
+
+  void _birthdayChanged() {
+    if (!mounted) return;
+    setState(() {
+      if (_birthdayEvidence?.supported == true &&
+          _birthdayEvidence?.canEdit != true) {
+        _birthdayError = 'ログイン状態が変わりました。生年月日を再読み込みしてください。';
+      }
+    });
+  }
+
+  Future<void> _pickBirthday() async {
+    final evidence = _birthdayEvidence;
+    if (_saving || evidence?.canEdit != true) return;
+    final now = ProfileRepository.birthdayToday();
+    final selected = await showDatePicker(
+      context: context,
+      initialDate: DateTime.tryParse(_personnelBirth.text) ?? DateTime(now.year - 30),
+      firstDate: DateTime(1900), lastDate: now,
+    );
+    if (!mounted || selected == null || !identical(evidence, _birthdayEvidence) ||
+        evidence?.canEdit != true) {
+      return;
+    }
+    setState(() {
+      _personnelBirth.text = selected.toIso8601String().substring(0, 10);
+      _birthDateDirty = true;
+    });
   }
 
   Future<void> _changePersonalSkoId() async {
@@ -263,6 +332,12 @@ class _ProfilePageState extends State<ProfilePage> {
       );
       return;
     }
+    if (_birthDateDirty && _birthdayEvidence?.canEdit != true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('生年月日を再読み込みしてから変更してください。')),
+      );
+      return;
+    }
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -289,8 +364,11 @@ class _ProfilePageState extends State<ProfilePage> {
     try {
       final result = await repository.savePersonnelProfile(
         workerId: workerId,
+        birthdayEvidence: _birthdayEvidence,
         payload: {
           'name': _personnelName.text.trim(),
+          if (_birthDateDirty)
+            'birth_date': _personnelBirth.text.isEmpty ? null : _personnelBirth.text,
           'kind': 'employee',
           'blood_type': _bloodType,
           'role': _personnelRole.text.trim(),
@@ -308,6 +386,9 @@ class _ProfilePageState extends State<ProfilePage> {
       );
       if (!mounted) return;
       final pending = result['requires_approval'] == true;
+      if (pending && _birthDateDirty) {
+        setState(() => _birthdayError = '生年月日の変更申請中です。承認後に反映されます。');
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -714,6 +795,33 @@ class _ProfilePageState extends State<ProfilePage> {
                                 ),
                               ),
                               const SizedBox(height: 10),
+                              TextField(
+                                key: const ValueKey('profile-birthday-field'),
+                                controller: _personnelBirth,
+                                readOnly: true,
+                                enabled: !_saving && _birthdayEvidence?.canEdit == true,
+                                decoration: InputDecoration(
+                                  labelText: '生年月日',
+                                  hintText: 'タップして選択',
+                                  helperText: _birthdayError ??
+                                      (_birthdayEvidence?.supported == true
+                                          ? '社員データと同じ生年月日です。'
+                                          : '生年月日の登録は準備中です。'),
+                                  prefixIcon: const Icon(Icons.calendar_month_outlined),
+                                  suffixIcon: _personnelBirth.text.isEmpty ? null : IconButton(
+                                    key: const ValueKey('profile-birthday-clear'),
+                                    tooltip: '生年月日を未登録に戻す',
+                                    onPressed: _saving || _birthdayEvidence?.canEdit != true
+                                        ? null : () => setState(() {
+                                            _personnelBirth.clear();
+                                            _birthDateDirty = true;
+                                          }),
+                                    icon: const Icon(Icons.clear),
+                                  ),
+                                ),
+                                onTap: _pickBirthday,
+                              ),
+                              const SizedBox(height: 10),
                               DropdownButtonFormField<String>(
                                 initialValue: _bloodType.isEmpty ? null : _bloodType,
                                 decoration: InputDecoration(
@@ -854,6 +962,7 @@ class _ProfilePageState extends State<ProfilePage> {
                               ),
                               const SizedBox(height: 14),
                               FilledButton.icon(
+                                key: const ValueKey('profile-personnel-save'),
                                 onPressed: _saving ? null : _savePersonnel,
                                 icon: const Icon(Icons.badge_outlined),
                                 label: Text(SkoLanguageController.tr('社員個人情報を保存')),
@@ -950,3 +1059,4 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 }
+
