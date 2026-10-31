@@ -13,14 +13,62 @@
       "source_md5": "2db09c3fc855ba90e71d3ae28cfadae3",
       "security_definer": false,
       "volatility": "s",
-      "config": null
+      "config": null,
+      "owner": "supabase_auth_admin",
+      "acl": [
+        {
+          "grantee": "PUBLIC",
+          "grantor": "supabase_auth_admin",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        },
+        {
+          "grantee": "postgres",
+          "grantor": "supabase_auth_admin",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        },
+        {
+          "grantee": "supabase_auth_admin",
+          "grantor": "supabase_auth_admin",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        },
+        {
+          "grantee": "dashboard_user",
+          "grantor": "supabase_auth_admin",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        }
+      ]
     },
     {
       "signature": "auth.uid()",
       "source_md5": "cdef18c69c4f4cbbced2eaf81e628b49",
       "security_definer": false,
       "volatility": "s",
-      "config": null
+      "config": null,
+      "owner": "supabase_auth_admin",
+      "acl": [
+        {
+          "grantee": "PUBLIC",
+          "grantor": "supabase_auth_admin",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        },
+        {
+          "grantee": "supabase_auth_admin",
+          "grantor": "supabase_auth_admin",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        },
+        {
+          "grantee": "dashboard_user",
+          "grantor": "supabase_auth_admin",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        }
+      ]
     },
     {
       "signature": "private.account_access_allowed()",
@@ -29,6 +77,33 @@
       "volatility": "s",
       "config": [
         "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": [
+        {
+          "grantee": "postgres",
+          "grantor": "postgres",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        },
+        {
+          "grantee": "anon",
+          "grantor": "postgres",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        },
+        {
+          "grantee": "authenticated",
+          "grantor": "postgres",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        },
+        {
+          "grantee": "service_role",
+          "grantor": "postgres",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        }
       ]
     },
     {
@@ -38,6 +113,15 @@
       "volatility": "v",
       "config": [
         "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": [
+        {
+          "grantee": "postgres",
+          "grantor": "postgres",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        }
       ]
     },
     {
@@ -47,6 +131,15 @@
       "volatility": "v",
       "config": [
         "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": [
+        {
+          "grantee": "postgres",
+          "grantor": "postgres",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        }
       ]
     },
     {
@@ -56,6 +149,27 @@
       "volatility": "i",
       "config": [
         "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": [
+        {
+          "grantee": "postgres",
+          "grantor": "postgres",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        },
+        {
+          "grantee": "authenticated",
+          "grantor": "postgres",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        },
+        {
+          "grantee": "service_role",
+          "grantor": "postgres",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        }
       ]
     },
     {
@@ -65,6 +179,15 @@
       "volatility": "i",
       "config": [
         "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": [
+        {
+          "grantee": "postgres",
+          "grantor": "postgres",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        }
       ]
     },
     {
@@ -74,6 +197,15 @@
       "volatility": "v",
       "config": [
         "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": [
+        {
+          "grantee": "postgres",
+          "grantor": "postgres",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        }
       ]
     }
   ],
@@ -95,5 +227,27 @@
     "native actual-helper minimal site composition",
     "independent review",
     "explicit production approval"
+  ],
+  "public_fixture_actual_sources": {
+    "private.uploaded_company_seal_snapshot(uuid)": "docs/candidates/company_seal_uploaded_png_20261020.sql.review-only",
+    "private.require_reauthentication_session()": "docs/review/collector-current-core-20261026/sources/reauthentication_proofs.sql",
+    "private.account_access_allowed()": "tool/security/worker_document_change_session/baseline.sql",
+    "private.aoyagi_reisho_name_supported(text)": "supabase/migrations/20261009011357_company_seal_aoyagi_style.sql",
+    "auth.uid()": "docs/review/site-order-private-baseline/current-generic-auth-functions.fixture.sql",
+    "auth.jwt()": "docs/review/site-order-private-baseline/current-generic-auth-functions.fixture.sql",
+    "private.account_deletion_barrier_key(uuid)": "docs/review/site-order-private-baseline/current-generic-auth-functions.fixture.sql"
+  },
+  "public_fixture_nonmatching_helper": "private.document_company_seal_snapshot(jsonb,uuid,boolean)",
+  "public_fixture_seal_limit": "Formal C base seal snapshot is synthetic; private actual eight-body composition is separate.",
+  "existing_relation_names": [
+    "auth.sessions",
+    "auth.users",
+    "private.account_deletion_access_restrictions",
+    "private.company_connections",
+    "private.company_seal_png_selection",
+    "private.company_seal_png_versions",
+    "public.companies",
+    "public.company_members",
+    "public.trade_companies"
   ]
 }
