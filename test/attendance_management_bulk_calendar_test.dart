@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/attendance/attendance_management_page.dart';
+import 'package:sk_works/features/people/worker_document_change_route_host.dart';
 import 'attendance_unrecorded_punches_test.dart' as fixture;
 
 class BulkCalendarFixture extends fixture.PageFixture {
@@ -267,4 +268,31 @@ void main() {
     expect(writes(),isEmpty);
     await finish(tester);
   });
+
+  for(final overlay in ['dialog','new route']) {
+    testWidgets('old owned close callback cannot pop a different root $overlay',(tester) async {
+      await tester.pumpWidget(MaterialApp(home:Builder(builder:(context)=>Scaffold(body:TextButton(
+        onPressed:()=>Navigator.of(context).push(MaterialPageRoute<void>(
+          builder:(_)=>AttendanceManagementPage(repository:repository))),child:const Text('元の親'))))));
+      await tester.tap(find.text('元の親'));await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(Tab,'一括'));await tester.pumpAndSettle();
+      final close=tester.widget<WorkerDocumentChangeRouteHost>(find.byType(WorkerDocumentChangeRouteHost)).onClose;
+      final ownerContext=tester.element(find.byType(AttendanceManagementPage));
+      if(overlay=='dialog') {
+        unawaited(showDialog<void>(context:ownerContext,builder:(context)=>AlertDialog(title:const Text('別の確認画面'),
+          actions:[TextButton(onPressed:()=>Navigator.of(context).pop(),child:const Text('別画面を閉じる'))])));
+      } else {
+        unawaited(Navigator.of(ownerContext).push<void>(MaterialPageRoute(builder:(context)=>Scaffold(
+          appBar:AppBar(title:const Text('別の確認画面')),body:TextButton(
+            onPressed:()=>Navigator.of(context).pop(),child:const Text('別画面を閉じる'))))));
+      }
+      await tester.pumpAndSettle();
+      close();await tester.pumpAndSettle();
+      expect(find.text('別の確認画面'),findsOneWidget);
+      await tester.tap(find.text('別画面を閉じる'));await tester.pumpAndSettle();
+      expect(find.byType(AttendanceManagementPage),findsOneWidget);
+      expect(writes(),isEmpty);
+      await finish(tester);
+    });
+  }
 }

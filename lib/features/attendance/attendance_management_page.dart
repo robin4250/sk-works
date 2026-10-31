@@ -637,14 +637,23 @@ class _BulkManagementPanelState extends State<_BulkManagementPanel> with Widgets
   void _show(String message) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
 
   @override
-  Widget build(BuildContext context) => WorkerDocumentChangeRouteHost(
-    key: ValueKey(_routeEpoch),
-    onClose: () => Navigator.of(context).maybePop(),
-    builder: (context) => ValueListenableBuilder<int>(
-      valueListenable: _changes,
-      builder: (context, version, child) => _buildPanel(context),
-    ),
-  );
+  Widget build(BuildContext context) {
+    final ownerRoute = ModalRoute.of(context);
+    final ownerNavigator = Navigator.of(context);
+    return WorkerDocumentChangeRouteHost(
+      key: ValueKey(_routeEpoch),
+      onClose: () {
+        if (!mounted || !ownerNavigator.mounted || ownerRoute?.isCurrent != true ||
+            !identical(ModalRoute.of(this.context), ownerRoute) ||
+            !identical(Navigator.of(this.context), ownerNavigator) || !ownerNavigator.canPop()) return;
+        ownerNavigator.pop();
+      },
+      builder: (context) => ValueListenableBuilder<int>(
+        valueListenable: _changes,
+        builder: (context, version, child) => _buildPanel(context),
+      ),
+    );
+  }
 
   Widget _buildPanel(BuildContext context) {
     final days = DateUtils.getDaysInMonth(_month.year, _month.month);
