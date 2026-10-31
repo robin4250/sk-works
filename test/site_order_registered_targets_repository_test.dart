@@ -63,11 +63,11 @@ class _Wire extends http.BaseClient {
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
     Object body;
     int status = 200;
-    if (request.url.path == '/rest/v1/company_members')
+    if (request.url.path == '/rest/v1/company_members') {
       body = [
         {'company_id': data['company'], 'role': 'manager'},
       ];
-    else {
+    } else {
       expect(request.url.path, '/functions/v1/site-order-workflow/outgoing');
       expect(
         request.headers['Authorization'] ?? request.headers['authorization'],
