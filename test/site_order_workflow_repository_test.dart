@@ -21,6 +21,7 @@ class _Wire extends http.BaseClient {
   bool malformedSuccess = false;
   Map<String, dynamic>? functionJson;
   int functions = 0;
+  Map<String, dynamic>? command;
   String? authorization;
   Completer<void>? hold;
   Completer<void>? started;
@@ -61,6 +62,7 @@ class _Wire extends http.BaseClient {
     }
     expect(request.url.path, '/functions/v1/site-order-workflow');
     functions++;
+    command = jsonDecode((request as http.Request).body) as Map<String, dynamic>;
     authorization =
         request.headers['Authorization'] ?? request.headers['authorization'];
     if (started?.isCompleted == false) started!.complete();
@@ -134,6 +136,16 @@ Future<(SupabaseClient, SiteOrderWorkflowRepository)> _fixture(
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+  test('site history uses one fixed scoped command with captured bearer and paired cursor', () async {
+    final wire = _Wire()..functionJson = {'result': <Object?>[]};
+    final f = await _fixture(wire);
+    addTearDown(f.$2.dispose); addTearDown(f.$1.dispose);
+    expect(await f.$2.historyForSite(package, before: '2026-10-31T00:00:00Z', beforeId: package), isEmpty);
+    expect(wire.command, {'action': 'site_history', 'site_id': package,
+      'before': '2026-10-31T00:00:00Z', 'before_id': package, 'limit': 50});
+    expect(wire.authorization, 'Bearer ${wire.token()}');
+    expect(wire.functions, 1);
+  });
   test('uncertain reply retains identifiers across restart until exact cancellation barrier', () async {
     final wire = _Wire()..functionStatus = 409;
     final f = await _fixture(wire);

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../domain/rate_formula_settings.dart';
 import '../notifications/notification_bell.dart';
 import 'admin_site_financial_repository.dart';
+import 'site_order_workflow_page.dart';
 
 class AdminSiteFinancialPage extends StatefulWidget {
   const AdminSiteFinancialPage({super.key, this.onOpenMap});
@@ -151,7 +152,7 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
                                             : Icons.lock_outline,
                                       ),
                                       onTap:
-                                          _canManage ? () => _edit(item) : null,
+                                          _canManage ? () => _openSite(item) : null,
                                     ),
                                   );
                                 },
@@ -162,6 +163,42 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
         ),
       ),
     );
+  }
+
+  Future<void> _openSite(AdminSiteFinancialRecord record) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      useSafeArea: true,
+      builder: (sheet) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(title: Text(record.siteName)),
+          ListTile(
+            leading: const Icon(Icons.picture_as_pdf_outlined),
+            title: const Text('過去の注文書を見る'),
+            onTap: () => Navigator.pop(sheet, 'orders'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.edit_outlined),
+            title: const Text('現場の金額設定'),
+            onTap: () => Navigator.pop(sheet, 'financial'),
+          ),
+          TextButton(onPressed: () => Navigator.pop(sheet), child: const Text('閉じる')),
+        ],
+      ),
+    );
+    if (!mounted || !_canManage) { return; }
+    if (action == 'orders') {
+      await Navigator.push<void>(context, MaterialPageRoute(
+        builder: (_) => SiteOrderWorkflowPage(
+          key: ValueKey('site-order-history:${record.siteId}'),
+          siteId: record.siteId,
+          siteName: record.siteName,
+        ),
+      ));
+    } else if (action == 'financial') {
+      await _edit(record);
+    }
   }
 
   Future<void> _edit(AdminSiteFinancialRecord record) async {

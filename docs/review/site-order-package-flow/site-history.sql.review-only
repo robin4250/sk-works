@@ -1,0 +1,47 @@
+-- REVIEW ONLY. Site-scoped management archive; no new public RPC or grants.
+-- Feature OFF preserves existing archive reads through the canonical actor.
+begin;
+do $$ declare p pg_proc; begin
+ select * into p from pg_proc where oid=to_regprocedure('site_order_package_private.read_actor()');
+ if p.oid is null or md5(p.prosrc)<>'cc3b89f99b06543bcbedde33608b2920'
+ or not p.prosecdef or pg_get_userbyid(p.proowner)<>'postgres'
+ or p.proconfig is distinct from array['search_path=""']::text[]
+ or has_function_privilege('anon',p.oid,'execute')
+ or has_function_privilege('authenticated',p.oid,'execute')
+ or has_function_privilege('service_role',p.oid,'execute')
+ or to_regprocedure('site_order_package_private.site_history_entries(uuid,timestamp with time zone,uuid,integer)') is not null
+ then raise exception 'site_order_site_history_dependency_changed' using errcode='55000'; end if;
+end $$;
+create function site_order_package_private.site_history_entries(p_site uuid,p_before timestamptz,p_before_id uuid,p_limit integer)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare a jsonb;cid uuid;result jsonb;
+begin
+ a:=site_order_package_private.read_actor();cid:=(a->>'company_id')::uuid;
+ if p_site is null or p_limit is null or p_limit<1 or p_limit>50
+ or (p_before is null)<>(p_before_id is null) then
+  raise exception 'site_order_site_history_cursor_invalid' using errcode='22023';
+ end if;
+ perform 1 from public.sites where id=p_site and company_id=cid for share;
+ if not found then raise exception 'site_order_site_history_not_found' using errcode='42501';end if;
+ select coalesce(jsonb_agg(x.value order by x.created_at desc,x.id desc),'[]'::jsonb)
+ into result from (
+  select p.id,p.created_at,jsonb_build_object('package_id',p.id,'created_at',p.created_at,
+   'work_name',j.evidence#>>'{body,work_name}',
+   'period_start',j.evidence#>>'{body,period_start}',
+   'period_end',j.evidence#>>'{body,period_end}',
+   'is_recipient',p.recipient_company_id=cid,'pdf_sha256',r.pdf_sha256) value
+  from site_order_package_private.packages p
+  join site_order_artifact_private.render_jobs j on j.id=p.source_job_id
+  join site_order_artifact_private.pdf_records r on r.job_id=j.id and r.receipt_id=p.original_receipt_id
+  left join site_order_package_private.approvals approval on approval.package_id=p.id
+  where ((p.sender_company_id=cid and j.company_id=cid and j.site_id=p_site)
+    or (p.recipient_company_id=cid and approval.recipient_company_id=cid
+      and approval.accepted_site_id=p_site))
+   and (p_before is null or (p.created_at,p.id)<(p_before,p_before_id))
+  order by p.created_at desc,p.id desc limit p_limit
+ )x;
+ return result;
+end $$;
+revoke all on function site_order_package_private.site_history_entries(uuid,timestamptz,uuid,integer)
+ from public,anon,authenticated,service_role;
+commit;

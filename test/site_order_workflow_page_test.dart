@@ -15,6 +15,9 @@ class _Api extends SiteOrderWorkflowApi {
   bool pendingApproval = false, rejected = false;
   int refusals = 0, recoveries = 0;
   bool pendingReply = false;
+  int globalHistoryReads = 0;
+  final siteReads = <String>[];
+  Completer<List<Map<String, dynamic>>>? siteHistoryHold;
   Completer<Map<String, dynamic>>? hold;
   @override
   bool get invalidated => expired;
@@ -64,7 +67,18 @@ class _Api extends SiteOrderWorkflowApi {
   Future<List<Map<String, dynamic>>> history({
     String? before,
     String? beforeId,
-  }) async => [];
+  }) async { globalHistoryReads++; return []; }
+  @override
+  Future<List<Map<String, dynamic>>> historyForSite(String siteId, {
+    String? before, String? beforeId,
+  }) async {
+    siteReads.add(siteId);
+    return siteHistoryHold == null ? [{
+      'package_id': package, 'created_at': '2026-10-31T00:00:00Z',
+      'work_name': '保存された工事名称', 'period_start': '2026-10-01',
+      'period_end': '2026-10-31', 'pdf_sha256': 'a' * 64,
+    }] : siteHistoryHold!.future;
+  }
   @override
   Future<List<Map<String, dynamic>>> targets(String id) async => [
     {'trade_id': package, 'name': '取引会社', 'connection_fingerprint': 'a' * 64},
@@ -151,6 +165,32 @@ Widget _app(_Api api) => MaterialApp(
 );
 
 void main() {
+  testWidgets('site entry uses the exact scoped endpoint and preserves saved title and period', (tester) async {
+    final api = _Api();
+    await tester.pumpWidget(MaterialApp(home: SiteOrderWorkflowPage(
+      api: api, siteId: package, siteName: '対象現場',
+    )));
+    await tester.pumpAndSettle();
+    expect(api.siteReads, [package]);
+    expect(api.globalHistoryReads, 0);
+    expect(find.text('対象現場の注文履歴'), findsOneWidget);
+    expect(find.text('保存された工事名称'), findsOneWidget);
+    expect(find.text('2026-10-01 ～ 2026-10-31'), findsOneWidget);
+    expect(api.approvals, 0);
+  });
+  testWidgets('a late former site response cannot populate a changed site', (tester) async {
+    final api = _Api()..siteHistoryHold = Completer<List<Map<String, dynamic>>>();
+    await tester.pumpWidget(MaterialApp(home: SiteOrderWorkflowPage(api: api, siteId: package)));
+    await tester.pump();
+    await tester.pumpWidget(MaterialApp(home: SiteOrderWorkflowPage(
+      api: api, siteId: '00000000-0000-0000-0000-000000000002',
+    )));
+    api.siteHistoryHold!.complete([{'work_name': '以前の現場情報'}]);
+    await tester.pumpAndSettle();
+    expect(find.text('以前の現場情報'), findsNothing);
+    expect(find.text('現場が変わりました。一覧から開き直してください。'), findsOneWidget);
+    expect(api.siteReads, [package]);
+  });
   test('package notification requires its exact saved UUID', () {
     expect(notificationTargetIsValid('site_order_package', null), isFalse);
     expect(notificationTargetIsValid('site_order_package', 'wrong'), isFalse);

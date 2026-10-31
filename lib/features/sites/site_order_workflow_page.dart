@@ -14,7 +14,10 @@ class SiteOrderWorkflowPage extends StatefulWidget {
     this.initialPackageId,
     this.api,
     this.previewBuilder,
-  });
+    this.siteId,
+    this.siteName,
+  }) : assert(initialPackageId == null || siteId == null);
+  final String? siteId, siteName;
   final String? initialPackageId;
   @visibleForTesting
   final Widget Function(Uint8List)? previewBuilder;
@@ -29,9 +32,13 @@ class _SiteOrderWorkflowPageState extends State<SiteOrderWorkflowPage> {
   final _rows = <Map<String, dynamic>>[];
   bool _loading = true, _more = true, _opening = false;
   String? _error;
+  late final String? _siteId;
+  bool _scopeRetired = false;
+  final _scopeChanges = ValueNotifier<int>(0);
   @override
   void initState() {
     super.initState();
+    _siteId = widget.siteId;
     _api = widget.api ?? SiteOrderWorkflowRepository.maybeCreate();
     _api?.addListener(_changed);
     if (_api == null) {
@@ -42,6 +49,29 @@ class _SiteOrderWorkflowPageState extends State<SiteOrderWorkflowPage> {
     }
   }
 
+  @override
+  void didUpdateWidget(covariant SiteOrderWorkflowPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.siteId != _siteId || widget.initialPackageId != oldWidget.initialPackageId) {
+      _scopeRetired = true;
+      _rows.clear();
+      _error = '現場が変わりました。一覧から開き直してください。';
+      _scopeChanges.value++;
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _history(
+    SiteOrderWorkflowApi api, {
+    String? before,
+    String? beforeId,
+  }) {
+    if (_scopeRetired) { throw StateError('現場を開き直してください。'); }
+    final site = _siteId;
+    return site == null
+        ? api.history(before: before, beforeId: beforeId)
+        : api.historyForSite(site, before: before, beforeId: beforeId);
+  }
+
   void _changed() {
     if (!mounted) return;
     if (_api?.invalidated == true) _rows.clear();
@@ -50,7 +80,7 @@ class _SiteOrderWorkflowPageState extends State<SiteOrderWorkflowPage> {
 
   Future<void> _load({bool more = false}) async {
     final api = _api;
-    if (api == null) {
+    if (api == null || _scopeRetired) {
       if (mounted) {
         setState(() {
           _loading = false;
@@ -65,11 +95,11 @@ class _SiteOrderWorkflowPageState extends State<SiteOrderWorkflowPage> {
     });
     try {
       final last = more && _rows.isNotEmpty ? _rows.last : null;
-      final result = await api.history(
+      final result = await _history(api,
         before: last?['created_at']?.toString(),
         beforeId: last?['package_id']?.toString(),
       );
-      if (!mounted || api.invalidated) return;
+      if (!mounted || api.invalidated || _scopeRetired) return;
       setState(() {
         if (!more) _rows.clear();
         _rows.addAll(result);
@@ -91,12 +121,12 @@ class _SiteOrderWorkflowPageState extends State<SiteOrderWorkflowPage> {
   );
   Future<void> _openArchive(int index) async {
     final api = _api;
-    if (api == null || _opening || _loading) return;
+    if (api == null || _scopeRetired || _opening || _loading) return;
     setState(() => _opening = true);
     try {
       await api.verify();
       final entries = _rows.map(_entry).toList(growable: false);
-      if (!mounted || api.invalidated) return;
+      if (!mounted || api.invalidated || _scopeRetired) return;
       await Navigator.push<void>(
         context,
         MaterialPageRoute(
@@ -104,17 +134,20 @@ class _SiteOrderWorkflowPageState extends State<SiteOrderWorkflowPage> {
             entries: entries,
             initialIndex: index,
             hasMore: _more,
-            requireScope: api.requireCurrent,
-            scopeChanges: api,
+            requireScope: () {
+              if (_scopeRetired) { throw StateError('現場を開き直してください。'); }
+              api.requireCurrent();
+            },
+            scopeChanges: Listenable.merge([api, _scopeChanges]),
             loadPdf: (entry) => api.original(entry.packageId, 'order'),
             loadMore: () async {
               final last = _rows.last;
-              final values = await api.history(
+              final values = await _history(api,
                 before: last['created_at'].toString(),
                 beforeId: last['package_id'].toString(),
               );
               final result = values.map(_entry).toList(growable: false);
-              if (!mounted || api.invalidated) throw StateError('開き直してください。');
+              if (!mounted || api.invalidated || _scopeRetired) throw StateError('開き直してください。');
               setState(() {
                 _rows.addAll(values);
                 _more = values.length == 50;
@@ -146,6 +179,7 @@ class _SiteOrderWorkflowPageState extends State<SiteOrderWorkflowPage> {
   void dispose() {
     _api?.removeListener(_changed);
     if (widget.api == null) _api?.dispose();
+    _scopeChanges.dispose();
     super.dispose();
   }
 
@@ -162,7 +196,7 @@ class _SiteOrderWorkflowPageState extends State<SiteOrderWorkflowPage> {
     }
     return Scaffold(
       appBar: AppBar(
-        title: const Text('過去の注文書・請書'),
+        title: Text(_siteId == null ? '過去の注文書・請書' : '${widget.siteName?.trim().isNotEmpty == true ? widget.siteName : '現場'}の注文履歴'),
         actions: [
           IconButton(
             tooltip: '更新',
