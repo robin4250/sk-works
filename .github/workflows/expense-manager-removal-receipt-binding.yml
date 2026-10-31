@@ -1,0 +1,40 @@
+name: Expense removal canonical receipt binding isolated review
+on:
+  pull_request:
+    paths:
+      - 'tool/review/expense_manager_removal_receipt_binding_20261101/**'
+      - 'docs/candidates/expense_manager_removal_receipt_binding_20261101.sql.review-only'
+      - '.github/workflows/expense-manager-removal-receipt-binding.yml'
+concurrency:
+  group: expense-manager-removal-receipt-binding-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  receipt-binding:
+    if: ${{ false }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17.6
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_expense_manager_removal_fixture
+        ports:
+          - 55438:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 2s --health-timeout 3s --health-retries 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --prefix "$RUNNER_TEMP/expense-receipt-pg" --no-audit --no-fund --ignore-scripts pg@8.16.3
+      - name: Canonical schema Native receipt binding only
+        run: |
+          fixture_ip=$(docker inspect --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' '${{ job.services.postgres.id }}')
+          test -n "$fixture_ip"
+          export SKO_EXPENSE_FIXTURE_SERVER_IP="$fixture_ip"
+          node tool/review/expense_manager_removal_receipt_binding_20261101/native-test.mjs "$RUNNER_TEMP/expense-receipt-pg/node_modules/pg/lib/index.js"
