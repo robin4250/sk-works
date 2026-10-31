@@ -119,6 +119,27 @@ try{
  assert.deepEqual(receipts[0].rows[0].value,receipts[1].rows[0].value);
  const countsAfterRace=await counts();assert.equal(countsAfterRace.removals,countsBeforeRace.removals+1);assert.equal(countsAfterRace.notices,countsBeforeRace.notices+1);
  pass('two actual waiting API connections produce one removal and one notification');
+ // A changed worker-account link must not retarget the original applicant's notice.
+ await c.query('update workers set user_id=$1 where id=$2',[id(8),worker]);
+ const storedRecipient=(await c.query('select recipient_user_id from app_notifications where id=$1',[first.notification_id])).rows[0].recipient_user_id;
+ assert.equal(storedRecipient,applicant);
+ await identity(applicant,applicantSid);
+ assert.equal((await api.query('select public.expense_manager_removal_notice($1) value',[first.notification_id])).rows[0].value.claim_id,id(100));
+ await identity(manager,sid);
+ await assert.rejects(api.query('select public.expense_manager_removal_notice($1)',[first.notification_id]),/notification unavailable/);
+ await c.query('update workers set user_id=$1 where id=$2',[applicant,worker]);
+ pass('worker account relinking does not change the original notice recipient and manager cannot read applicant-only notice');
+ const newSid=id(12);
+ await c.query("insert into auth.sessions values($1,$2,null);update auth.sessions set not_after=clock_timestamp()-interval '1 minute' where id=$3",[newSid,manager,sid]);
+ await assert.rejects(remove(222,103),/access unavailable/);
+ await identity(manager,newSid);
+ assert.deepEqual((await api.query('select public.expense_manager_removal_result($1,$2) value',[id(200),company])).rows[0].value,first);
+ assert.deepEqual(await remove(200,100),first);
+ await assert.rejects(remove(222,103),/New login cannot start an old deletion/);
+ assert.equal((await api.query('select public.expense_manager_removal_result($1,$2) value',[id(999),company])).rows[0].value,null);
+ await assert.rejects(api.query('select public.expense_manager_removal_result($1,$2)',[id(200),id(7)]),/access unavailable/);
+ pass('expired old SID cannot mutate; authorized new SID reconciles immutable old result while missing or cross-company results never become success');
+
  await c.query('update private.expense_manager_removal_state set enabled=false');
  assert.deepEqual((await api.query('select public.expense_manager_removal_result($1,$2) value',[id(200),company])).rows[0].value,first);
  assert.deepEqual(await remove(200,100),first);await assert.rejects(remove(220,103),/OFF/);pass('OFF stops new work but permits authorized result-only reconciliation');
