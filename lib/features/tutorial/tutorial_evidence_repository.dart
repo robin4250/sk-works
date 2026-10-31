@@ -421,37 +421,37 @@ class TutorialEvidenceRepository {
             // Bank evidence is held separately, and cannot be inferred from status.
             state = TutorialEvidenceState.unknown;
           } else {
-          List<String>? paths;
-          try { paths = workerDocumentPaths(Map<String, dynamic>.from(row)); } catch (_) {
-            statusLabel = '添付情報を確認';
-          }
-          if (paths == null) {
-            state = TutorialEvidenceState.unknown;
-          } else if (paths.isEmpty) {
-            state = TutorialEvidenceState.missing;
-            statusLabel = '添付待ち';
-          } else {
-          final rawExpiry = row['expires_at']?.toString() ?? '';
-          final expiry = DateTime.tryParse(rawExpiry);
-          final canonicalExpiry = expiry != null && expiry.year >= 1 &&
-              RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(rawExpiry) &&
-              '${expiry.year.toString().padLeft(4, '0')}-${expiry.month.toString().padLeft(2, '0')}-${expiry.day.toString().padLeft(2, '0')}' == rawExpiry;
-          if (rawExpiry.isNotEmpty && !canonicalExpiry) {
-            state = TutorialEvidenceState.unknown;
-            statusLabel = '登録済み・期限を確認';
-          } else if (requirement['expiry_required'] == true && expiry == null) {
-            state = TutorialEvidenceState.missing;
-            statusLabel = '登録済み・期限未入力';
-          } else if (expiry != null &&
-              DateTime(expiry.year, expiry.month, expiry.day).isBefore(
-                DateTime(today.year, today.month, today.day))) {
-            state = TutorialEvidenceState.missing;
-            statusLabel = '登録済み・期限切れ';
-          } else {
-            state = TutorialEvidenceState.saved;
-            statusLabel = '提出済み';
-          }
-          }
+            List<String>? paths;
+            try { paths = workerDocumentPaths(Map<String, dynamic>.from(row)); } catch (_) {
+              statusLabel = '添付情報を確認';
+            }
+            if (paths == null) {
+              state = TutorialEvidenceState.unknown;
+            } else if (paths.isEmpty) {
+              state = TutorialEvidenceState.missing;
+              statusLabel = '添付待ち';
+            } else {
+            final rawExpiry = row['expires_at']?.toString() ?? '';
+            final expiry = DateTime.tryParse(rawExpiry);
+            final canonicalExpiry = expiry != null && expiry.year >= 1 &&
+                RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(rawExpiry) &&
+                '${expiry.year.toString().padLeft(4, '0')}-${expiry.month.toString().padLeft(2, '0')}-${expiry.day.toString().padLeft(2, '0')}' == rawExpiry;
+            if (rawExpiry.isNotEmpty && !canonicalExpiry) {
+              state = TutorialEvidenceState.unknown;
+              statusLabel = '登録済み・期限を確認';
+            } else if (requirement['expiry_required'] == true && expiry == null) {
+              state = TutorialEvidenceState.missing;
+              statusLabel = '登録済み・期限未入力';
+            } else if (expiry != null &&
+                DateTime(expiry.year, expiry.month, expiry.day).isBefore(
+                  DateTime(today.year, today.month, today.day))) {
+              state = TutorialEvidenceState.missing;
+              statusLabel = '登録済み・期限切れ';
+            } else {
+              state = TutorialEvidenceState.saved;
+              statusLabel = '提出済み';
+            }
+            }
           }
         }
       }
@@ -605,7 +605,9 @@ class _SupabaseTutorialEvidenceSource implements TutorialEvidenceSource, Tutoria
       statuses = await readStatuses(true);
     } on PostgrestException catch (error) {
       if ((error.code != '42703' && error.code != 'PGRST204') ||
-          !error.message.contains('attachment_paths')) rethrow;
+          !error.message.contains('attachment_paths')) {
+        rethrow;
+      }
       // Only a proven absent new column permits the legacy read. Auth/RLS and
       // network errors remain unknown; every retry retains the original scope.
       statuses = await readStatuses(false);
