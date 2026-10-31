@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'expense_claim.dart';
 import 'expense_surface_card.dart';
@@ -32,22 +33,40 @@ class _ExpenseManagementPageState extends State<ExpenseManagementPage> {
   ExpenseReviewWorkspace? _data;
   ExpenseReviewCommand? _pending;
   bool _busy = true;
+  final _dialogChanges=StreamController<void>.broadcast(sync:true);
+  bool _contextChanged=false;
+  StreamSubscription<void>? _removalSubscription;
   int _generation = 0;
   @override
   void initState() {
     super.initState();
+    _removalSubscription=_removals.changes.listen((_) {
+      _generation++;_contextChanged=true;_dialogChanges.add(null);
+      if(mounted)setState((){_data=null;_pending=null;_removalPending=null;_busy=false;});
+    });
     _start();
+  }
+
+  @override
+  void didUpdateWidget(covariant ExpenseManagementPage oldWidget){
+    super.didUpdateWidget(oldWidget);
+    if(oldWidget.access!=widget.access || oldWidget.removals!=widget.removals){
+      _generation++;_contextChanged=true;_dialogChanges.add(null);
+      _data=null;_pending=null;_removalPending=null;_busy=false;
+    }
   }
 
   @override
   void dispose() {
     _generation++;
+    _dialogChanges.close();
+    _removalSubscription?.cancel();
     if(widget.removals==null)_removals.dispose();
     super.dispose();
   }
 
   bool _current(int g) =>
-      mounted && g == _generation && _access.actor == _actor;
+      mounted && !_contextChanged && g == _generation && _access.actor == _actor;
   Future<void> _start() async {
     final g = ++_generation;
     setState(() {
@@ -166,9 +185,9 @@ class _ExpenseManagementPageState extends State<ExpenseManagementPage> {
   }
   Future<void> _remove(ExpenseClaim claim)async{
     if(!_canRemove(claim))return;
-    final g=_generation;final company=_company;final session=_removals.session;
-    final reason=await showDialog<String>(context:context,builder:(_)=>ExpenseManagerRemovalDialog(claim:claim));
-    if(reason==null || !_current(g) || company!=_company || session!=_removals.session || !_canRemove(claim))return;
+    final g=_generation;final company=_company;final session=_removals.session;final epoch=_removals.epoch;
+    final reason=await showDialog<String>(context:context,builder:(_)=>ExpenseManagerRemovalDialog(claim:claim,invalidations:_dialogChanges.stream));
+    if(reason==null || !_current(g) || company!=_company || session!=_removals.session || epoch!=_removals.epoch || !_canRemove(claim))return;
     final command=ExpenseRemovalCommand.create(_actor!,company!,claim.id,claim.revision,session!,reason);
     final generation=++_generation;
     setState((){_busy=true;_error=null;});
@@ -405,7 +424,7 @@ class _ExpenseManagementPageState extends State<ExpenseManagementPage> {
   );
   @override
   Widget build(BuildContext context) {
-    if (_actor != null && _access.actor != _actor) {
+    if (_contextChanged || (_actor != null && _access.actor != _actor)) {
       return Scaffold(
         backgroundColor: const Color(0xfff5f7fa),
         appBar: AppBar(

@@ -124,4 +124,17 @@ void main(){
     expect(()=>ExpenseRemovalResult({...saved(c),'error':'unavailable'},c),throwsFormatException);
   });
 
+  testWidgets('Auth retirement and parent stream completion mask an open deletion modal without closing another modal',(tester)async{
+    final events=StreamController<void>.broadcast(sync:true);
+    final claim=ExpenseClaim(id:id(3),companyId:id(2),applicantId:id(9),applicantName:'本人',incurredOn:DateTime(2026,10,1),submittedAt:DateTime(2026,10,2),description:'機密経費',amountYen:1200,approval:ExpenseApproval.approved,allocation:ExpenseAllocation(ExpenseCategory.ownCompany));
+    late BuildContext host;
+    await tester.pumpWidget(MaterialApp(home:Builder(builder:(context){host=context;return Scaffold(body:TextButton(onPressed:()=>showDialog<String>(context:context,builder:(_)=>ExpenseManagerRemovalDialog(claim:claim,invalidations:events.stream)),child:const Text('開く')));} )));
+    await tester.tap(find.text('開く'));await tester.pumpAndSettle();await tester.enterText(find.byType(TextField),'理由');
+    events.add(null);await tester.pumpAndSettle();
+    expect(find.text('機密経費'),findsNothing);expect(find.byType(TextField),findsNothing);
+    expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton,'削除を確定')).onPressed,null);
+    unawaited(showDialog<void>(context:host,builder:(_)=>const AlertDialog(title:Text('別の画面'))));await tester.pumpAndSettle();
+    await events.close();await tester.pumpAndSettle();expect(find.text('別の画面'),findsOneWidget);expect(tester.takeException(),null);
+  });
+
 }

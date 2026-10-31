@@ -21,7 +21,7 @@ class SupabaseExpenseNoticeSource implements ExpenseNoticeSource {
   String? get actor => client.auth.currentUser?.id;
   @override
   Stream<String?> get actorChanges =>
-      client.auth.onAuthStateChange.map((state) => state.session?.user.id);
+      client.auth.onAuthStateChange.where((state)=>state.event!=AuthChangeEvent.initialSession).map((state) => state.session?.user.id);
   @override
   Future<Map<String, dynamic>?> load(String notificationId) async {
     final raw = await client.rpc(
@@ -73,7 +73,7 @@ class _ExpenseNotificationPageState extends State<ExpenseNotificationPage>
             : null);
     _actor = _source?.actor;
     _subscription = _source?.actorChanges.listen((actor) {
-      if (actor != _actor) _invalidate();
+      if (widget.actionKey=='expense_manager_deleted' || actor != _actor) _invalidate();
     }, onError: (Object _) => _invalidate());
     _load();
   }

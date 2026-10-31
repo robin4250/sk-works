@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:convert';
 import 'dart:math';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -86,14 +87,18 @@ class ExpenseManagerRemovalRepository {
       _session=session??_liveSession,
       _rpc=rpc??((name,params)=>SupabaseBackend.client.rpc(name,params:params)),
       _journal=journal??SharedExpenseRemovalJournal() {
-    final events=invalidations ?? (SupabaseBackend.isInitialized ? SupabaseBackend.client.auth.onAuthStateChange.map((_) {}) : null);
-    _subscription=events?.listen((_) {_epoch++;},onError:(Object _){_epoch++;});
+    final events=invalidations ?? (SupabaseBackend.isInitialized ? SupabaseBackend.client.auth.onAuthStateChange.where((event)=>event.event!=AuthChangeEvent.initialSession).map((_) {}) : null);
+    _subscription=events?.listen((_) {_invalidate();},onError:(Object _){_invalidate();});
   }
   final ExpenseRemovalJournal _journal;
   StreamSubscription<void>? _subscription;
+  final _changes=StreamController<void>.broadcast(sync:true);
+  Stream<void> get changes=>_changes.stream;
+  int get epoch=>_epoch;
+  void _invalidate(){_epoch++;if(!_changes.isClosed)_changes.add(null);}
   int _epoch=0;
   bool _disposed=false;
-  void dispose(){_disposed=true;_epoch++;_subscription?.cancel();}
+  void dispose(){_disposed=true;_epoch++;_subscription?.cancel();_changes.close();}
   void _same(int epoch,String expected,String? capturedSession){
     if(_disposed || _epoch!=epoch || actor!=expected || session!=capturedSession)throw StateError('ログイン状態が変わりました。保存結果を照会してください。');
   }
