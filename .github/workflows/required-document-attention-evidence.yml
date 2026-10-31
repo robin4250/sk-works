@@ -1,0 +1,23 @@
+name: Required document attention evidence candidate
+on:
+  pull_request:
+    paths:
+      - 'docs/review/required-document-attention-evidence/**'
+      - '.github/workflows/required-document-attention-evidence.yml'
+permissions:
+  contents: read
+jobs:
+  synthetic-pglite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.22.1'
+      - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
+      - run: |
+          ln -s "$PWD/tool/security/fixture_dependencies/node_modules" docs/review/required-document-attention-evidence/node_modules
+          node docs/review/required-document-attention-evidence/verify.mjs

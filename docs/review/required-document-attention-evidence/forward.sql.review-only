@@ -1,0 +1,131 @@
+-- REVIEW ONLY. Production HOLD. No business-row writes or feature activation.
+begin;
+do $guard$
+begin
+ if md5(pg_get_functiondef('public.current_user_required_document_attention()'::regprocedure))
+    is distinct from '14b46befef97443d365a3c2642fe649b' then
+  raise exception 'Required-document attention source changed' using errcode='55000';
+ end if;
+ if not exists (
+  select 1 from pg_proc p join pg_roles r on r.oid=p.proowner
+  where p.oid='public.current_user_required_document_attention()'::regprocedure
+    and md5(p.prosrc)='251f4fcb8bd3f797005d69e6bf6cb071'
+    and r.rolname='postgres' and p.prosecdef and p.provolatile='v'
+    and not p.proisstrict and p.proparallel='u' and not p.proleakproof
+    and p.proconfig=array['search_path=public, pg_temp']::text[]
+    and p.proacl::text='{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}'
+    and pg_get_function_result(p.oid)='jsonb' and pg_get_function_arguments(p.oid)=''
+ ) then raise exception 'Required-document attention captured contract changed' using errcode='55000'; end if;
+end $guard$;
+create temporary table sko_attention_before on commit drop as
+ select to_jsonb(p)-array['prosrc','probin'] as attributes from pg_proc p
+ where oid='public.current_user_required_document_attention()'::regprocedure;
+CREATE OR REPLACE FUNCTION public.current_user_required_document_attention()
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+declare
+  v_user_id uuid := auth.uid();
+  v_company_id uuid;
+  v_worker_id uuid;
+  v_missing_names text[];
+  v_missing_count integer;
+begin
+  if v_user_id is null then
+    return jsonb_build_object(
+      'missing_count', 0,
+      'missing_names', '[]'::jsonb,
+      'needs_license', false,
+      'needs_qualification', false
+    );
+  end if;
+
+  select w.company_id, w.id
+  into v_company_id, v_worker_id
+  from public.workers w
+  where w.user_id = v_user_id
+    and w.status = 'active'
+  limit 1;
+
+  if v_company_id is null or v_worker_id is null then
+    return jsonb_build_object(
+      'missing_count', 0,
+      'missing_names', '[]'::jsonb,
+      'needs_license', false,
+      'needs_qualification', false
+    );
+  end if;
+
+  select
+    count(*)::integer,
+    coalesce(array_agg(dr.name order by dr.sort_order, dr.name), array[]::text[])
+  into v_missing_count, v_missing_names
+  from public.document_requirements dr
+  left join public.worker_document_statuses wds
+    on wds.requirement_id = dr.id
+   and wds.worker_id = v_worker_id
+   and wds.company_id = v_company_id
+  where dr.company_id = v_company_id
+    and dr.is_active
+    and dr.is_required
+    and not exists (select 1 from private.worker_document_exemptions e
+      where e.company_id=v_company_id and e.worker_id=v_worker_id
+        and e.requirement_id=dr.id and e.active)
+    and (
+      wds.id is null
+      or wds.status in ('not_submitted','missing','expired')
+      or (dr.name <> '銀行口座情報' and not (
+        case
+          when to_jsonb(wds)->'attachment_paths' is null
+            or to_jsonb(wds)->'attachment_paths' = 'null'::jsonb
+            or to_jsonb(wds)->'attachment_paths' = '[]'::jsonb
+          then nullif(btrim(wds.attachment_path), '') is not null
+          when jsonb_typeof(to_jsonb(wds)->'attachment_paths') = 'array' then
+            not exists (
+              select 1 from jsonb_array_elements(to_jsonb(wds)->'attachment_paths') photo
+              where jsonb_typeof(photo) <> 'string' or nullif(btrim(photo #>> '{}'), '') is null
+            ) and (
+              select count(*) = count(distinct photo #>> '{}')
+              from jsonb_array_elements(to_jsonb(wds)->'attachment_paths') photo
+            )
+          else false
+        end
+      ))
+      or (dr.name <> '銀行口座情報' and (
+        (dr.expiry_required and wds.expires_at is null)
+        or wds.expires_at < (current_timestamp at time zone 'Asia/Tokyo')::date
+      ))
+      or (dr.name = '銀行口座情報' and not exists (
+        select 1 from public.worker_private_bank_accounts ba
+        where ba.worker_id = v_worker_id and ba.company_id = v_company_id
+      ))
+    );
+
+  return jsonb_build_object(
+    'missing_count', coalesce(v_missing_count, 0),
+    'missing_names', to_jsonb(coalesce(v_missing_names, array[]::text[])),
+    'needs_license', exists (
+      select 1
+      from unnest(coalesce(v_missing_names, array[]::text[])) n
+      where n like '%免許%'
+    ),
+    'needs_qualification', exists (
+      select 1
+      from unnest(coalesce(v_missing_names, array[]::text[])) n
+      where n like '%資格%'
+    )
+  );
+end;
+$function$
+;
+do $post$
+begin
+ if (select to_jsonb(p)-array['prosrc','probin'] from pg_proc p
+     where oid='public.current_user_required_document_attention()'::regprocedure)
+    is distinct from (select attributes from pg_temp.sko_attention_before) then
+  raise exception 'Required-document attention attributes changed' using errcode='55000';
+ end if;
+end $post$;
+commit;

@@ -1,0 +1,9 @@
+# Required-document attention photo and expiry evidence candidate
+
+Review-only forward candidate; production HOLD and the exemption switch remain unchanged. The captured original full pg_get_functiondef MD5 is `14b46befef97443d365a3c2642fe649b`. The captured prosrc MD5 is `251f4fcb8bd3f797005d69e6bf6cb071`. The installer rejects either source fingerprint or captured owner/ACL/config/security/return-contract drift and verifies every other pg_proc attribute (including ACL/owner/security/search_path) is unchanged in one transaction. It writes no business rows.
+
+For non-bank required documents, use the same ordered multi-photo/legacy fallback shape as workerDocumentPaths, reject malformed or duplicate photo metadata, and require a valid current expiry when configured. Japan local date is used. Empty multi-photo arrays retain the legacy first-photo fallback, matching current clients. Access to photo bytes is not inferred from metadata.
+
+Existing worker selection, exemption predicate, bank-account rule, return contract, owner and ACL are preserved. **The existing active-worker LIMIT 1 company selection is not a selected-company boundary and remains a separate gate.** Bank status versus independent bank metadata and unknown-evidence presentation also require a separate coordinated contract before claiming full guide/attention parity. This candidate alone does not enable individual exemptions, fix disabled document editing or complete the end-to-end feature.
+
+No production application, real user authentication, iPhone build, installation or device verification is claimed. Tests use synthetic local PostgreSQL data only.
