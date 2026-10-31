@@ -130,7 +130,8 @@ try{
  await c.query('update workers set user_id=$1 where id=$2',[applicant,worker]);
  pass('worker account relinking does not change the original notice recipient and manager cannot read applicant-only notice');
  const newSid=id(12);
- await c.query("insert into auth.sessions values($1,$2,null);update auth.sessions set not_after=clock_timestamp()-interval '1 minute' where id=$3",[newSid,manager,sid]);
+ await c.query("insert into auth.sessions values($1,$2,null)",[newSid,manager]);
+ await c.query("update auth.sessions set not_after=clock_timestamp()-interval '1 minute' where id=$1",[sid]);
  await assert.rejects(remove(222,103),/access unavailable/);
  await identity(manager,newSid);
  assert.deepEqual((await api.query('select public.expense_manager_removal_result($1,$2) value',[id(200),company])).rows[0].value,first);
