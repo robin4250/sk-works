@@ -9,6 +9,8 @@ on:
       - 'test/features/payroll/resident_tax_section_test.dart'
       - 'lib/features/payroll/payroll_review_page.dart'
       - 'test/payroll_review_settings_entry_test.dart'
+      - 'test/payroll_roster_review_test.dart'
+      - 'lib/features/payroll/payroll_review_repository.dart'
       - 'lib/features/payroll/individual_payroll_settings_repository.dart'
       - 'lib/features/payroll/payroll_tax_conditions_page.dart'
       - 'test/payroll_fixed_deductions_test.dart'
@@ -26,6 +28,8 @@ on:
       - 'test/features/payroll/resident_tax_section_test.dart'
       - 'lib/features/payroll/payroll_review_page.dart'
       - 'test/payroll_review_settings_entry_test.dart'
+      - 'test/payroll_roster_review_test.dart'
+      - 'lib/features/payroll/payroll_review_repository.dart'
       - 'lib/features/payroll/individual_payroll_settings_repository.dart'
       - 'lib/features/payroll/payroll_tax_conditions_page.dart'
       - 'test/payroll_fixed_deductions_test.dart'
@@ -46,5 +50,5 @@ jobs:
           cache: true
       - run: flutter pub get --enforce-lockfile
       - run: git diff --exit-code -- pubspec.lock
-      - run: flutter test test/ui_organization_navigation_test.dart test/payroll_review_settings_entry_test.dart test/home_tax_entry_test.dart test/payroll_fixed_deductions_test.dart test/features/payroll/resident_tax_section_test.dart test/features/payroll/payroll_tax_conditions_page_test.dart test/payroll_inline_unit_sections_test.dart test/individual_payroll_ui_tabs_test.dart test/payroll_unit_conditions_editor_test.dart test/payroll_unit_item_editor_test.dart test/individual_payroll_company_scope_test.dart --reporter expanded
+      - run: flutter test test/payroll_roster_review_test.dart test/ui_organization_navigation_test.dart test/payroll_review_settings_entry_test.dart test/home_tax_entry_test.dart test/payroll_fixed_deductions_test.dart test/features/payroll/resident_tax_section_test.dart test/features/payroll/payroll_tax_conditions_page_test.dart test/payroll_inline_unit_sections_test.dart test/individual_payroll_ui_tabs_test.dart test/payroll_unit_conditions_editor_test.dart test/payroll_unit_item_editor_test.dart test/individual_payroll_company_scope_test.dart --reporter expanded
       - run: flutter analyze
