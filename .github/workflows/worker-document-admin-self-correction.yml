@@ -1,0 +1,40 @@
+name: Administrator own document correction candidate
+on:
+  pull_request:
+    paths:
+      - 'docs/review/worker-document-admin-self-correction/**'
+      - 'docs/candidates/worker_document_admin_self_correction_20261031.sql.review-only'
+      - '.github/workflows/worker-document-admin-self-correction.yml'
+permissions:
+  contents: read
+jobs:
+  pglite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '24'}
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
+      - run: node docs/review/worker-document-admin-self-correction/verify.mjs "$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
+  native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17.6
+        env: {POSTGRES_USER: postgres, POSTGRES_PASSWORD: fixture-only, POSTGRES_DB: sko_document_admin_fixture}
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_document_admin_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '24'}
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
+      - run: node docs/review/worker-document-admin-self-correction/verify.mjs "$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"
+        env:
+          SKO_DOCUMENT_ADMIN_FIXTURE_URL: postgres://postgres:fixture-only@127.0.0.1:5432/sko_document_admin_fixture
