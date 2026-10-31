@@ -63,6 +63,31 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+  testWidgets('large company text on narrow portrait keeps seal preview and company detail tap usable', (tester) async {
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    tester.view.devicePixelRatio = 1; tester.view.physicalSize = const Size(428, 926);
+    addTearDown(tester.view.resetDevicePixelRatio); addTearDown(tester.view.resetPhysicalSize);
+    final value = _payload();
+    final name = List.filled(16, '長').join();
+    value['issuer']['name'] = name;
+    value['company_seal_snapshot'] = {'version': 1, 'style': 'legacy', 'name': name};
+    final scope = fixture.Scope();
+    final draft = TradeDocumentFormDraft.fromPayload(value, allowAmountEditing: true);
+    await tester.pumpWidget(MaterialApp(home: MediaQuery(
+      data: const MediaQueryData(size: Size(428, 926), textScaler: TextScaler.linear(2)),
+      child: TradeDocumentTouchEditorPage(initial: draft, canEdit: true,
+        requireScope: scope.check, scopeChanges: scope,
+        buildPreview: (_) async => Uint8List(0), onSave: (_) async {}))));
+    await _wait(tester, () => seal.evaluate().isNotEmpty);
+    await tester.tap(fixture.target('issuer')); await tester.pumpAndSettle();
+    expect(find.text(name), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    final close = find.byKey(const Key('trade-touch-company-close'));
+    expect(tester.getBottomRight(close).dy, lessThanOrEqualTo(926));
+    await tester.tap(close); await tester.pumpAndSettle();
+    expect(seal, findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink()); scope.dispose();
+  });
   testWidgets('OFF and missing old metadata never invent an issuer stamp', (tester) async {
     await fixture.mount(tester, payload: _payload(enabled: false));
     expect(seal, findsNothing); expect(printing.rasterCalls, 0);
