@@ -7,13 +7,14 @@ export function validateFixtureEnvironment(env) {
   assert.ok(['127.0.0.1','localhost'].includes(env.PGHOST),'loopback required');
   assert.equal(env.PGUSER,'postgres','synthetic owner required');
   assert.match(env.PGPORT??'',/^\d{1,5}$/);
+  assert.match(env.SKO_FIXTURE_SERVER_ADDR??'',/^(?:127\.0\.0\.1|::1|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(?:1[6-9]|2\d|3[01])\.\d+\.\d+)$/,'inspected fixture address required');
   for(const key of ['DATABASE_URL','SUPABASE_URL','SUPABASE_SERVICE_ROLE_KEY','SERVICE_ROLE_KEY','PGSERVICE','PGSERVICEFILE','PGHOSTADDR','PGOPTIONS']) {
     assert.ok(!env[key],`refusing ${key}`);
   }
 }
 
 if(process.argv.includes('--environment-faults')) {
-  const safe={PGDATABASE:'retirement_fixture',PGHOST:'127.0.0.1',PGUSER:'postgres',PGPORT:'5432'};
+  const safe={PGDATABASE:'retirement_fixture',PGHOST:'127.0.0.1',PGUSER:'postgres',PGPORT:'5432',SKO_FIXTURE_SERVER_ADDR:'127.0.0.1'};
   validateFixtureEnvironment(safe);
   for(const extra of [
     {PGDATABASE:'postgres'},{PGDATABASE:'postgresql://fixture.invalid/postgres'},
@@ -22,8 +23,9 @@ if(process.argv.includes('--environment-faults')) {
     {DATABASE_URL:'postgres://fixture.invalid/postgres'},
     {SUPABASE_URL:'https://fixture.invalid'},{SUPABASE_SERVICE_ROLE_KEY:'synthetic'},
     {PGSERVICE:'production'},{PGHOSTADDR:'192.0.2.1'},{PGOPTIONS:'-c role=other'},
+    {SKO_FIXTURE_SERVER_ADDR:undefined},{SKO_FIXTURE_SERVER_ADDR:'203.0.113.1'},{SKO_FIXTURE_SERVER_ADDR:'localhost'},
   ]) assert.throws(()=>validateFixtureEnvironment({...safe,...extra}));
-  console.log('fixture environment rejection: 12 negative cases passed; no connection attempted');
+  console.log('fixture environment rejection: 15 negative cases passed; no connection attempted');
 } else {
   validateFixtureEnvironment(process.env);
   const dir=new URL('./',import.meta.url);
@@ -37,7 +39,7 @@ if(process.argv.includes('--environment-faults')) {
     assert.equal(r.status,0,r.stderr);return r.stdout.trim();
   }
   const address=JSON.parse(sql("select json_build_object('db',current_database(),'addr',inet_server_addr()::text);") );
-  assert.equal(address.db,'retirement_fixture');assert.ok(['127.0.0.1','::1'].includes(address.addr));checks++;
+  assert.equal(address.db,'retirement_fixture');assert.equal(address.addr,process.env.SKO_FIXTURE_SERVER_ADDR);checks++;
   sql(`create schema auth;
     create role authenticated;create role service_role;create role anon;
     create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;

@@ -25,6 +25,19 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - name: Bind the exact isolated PostgreSQL service address
+        env:
+          RETIREMENT_POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          python3 - <<'PY'
+          import ipaddress, json, os, subprocess
+          inspected = json.loads(subprocess.check_output(['docker','inspect',os.environ['RETIREMENT_POSTGRES_CONTAINER']],text=True))
+          assert len(inspected) == 1 and inspected[0]['Config']['Image'] == 'postgres:17.6'
+          addresses = [network['IPAddress'] for network in inspected[0]['NetworkSettings']['Networks'].values()]
+          assert len(addresses) == 1 and ipaddress.ip_address(addresses[0]).is_private
+          with open(os.environ['GITHUB_ENV'],'a') as output:
+              output.write('SKO_FIXTURE_SERVER_ADDR=' + addresses[0] + '\n')
+          PY
       - run: node tool/review/employee_retirement_worker_binding_20261101/native-test.mjs --environment-faults
       - run: node tool/review/employee_retirement_worker_binding_20261101/native-test.mjs
         env:
