@@ -381,9 +381,10 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
                     child: const Text('却下'),
                   ),
                   if (widget.onDelete != null && !claim.managerDeleted && !claim.withdrawn) OutlinedButton.icon(
+                    key: ValueKey('expense:${claim.companyId}:${claim.id}:manager-remove'),
                     onPressed: canDecide ? () => _request(generation, () => widget.onDelete!(claim)) : null,
                     icon: const Icon(Icons.delete_outline), label: const Text('削除')),
-                  if (widget.onOpenDetail != null) OutlinedButton(style: OutlinedButton.styleFrom(
+                  if (widget.onOpenDetail != null) OutlinedButton(key: ValueKey('expense:${claim.companyId}:${claim.id}:detail'),style: OutlinedButton.styleFrom(
                     minimumSize: const Size(112, 48),
                     textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))), onPressed: _busy ? null : () => widget.onOpenDetail!(claim), child: const Text('詳細・履歴')),
