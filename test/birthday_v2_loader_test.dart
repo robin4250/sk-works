@@ -39,8 +39,11 @@ void main() {
   }
   testWidgets('actual SDK loader mapping keeps initial CAS through DTO, editor and narrow save', (t) async {
     final wire = fixture.Wire();
-    await wire.seed();
-    addTearDown(wire.client.dispose);
+    await t.runAsync(wire.seed);
+    addTearDown(() async {
+      await t.pumpWidget(const SizedBox.shrink());
+      await t.runAsync(wire.client.dispose);
+    });
     Map<String, dynamic>? saved;
     wire.respond = (request) async {
       final path = request.url.path;
@@ -67,7 +70,7 @@ void main() {
       throw StateError('Unexpected synthetic SDK endpoint: $path');
     };
     final repository = PeopleCloudRepository.forClient(wire.client);
-    final rows = await repository.loadAll(expectedCompany: company);
+    final rows = (await t.runAsync(() => repository.loadAll(expectedCompany: company)))!;
     final record = PersonRecord.fromJson(rows.single);
     expect(record.personnelCasDigest, digest);
     expect(record.name, 'Canonical employee');
@@ -95,5 +98,5 @@ void main() {
     expect((payload['_birth_date_cas'] as Map)['expected_birth_date'], '1980-02-29');
     expect((payload['_birth_date_cas'] as Map)['expected_personnel_digest'], digest);
     await t.pumpWidget(const SizedBox.shrink());
-  });
+  }, timeout: const Timeout(Duration(seconds: 45)));
 }
