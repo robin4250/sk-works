@@ -24,12 +24,14 @@ void main() {
         if (request.url.path.endsWith('/company_members')) {
           return fixture.Wire.json([{'company_id': company, 'role': 'admin'}]);
         }
-        if (request.url.path.endsWith('/rpc/employee_personnel_view')) return fixture.Wire.json({
+        if (request.url.path.endsWith('/rpc/employee_personnel_view')) {
+          return fixture.Wire.json({
           'company_id': company, 'birth_date_contract_version': invalid['root'],
           'records': [{'id': worker, 'name': 'Synthetic employee', 'active': true,
             'birthDate': '1980-02-29', 'birthDateContractVersion': invalid['row'],
             'personnelCasDigest': invalid['digest']}],
         });
+        }
         throw StateError('Unexpected synthetic SDK endpoint');
       };
       final snapshot = await PeopleCloudRepository.forClient(wire.client).readPersonnel(expectedCompany: company);
@@ -41,21 +43,30 @@ void main() {
   }
   testWidgets('actual SDK loader mapping keeps initial CAS through DTO, editor and narrow save', (t) async {
     final wire = fixture.Wire();
+    debugPrint('DOB_LOADER seed-start');
     await t.runAsync(wire.seed);
+    debugPrint('DOB_LOADER seed-complete');
     addTearDown(() async {
+      debugPrint('DOB_LOADER teardown-widget-start');
       await t.pumpWidget(const SizedBox.shrink());
+      debugPrint('DOB_LOADER teardown-widget-complete');
       await t.runAsync(wire.client.dispose);
+      debugPrint('DOB_LOADER teardown-client-complete');
     });
     Map<String, dynamic>? saved;
     wire.respond = (request) async {
       final path = request.url.path;
+      debugPrint('DOB_LOADER request $path');
       if (path.endsWith('/company_members')) {
         return fixture.Wire.json([{'company_id': company, 'role': 'admin'}]);
       }
-      if (path.endsWith('/rpc/people_management_records')) return fixture.Wire.json([
+      if (path.endsWith('/rpc/people_management_records')) {
+        return fixture.Wire.json([
         {'id': worker, 'kind': 'employee', 'name': 'Old roster name', 'role': 'Old roster role', 'active': true},
       ]);
-      if (path.endsWith('/rpc/employee_personnel_view')) return fixture.Wire.json({
+      }
+      if (path.endsWith('/rpc/employee_personnel_view')) {
+        return fixture.Wire.json({
         'company_id': company, 'birth_date_contract_version': 2, 'records': [
           {'id': worker, 'name': 'Canonical employee', 'kind': 'employee', 'role': 'Canonical role',
             'active': true, 'birthDate': '1980-02-29', 'birthDateContractVersion': 2,
@@ -64,6 +75,7 @@ void main() {
             ]},
         ],
       });
+      }
       if (path.endsWith('/workers')) {
         return fixture.Wire.json([{'id': worker}]);
       }
@@ -80,24 +92,34 @@ void main() {
       throw StateError('Unexpected synthetic SDK endpoint: $path');
     };
     final repository = PeopleCloudRepository.forClient(wire.client);
+    debugPrint('DOB_LOADER load-start');
     final rows = (await t.runAsync(() => repository.loadAll(expectedCompany: company)))!;
+    debugPrint('DOB_LOADER load-complete');
     final record = PersonRecord.fromJson(rows.single);
     expect(record.personnelCasDigest, digest);
     expect(record.name, 'Canonical employee');
     expect(record.role, 'Canonical role');
+    debugPrint('DOB_LOADER widget-pump-start');
     await t.pumpWidget(MaterialApp(home: EmployeePersonnelEditPage(record: record, repository: repository)));
     await t.pumpAndSettle();
+    debugPrint('DOB_LOADER widget-settled');
     final birthdayTile = find.ancestor(of: find.text('生年月日'), matching: find.byType(ListTile)).first;
     expect(t.widget<ListTile>(birthdayTile).onTap, isNotNull);
+    debugPrint('DOB_LOADER birthday-visible-start');
     await t.ensureVisible(find.byTooltip('生年月日を未登録に戻す'));
+    debugPrint('DOB_LOADER birthday-visible-complete');
     await t.tap(find.byTooltip('生年月日を未登録に戻す'));
     await t.pumpAndSettle();
+    debugPrint('DOB_LOADER clear-settled');
     final save = find.widgetWithText(FilledButton, '保存する');
     await t.ensureVisible(save);
+    debugPrint('DOB_LOADER save-visible');
     await t.tap(save);
     await t.pumpAndSettle();
+    debugPrint('DOB_LOADER confirm-dialog-settled');
     await t.tap(find.descendant(of: find.byType(AlertDialog), matching: find.widgetWithText(FilledButton, '保存する')));
     await t.pumpAndSettle();
+    debugPrint('DOB_LOADER save-observed');
     expect(saved, isNotNull);
     expect(saved!['p_worker_id'], worker);
     final payload = saved!['p_payload'] as Map;
@@ -107,6 +129,7 @@ void main() {
     expect(payload.containsKey('name'), isFalse);
     expect((payload['_birth_date_cas'] as Map)['expected_birth_date'], '1980-02-29');
     expect((payload['_birth_date_cas'] as Map)['expected_personnel_digest'], digest);
+    debugPrint('DOB_LOADER body-complete');
     await t.pumpWidget(const SizedBox.shrink());
   }, timeout: const Timeout(Duration(seconds: 45)));
 }
