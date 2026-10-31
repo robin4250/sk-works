@@ -192,15 +192,10 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
     final today = DateTime.now();
     final completed = visibleRequirements.where((requirement) {
       final status = statusByRequirement[requirement['id']?.toString()];
-      final effectiveStatus = _effectiveDocumentStatus(
-        requirement,
-        status,
-        today,
-      );
       if (documentExemptionFor(_exemptions, workerId,
           requirement['id']?.toString())?['active'] == true) { return false; }
       return workerDocumentDisplayStatus(requirement, status,
-          effectiveStatus: effectiveStatus, bankRegistered: _bankRegisteredFor(workerId), today: today).complete;
+          bankRegistered: _bankRegisteredFor(workerId), today: today).complete;
     }).length;
     final exemptCount = visibleRequirements.where((requirement) =>
         documentExemptionFor(_exemptions, workerId, requirement['id']?.toString())?['active'] == true).length;
@@ -394,7 +389,7 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                                 updatedAt: status?['updated_at']);
                               final exemption = documentExemptionFor(_exemptions, workerId, requirement['id']?.toString());
                               final exempt = exemption?['active'] == true;
-                              final display = workerDocumentDisplayStatus(requirement, status, effectiveStatus: effective, bankRegistered: _bankRegisteredFor(workerId), today: today);
+                              final display = workerDocumentDisplayStatus(requirement, status, bankRegistered: _bankRegisteredFor(workerId), today: today);
                               return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                               ResourceRegistrationCard(
                                 key: ValueKey('managed-document:$actor:$workerId:${requirement['id']}'),

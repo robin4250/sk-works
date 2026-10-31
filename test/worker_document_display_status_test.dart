@@ -108,7 +108,7 @@ void main() {
         },
         today: DateTime(2026, 10, 31),
       ).label,
-      '期限切れ',
+      '登録済み・期限切れ',
     );
     expect(
       workerDocumentDisplayStatus(
@@ -140,6 +140,29 @@ void main() {
           '口座情報を確認',
         );
       }
+    },
+  );
+  test(
+    'an explicitly supplied expiry is checked even when expiry is optional',
+    () {
+      final req = {...required, 'expiry_required': false};
+      for (final expiry in ['2026-10-30', 'invalid']) {
+        expect(
+          workerDocumentDisplayStatus(req, {
+            'status': 'submitted',
+            'attachment_paths': ['retained/a'],
+            'expires_at': expiry,
+          }, today: DateTime(2026, 10, 31)).complete,
+          false,
+        );
+      }
+      expect(
+        workerDocumentDisplayStatus(req, {
+          'status': 'submitted',
+          'attachment_paths': ['retained/a'],
+        }).complete,
+        true,
+      );
     },
   );
 }

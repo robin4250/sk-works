@@ -45,18 +45,21 @@ WorkerDocumentDisplayStatus workerDocumentDisplayStatus(
   if (requirement['is_required'] == true && paths.isEmpty) {
     return const WorkerDocumentDisplayStatus('添付待ち', false);
   }
-  if (requirement['expiry_required'] == true) {
-    final raw = row['expires_at']?.toString() ?? '';
-    final date = DateTime.tryParse(raw);
-    if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(raw) ||
-        date == null ||
-        date.toIso8601String().substring(0, 10) != raw) {
-      return const WorkerDocumentDisplayStatus('登録済み・期限未入力', false);
-    }
-    final now = today ?? DateTime.now();
-    if (date.isBefore(DateTime(now.year, now.month, now.day))) {
-      return const WorkerDocumentDisplayStatus('期限切れ', false);
-    }
+  final raw = row['expires_at']?.toString() ?? '';
+  final date = DateTime.tryParse(raw);
+  if (raw.isNotEmpty &&
+      (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(raw) ||
+          date == null ||
+          date.year < 1 ||
+          date.toIso8601String().substring(0, 10) != raw)) {
+    return const WorkerDocumentDisplayStatus('登録済み・期限を確認', false);
+  }
+  if (requirement['expiry_required'] == true && raw.isEmpty) {
+    return const WorkerDocumentDisplayStatus('登録済み・期限未入力', false);
+  }
+  final now = today ?? DateTime.now();
+  if (date != null && date.isBefore(DateTime(now.year, now.month, now.day))) {
+    return const WorkerDocumentDisplayStatus('登録済み・期限切れ', false);
   }
   return const WorkerDocumentDisplayStatus('登録済み', true);
 }
