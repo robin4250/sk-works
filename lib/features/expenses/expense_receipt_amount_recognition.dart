@@ -48,6 +48,15 @@ class ExpenseReceiptAmountRecognition {
     }
     final excluded = RegExp(r'お?預[りか]|お?釣[り銭]?|釣銭|小計|税抜|消費税|外税|内税|税額|単価|数量|ポイント|残高|割引|値引');
     final total = RegExp(r'税込合計|総合計|合計金額|合計|お支払[い]?額|お支払[い]?|ご請求金額|請求金額|領収金額|お買上[げ]?金額');
+    final standaloneNegative = RegExp(r'^[¥￥]?\s*[-−‐‑‒–—﹣－▲△]\s*[¥￥]?$');
+    // A detached sign can belong to a later label/amount. Keep the whole
+    // receipt manual rather than losing that sign while iterating over lines.
+    if (lines.any((line) => line.contains('マイナス') ||
+        standaloneNegative.hasMatch(line) || const {'(',')','（','）'}.contains(line) ||
+        (total.hasMatch(line) && (RegExp(r'[-−‐‑‒–—﹣－▲△]').hasMatch(line) ||
+          RegExp(r'[（(]\s*[¥￥]?\s*[0-9]|[（(]\s*$').hasMatch(line))))) {
+      return const ExpenseReceiptAmountResult([]);
+    }
     final currency = RegExp(r'[¥￥]\s*([0-9][0-9,]*)(?![0-9,.])|(?<![0-9,.])([0-9][0-9,]*)\s*円');
     final bareAmount = RegExp(r'^\s*[:：]?\s*[¥￥]?\s*([0-9][0-9,]*)\s*円?\s*$');
     final byAmount = <int, ExpenseReceiptAmountCandidate>{};

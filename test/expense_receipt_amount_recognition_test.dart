@@ -35,11 +35,18 @@ void main() {
     for (final text in ['合計 －100円','合計 ▲100円','合計 △100円','合計 −100円',
       '合計 (100円)','合計 （￥１００）','合計 100円－','合計 —¥100',
       '合計\n－100円','合計\n¥100\n▲','合計\n▲\n100円',
-      '合計 ￥−100円','合計 ¥100−','合計 (¥100)円','合計 マイナス100円']) {
+      '合計 ￥−100円','合計 ¥100−','合計 (¥100)円','合計 マイナス100円',
+      'マイナス\n合計 100円','▲\n合計\n100円','合計 −\n100円',
+      '合計 (\n100円\n)','¥▲\n合計\n100円']) {
       final result = ExpenseReceiptAmountRecognition.parse(text);
       expect(result.candidates,isEmpty,reason:text);
       expect(result.unambiguousTotal,isNull,reason:text);
     }
+  });
+  test('a negative item discount does not become a candidate or erase a positive total', () {
+    final result = ExpenseReceiptAmountRecognition.parse('値引 -100円\n合計 1,000円');
+    expect(result.unambiguousTotal,1000);
+    expect(result.candidates.map((c) => c.amountYen),[1000]);
   });
   test('refund or cancellation labels on another line require manual review', () {
     for (final label in ['返金','返品','取消','払戻','キャンセル']) {
