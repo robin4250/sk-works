@@ -70,3 +70,24 @@ stop ID, and preserves every original/archive. A repeated stop command refuses
 changed receipt state: reconcile with the read-only query before any retry.
 Recovery-only get/reconcile_cancel remains supported after OFF; stop does not
 cancel unknown device journals or restore older content.
+
+## Coordinating the guide and correction deployments
+
+The guide's two new functions change this full function catalog. The correction
+trigger changes the guide's relation catalog. Never execute both existing
+standalone capsules in sequence without rebuilding the second guard.
+
+The preferred sequence is the separately approved guide install first, its
+committed receipt and independent readback, then a fresh complete document
+catalog and `guide-function-delta.read-only.sql`. `guide_delta.py` only accepts
+the exact two sealed guide functions: every pre-existing function and all other
+catalog keys must match, and each new function's full attributes hash is bound
+to its exact source/owner/language/ACL receipt. Extra functions, overloads or any
+other difference stop. The immutable guide seal is checked by SHA256.
+
+This offline proof never grants application permission or automatically
+rebaselines. Root must review the actual known-delta manifest, retain the old
+capsule, regenerate a new second-stage guard with the same reviewed correction
+runtime SQL, verify its new hashes and independent review before applying the
+previously approved semantic scope. Unknown changes require investigation and
+any necessary new approval. The guide is not currently installed by this tool.

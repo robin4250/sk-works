@@ -9,6 +9,12 @@ on:
 permissions:
   contents: read
 jobs:
+  guide-known-delta:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - run: python3 docs/review/worker-document-admin-correction-deployment/test_guide_delta.py
   guarded-pglite:
     runs-on: ubuntu-latest
     timeout-minutes: 10

@@ -1,0 +1,82 @@
+[
+  {
+    "nspname": "private",
+    "catalog": {
+      "proacl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres"
+      ],
+      "probin": null,
+      "procost": 100,
+      "prokind": "f",
+      "proname": "current_user_required_document_attention_for_company",
+      "prorows": 0,
+      "body_md5": "66bf3b0c148cc60f750a961615e1d524",
+      "pronargs": 1,
+      "proconfig": [
+        "search_path=\"\""
+      ],
+      "proretset": false,
+      "prosecdef": true,
+      "prorettype": "3802",
+      "prosqlbody": null,
+      "prosupport": "-",
+      "proargmodes": null,
+      "proargnames": [
+        "p_company_id"
+      ],
+      "proargtypes": [
+        "2950"
+      ],
+      "proisstrict": false,
+      "proparallel": "u",
+      "protrftypes": null,
+      "provariadic": "0",
+      "provolatile": "v",
+      "proleakproof": false,
+      "proallargtypes": null,
+      "proargdefaults": null,
+      "pronargdefaults": 0
+    }
+  },
+  {
+    "nspname": "public",
+    "catalog": {
+      "proacl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres"
+      ],
+      "probin": null,
+      "procost": 100,
+      "prokind": "f",
+      "proname": "current_user_required_document_attention_for_company",
+      "prorows": 0,
+      "body_md5": "a8613925aa38db1d425447d723e72cc6",
+      "pronargs": 1,
+      "proconfig": [
+        "search_path=\"\""
+      ],
+      "proretset": false,
+      "prosecdef": false,
+      "prorettype": "3802",
+      "prosqlbody": null,
+      "prosupport": "-",
+      "proargmodes": null,
+      "proargnames": [
+        "p_company_id"
+      ],
+      "proargtypes": [
+        "2950"
+      ],
+      "proisstrict": false,
+      "proparallel": "u",
+      "protrftypes": null,
+      "provariadic": "0",
+      "provolatile": "v",
+      "proleakproof": false,
+      "proallargtypes": null,
+      "proargdefaults": null,
+      "pronargdefaults": 0
+    }
+  }
+]
