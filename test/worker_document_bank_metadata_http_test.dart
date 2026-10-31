@@ -43,6 +43,7 @@ class Fixture {
   ];
   bool deny = false, retired = false;
   Completer<void>? wait;
+  final metadataStarted = Completer<void>();
   Future<void> login(String sid) =>
       client.auth.setInitialSession(jsonEncode(session(sid)));
   static Future<Fixture> create() async {
@@ -87,7 +88,12 @@ class Fixture {
           case 'worker_document_statuses':
             value = [];
           case 'worker_private_bank_accounts':
-            if (f.wait != null) await f.wait!.future;
+            if (f.wait != null) {
+              if (!f.metadataStarted.isCompleted) {
+                f.metadataStarted.complete();
+              }
+              await f.wait!.future;
+            }
             if (f.deny) {
               code = 403;
               value = {'code': '42501', 'message': 'synthetic denied'};
@@ -173,16 +179,7 @@ void main() {
     f.wait = Completer<void>();
     final pending = f.repository.loadAll();
     final rejected = expectLater(pending, throwsStateError);
-    for (
-      var i = 0;
-      i < 30 &&
-          !f.requests.any(
-            (r) => r.url.path.endsWith('worker_private_bank_accounts'),
-          );
-      i++
-    ) {
-      await Future<void>.delayed(const Duration(milliseconds: 5));
-    }
+    await f.metadataStarted.future.timeout(const Duration(seconds: 5));
     await f.login('sid-b');
     f.wait!.complete();
     await rejected;
@@ -193,16 +190,7 @@ void main() {
     f.wait = Completer<void>();
     final pending = f.repository.loadAll();
     final rejected = expectLater(pending, throwsStateError);
-    for (
-      var i = 0;
-      i < 30 &&
-          !f.requests.any(
-            (r) => r.url.path.endsWith('worker_private_bank_accounts'),
-          );
-      i++
-    ) {
-      await Future<void>.delayed(const Duration(milliseconds: 5));
-    }
+    await f.metadataStarted.future.timeout(const Duration(seconds: 5));
     f.retired = true;
     f.wait!.complete();
     await rejected;
