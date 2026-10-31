@@ -1,0 +1,206 @@
+-- SOURCE-ONLY proposal. No production approval. Existing five RPCs/helpers stay intact.
+-- Baseline hashes must come from a separately reviewed, read-only catalog snapshot.
+-- No company creation, personnel sharing, payroll, contract price or Auth mutation.
+begin;
+do $guard$
+declare signature text; expected text;
+begin
+ foreach signature in array array[
+  'private.account_access_allowed()',
+  'private.attach_approved_trade_link(uuid,uuid,text)'
+ ] loop
+  expected:=current_setting('sko.company_link_bound.baseline_'||
+    case when signature like '%account_access%' then 'account' else 'attach' end,true);
+  if expected is null or expected !~ '^[0-9a-f]{32}$'
+    or to_regprocedure(signature) is null
+    or md5(pg_get_functiondef(to_regprocedure(signature)))<>expected then
+   raise exception 'company-link baseline review required';
+  end if;
+ end loop;
+ if to_regprocedure('public.company_link_bound_v1(uuid,uuid,uuid,text,jsonb)') is not null
+   or to_regclass('private.company_link_bound_operations') is not null then
+  raise exception 'company-link candidate already present; inspect before replacement';
+ end if;
+ if not has_schema_privilege('authenticated','private','USAGE') then
+  raise exception 'existing private schema privilege requires independent review';
+ end if;
+end $guard$;
+
+-- Exact original command retained solely to prevent operation-ID reuse with changed data.
+-- No tokens, passwords, names, phone numbers or document bytes are recorded here.
+create table private.company_link_bound_operations (
+ company_id uuid not null references public.companies(id),
+ actor_id uuid not null,
+ operation_id uuid not null,
+ original_session_id uuid not null,
+ command text not null check(command in('set_enabled','request','respond')),
+ payload jsonb not null,
+ result jsonb not null,
+ committed_at timestamptz not null default clock_timestamp(),
+ primary key(company_id,actor_id,operation_id)
+);
+alter table private.company_link_bound_operations owner to postgres;
+alter table private.company_link_bound_operations enable row level security;
+revoke all on private.company_link_bound_operations from public,anon,authenticated,service_role;
+
+create function private.require_company_link_bound_v1(p_company uuid,p_session uuid)
+returns uuid language plpgsql security definer set search_path='' as $$
+declare actor uuid:=auth.uid(); member_count integer;
+begin
+ if actor is null or p_company is null or p_session is null
+  or auth.jwt()->>'session_id' is distinct from p_session::text
+  or private.account_access_allowed() is not true then
+  raise exception 'company-link context unavailable' using errcode='42501';
+ end if;
+ -- Locks prevent a concurrent role/SID removal passing between check and write.
+ perform 1 from auth.sessions s where s.id=p_session and s.user_id=actor
+  and (s.not_after is null or s.not_after>clock_timestamp()) for share;
+ if not found then raise exception 'company-link session unavailable' using errcode='42501'; end if;
+ perform 1 from public.companies c where c.id=p_company for share;
+ if not found then raise exception 'company-link company unavailable' using errcode='42501'; end if;
+ perform 1 from public.company_members m where m.user_id=actor
+  and m.company_id=p_company and m.role::text in('owner','admin') for share;
+ if not found then raise exception 'company-link role unavailable' using errcode='42501'; end if;
+ select count(*) into member_count from public.company_members m
+  where m.user_id=actor and m.company_id=p_company;
+ if member_count<>1 then raise exception 'company-link membership ambiguous' using errcode='42501'; end if;
+ return actor;
+end $$;
+
+create function private.company_link_bound_v1(
+ p_company uuid,p_session uuid,p_operation uuid,p_command text,p_payload jsonb
+) returns jsonb language plpgsql security definer set search_path='' as $$
+declare actor uuid; value jsonb; previous private.company_link_bound_operations%rowtype;
+ request_row private.trade_company_link_requests%rowtype; target uuid; local_role text;
+ start_month date; action text; request_id uuid; enabled boolean;
+begin
+ actor:=private.require_company_link_bound_v1(p_company,p_session);
+ if p_payload is null or jsonb_typeof(p_payload)<>'object' then raise exception 'invalid company-link payload'; end if;
+ if p_command='result' then
+  if p_operation is null or p_payload<>'{}'::jsonb then raise exception 'invalid result lookup'; end if;
+  select * into previous from private.company_link_bound_operations o
+   where o.company_id=p_company and o.actor_id=actor and o.operation_id=p_operation;
+  -- OFF permits current authorized read-only reconciliation; never reruns a command.
+  value:=case when previous.operation_id is null then jsonb_build_object('state','unobserved')
+   else jsonb_build_object('state','committed','command',previous.command,
+     'original_session_id',previous.original_session_id,'result',previous.result) end;
+ elsif p_command='workspace' then
+  if p_payload<>'{}'::jsonb then raise exception 'invalid workspace payload'; end if;
+  value:=jsonb_build_object('enabled',coalesce((select s.enabled from private.trade_company_link_settings s
+   where s.company_id=p_company),false),'requests',coalesce((select jsonb_agg(jsonb_build_object(
+    'id',r.id,'incoming',r.target_company_id=p_company,'company_id',c.id,'company_name',c.name,
+    'start_month',r.start_month,'status',r.status,'created_at',r.created_at,
+    'local_role',case when r.sender_company_id=p_company then r.local_role
+      when r.local_role='customer' then 'subcontractor' else 'customer' end) order by r.created_at desc)
+   from private.trade_company_link_requests r join public.companies c on
+    c.id=case when r.sender_company_id=p_company then r.target_company_id else r.sender_company_id end
+   where p_company in(r.sender_company_id,r.target_company_id)),'[]'::jsonb));
+ elsif p_command='search' then
+  if (select array_agg(k order by k) from jsonb_object_keys(p_payload) k) is distinct from array['query']::text[]
+   or jsonb_typeof(p_payload->'query')<>'string'
+   or char_length(trim(p_payload->>'query')) not between 2 and 100 then raise exception 'invalid search'; end if;
+  if not coalesce((select s.enabled from private.trade_company_link_settings s where s.company_id=p_company),false)
+   then raise exception 'company linking disabled'; end if;
+  value:=coalesce((select jsonb_agg(x) from(select c.id company_id,c.name company_name,c.address,c.corporate_number
+   from public.companies c join private.trade_company_link_settings s on s.company_id=c.id and s.enabled
+   where c.id<>p_company and (strpos(lower(c.name),lower(trim(p_payload->>'query')))>0
+    or strpos(coalesce(c.corporate_number,''),trim(p_payload->>'query'))>0)
+   order by c.name,c.id limit 30)x),'[]'::jsonb);
+ elsif p_command in('set_enabled','request','respond') then
+  if p_operation is null then raise exception 'operation ID required'; end if;
+  perform pg_advisory_xact_lock(hashtextextended(p_company::text||actor::text||p_operation::text,771));
+  actor:=private.require_company_link_bound_v1(p_company,p_session);
+  select * into previous from private.company_link_bound_operations o
+   where o.company_id=p_company and o.actor_id=actor and o.operation_id=p_operation;
+  if previous.operation_id is not null then
+   if previous.command is distinct from p_command or previous.payload is distinct from p_payload
+    then raise exception 'operation ID already bound to another command'; end if;
+   -- Return original immutable receipt, even if linking was subsequently stopped.
+   value:=previous.result;
+  else
+   if p_command='set_enabled' then
+    if (select array_agg(k order by k) from jsonb_object_keys(p_payload) k) is distinct from array['enabled']::text[]
+     or jsonb_typeof(p_payload->'enabled')<>'boolean' then raise exception 'invalid setting'; end if;
+    enabled:=(p_payload->>'enabled')::boolean;
+    insert into private.trade_company_link_settings values(p_company,enabled)
+     on conflict(company_id) do update set enabled=excluded.enabled;
+    value:=jsonb_build_object('state','committed','enabled',enabled);
+   elsif p_command='request' then
+    if (select array_agg(k order by k) from jsonb_object_keys(p_payload) k) is distinct from
+     array['local_role','start_month','target_company_id']::text[] then raise exception 'invalid request keys'; end if;
+    target:=(p_payload->>'target_company_id')::uuid; local_role:=p_payload->>'local_role';
+    start_month:=(p_payload->>'start_month')::date;
+    if target is null or target=p_company or local_role not in('customer','subcontractor')
+     or start_month is null or extract(day from start_month)<>1 then raise exception 'invalid request'; end if;
+    perform pg_advisory_xact_lock(hashtextextended(least(p_company,target)::text,0));
+    perform pg_advisory_xact_lock(hashtextextended(greatest(p_company,target)::text,0));
+    perform 1 from private.trade_company_link_settings s where s.company_id in(p_company,target) order by s.company_id for share;
+    actor:=private.require_company_link_bound_v1(p_company,p_session);
+    if (select count(*) from private.trade_company_link_settings s where s.company_id in(p_company,target) and s.enabled)<>2
+     then raise exception 'company linking disabled'; end if;
+    insert into private.trade_company_link_requests(sender_company_id,target_company_id,local_role,start_month,created_by)
+     values(p_company,target,local_role,start_month,actor) returning id into request_id;
+    insert into public.app_notifications(company_id,recipient_user_id,kind,title,body,action_key,action_id)
+     select target,m.user_id,'company_link_request','会社連携の申請があります',
+      '連携開始月と会社情報を確認し、承認または却下してください。','company_link_request',request_id
+     from public.company_members m where m.company_id=target and m.role::text in('owner','admin');
+    value:=jsonb_build_object('state','committed','request_id',request_id,'status','pending');
+   else
+    if (select array_agg(k order by k) from jsonb_object_keys(p_payload) k) is distinct from
+     array['action','request_id']::text[] then raise exception 'invalid response keys'; end if;
+    action:=p_payload->>'action'; request_id:=(p_payload->>'request_id')::uuid;
+    select * into request_row from private.trade_company_link_requests r where r.id=request_id for update;
+    if request_row.id is null or request_row.status<>'pending' then raise exception 'request unavailable'; end if;
+    if (action='cancel' and p_company<>request_row.sender_company_id)
+     or (action in('accept','reject') and p_company<>request_row.target_company_id)
+     or action is null or action not in('accept','reject','cancel') then raise exception 'invalid response actor'; end if;
+    perform pg_advisory_xact_lock(hashtextextended(least(request_row.sender_company_id,request_row.target_company_id)::text,0));
+    perform pg_advisory_xact_lock(hashtextextended(greatest(request_row.sender_company_id,request_row.target_company_id)::text,0));
+    actor:=private.require_company_link_bound_v1(p_company,p_session);
+    if action='accept' then
+     perform 1 from private.trade_company_link_settings s where s.company_id in(request_row.sender_company_id,request_row.target_company_id)
+      order by s.company_id for share;
+     if (select count(*) from private.trade_company_link_settings s where s.company_id in(request_row.sender_company_id,request_row.target_company_id) and s.enabled)<>2
+      then raise exception 'company linking disabled'; end if;
+     perform private.attach_approved_trade_link(request_row.sender_company_id,request_row.target_company_id,request_row.local_role);
+     perform private.attach_approved_trade_link(request_row.target_company_id,request_row.sender_company_id,
+      case when request_row.local_role='customer' then 'subcontractor' else 'customer' end);
+     insert into private.company_connections(parent_company_id,child_company_id,status,requested_by,responded_by,updated_at,link_start_month)
+      values(case when request_row.local_role='customer' then request_row.target_company_id else request_row.sender_company_id end,
+       case when request_row.local_role='customer' then request_row.sender_company_id else request_row.target_company_id end,
+       'accepted',request_row.created_by,actor,now(),request_row.start_month)
+      on conflict(parent_company_id,child_company_id) do update set status='accepted',requested_by=excluded.requested_by,
+       responded_by=excluded.responded_by,updated_at=excluded.updated_at,link_start_month=excluded.link_start_month;
+    end if;
+    update private.trade_company_link_requests r set status=case action when 'accept' then 'accepted' when 'reject' then 'rejected' else 'cancelled' end,
+     responded_by=actor,responded_at=now() where r.id=request_id;
+    insert into public.app_notifications(company_id,recipient_user_id,kind,title,body,action_key,action_id)
+     select m.company_id,m.user_id,'company_link_request','会社連携申請の状況が更新されました',
+      case action when 'accept' then '承認され、双方の会社一覧へ反映されました。' when 'reject' then '申請は却下されました。' else '申請は取り消されました。' end,
+      'company_link_request',request_id from public.company_members m
+      where m.company_id in(request_row.sender_company_id,request_row.target_company_id) and m.role::text in('owner','admin');
+    value:=jsonb_build_object('state','committed','request_id',request_id,'status',case action when 'accept' then 'accepted' when 'reject' then 'rejected' else 'cancelled' end);
+   end if;
+   actor:=private.require_company_link_bound_v1(p_company,p_session);
+   insert into private.company_link_bound_operations values(p_company,actor,p_operation,p_session,p_command,p_payload,value,clock_timestamp());
+  end if;
+ else raise exception 'unknown company-link command';
+ end if;
+ actor:=private.require_company_link_bound_v1(p_company,p_session);
+ return jsonb_build_object('version',1,'actor_id',actor,'company_id',p_company,'session_id',p_session,
+  'operation_id',p_operation,'command',p_command,'value',value);
+end $$;
+create function public.company_link_bound_v1(p_company uuid,p_session uuid,p_operation uuid,p_command text,p_payload jsonb)
+returns jsonb language sql security invoker set search_path='' as $$
+ select private.company_link_bound_v1(p_company,p_session,p_operation,p_command,p_payload)
+$$;
+alter function private.require_company_link_bound_v1(uuid,uuid) owner to postgres;
+alter function private.company_link_bound_v1(uuid,uuid,uuid,text,jsonb) owner to postgres;
+alter function public.company_link_bound_v1(uuid,uuid,uuid,text,jsonb) owner to postgres;
+revoke all on function private.require_company_link_bound_v1(uuid,uuid) from public,anon,authenticated,service_role;
+revoke all on function private.company_link_bound_v1(uuid,uuid,uuid,text,jsonb),public.company_link_bound_v1(uuid,uuid,uuid,text,jsonb)
+ from public,anon,authenticated,service_role;
+grant execute on function private.company_link_bound_v1(uuid,uuid,uuid,text,jsonb),public.company_link_bound_v1(uuid,uuid,uuid,text,jsonb) to authenticated;
+-- Final ACL/default-ACL guard, exact legacy baseline guard and Native two-connection
+-- verification are still required before this proposal can be called applicable.
+commit;
