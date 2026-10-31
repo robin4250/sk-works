@@ -440,7 +440,7 @@ class _InputSealPreviewState extends State<_InputSealPreview> {
   @override Widget build(BuildContext context) => FutureBuilder<Uint8List>(
     future: _png, builder: (context, snapshot) {
       if (snapshot.hasData) {
-        return Semantics(label: '自社登録角印のプレビュー・相手の承認印ではありません', image: true,
+        return Semantics(container: true, label: '自社登録角印のプレビュー・相手の承認印ではありません', image: true,
           child: Image.memory(snapshot.data!, key: const Key('trade-input-own-seal'),
             fit: BoxFit.contain, excludeFromSemantics: true));
       }

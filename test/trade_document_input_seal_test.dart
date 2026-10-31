@@ -9,6 +9,7 @@ import 'package:printing/src/interface.dart' show PrintingPlatform;
 import 'package:sk_works/domain/company_seal_design.dart';
 import 'package:sk_works/domain/trade_document_form_draft.dart';
 import 'package:sk_works/features/shared/trade_document_touch_editor_page.dart';
+import 'package:sk_works/features/shared/company_seal_pdf.dart';
 import 'trade_document_touch_editor_test.dart' as fixture;
 
 class _Printing extends PrintingPlatform {
@@ -30,6 +31,10 @@ Future<void> _wait(WidgetTester tester, bool Function() condition) async {
     await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
     await tester.pump(const Duration(milliseconds: 20));
   }
+  if (!condition()) {
+    final status = find.byKey(const Key('trade-input-seal-status'));
+    debugPrint('seal-preview wait status: ${status.evaluate().isEmpty ? 'no status' : tester.widget<Text>(status).data}');
+  }
   expect(condition(), isTrue);
 }
 Finder get seal => find.byKey(const Key('trade-input-own-seal'));
@@ -42,6 +47,12 @@ Map<String, dynamic> _payload({bool order = true, bool enabled = true}) {
 }
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  // Warm the existing static asset futures outside individual widget FakeAsync
+  // zones, so one completed test cannot leave another waiting in its old zone.
+  setUpAll(() async {
+    await CompanySealPdf.loadFont();
+    await CompanySealPdf.loadStyleFont('png_sumida_v1_standard');
+  });
   late PrintingPlatform original;
   late _Printing printing;
   setUp(() { original = PrintingPlatform.instance; printing = _Printing(); PrintingPlatform.instance = printing; });
