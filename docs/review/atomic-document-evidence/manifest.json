@@ -11,10 +11,10 @@
     "functions_hash": "ad161cc55dd63b5a206af0e34c9ad92c",
     "schemas_hash": "7f652c845f5bfa1c22ee778782addc3b",
     "defaults_hash": "621511c71ccf83434033692540588327",
-    "relations_hash": "cf9a2a146017a874d1d5730576731fbe"
+    "relations_hash": "f0dc21c8bb22f97947d456c6dc648b51"
   },
   "server_version_num": "170006",
-  "generated_sha256": "302c14b652d703059927628ecd964e3a653a4e00c2f8ebf703d500b04b0e644b",
+  "generated_sha256": "7de14ccf48a1f7e449283a110c5893681b57aa653758cbbb9ac99d0406fd45ae",
   "legacy_body_update_required": false,
   "global_exemption_enabled": true,
   "individual_decision_count_assumption": null,
@@ -23,12 +23,12 @@
   "relation_count": 9,
   "validation": "Local PGlite 14 checks passed; Native/CI/independent review pending",
   "bundle_sources": {
-    "catalog-fingerprint.sql": "2ac3d0e12bbdfffc6bdeed1d7cd7fb9eb83e95957bea424a0b8fa335eb333973",
+    "catalog-fingerprint.sql": "af9e7f86ac0e54c2b28fffee2053605b6f1ee9151d8de209178c98fbeff9bcdc",
     "helper-contracts.json": "e8bf4bb4c665078f7f41ceef5a4fb6fe7a044dec67ad73a794b3c923cd810aa2",
     "verify.mjs": "db2c6d159e538b3373c11ec747c3b577b7952523bd4ce466a7aa945ebcd67c84",
     "actual-generic-helper-fixture.sql": "06a08a6b0d66269780045e8bb5740c9358e8afd5b630cc23a532db8b6d87e594",
     "legacy-original.sql.review-only": "624d1763b701becd8fc505068a8567476ffb8ce03a2e524af397f058544676b0",
     "README.md": "33d4f111af678a9dd199a1ab116a555c8e4694b3b8c3fa53d0f97c5f48663276",
-    "install.sql.review-only": "302c14b652d703059927628ecd964e3a653a4e00c2f8ebf703d500b04b0e644b"
+    "install.sql.review-only": "7de14ccf48a1f7e449283a110c5893681b57aa653758cbbb9ac99d0406fd45ae"
   }
 }
