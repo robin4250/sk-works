@@ -36,6 +36,15 @@ class WorkerDocumentRepository {
     );
   }
   String? get actorId => _client.auth.currentUser?.id;
+  Future<List<String>> pendingAdminCorrectionTargets(String companyId) async {
+    final actor = actorId;
+    final current = await captureAttachmentReadScope();
+    final preferences = await SharedPreferences.getInstance();
+    if (actor == null || actorId != actor || !current()) {
+      throw StateError('ログイン状態が変わりました。');
+    }
+    return WorkerDocumentAdminCorrectionRepository.pendingTargets(preferences, actor, companyId);
+  }
   Stream<AuthState> get attachmentAuthChanges => _client.auth.onAuthStateChange;
   Future<bool Function()> captureAttachmentReadScope() async {
     final session = _client.auth.currentSession;

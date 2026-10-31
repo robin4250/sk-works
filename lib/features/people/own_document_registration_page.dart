@@ -65,6 +65,7 @@ abstract interface class OwnDocumentChangeGateway implements OwnDocumentRegistra
 }
 
 abstract interface class OwnDocumentAdminCorrectionGateway {
+  Future<List<String>> pendingAdminCorrectionTargets(String companyId);
   Future<WorkerDocumentAdminCorrectionRepository> createAdminCorrectionRepository({
     required String companyId,
     required String targetId,
@@ -85,6 +86,8 @@ class _OwnDocumentRepositoryGateway
   Future<String> changeCompanyId() async => (await repository.membership()).companyId;
   @override
   WorkerDocumentChangeRepository createChangeRepository() => repository.createChangeRepository();
+  @override
+  Future<List<String>> pendingAdminCorrectionTargets(String companyId) => repository.pendingAdminCorrectionTargets(companyId);
   @override
   Future<WorkerDocumentAdminCorrectionRepository> createAdminCorrectionRepository({
     required String companyId,
@@ -293,6 +296,35 @@ class _OwnDocumentRegistrationPageState
       if (row['requirement_id']?.toString() == requirementId) return row;
     }
     return null;
+  }
+
+  Future<void> _recoverAdminCorrections() async {
+    final changes = _repository;
+    final admin = _repository;
+    if (changes is! OwnDocumentChangeGateway || admin is! OwnDocumentAdminCorrectionGateway) {
+      return;
+    }
+    final actor = changes.actorId;
+    try {
+      final companyId = await changes.changeCompanyId();
+      bool current() => mounted && identical(_repository, changes) && changes.isCurrentActor && changes.actorId == actor;
+      if (!mounted || actor == null || !current()) {
+        return;
+      }
+      await recoverPendingWorkerDocumentAdminCorrections(
+        context: context, pendingTargets: () => admin.pendingAdminCorrectionTargets(companyId),
+        createRepository: (target) => admin.createAdminCorrectionRepository(
+          companyId: companyId, targetId: target, isCurrentTarget: current),
+        isCurrent: current,
+      );
+      if (mounted) {
+        await _load();
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('書類訂正の結果を確認できません。変更IDは保持しています。')));
+      }
+    }
   }
 
   Future<bool> _changeRegistered(Map<String, dynamic>? row) async {
@@ -774,6 +806,9 @@ class _OwnDocumentRegistrationPageState
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
           ),
           actions: [
+            if (_repository is OwnDocumentAdminCorrectionGateway) IconButton(
+              tooltip: '書類訂正の結果を確認', onPressed: _loading || _saving ? null : _recoverAdminCorrections,
+              icon: const Icon(Icons.history_outlined)),
             IconButton(
               tooltip: '書類登録のヘルプ',
               onPressed: _showRegistrationHelp,

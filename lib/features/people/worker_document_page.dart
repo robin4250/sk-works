@@ -211,6 +211,8 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
       appBar: AppBar(
         title: Text(SkoLanguageController.tr('従業員データ編集')),
         actions: [
+          IconButton(tooltip: '書類訂正の結果を確認', icon: const Icon(Icons.history_outlined),
+            onPressed: _loading ? null : _recoverAdminCorrections),
           IconButton(tooltip: '書類の変更申請一覧', icon: const Icon(Icons.fact_check_outlined),
             onPressed: _loading ? null : _openChangeReviews),
           IconButton(
@@ -1006,6 +1008,35 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('免除を保存できませんでした。書類を再読み込みして確認してください。')));
+      }
+    }
+  }
+
+  Future<void> _recoverAdminCorrections() async {
+    final repository = _repository;
+    final actor = repository?.actorId;
+    if (repository == null || actor == null) {
+      return;
+    }
+    try {
+      final membership = await repository.membership();
+      bool current() => mounted && repository.actorId == actor;
+      if (!mounted || !current()) {
+        return;
+      }
+      await recoverPendingWorkerDocumentAdminCorrections(
+        context: context,
+        pendingTargets: () => repository.pendingAdminCorrectionTargets(membership.companyId),
+        createRepository: (target) => repository.createAdminCorrectionRepository(
+          companyId: membership.companyId, targetId: target, isCurrentTarget: current),
+        isCurrent: current,
+      );
+      if (mounted) {
+        _reload();
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('書類訂正の結果を確認できません。変更IDは保持しています。')));
       }
     }
   }
