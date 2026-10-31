@@ -1,0 +1,70 @@
+name: Exact eight public-source site composition
+on:
+  pull_request:
+    paths:
+      - 'docs/review/site-order-actual-eight/**'
+      - 'docs/review/site-order-private-baseline/**'
+      - '.github/workflows/site-order-actual-eight.yml'
+      - 'docs/candidates/company_seal_uploaded_png_20261020.sql.review-only'
+      - 'docs/review/collector-current-core-20261026/sources/reauthentication_proofs.sql'
+      - 'docs/review/site-order-private-baseline/current-generic-auth-functions.fixture.sql'
+      - 'supabase/migrations/20261009011357_company_seal_aoyagi_style.sql'
+      - 'supabase/migrations/20261010160154_company_seal_png_designs.sql'
+      - 'tool/security/worker_document_change_session/baseline.sql'
+permissions:
+  contents: read
+jobs:
+  exact-eight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy:
+      matrix:
+        engine: [pglite, postgres]
+    services:
+      postgres:
+        image: postgres:17.6
+        env:
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_document_consent_fixture
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/checkout@v4
+        with:
+          ref: 6a24114471a9c264fad1aeec5dd2222915ddbedf
+          path: .c-source
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: de4d4bb018e8c8ca56b0c85bde09fadebca312a4
+          path: .reply-source
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: f4c6da47e8c6bd894c920ab1d85399a4dc5da7bb
+          path: .history-source
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with: {node-version: '22.21.0'}
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts
+      - run: node --test docs/review/site-order-actual-eight/reconstruct.test.mjs
+      - name: Normal non-root runner and Native service process
+        env:
+          PG_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          test "$(id -u)" -ne 0
+          docker exec "$PG_CONTAINER" sh -c 'test "$(stat -c %u /proc/1)" -ne 0; test "$(id -u postgres)" -ne 0; test "$(stat -c %u /var/lib/postgresql/data/PG_VERSION)" -ne 0'
+      - name: Eight exact public-source helpers with fourteen atomic modules
+        env:
+          SKO_CONSENT_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_document_consent_fixture
+        run: |
+          export SKO_SITE_HISTORY_SOURCE_ROOT="$GITHUB_WORKSPACE/.history-source"
+          export SKO_SITE_REPLY_RECOVERY_SOURCE_ROOT="$GITHUB_WORKSPACE/.reply-source"
+          export SKO_TRADE_C_SOURCE_ROOT="$GITHUB_WORKSPACE/.c-source"
+          if [ '${{ matrix.engine }}' = 'postgres' ]; then
+            node docs/review/site-order-actual-eight/verify.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js" postgres
+          else
+            node docs/review/site-order-actual-eight/verify.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
+          fi
