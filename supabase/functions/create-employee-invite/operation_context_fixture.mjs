@@ -14,6 +14,6 @@ export function bindFixtureHandler(raw) {
   if(req.headers.get('authorization')!=='Bearer fixture-user')return raw(req);
   const body=await req.json(),headers=new Headers(req.headers);
   headers.set('authorization','Bearer '+token);
-  return raw(new Request(req,{headers,body:JSON.stringify({...body,companyId:company,sessionId:sid})}));
+  return raw(new Request(req,{headers,body:JSON.stringify({...body,...(body.workerId?{expectedPhone:'07000000000'}:{}),companyId:company,sessionId:sid})}));
  };
 }

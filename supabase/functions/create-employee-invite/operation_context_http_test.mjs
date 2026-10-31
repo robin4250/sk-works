@@ -23,7 +23,7 @@ const contextSQL=(account='true')=>prefix(account)+`select public.employee_invit
 
 test('actual HTTP handler binds selected company/live SID and never exposes uncertain credentials',async()=>{
  const originalFetch=globalThis.fetch,originalDeno=globalThis.Deno,originalError=console.error;
- const logs=[],calls=[];let handler,scenario='ok',contextCalls=0,issued=0;
+ const logs=[],calls=[];let handler,scenario='ok',contextCalls=0,issued=0,memberRole='owner';
  if(sqlMode){
   sql(`create schema auth;create schema private;
    do $$begin if not exists(select 1 from pg_roles where rolname='service_role') then create role service_role; end if;
@@ -66,14 +66,14 @@ test('actual HTTP handler binds selected company/live SID and never exposes unce
     return reply(JSON.parse(r.stdout.trim()));
    }
    if(['null-access','false-access'].includes(scenario))return reply({error:'context denied'},403);
-   return reply({version:1,actor_id:actor,session_id:sid,company_id:company,role:scenario==='bad-role'?'unknown':'owner'});
+   return reply({version:1,actor_id:actor,session_id:sid,company_id:company,role:scenario==='bad-role'?'unknown':scenario==='role-revoked'&&contextCalls>=2?'manager':memberRole});
   }
   if(path==='/auth/v1/settings')return reply({external:{phone:true}});
   if(path==='/rest/v1/rpc/begin_account_server_activity')return reply('20000000-0000-0000-0000-000000000001');
   if(path==='/rest/v1/rpc/finish_account_server_activity')return reply(true);
   if(path==='/auth/v1/admin/users'&&req.method==='POST'){issued++;return reply({id:authUser});}
   if(path==='/rest/v1/employee_registration_invites')return reply(req.method==='POST'?[{id:invite}]:[]);
-  if(path==='/rest/v1/workers')return reply([{id:worker}]);
+  if(path==='/rest/v1/workers')return reply(req.method==='GET'?[{id:worker,name:'Synthetic',phone:'07000000000',user_id:null}]:[{id:worker}]);
   if(path==='/rest/v1/companies')return reply([{employee_testflight_url:''}]);
   return reply({},404);
  });
@@ -119,6 +119,16 @@ test('actual HTTP handler binds selected company/live SID and never exposes unce
     sql(`update auth.sessions set user_id='${actor}',not_after=null;update auth.users set is_anonymous=false,banned_until=null;delete from public.company_members;insert into public.company_members values('${company}','${actor}','owner');`);
    }
   }
+  scenario='ok';contextCalls=0;issued=0;
+  assert.equal((await send({workerId:worker,expectedPhone:'08000000000'})).status,409);assert.equal(issued,0);
+  for(memberRole of ['owner','admin','manager','viewer']) {
+   if(sqlMode)sql(`update public.company_members set role='${memberRole}'`);
+   contextCalls=0;issued=0;
+   const status=(await send({requestedRole:'manager'})).status;
+   assert.equal(status,['owner','admin'].includes(memberRole)?200:403);assert.equal(issued,['owner','admin'].includes(memberRole)?1:0);
+  }
+  memberRole='owner';if(sqlMode)sql("update public.company_members set role='owner'");
+  if(!sqlMode){scenario='role-revoked';contextCalls=0;issued=0;assert.equal((await send({})).status,403);assert.equal(issued,0);}
   scenario='post-revoked';contextCalls=0;issued=0;
   let response=await send({});assert.equal(response.status,409);assert.equal(issued,1);
   let value=await response.json();assert.equal(value.code,'invite_result_unknown');

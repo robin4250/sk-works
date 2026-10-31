@@ -123,7 +123,7 @@ class EmployeeInviteRepository {
         body: {...body, 'companyId': context.companyId, 'sessionId': context.sessionId});
       context.check();
       return _resultFromResponse(response, request: context,
-          expectedWorker: body['workerId'] as String?, expectedPhone: body['phone'] as String?);
+          expectedWorker: body['workerId'] as String?, expectedPhone: (body['expectedPhone'] ?? body['phone']) as String?);
     } catch (_) {
       // No credentials or password journal. This process retains only the intent
       // block; no receipt exists to safely recreate an uncertain remote result.
@@ -220,8 +220,8 @@ class EmployeeInviteRepository {
   }
 
   Future<EmployeeInviteResult> createInviteForWorker(
-    String workerId, {bool deliverSms = true, EmployeeInviteRequest? request}) =>
-      _create({'workerId': workerId, 'deliverSms': deliverSms}, request: request);
+    String workerId, {required String expectedPhone, bool deliverSms = true, EmployeeInviteRequest? request}) =>
+      _create({'workerId': workerId, 'expectedPhone': expectedPhone, 'deliverSms': deliverSms}, request: request);
 
   Future<EmployeeInviteResult> createInvite({
     required String name, required String phone, String requestedRole = 'viewer',
@@ -242,6 +242,7 @@ class EmployeeInviteRepository {
       throw const FormatException('Unconfirmed invitation result');
     }
     final map = Map<String, dynamic>.from(raw);
+    if (map.containsKey('error') || map.containsKey('code')) throw const FormatException('Unconfirmed invitation result');
     final id = map['inviteId'], phone = map['phone'], password = map['temporaryPassword'];
     final qr = map['qrPayload'];
     if (!_uuid.hasMatch(id is String ? id : '') || phone is! String ||

@@ -60,7 +60,7 @@ class Fixture {
           expect(request.headers['Authorization'], 'Bearer ${token(sid)}');
           final body = jsonDecode(request.body) as Map;
           expect(body['companyId'], company); expect(body['sessionId'], sid);
-          return await (pending?.future ?? Future.value(http.Response(jsonEncode(response), 200)));
+          return await (pending?.future ?? Future.value(http.Response(jsonEncode(response), 200, headers: {'content-type': 'application/json'})));
         }
         throw StateError('Unexpected synthetic request');
       }));
@@ -122,11 +122,11 @@ void main() {
   test('same actor SID ABA retires a late result and never reuses new ambient Bearer', () async {
     final f = Fixture(); addTearDown(f.close); await f.login();
     final context = await f.repository.beginRequest(); f.pending = Completer<http.Response>();
-    final creation = f.repository.createInviteForWorker(worker, request: context);
+    final creation = f.repository.createInviteForWorker(worker, expectedPhone: '07000000000', request: context);
     await Future<void>.delayed(Duration.zero);
     f.session = nextSid; await f.login();
     f.session = sid; await f.login();
-    f.pending!.complete(http.Response(jsonEncode(result()), 200));
+    f.pending!.complete(http.Response(jsonEncode(result()), 200, headers: {'content-type': 'application/json'}));
     await expectLater(creation, throwsStateError);
     expect(context.isCurrent, isFalse); expect(f.invokes, 1);
   });

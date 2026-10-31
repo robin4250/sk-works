@@ -189,7 +189,7 @@ Deno.serve(async (req: Request) => {
       return json({ error: "従業員情報を確認できませんでした。" }, 500);
     }
     const workers = await workerResponse.json();
-    if (!Array.isArray(workers) || workers.length === 0) {
+    if (!Array.isArray(workers) || workers.length !== 1 || workers[0]?.id !== workerId) {
       return json({ error: "対象の従業員が見つかりません。" }, 404);
     }
     existingWorker = workers[0];
@@ -197,6 +197,7 @@ Deno.serve(async (req: Request) => {
       return json({ error: "この従業員は初回登録作成済みです。" }, 409);
     }
     name = String(existingWorker.name ?? "").trim();
+    if (!name) return json({error: '対象従業員の氏名を確認してください。'}, 409);
     try {
       phone = normalizeJapaneseMobile(String(existingWorker.phone ?? ""));
     } catch (error) {
@@ -209,6 +210,14 @@ Deno.serve(async (req: Request) => {
     } catch (error) {
       return json({ error: String(error instanceof Error ? error.message : error) }, 400);
     }
+  }
+
+  if (workerId) {
+    try {
+      if (typeof payload?.expectedPhone !== 'string' || normalizeJapaneseMobile(payload.expectedPhone) !== phone) {
+        return json({error: '対象従業員の電話番号が変わりました。再読み込みしてください。'}, 409);
+      }
+    } catch { return json({error: '対象従業員の電話番号を確認してください。'}, 409); }
   }
 
   const requestedRole =

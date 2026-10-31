@@ -138,7 +138,7 @@ class _EmployeeInitialRegistrationPageState
       _error = null;
     });
     try {
-      final result = await repository.createInviteForWorker(employee.id, request: _request);
+      final result = await repository.createInviteForWorker(employee.id, expectedPhone: employee.phone, request: _request);
       if (!mounted || !_current()) { _invalidate(); return; }
       setState(() => _result = result);
       await _load();
