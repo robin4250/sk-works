@@ -139,15 +139,18 @@ void main() {
         tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
         tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
       }
-      pending.complete([oldRow]);
-      await tester.pumpAndSettle();
-      expect(find.text(workerName),findsNothing);
-      expect(wire.calls.where((r)=>r.method!='GET'),isEmpty);
-      await close(tester);
-      if(boundary=='paused') {
-        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
-        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
-        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      try {
+        pending.complete([oldRow]);
+        await tester.pumpAndSettle();
+        expect(find.text(workerName),findsNothing);
+        expect(wire.calls.where((r)=>r.method!='GET'),isEmpty);
+      } finally {
+        await close(tester);
+        if(boundary=='paused') {
+          tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+          tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+          tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+        }
       }
     });
   }
