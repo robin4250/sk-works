@@ -17,7 +17,45 @@ await db.exec(fs.readFileSync(path.join(root,'supabase/migrations/20261016120458
 // Synthetic bank preservation projection only; not banking authorization evidence.
 await db.exec("create table public.worker_private_bank_accounts(worker_id uuid primary key,company_id uuid not null,bank_name text not null,branch_name text not null,account_type text not null,account_number text not null,account_holder text not null,updated_at timestamptz not null);alter table public.worker_private_bank_accounts enable row level security;revoke all on public.worker_private_bank_accounts from public,anon,authenticated,service_role");
 await db.query("insert into public.worker_private_bank_accounts values($1,$2,'Synthetic bank','Synthetic branch','普通','1234567','SYNTHETIC HOLDER','2026-01-01T00:00:00Z')",[W,C]);
-await db.exec(fs.readFileSync(${JSON.stringify(path.resolve(dir,'../../../docs/review/personnel-birthday-cas-v2/install.wip.sql.review-only'))},'utf8'));
+const casInstall=fs.readFileSync(${JSON.stringify(path.resolve(dir,'../../../docs/review/personnel-birthday-cas-v2/install.wip.sql.review-only'))},'utf8');
+const casState=async()=>({capsule:await capsule(),bank:(await db.query('select to_jsonb(b) b from worker_private_bank_accounts b order by worker_id')).rows,
+ column:(await db.query("select attname,atttypid::regtype::text type,attnotnull from pg_attribute where attrelid='public.worker_personnel_profiles'::regclass and attname='birth_date' and not attisdropped")).rows,
+ extraSchema:(await db.query("select count(*)::int n from pg_namespace where nspname='cas_unknown'")).rows,
+ extraRole:(await db.query("select count(*)::int n from pg_roles where rolname='cas_unknown_role'")).rows});
+const casBefore=await casState();
+const firstGuard='do $catalog_guard$';
+const injectFirst=prefix=>casInstall.replace(firstGuard,()=>prefix+'\\n'+firstGuard);
+async function fault(sql,code,label){
+ await assert.rejects(db.exec(sql),error=>error.code===code);
+ await db.exec('rollback');assert.deepEqual(await casState(),casBefore,label);
+}
+const middle=casInstall.indexOf('create or replace function private.apply_worker_personnel_payload');assert.ok(middle>0);
+const failure="do $$begin raise sqlstate 'P0001' using message='synthetic_midinstall_failure';end$$;";
+await fault(casInstall.slice(0,middle)+failure+casInstall.slice(middle),'P0001','column and first function roll back with all original metadata/rows');
+const finalGuard=casInstall.lastIndexOf(firstGuard);assert.ok(finalGuard>middle);
+await fault(casInstall.slice(0,finalGuard)+"create role cas_unknown_role;grant execute on function private.apply_worker_personnel_payload(uuid,jsonb,uuid) to cas_unknown_role;"+casInstall.slice(finalGuard),'55000','unknown final ACL and role roll back all five functions/column/rows');
+await fault(injectFirst('grant execute on function private.apply_worker_personnel_payload(uuid,jsonb,uuid) to authenticated with grant option;'),'55000','unexpected original grant option rejects atomically');
+const staticCaller="create schema cas_unknown;create function cas_unknown.call_apply(p_worker uuid,p_data jsonb,p_actor uuid) returns void language plpgsql security invoker set search_path='' as $$begin perform PRIVATE.APPLY_WORKER_PERSONNEL_PAYLOAD(p_worker,p_data,p_actor);end$$;";
+await fault(injectFirst(staticCaller),'55000','case-insensitive caller outside public/private rejects atomically');
+const parsedCaller="create schema cas_unknown;create function cas_unknown.call_apply(p_worker uuid,p_data jsonb,p_actor uuid) returns void language sql begin atomic select private.apply_worker_personnel_payload(p_worker,p_data,p_actor);end;do $$begin if not exists(select 1 from pg_depend d where d.classid='pg_proc'::regclass and d.objid=to_regprocedure('cas_unknown.call_apply(uuid,jsonb,uuid)') and d.refclassid='pg_proc'::regclass and d.refobjid=to_regprocedure('private.apply_worker_personnel_payload(uuid,jsonb,uuid)')) then raise sqlstate 'P0001' using message='parsed_function_dependency_missing';end if;end$$;";
+await fault(injectFirst(parsedCaller),'55000','parsed-body dependency outside canonical callers rejects atomically');
+if(process.env.SKO_PERSONNEL_FIXTURE_URL){
+ const guardPg=(await import(pathToFileURL(path.join(root,'tool/security/fixture_dependencies/node_modules/pg/lib/index.js')).href)).default;
+ const catalogObserver=new guardPg.Client({connectionString:process.env.SKO_PERSONNEL_FIXTURE_URL});await catalogObserver.connect();await catalogObserver.query("set statement_timeout='3s'");
+ const catalog=async client=>({functions:(await client.query("select p.oid::regprocedure::text signature,md5(p.prosrc) hash,p.proacl::text acl from pg_proc p where p.oid=any($1::regprocedure[]) order by 1",[['private.worker_personnel_payload(uuid)','private.apply_worker_personnel_payload(uuid,jsonb,uuid)','private.employee_personnel_view(uuid)','public.save_worker_personnel_profile(uuid,jsonb)','public.decide_worker_personnel_change(uuid,boolean)']])).rows,
+  column:(await client.query("select attname from pg_attribute where attrelid='public.worker_personnel_profiles'::regclass and attname='birth_date' and not attisdropped")).rows});
+ try{
+  const before=await catalog(catalogObserver);
+  await db.exec(casInstall.slice(0,middle));
+  assert.deepEqual(await catalog(catalogObserver),before,'other connection cannot see intermediate column/new reader');
+  await assert.rejects(db.exec(failure+casInstall.slice(middle)),error=>error.code==='P0001');await db.exec('rollback');
+  assert.deepEqual(await catalog(catalogObserver),before);assert.deepEqual(await casState(),casBefore);
+  console.log('PASS Native second observer sees no partial five-function publication');
+ }finally{await db.exec('rollback');await catalogObserver.end();}
+}
+console.log('PASS 5 injected atomic guard faults preserve original catalog/ACL/column/bank/business/identity state');
+await db.exec(casInstall);
+
 const payload=async()=> (await db.query('select private.worker_personnel_payload($1) p',[W])).rows[0].p;
 const nonDob=async()=>({profile:(await db.query("select to_jsonb(p)-array['birth_date','updated_by','updated_at'] p from worker_personnel_profiles p where worker_id=$1",[W])).rows,family:(await db.query('select to_jsonb(f) f from worker_family_members f where worker_id=$1 order by id',[W])).rows,worker:(await db.query('select to_jsonb(w) w from workers w where id=$1',[W])).rows,bank:(await db.query('select to_jsonb(b) b from worker_private_bank_accounts b where worker_id=$1',[W])).rows});
 const p=await payload();

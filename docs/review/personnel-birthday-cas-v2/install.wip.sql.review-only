@@ -5,8 +5,14 @@ begin;
 set local lock_timeout='5s';
 select pg_advisory_xact_lock(hashtextextended('sko:personnel-birthday-v2-install',0));
 do $catalog_guard$ declare item jsonb;begin
- for item in select value from jsonb_array_elements($catalog$[{"signature":"private.worker_personnel_payload(uuid)","return_type":"jsonb","volatility":"s","acl":null,"body_md5":"bed654f3bbad4e8e432db77520681330"},{"signature":"private.apply_worker_personnel_payload(uuid,jsonb,uuid)","return_type":"void","volatility":"v","acl":null,"body_md5":"445ae541afb2fcb376d49dde1388a84f"},{"signature":"private.employee_personnel_view(uuid)","return_type":"jsonb","volatility":"s","acl":"{postgres=X/postgres,authenticated=X/postgres}","body_md5":"ec7a06349ecc5d2420e89ecedf54f6e7"},{"signature":"public.save_worker_personnel_profile(uuid,jsonb)","return_type":"jsonb","volatility":"v","acl":"{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}","body_md5":"c11956bf0845ab725312928c2422a7ab"},{"signature":"public.decide_worker_personnel_change(uuid,boolean)","return_type":"jsonb","volatility":"v","acl":"{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}","body_md5":"93153d859f746b5e71dd28d37033737b"}]$catalog$::jsonb) loop
+ for item in select value from jsonb_array_elements($catalog$[{"signature":"private.worker_personnel_payload(uuid)","return_type":"jsonb","volatility":"s","acl":null,"body_md5":"bed654f3bbad4e8e432db77520681330","language":"sql","argument_names":["p_worker_id"]},{"signature":"private.apply_worker_personnel_payload(uuid,jsonb,uuid)","return_type":"void","volatility":"v","acl":null,"body_md5":"445ae541afb2fcb376d49dde1388a84f","language":"plpgsql","argument_names":["p_worker_id","p_payload","p_actor"]},{"signature":"private.employee_personnel_view(uuid)","return_type":"jsonb","volatility":"s","acl":"{postgres=X/postgres,authenticated=X/postgres}","body_md5":"ec7a06349ecc5d2420e89ecedf54f6e7","language":"plpgsql","argument_names":["p_company"]},{"signature":"public.save_worker_personnel_profile(uuid,jsonb)","return_type":"jsonb","volatility":"v","acl":"{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}","body_md5":"c11956bf0845ab725312928c2422a7ab","language":"plpgsql","argument_names":["p_worker_id","p_payload"]},{"signature":"public.decide_worker_personnel_change(uuid,boolean)","return_type":"jsonb","volatility":"v","acl":"{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}","body_md5":"93153d859f746b5e71dd28d37033737b","language":"plpgsql","argument_names":["p_request_id","p_approve"]}]$catalog$::jsonb) loop
  if not exists(select 1 from pg_proc p where p.oid=to_regprocedure(item->>'signature')
+ and p.prolang=(select oid from pg_language where lanname=item->>'language')
+ and p.prosupport::oid=0 and p.provariadic=0 and p.pronargdefaults=0 and p.proargdefaults is null
+ and p.proallargtypes is null and p.proargmodes is null and p.prosqlbody is null and p.probin is null
+ and p.pronargs=jsonb_array_length(item->'argument_names')
+ and p.proargnames is not distinct from array(select jsonb_array_elements_text(item->'argument_names'))
+ and p.procost=100 and p.prorows=0
  and md5(p.prosrc)=item->>'body_md5' and pg_get_userbyid(p.proowner)='postgres'
  and p.proacl::text is not distinct from item->>'acl'
  and p.proconfig=array['search_path=""']::text[] and p.prosecdef
@@ -18,10 +24,14 @@ do $catalog_guard$ declare item jsonb;begin
 
 do $callers$ begin
  if (select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
- where n.nspname in ('public','private') and position('apply_worker_personnel_payload' in p.prosrc)>0)<>2
+ where n.nspname !~ '^pg_' and n.nspname<>'information_schema' and position('apply_worker_personnel_payload' in lower(p.prosrc))>0)<>2
  or exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
- where n.nspname in ('public','private') and position('apply_worker_personnel_payload' in p.prosrc)>0
+ where n.nspname !~ '^pg_' and n.nspname<>'information_schema' and position('apply_worker_personnel_payload' in lower(p.prosrc))>0
  and p.oid not in (to_regprocedure('public.save_worker_personnel_profile(uuid,jsonb)'),to_regprocedure('public.decide_worker_personnel_change(uuid,boolean)')))
+ or exists(select 1 from pg_depend d
+ where d.refclassid='pg_proc'::regclass and d.refobjid=to_regprocedure('private.apply_worker_personnel_payload(uuid,jsonb,uuid)')
+ and not (d.classid='pg_proc'::regclass and d.objid in (
+   to_regprocedure('public.save_worker_personnel_profile(uuid,jsonb)'),to_regprocedure('public.decide_worker_personnel_change(uuid,boolean)'))))
  then raise sqlstate '55000' using message='personnel_birthday_v2_unknown_apply_caller';end if;
 end $callers$;
 alter table public.worker_personnel_profiles add column birth_date date;
@@ -520,8 +530,14 @@ $$;
 revoke execute on function private.apply_worker_personnel_payload(uuid,jsonb,uuid) from public,anon,authenticated;
 
 do $catalog_guard$ declare item jsonb;begin
- for item in select value from jsonb_array_elements($catalog$[{"signature":"private.worker_personnel_payload(uuid)","return_type":"jsonb","volatility":"s","acl":null,"body_md5":"72cabfabfad5dcbb533d21d2a0605dae"},{"signature":"private.apply_worker_personnel_payload(uuid,jsonb,uuid)","return_type":"void","volatility":"v","acl":"{postgres=X/postgres}","body_md5":"9d700b1fe8176a04b19dc63e9305edcf"},{"signature":"private.employee_personnel_view(uuid)","return_type":"jsonb","volatility":"s","acl":"{postgres=X/postgres,authenticated=X/postgres}","body_md5":"643dc0efdc35b6ab365f1ec31d053384"},{"signature":"public.save_worker_personnel_profile(uuid,jsonb)","return_type":"jsonb","volatility":"v","acl":"{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}","body_md5":"ce3ae9c1779b12a093e571b8c030a4c0"},{"signature":"public.decide_worker_personnel_change(uuid,boolean)","return_type":"jsonb","volatility":"v","acl":"{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}","body_md5":"42e5b55ceb81d293873c6e653b56e89f"}]$catalog$::jsonb) loop
+ for item in select value from jsonb_array_elements($catalog$[{"signature":"private.worker_personnel_payload(uuid)","return_type":"jsonb","volatility":"s","acl":null,"body_md5":"72cabfabfad5dcbb533d21d2a0605dae","language":"sql","argument_names":["p_worker_id"]},{"signature":"private.apply_worker_personnel_payload(uuid,jsonb,uuid)","return_type":"void","volatility":"v","acl":"{postgres=X/postgres}","body_md5":"9d700b1fe8176a04b19dc63e9305edcf","language":"plpgsql","argument_names":["p_worker_id","p_payload","p_actor"]},{"signature":"private.employee_personnel_view(uuid)","return_type":"jsonb","volatility":"s","acl":"{postgres=X/postgres,authenticated=X/postgres}","body_md5":"643dc0efdc35b6ab365f1ec31d053384","language":"plpgsql","argument_names":["p_company"]},{"signature":"public.save_worker_personnel_profile(uuid,jsonb)","return_type":"jsonb","volatility":"v","acl":"{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}","body_md5":"ce3ae9c1779b12a093e571b8c030a4c0","language":"plpgsql","argument_names":["p_worker_id","p_payload"]},{"signature":"public.decide_worker_personnel_change(uuid,boolean)","return_type":"jsonb","volatility":"v","acl":"{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}","body_md5":"42e5b55ceb81d293873c6e653b56e89f","language":"plpgsql","argument_names":["p_request_id","p_approve"]}]$catalog$::jsonb) loop
  if not exists(select 1 from pg_proc p where p.oid=to_regprocedure(item->>'signature')
+ and p.prolang=(select oid from pg_language where lanname=item->>'language')
+ and p.prosupport::oid=0 and p.provariadic=0 and p.pronargdefaults=0 and p.proargdefaults is null
+ and p.proallargtypes is null and p.proargmodes is null and p.prosqlbody is null and p.probin is null
+ and p.pronargs=jsonb_array_length(item->'argument_names')
+ and p.proargnames is not distinct from array(select jsonb_array_elements_text(item->'argument_names'))
+ and p.procost=100 and p.prorows=0
  and md5(p.prosrc)=item->>'body_md5' and pg_get_userbyid(p.proowner)='postgres'
  and p.proacl::text is not distinct from item->>'acl'
  and p.proconfig=array['search_path=""']::text[] and p.prosecdef
