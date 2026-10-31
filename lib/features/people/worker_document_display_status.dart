@@ -21,7 +21,10 @@ WorkerDocumentDisplayStatus workerDocumentDisplayStatus(
   if (bank) {
     return bankRegistered == true
         ? const WorkerDocumentDisplayStatus('登録済み', true)
-        : const WorkerDocumentDisplayStatus('口座情報を確認', false);
+        : WorkerDocumentDisplayStatus(
+            bankRegistered == false ? '未登録' : '口座情報を確認',
+            false,
+          );
   }
   final status = effectiveStatus ?? row?['status']?.toString();
   if (row == null || status == 'not_submitted' || status == 'missing') {

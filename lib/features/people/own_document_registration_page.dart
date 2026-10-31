@@ -9,6 +9,7 @@ import 'worker_document_repository.dart';
 import 'own_bank_account_page.dart';
 import 'own_bank_account_repository.dart';
 import 'worker_document_exemption.dart';
+import 'worker_document_display_status.dart';
 import 'worker_document_change_flow.dart';
 import 'worker_document_change_repository.dart';
 import '../shared/resource_registration_card.dart';
@@ -794,32 +795,13 @@ class _OwnDocumentRegistrationPageState
                                   _repository is OwnDocumentPhotoGateway &&
                                   !(_repository as OwnDocumentPhotoGateway)
                                       .photoEditingAvailable);
-                          // Mirror the required-document attention predicate: the
-                          // primary attachment is required except for bank information,
-                          // whose completion depends on a separate private bank record.
-                          final statusValue = status?['status']?.toString();
                           final isBank = requirement['name']?.toString() == '銀行口座情報';
-                          final isRequired = requirement['is_required'] == true;
-                          final primaryPath =
-                              status?['attachment_path']?.toString() ?? '';
-                          final attachmentMissing = status != null && isRequired &&
-                              !isBank && primaryPath.isEmpty;
-                          final bankUnconfirmed =
-                              isBank && _bankState?.registered!=true;
-                          final statusMissing = statusValue == 'not_submitted' ||
-                              statusValue == 'missing' || statusValue == 'expired';
-                          final incomplete = isBank ? _bankState?.registered!=true :
-                              needsRegistration || attachmentMissing || statusMissing;
-                          final label = isBank ? (_bankState?.registered==true ? '登録済み' : _bankState==null ? '口座情報を確認' : '未登録') : status == null || statusValue == 'not_submitted' ||
-                                  statusValue == 'missing'
-                              ? '未登録'
-                              : statusValue == 'expired'
-                                  ? '期限切れ'
-                                  : attachmentMissing
-                                      ? '添付待ち'
-                                      : bankUnconfirmed
-                                          ? '口座情報を確認'
-                                          : '登録済み';
+                          final attachmentMissing = status != null && requirement['is_required'] == true &&
+                              !isBank && paths.isEmpty;
+                          final display = workerDocumentDisplayStatus(requirement, status,
+                              bankRegistered: _bankState?.registered);
+                          final incomplete = isBank ? !display.complete : needsRegistration || !display.complete;
+                          final label = display.label;
                           final gateway = _repository;
                           final attachments = [
                             for (var i = 0; i < paths.length; i++)
