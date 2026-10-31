@@ -1,0 +1,58 @@
+name: Actual Formal C cached callers only
+on:
+  pull_request:
+    paths:
+      - 'tool/formal_c_rebind_review/verify_actual_c_cached_callers.py'
+      - '.github/workflows/formal-c-actual-cached-callers.yml'
+permissions:
+  contents: read
+  actions: read
+jobs:
+  cached-callers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      database:
+        image: postgres:17.6
+        env: {POSTGRES_USER: postgres, POSTGRES_PASSWORD: fixture-only, POSTGRES_DB: partner_bank_fixture}
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      PARTNER_BANK_TEST_DATABASE_URL: postgres://postgres:fixture-only@127.0.0.1:5432/partner_bank_fixture
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: 74b7107392e3144d37612ec311636f602088f18b
+          path: frozen-producer
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with: {node-version: '22.14.0'}
+      - name: Reuse the independently reviewed actual13; do not repeat its capture
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: '13060342812'
+          run-id: '41248880936'
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/prior-expected13
+          merge-multiple: true
+      - name: Generate probe from fixed producer and public workspace source only
+        run: |
+          python3 -B tool/formal_c_rebind_review/verify_actual_c_cached_callers.py \
+            --source-root frozen-producer \
+            --expected "$RUNNER_TEMP/prior-expected13/expected-after-fixture.json" \
+            --output "$RUNNER_TEMP/actual-cached-caller"
+          node --check "$RUNNER_TEMP/actual-cached-caller/actual-cached-callers.mjs"
+      - run: npm ci --prefix frozen-producer/tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
+      - name: Execute one actual-C cache boundary probe; no old restore rehearsal
+        working-directory: frozen-producer
+        run: |
+          node tool/reset_trade_document_atomic_fixture.mjs initialize
+          node "$RUNNER_TEMP/actual-cached-caller/actual-cached-callers.mjs" "$PWD/docs/review/partner-company-bank-order/native-db.mjs" core
+      - name: Frozen source remains unchanged after the probe
+        run: python3 -B tool/formal_c_rebind_review/verify_expected_capture.py --source-root frozen-producer
+      - uses: actions/upload-artifact@v4
+        with:
+          name: actual-C-cached-callers-source-only
+          if-no-files-found: error
+          path: ${{ runner.temp }}/actual-cached-caller/cached-caller-proof.json
