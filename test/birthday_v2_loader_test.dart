@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -56,6 +57,8 @@ void main() {
       debugPrint('DOB_LOADER teardown-client-complete');
     });
     Map<String, dynamic>? saved;
+    final dispatched = Completer<void>();
+    final editReturned = Completer<bool?>();
     wire.respond = (request) async {
       final path = request.url.path;
       debugPrint('DOB_LOADER request $path');
@@ -89,6 +92,7 @@ void main() {
       }
       if (path.endsWith('/rpc/save_worker_personnel_profile')) {
         saved = Map<String, dynamic>.from(jsonDecode(request.body) as Map);
+        dispatched.complete();
         return fixture.Wire.json({'status': 'saved', 'requires_approval': false, 'saved_directly': true});
       }
       throw StateError('Unexpected synthetic SDK endpoint: $path');
@@ -102,7 +106,12 @@ void main() {
     expect(record.name, 'Canonical employee');
     expect(record.role, 'Canonical role');
     debugPrint('DOB_LOADER widget-pump-start');
-    await t.pumpWidget(MaterialApp(home: EmployeePersonnelEditPage(record: record, repository: repository)));
+    await t.pumpWidget(MaterialApp(home: Scaffold(body: Builder(builder: (context) =>
+      TextButton(onPressed: () {
+        Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) =>
+          EmployeePersonnelEditPage(record: record, repository: repository))).then(editReturned.complete);
+      }, child: const Text('Open synthetic employee editor'))))));
+    await t.tap(find.text('Open synthetic employee editor'));
     await t.pumpAndSettle();
     debugPrint('DOB_LOADER widget-settled');
     final birthdayTile = find.ancestor(of: find.text('生年月日'), matching: find.byType(ListTile)).first;
@@ -121,7 +130,13 @@ void main() {
     debugPrint('DOB_LOADER confirm-dialog-settled');
     await t.tap(find.descendant(of: find.byType(AlertDialog), matching: find.widgetWithText(FilledButton, '保存する')));
     await t.pumpAndSettle();
-    debugPrint('DOB_LOADER save-observed');
+    debugPrint('DOB_LOADER save-dispatch-await');
+    await t.runAsync(() => dispatched.future.timeout(const Duration(seconds: 5)));
+    debugPrint('DOB_LOADER save-dispatched');
+    final savedResult = await t.runAsync(() => editReturned.future.timeout(const Duration(seconds: 5)));
+    debugPrint('DOB_LOADER editor-result-returned');
+    await t.pumpAndSettle();
+    expect(savedResult, isTrue);
     expect(saved, isNotNull);
     expect(saved!['p_worker_id'], worker);
     final payload = saved!['p_payload'] as Map;
