@@ -156,8 +156,9 @@ class _SiteOrderOutgoingRecoveryPageState
       }
       setState(() {
         _observed.remove(reference.prepare.requestId);
-        if (execution != null)
+        if (execution != null) {
           _observed[reference.prepare.requestId] = execution;
+        }
         _message = execution?.recipientStored == true
             ? '相手会社の受信箱に保存されています。相手の承認は未確認です。'
             : execution?.unresolved == true
