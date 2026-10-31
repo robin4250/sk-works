@@ -14,6 +14,7 @@ import 'site_order_outgoing_journal.dart';
 import 'site_order_outgoing_entries.dart';
 import 'site_order_outgoing_consent.dart';
 import 'site_order_outgoing_execution.dart';
+import 'site_order_original_review.dart';
 import 'site_order_outgoing_consent_preview.dart';
 
 String siteOrderRequestId() {
@@ -98,6 +99,22 @@ abstract class SiteOrderWorkflowApi extends ChangeNotifier {
       throw StateError('注文の確認を保存できません。');
   Future<SiteOrderConsentObservation> inspectOutgoingConsent(SiteOrderConsentReference reference) async =>
       throw StateError('注文の結果を確認できません。');
+  Future<bool> canMutateOutgoingReference(SiteOrderConsentReference reference) async => false;
+  Future<SiteOrderExecutionObservation> resolveOutgoingExecutionForReview(SiteOrderConsentReference reference, {required String jobId}) async => throw StateError('保存した注文の共有先を確認できません。');
+  Future<SiteOrderExecutionObservation> inspectOutgoingExecution(SiteOrderConsentReference reference,
+      {required String jobId, required String recipientCompanyId}) async =>
+      throw StateError('原本の保存状態を確認できません。');
+  Future<SiteOrderExecutionObservation> registerOutgoingOriginal(SiteOrderConsentReference reference,
+      {required String jobId, required String recipientCompanyId, required bool confirmed}) async =>
+      throw StateError('原本の保存を確認できません。');
+  Future<SiteOrderExecutionObservation> shareOutgoingOriginal(SiteOrderConsentReference reference,
+      {required String jobId, required String recipientCompanyId, required bool confirmed}) async =>
+      throw StateError('注文の共有を確認できません。');
+  Future<SiteOrderOriginalReview> reviewOutgoingOriginal(SiteOrderConsentReference reference,
+      {required String jobId, required String recipientCompanyId}) async =>
+      throw StateError('保存原本を確認できません。');
+  Future<Uint8List> outgoingOriginalBytes(SiteOrderConsentReference reference,
+      SiteOrderOriginalReview review) async => throw StateError('保存原本を表示できません。');
   Future<List<SiteOrderRegisteredTarget>> registeredOutgoingTargets(String siteId) async =>
       throw StateError('登録済み協力会社を確認できません。');
 }
@@ -336,6 +353,43 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
     return SiteOrderConsentObservation.decode(result, reference, _company!);
   }
 
+  @override
+  Future<bool> canMutateOutgoingReference(SiteOrderConsentReference reference) async {
+    await verify();
+    return reference.prepare.sessionId == _capturedSessionId && await canCreateOutgoing();
+  }
+
+  @override
+  Future<SiteOrderOriginalReview> reviewOutgoingOriginal(
+    SiteOrderConsentReference reference, {
+    required String jobId, required String recipientCompanyId,
+  }) async {
+    await verify();
+    final result=_map(_map(await _call(reference.command('original_review'),outgoing:true))['result']);
+    return SiteOrderOriginalReview.decode(result,reference,_company!,jobId:jobId,
+      recipientCompanyId:recipientCompanyId);
+  }
+
+  @override
+  Future<Uint8List> outgoingOriginalBytes(SiteOrderConsentReference reference,
+      SiteOrderOriginalReview review) async {
+    final raw=await _call(reference.command('original_bytes'),outgoing:true);
+    return review.verifyBytes(raw);
+  }
+
+  @override
+  Future<SiteOrderExecutionObservation> resolveOutgoingExecutionForReview(
+      SiteOrderConsentReference reference, {required String jobId}) async {
+    await verify();
+    final result=_map(_map(await _call(reference.command('original_status'),outgoing:true))['result']);
+    final recipient=result['recipient_company_id'];
+    if(!SiteOrderPendingPrepare.validId(recipient))throw StateError('保存した共有先を照合できません。');
+    // First pin is from the immutable server purpose, never today's directory.
+    return SiteOrderExecutionObservation.decode(result,reference,_company!,jobId:jobId,
+      recipientCompanyId:recipient as String);
+  }
+
+  @override
   Future<SiteOrderExecutionObservation> inspectOutgoingExecution(
     SiteOrderConsentReference reference, {
     required String jobId,
@@ -384,6 +438,7 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
     return result;
   }
 
+  @override
   Future<SiteOrderExecutionObservation> registerOutgoingOriginal(
     SiteOrderConsentReference reference, {
     required String jobId,
@@ -392,6 +447,7 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
   }) => _executeOutgoingStage(reference, jobId: jobId,
     recipientCompanyId: recipientCompanyId, stage: 'original', confirmed: confirmed);
 
+  @override
   Future<SiteOrderExecutionObservation> shareOutgoingOriginal(
     SiteOrderConsentReference reference, {
     required String jobId,

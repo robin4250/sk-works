@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 
 import 'site_order_outgoing_journal.dart';
 import 'site_order_outgoing_consent.dart';
+import 'site_order_outgoing_execution.dart';
+import 'site_order_original_review_page.dart';
 import 'site_order_workflow_repository.dart';
 
 /// Recovery stays available while generation is OFF. It cannot prepare, sign,
-/// render or send an order, and it never considers not_observed a cancellation.
+/// render or send by itself. A bound persisted-original review is a separate route.
+/// Unobserved results never become cancellation or resend permission.
 class SiteOrderOutgoingRecoveryPage extends StatefulWidget {
   const SiteOrderOutgoingRecoveryPage({
     super.key,
@@ -23,6 +26,7 @@ class _SiteOrderOutgoingRecoveryPageState
     extends State<SiteOrderOutgoingRecoveryPage> {
   List<SiteOrderPendingPrepare> _entries = const [];
   List<SiteOrderConsentReference> _decisions = const [];
+  final _observed = <String, SiteOrderExecutionObservation>{};
   bool _busy = true, _retired = false, _readSucceeded = false;
   String? _message;
   @override
@@ -38,6 +42,7 @@ class _SiteOrderOutgoingRecoveryPageState
       _retired = true;
       _entries = const [];
       _decisions = const [];
+      _observed.clear();
       _message = 'ログイン・会社の状態が変わりました。開き直してください。';
     });
   }
@@ -50,6 +55,7 @@ class _SiteOrderOutgoingRecoveryPageState
       _retired = true;
       _entries = const [];
       _decisions = const [];
+      _observed.clear();
       _message = '現場が変わりました。開き直してください。';
     }
   }
@@ -63,6 +69,7 @@ class _SiteOrderOutgoingRecoveryPageState
       if (!mounted || _retired || widget.api.invalidated) return;
       setState(() {
         _decisions = decisions;
+        _observed.clear();
         final requests = decisions.map((d) => d.prepare.requestId).toSet();
         _entries = entries
             .where((e) => !requests.contains(e.requestId))
@@ -139,14 +146,33 @@ class _SiteOrderOutgoingRecoveryPageState
     try {
       final result = await widget.api.inspectOutgoingConsent(reference);
       if (!mounted || _retired || widget.api.invalidated) return;
-      setState(
-        () => _message = result.observed
-            ? '押印内容の確認を保存しています。注文の共有はまだ行っていません。'
-            : '押印確認の結果は未確認です。再実行せず記録を保持しています。',
-      );
+      SiteOrderExecutionObservation? execution;
+      if (result.observed) {
+        execution = await widget.api.resolveOutgoingExecutionForReview(
+          reference,
+          jobId: result.jobId!,
+        );
+        if (!mounted || _retired || widget.api.invalidated) return;
+      }
+      setState(() {
+        _observed.remove(reference.prepare.requestId);
+        if (execution != null) {
+          _observed[reference.prepare.requestId] = execution;
+        }
+        _message = execution?.recipientStored == true
+            ? '相手会社の受信箱に保存されています。相手の承認は未確認です。'
+            : execution?.unresolved == true
+            ? '共有結果が未解決です。再送せず確認してください。'
+            : execution != null
+            ? '保存した注文の原本・共有状態を確認できます。'
+            : '押印確認の結果は未確認です。再実行せず記録を保持しています。';
+      });
     } catch (_) {
       if (mounted && !_retired) {
-        setState(() => _message = '押印確認の結果を確認できません。再実行せず記録を保持しています。');
+        setState(() {
+          _observed.remove(reference.prepare.requestId);
+          _message = '押印確認の結果を確認できません。再実行せず記録を保持しています。';
+        });
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -204,6 +230,28 @@ class _SiteOrderOutgoingRecoveryPageState
                         : () => _inspectDecision(reference),
                     child: const Text('押印確認の保存結果を照会'),
                   ),
+                  if (_observed[reference.prepare.requestId]
+                      case final execution?)
+                    OutlinedButton(
+                      onPressed: _busy || _retired
+                          ? null
+                          : () async {
+                              widget.api.requireCurrent();
+                              await Navigator.push<void>(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => SiteOrderOriginalReviewPage(
+                                    api: widget.api,
+                                    reference: reference,
+                                    jobId: execution.jobId,
+                                    recipientCompanyId:
+                                        execution.recipientCompanyId,
+                                  ),
+                                ),
+                              );
+                            },
+                      child: const Text('保存原本・共有状態を確認'),
+                    ),
                 ],
               ),
             ),

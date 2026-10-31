@@ -1,10 +1,12 @@
 import {outgoingExecutionKeys} from '../../../tool/site_order_outgoing_execution_contract.mjs';
-import {observeOutgoingExecution,registerOutgoingOriginal,shareConfirmedOutgoing} from '../../../tool/site_order_outgoing_delivery_core.mjs';
+import {observeOutgoingExecution,registerOutgoingOriginal,shareConfirmedOutgoing,reviewOutgoingOriginal} from '../../../tool/site_order_outgoing_delivery_core.mjs';
 // Separate bounded purpose. Legacy workflow requests retain their 4096-byte cap.
 const uuid=/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/;
 const identity=['site_id','document_id','local_id','trade_id','request_id'];
 const commands={
  original_status:{keys:outgoingExecutionKeys,execution:'status'},
+ original_review:{keys:outgoingExecutionKeys,execution:'review'},
+ original_bytes:{keys:outgoingExecutionKeys,execution:'bytes'},
  register_outgoing_original:{keys:outgoingExecutionKeys,execution:'register'},
  share_confirmed:{keys:[...outgoingExecutionKeys,'confirmed'],execution:'share'},
  preview_unsigned:{keys:identity,sql:'select site_order_outgoing_private.preview_unsigned($1,$2,$3,$4,$5) as result'},
@@ -61,6 +63,10 @@ export function createOutgoingPrepareHandler({verify,connect,render}){
     const identity=Object.fromEntries(outgoingExecutionKeys.map(k=>[k,input.value[k]]));
     let result;
     if(input.command.execution==='status')result=await observeOutgoingExecution(db,identity,claims);
+    else if(['review','bytes'].includes(input.command.execution)){
+     result=await reviewOutgoingOriginal(db,identity,claims,{bytes:input.command.execution==='bytes'});
+     if(input.command.execution==='bytes')return new Response(result,{status:200,headers:{'Content-Type':'application/octet-stream','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
+    }
     else if(input.command.execution==='register'){
      if(typeof render!=='function')throw Error('outgoing_renderer_unavailable');
      result=await registerOutgoingOriginal(db,identity,render,claims);

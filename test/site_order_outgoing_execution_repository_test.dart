@@ -60,7 +60,17 @@ class _ExecutionWire extends http.BaseClient {
       for (final e in (data['identity'] as Map).entries) {
         expect(command[e.key], e.value);
       }
-      if (command['action'] == 'original_status') {
+      if (command['action'] == 'original_bytes') {
+        final bytes = base64Decode(data['synthetic_pdf_base64'] as String);
+        return http.StreamedResponse(
+          Stream.value(bytes),
+          200,
+          headers: {'content-type': 'application/octet-stream'},
+          request: request,
+        );
+      } else if (command['action'] == 'original_review') {
+        body = {'result': data['persisted_review']};
+      } else if (command['action'] == 'original_status') {
         statuses++;
         body = {
           'result':
@@ -156,13 +166,28 @@ void main() {
             jobId: data['job_id'],
             recipientCompanyId: data['recipient_company_id'],
           );
+          final resolved = await repository.resolveOutgoingExecutionForReview(
+            reference,
+            jobId: data['job_id'],
+          );
+          expect(resolved.recipientCompanyId, data['recipient_company_id']);
+          final review = await repository.reviewOutgoingOriginal(
+            reference,
+            jobId: data['job_id'],
+            recipientCompanyId: data['recipient_company_id'],
+          );
+          final bytes = await repository.outgoingOriginalBytes(
+            reference,
+            review,
+          );
+          expect(bytes, base64Decode(data['synthetic_pdf_base64'] as String));
           expect(observed.originalSaved, true);
           expect(observed.recipientStored, stage == 'share');
           expect(observed.journalClearable, false);
           expect(observed.retryAutomatically, false);
           await expectLater(execute(), throwsStateError);
           expect(wire.mutations, 1);
-          expect(wire.statuses, 1);
+          expect(wire.statuses, 2);
         } finally {
           repository.dispose();
           await client.dispose();

@@ -10,9 +10,10 @@ import 'site_order_outgoing_consent_preview.dart';
 import 'site_order_outgoing_entry_page.dart';
 import 'site_order_outgoing_recovery_page.dart';
 import 'site_order_workflow_repository.dart';
+import 'site_order_original_review_page.dart';
 
 /// Input -> server prepare -> fresh server preview -> explicit issuer consent.
-/// This route does not register an original or send to a counterparty.
+/// Original registration and sharing require a separate persisted-original review.
 class SiteOrderOutgoingComposePage extends StatefulWidget {
   const SiteOrderOutgoingComposePage({
     super.key,
@@ -40,6 +41,7 @@ class _SiteOrderOutgoingComposePageState
   bool _busy = true, _retired = false, _allowed = false, _pending = false;
   bool _prepareStarted = false, _decisionStarted = false, _agreed = false;
   bool _needsFreshInput = false;
+  String? _preparedJobId;
   int _generation = 0;
   String? _message;
   SiteOrderReviewedInput? _input;
@@ -440,11 +442,12 @@ class _SiteOrderOutgoingComposePageState
       );
       _require();
       if (mounted) {
-        setState(
-          () => _message = result.observed
-              ? '押印内容の確認を保存しました。注文の共有はまだ行っていません。'
-              : '保存結果は未確認です。再実行せず状態を照会してください。',
-        );
+        setState(() {
+          _preparedJobId = result.jobId;
+          _message = result.observed
+              ? '押印内容の確認を保存しました。原本・共有の確認へ進めます。'
+              : '保存結果は未確認です。再実行せず状態を照会してください。';
+        });
       }
     } catch (_) {
       if (mounted && !_retired) {
@@ -466,11 +469,12 @@ class _SiteOrderOutgoingComposePageState
       final result = await widget.api.inspectOutgoingConsent(_reference!);
       _require();
       if (mounted) {
-        setState(
-          () => _message = result.observed
-              ? '押印内容の確認を保存しています。注文の共有はまだ行っていません。'
-              : '保存結果は未確認です。再実行せず記録を保持しています。',
-        );
+        setState(() {
+          _preparedJobId = result.jobId;
+          _message = result.observed
+              ? '押印内容の確認を保存しています。原本・共有状態は次の画面で確認してください。'
+              : '保存結果は未確認です。再実行せず記録を保持しています。';
+        });
       }
     } catch (_) {
       if (mounted && !_retired) {
@@ -606,6 +610,29 @@ class _SiteOrderOutgoingComposePageState
                             ? null
                             : _confirm,
                         child: const Text('押印内容を確定'),
+                      ),
+                    if (_preparedJobId != null &&
+                        _reference != null &&
+                        _preview != null)
+                      FilledButton(
+                        onPressed: _busy
+                            ? null
+                            : () async {
+                                _require();
+                                await Navigator.push<void>(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => SiteOrderOriginalReviewPage(
+                                      api: widget.api,
+                                      reference: _reference!,
+                                      jobId: _preparedJobId!,
+                                      recipientCompanyId:
+                                          _preview!.recipientCompanyId,
+                                    ),
+                                  ),
+                                );
+                              },
+                        child: const Text('原本保存・共有の確認'),
                       ),
                     if (_decisionStarted)
                       OutlinedButton(

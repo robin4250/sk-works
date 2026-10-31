@@ -264,7 +264,7 @@ void main() {
       await tester.tap(find.text('押印内容を確定'));
       await tester.pumpAndSettle();
       expect(api.confirms, 1);
-      expect(find.textContaining('共有はまだ行っていません'), findsOneWidget);
+      expect(find.textContaining('原本・共有の確認へ進めます'), findsOneWidget);
       expect(find.text('入力画面に戻る'), findsNothing);
       expect(find.text('共有送信'), findsNothing);
       await tester.tap(find.text('保存結果を照会'));
