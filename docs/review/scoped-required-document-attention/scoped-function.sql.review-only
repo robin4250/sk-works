@@ -1,0 +1,146 @@
+CREATE FUNCTION private.current_user_required_document_attention_for_company(p_company_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare
+  v_user_id uuid := auth.uid();
+  v_session uuid;
+  members integer;
+  workers integer;
+  v_company_id uuid;
+  v_worker_id uuid;
+  v_missing_names text[];
+  v_missing_count integer;
+  v_unknown_count integer;
+  v_unknown_names text[];
+  v_items jsonb;
+  v_required_count integer;
+  v_saved_count integer;
+  v_exempt_count integer;
+begin
+  v_session := private.require_reauthentication_session();
+  if p_company_id is null then raise exception 'Company required' using errcode='22023'; end if;
+  perform 1 from public.company_members m
+    where m.company_id=p_company_id and m.user_id=v_user_id for share;
+  select count(*) into members from public.company_members m
+    where m.company_id=p_company_id and m.user_id=v_user_id;
+  if members<>1 then raise exception 'Company membership is not unique or authorized' using errcode='42501'; end if;
+  perform 1 from public.workers w
+    where w.company_id=p_company_id and w.user_id=v_user_id and w.status::text='active' for share;
+  select count(*),min(w.id::text)::uuid into workers,v_worker_id from public.workers w
+    where w.company_id=p_company_id and w.user_id=v_user_id and w.status::text='active';
+  if workers<>1 then raise exception 'Active worker is not unique or authorized' using errcode='42501'; end if;
+  v_company_id:=p_company_id;
+  with evidence as (
+    select dr.id,dr.name,dr.sort_order,to_jsonb(dr)->>'scope' as requirement_scope,
+      statuses.row_count as status_row_count,statuses.item as status_item,photo.valid as photo_valid,dr.expiry_required,
+      case
+        when exists (select 1 from private.worker_document_exemptions e
+          where e.company_id=v_company_id and e.worker_id=v_worker_id and e.requirement_id=dr.id and e.active) then 'exempt'
+        when nullif(btrim(dr.name),'') is null then 'unknown'
+        when dr.name = '銀行口座情報' then case
+          when exists (select 1 from public.worker_private_bank_accounts ba
+            where ba.worker_id=v_worker_id and ba.company_id=v_company_id and ba.updated_at is not null and isfinite(ba.updated_at))
+          then 'saved' when exists (select 1 from public.worker_private_bank_accounts ba
+            where ba.worker_id=v_worker_id and ba.company_id=v_company_id) then 'unknown' else 'missing' end
+        when statuses.row_count > 1 then 'unknown'
+        when statuses.row_count = 0 then 'missing'
+        when statuses.item->>'status' in ('not_submitted','missing','expired') then 'missing'
+        when statuses.item->>'status' not in ('submitted','verified')
+          or statuses.item->>'status' is null then 'unknown'
+        when photo.valid is null then 'unknown'
+        when not photo.valid then 'missing'
+        when nullif(statuses.item->>'expires_at','') is not null and (
+          statuses.item->>'expires_at' !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+          or left(statuses.item->>'expires_at',4)='0000') then 'unknown'
+        when dr.expiry_required is true and nullif(statuses.item->>'expires_at','') is null then 'missing'
+        when (statuses.item->>'expires_at')::date < (current_timestamp at time zone 'Asia/Tokyo')::date then 'missing'
+        else 'saved'
+      end as state
+    from public.document_requirements dr
+    left join lateral (
+      select count(*) row_count,(jsonb_agg(to_jsonb(wds)))->0 item
+      from public.worker_document_statuses wds
+      where wds.requirement_id=dr.id and wds.worker_id=v_worker_id and wds.company_id=v_company_id
+    ) statuses on true
+    left join lateral (
+      select case
+        when statuses.item->'attachment_paths' is null
+          or statuses.item->'attachment_paths'='null'::jsonb
+          or statuses.item->'attachment_paths'='[]'::jsonb
+        then nullif(btrim(statuses.item->>'attachment_path'),'') is not null
+        when jsonb_typeof(statuses.item->'attachment_paths')='array' then case
+          when exists (select 1 from jsonb_array_elements(statuses.item->'attachment_paths') photo
+            where jsonb_typeof(photo)<>'string' or nullif(btrim(photo #>> '{}'),'') is null)
+            or (select count(*)<>count(distinct photo #>> '{}')
+              from jsonb_array_elements(statuses.item->'attachment_paths') photo)
+          then null else true end
+        else null
+      end valid
+    ) photo on true
+    where dr.company_id=v_company_id and dr.is_active and dr.is_required
+
+  )
+  select count(*) filter(where state='missing')::integer,
+    coalesce(array_agg(name order by sort_order,name,id) filter(where state='missing'),array[]::text[]),
+    count(*) filter(where state='unknown')::integer,
+    coalesce(array_agg(name order by sort_order,name,id) filter(where state='unknown'),array[]::text[]),
+    count(*) filter(where state<>'exempt')::integer,
+    count(*) filter(where state='saved')::integer,
+    count(*) filter(where state='exempt')::integer,
+    coalesce(jsonb_agg(jsonb_build_object(
+      'requirement_id',id,'name',name,'scope',requirement_scope,'state',state,
+      'evidence_key',case when state='saved' then
+        'saved:'||v_worker_id::text||':'||id::text||':'||coalesce(status_item->>'id','bank')
+        when state='exempt' then 'exemption:'||v_worker_id::text||':'||id::text else null end,
+      'status_label',case
+        when state='exempt' then '免除'
+        when name='銀行口座情報' then case when state='saved' then '登録済み'
+          when state='missing' then '未登録' else '口座情報を確認' end
+        when state='saved' then '提出済み'
+        when status_row_count=0 or status_item->>'status' in ('not_submitted','missing') then '未登録'
+        when status_item->>'status'='expired' then '期限切れ'
+        when status_row_count>1 or status_item->>'status' not in ('submitted','verified')
+          or status_item->>'status' is null then '未確定'
+        when photo_valid is null then '添付情報を確認'
+        when photo_valid is false then '添付待ち'
+        when state='unknown' then '登録済み・期限を確認'
+        when expiry_required is true and nullif(status_item->>'expires_at','') is null then '登録済み・期限未入力'
+        else '登録済み・期限切れ'
+      end
+    ) order by sort_order,name,id),'[]'::jsonb)
+  into v_missing_count,v_missing_names,v_unknown_count,v_unknown_names,
+    v_required_count,v_saved_count,v_exempt_count,v_items
+  from evidence;
+
+  if (select count(*) from public.company_members m
+      where m.company_id=v_company_id and m.user_id=v_user_id)<>1
+    or (select count(*) from public.workers w where w.company_id=v_company_id
+      and w.user_id=v_user_id and w.status::text='active')<>1
+    or private.require_reauthentication_session() is distinct from v_session then
+    raise exception 'Document scope changed' using errcode='40001';
+  end if;
+  return jsonb_build_object(
+    'evidence_contract_version',1,'items',v_items,
+    'required_count',v_required_count,'saved_count',v_saved_count,'exempt_count',v_exempt_count,
+    'capability_version',1,'company_id',v_company_id,'worker_id',v_worker_id,
+    'actor_id',v_user_id,'session_id',v_session,
+    'unknown_count',coalesce(v_unknown_count,0),
+    'unknown_names',to_jsonb(coalesce(v_unknown_names,array[]::text[])),
+    'missing_count', coalesce(v_missing_count, 0),
+    'missing_names', to_jsonb(coalesce(v_missing_names, array[]::text[])),
+    'needs_license', exists (
+      select 1
+      from unnest(coalesce(v_missing_names, array[]::text[])) n
+      where n like '%免許%'
+    ),
+    'needs_qualification', exists (
+      select 1
+      from unnest(coalesce(v_missing_names, array[]::text[])) n
+      where n like '%資格%'
+    )
+  );
+end;
+$function$

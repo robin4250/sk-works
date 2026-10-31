@@ -11,6 +11,8 @@ import 'own_bank_account_repository.dart';
 import 'worker_document_exemption.dart';
 import 'worker_document_display_status.dart';
 import 'worker_document_change_flow.dart';
+import 'worker_document_admin_correction_entry.dart';
+import 'worker_document_admin_correction_repository.dart';
 import 'worker_document_change_repository.dart';
 import '../shared/resource_registration_card.dart';
 import '../common/data_date_labels.dart';
@@ -62,8 +64,17 @@ abstract interface class OwnDocumentChangeGateway implements OwnDocumentRegistra
   Future<String> signedUrl(String path);
 }
 
+abstract interface class OwnDocumentAdminCorrectionGateway {
+  Future<List<String>> pendingAdminCorrectionTargets(String companyId);
+  Future<WorkerDocumentAdminCorrectionRepository> createAdminCorrectionRepository({
+    required String companyId,
+    required String targetId,
+    required bool Function() isCurrentTarget,
+  });
+}
+
 class _OwnDocumentRepositoryGateway
-    implements OwnDocumentRegistrationGateway, OwnDocumentPhotoGateway, OwnDocumentChangeGateway, OwnDocumentGalleryGateway {
+    implements OwnDocumentRegistrationGateway, OwnDocumentPhotoGateway, OwnDocumentChangeGateway, OwnDocumentGalleryGateway, OwnDocumentAdminCorrectionGateway {
   _OwnDocumentRepositoryGateway(this.repository) : actorId = repository.actorId;
   final WorkerDocumentRepository repository;
   @override
@@ -75,6 +86,18 @@ class _OwnDocumentRepositoryGateway
   Future<String> changeCompanyId() async => (await repository.membership()).companyId;
   @override
   WorkerDocumentChangeRepository createChangeRepository() => repository.createChangeRepository();
+  @override
+  Future<List<String>> pendingAdminCorrectionTargets(String companyId) => repository.pendingAdminCorrectionTargets(companyId);
+  @override
+  Future<WorkerDocumentAdminCorrectionRepository> createAdminCorrectionRepository({
+    required String companyId,
+    required String targetId,
+    required bool Function() isCurrentTarget,
+  }) => repository.createAdminCorrectionRepository(
+    companyId: companyId,
+    targetId: targetId,
+    isCurrentTarget: isCurrentTarget,
+  );
 
   @override
   Future<bool Function()> captureAttachmentReadScope() => repository.captureAttachmentReadScope();
@@ -275,6 +298,36 @@ class _OwnDocumentRegistrationPageState
     return null;
   }
 
+  Future<void> _recoverAdminCorrections() async {
+    final changes = _repository;
+    final admin = _repository;
+    if (changes is! OwnDocumentChangeGateway || admin is! OwnDocumentAdminCorrectionGateway) {
+      return;
+    }
+    final adminAccess = admin as OwnDocumentAdminCorrectionGateway;
+    final actor = changes.actorId;
+    try {
+      final companyId = await changes.changeCompanyId();
+      bool current() => mounted && identical(_repository, changes) && changes.isCurrentActor && changes.actorId == actor;
+      if (!mounted || actor == null || !current()) {
+        return;
+      }
+      await recoverPendingWorkerDocumentAdminCorrections(
+        context: context, pendingTargets: () => adminAccess.pendingAdminCorrectionTargets(companyId),
+        createRepository: (target) => adminAccess.createAdminCorrectionRepository(
+          companyId: companyId, targetId: target, isCurrentTarget: current),
+        isCurrent: current,
+      );
+      if (mounted) {
+        await _load();
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('書類訂正の結果を確認できません。変更IDは保持しています。')));
+      }
+    }
+  }
+
   Future<bool> _changeRegistered(Map<String, dynamic>? row) async {
     if (!workerDocumentHasRegisteredContent(row)) return false;
     try {
@@ -289,6 +342,45 @@ class _OwnDocumentRegistrationPageState
     try {
       final companyId = await gateway.changeCompanyId();
       if (!mounted || !changes.isCurrentActor || !gateway.isCurrentActor) return true;
+      if (gateway is OwnDocumentAdminCorrectionGateway) {
+        final adminGateway = gateway as OwnDocumentAdminCorrectionGateway;
+        final snapshot = Map<String, dynamic>.from(row ?? const {});
+        bool currentTarget() => mounted && identical(_repository, gateway) && gateway.isCurrentActor &&
+            snapshot['company_id'] == companyId && _worker?['company_id'] == companyId &&
+            _worker?['id'] == snapshot['worker_id'];
+        final adminCorrection = await adminGateway.createAdminCorrectionRepository(
+          companyId: companyId,
+          targetId: snapshot['id'] as String,
+          isCurrentTarget: currentTarget,
+        );
+        if (!mounted) {
+          adminCorrection.dispose();
+          return true;
+        }
+        Map<String, dynamic>? requirement;
+        for (final item in _requirements) {
+          if (item['id'] == snapshot['requirement_id']) {
+            requirement = item;
+            break;
+          }
+        }
+        final handled = await openWorkerDocumentAdminCorrection(
+          context: context,
+          repository: adminCorrection,
+          snapshot: snapshot,
+          documentName: requirement?['name']?.toString() ?? '書類',
+          isCurrentTarget: currentTarget,
+        );
+        if (handled) {
+          if (mounted) {
+            await _load();
+          }
+          return true;
+        }
+      }
+      if (!mounted || !changes.isCurrentActor || !gateway.isCurrentActor) {
+        return true;
+      }
       await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => WorkerDocumentChangePage(
         repository: changes, actor: actor, companyId: companyId, row: row!,
         signedUrl: gateway.signedUrl,
@@ -715,6 +807,9 @@ class _OwnDocumentRegistrationPageState
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
           ),
           actions: [
+            if (_repository is OwnDocumentAdminCorrectionGateway) IconButton(
+              tooltip: '書類訂正の結果を確認', onPressed: _loading || _saving ? null : _recoverAdminCorrections,
+              icon: const Icon(Icons.history_outlined)),
             IconButton(
               tooltip: '書類登録のヘルプ',
               onPressed: _showRegistrationHelp,
@@ -874,3 +969,4 @@ Widget _documentRegistrationStep(
     ),
   );
 }
+

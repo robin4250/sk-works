@@ -18,7 +18,8 @@ class FixtureSource implements TutorialEvidenceSource, TutorialSetupEvidenceSour
     'user_id': 'u1', 'display_name': '保存済み氏名', 'phone': '',
   };
   Map<String, dynamic>? personnelRow = {
-    'worker_id': 'w1', 'name': '保存済み氏名', 'birth_date': '', 'address': '',
+    'worker_id': '10000000-0000-0000-0000-000000000003', 'name': '保存済み氏名',
+    'birth_date_contract_version': 1, 'birth_date': '', 'address': '',
     'blood_type': '', 'role': '', 'emergency_name': '',
     'emergency_relation': '', 'emergency_phone': '', 'emergency_address': '',
   };
@@ -53,7 +54,7 @@ void main() {
     expect(details.requiredForCompletion, isFalse);
     expect(birth.label, '生年月日');
     expect(birth.state, TutorialEvidenceState.saved);
-    expect(birth.evidenceKey, 'w1:birth_date');
+    expect(birth.evidenceKey, '10000000-0000-0000-0000-000000000003:birth_date');
     expect(source.personnelRow!['birth_date'], '1980-01-02');
   });
 

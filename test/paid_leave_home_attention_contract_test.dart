@@ -13,7 +13,7 @@ void main() {
       'lib/features/notifications/attention_center_repository.dart',
     ).readAsStringSync();
     expect(repository, contains('AttentionCenterRepository'));
-    expect(repository, contains('await _repository.load()'));
+    expect(repository, contains('await _repository.load(companyId: companyId, currentCompany: currentCompany)'));
     expect(center, contains('pending_paid_leave_request_batches'));
     expect(center, contains("readSource('paid_leave'"));
     expect(repository, contains('paidLeaveApprovalCount'));

@@ -51,7 +51,9 @@ import '../route_billing/route_billing_quantity_approvals_page.dart';
 import '../people/worker_personnel_change_approvals_page.dart';
 
 class NotificationsPage extends StatefulWidget {
-  const NotificationsPage({super.key});
+  const NotificationsPage({super.key, this.companyId, this.currentCompany});
+  final String? companyId;
+  final String? Function()? currentCompany;
   @override
   State<NotificationsPage> createState() => _NotificationsPageState();
 }
@@ -62,6 +64,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
   AttentionCenterData? _data;
   NotificationOpenSession? _session;
   StreamSubscription<void>? _sessionChanges;
+  int _loadRequest = 0;
   bool _loading = true;
   bool _opening = false;
   bool _pendingOnly = false;
@@ -82,6 +85,15 @@ class _NotificationsPageState extends State<NotificationsPage> {
   }
 
   @override
+  void didUpdateWidget(covariant NotificationsPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.companyId != widget.companyId) {
+      _data = null;
+      _load();
+    }
+  }
+
+  @override
   void dispose() {
     _sessionChanges?.cancel();
     _session?.dispose();
@@ -89,6 +101,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
   }
 
   Future<void> _load() async {
+    final request = ++_loadRequest;
     final repository = _repository;
     if (repository == null) {
       if (mounted) {
@@ -105,9 +118,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
     });
     try {
       _session?.requireCurrent();
-      final data = await repository.load();
+      final data = await repository.load(companyId: widget.companyId, currentCompany: widget.currentCompany);
       _session?.requireCurrent();
-      if (!mounted) {
+      if (!mounted || request != _loadRequest) {
         return;
       }
       setState(() {
@@ -115,7 +128,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
         _loading = false;
       });
     } catch (error) {
-      if (!mounted) {
+      if (!mounted || request != _loadRequest) {
         return;
       }
       setState(() {

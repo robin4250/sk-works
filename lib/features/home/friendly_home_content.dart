@@ -1,3 +1,4 @@
+import 'required_document_evidence_notice.dart';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -121,6 +122,11 @@ class FriendlyHomeContent extends StatelessWidget {
                     onOpen: onOpen,
                   ),
                 ),
+              ],
+              if (requiredDocumentAttention.hasUnknownDocumentEvidence) ...[
+                const SizedBox(height: 12),
+                RequiredDocumentEvidenceNotice(attention: requiredDocumentAttention,
+                  onOpen: () => onOpen('notifications')),
               ],
               if (hasPendingRouteReports ||
                   (hasPendingRouteRecord && !showAttendanceReport))
