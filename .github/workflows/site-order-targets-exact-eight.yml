@@ -48,7 +48,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
-          ref: 8cdcf2457e42eec495ac8f43e5b52aa21dfdf6f9
+          ref: 113b42b57ac0d1a9a49e900cecca47cb6150da9e
           path: .targets-source
           persist-credentials: false
       - uses: actions/checkout@v4
@@ -98,7 +98,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 8cdcf2457e42eec495ac8f43e5b52aa21dfdf6f9
+          ref: 113b42b57ac0d1a9a49e900cecca47cb6150da9e
           persist-credentials: false
       - uses: actions/download-artifact@v4
         with: {name: target-exact-eight-native, path: build}
