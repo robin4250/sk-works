@@ -18,7 +18,7 @@ The unchanged order chain subsequently exercises directory selection, preparatio
 
 A bounded output guard requires all five distinct completion receipts even after an exit-zero child, rejecting missing/duplicate/malformed evidence and the observed partial fatal-runtime case. Child output is capped at 16MiB and execution at twelve minutes; temporary copies retain owned-file cleanup.
 
-Local PGlite previously passed 315 checks; the later strict trigger assertion passed but its full-chain rerun ended with a fatal Wasm runtime and missing final summary, so that rerun is incomplete. New Native execution, completed CI and independent final review remain pending. Earlier frozen Native evidence is not substituted for these new checks.
+Local PGlite passes 315 checks, including the strengthened trigger assertions. An intermediate observation contained a fatal-runtime message and incomplete summary; the final completed log was re-read and passes the strict completion guard. The guard rejects any partial completion and contradictory duplicate kind markers. New Native execution, completed CI and independent final review remain pending. Earlier frozen Native evidence is not substituted for these new checks.
 
 ## OFF stages and stop conditions — design only
 

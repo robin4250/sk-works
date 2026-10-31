@@ -15,6 +15,8 @@ test('zero exit with runtime fatal or missing final evidence is rejected',()=>{
 });
 test('duplicate, malformed, wrong scope and false success are rejected',()=>{
  assert.throws(()=>requireCompletion(output([...receipts,receipts[4]])));
+ assert.throws(()=>requireCompletion(output([...receipts,{...receipts[0],combined_compatibility_installed:false}])));
+ assert.throws(()=>requireCompletion(output([...receipts,{...receipts[4],production_changed:true}])));
  assert.throws(()=>requireCompletion(output(receipts)+'\n{broken'));
  for(const patch of [{checks:314},{full_modules:13},{production_changed:true},{result:'partial'}])assert.throws(()=>requireCompletion(output([...receipts.slice(0,4),{...receipts[4],...patch}])));
 });
