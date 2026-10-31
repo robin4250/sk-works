@@ -1,9 +1,9 @@
-import 'dart:async';
 import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'site_order_outgoing_consent.dart';
+import 'site_order_journal_serial.dart';
 import 'site_order_outgoing_journal.dart';
 
 /// Authoritative persisted execution evidence. Consent preparation alone does
@@ -130,43 +130,34 @@ class SiteOrderExecutionJournal {
   SiteOrderExecutionJournal({Future<SharedPreferences> Function()? preferences})
     : _preferences = preferences ?? SharedPreferences.getInstance;
   final Future<SharedPreferences> Function() _preferences;
-  static Future<void> _tail = Future<void>.value();
 
   Future<bool> begin(
     String actorId,
     String companyId,
     SiteOrderConsentReference reference,
     String stage,
-  ) {
-    final result = Completer<bool>();
-    _tail = _tail.then((_) async {
-      try {
-        if (![actorId, companyId].every(SiteOrderPendingPrepare.validId) ||
-            !{'original', 'share'}.contains(stage)) {
-          throw StateError('注文の本人・会社・保存段階を確認できません。');
-        }
-        final preferences = await _preferences();
-        await preferences.reload();
-        final key =
-            'sko.site_order.execution.v1.$actorId.$companyId.'
-            '${reference.prepare.siteId}.${reference.prepare.requestId}.$stage';
-        final encoded = jsonEncode(reference.toJson());
-        final old = preferences.getString(key);
-        if (old != null && old != encoded) {
-          throw StateError('保存中の注文が一致しません。再送せず状態を確認してください。');
-        }
-        if (old != null) {
-          result.complete(false);
-          return;
-        }
-        if (!await preferences.setString(key, encoded)) {
-          throw StateError('注文の照合情報を保存できません。');
-        }
-        result.complete(true);
-      } catch (error, stack) {
-        result.completeError(error, stack);
-      }
-    });
-    return result.future;
-  }
+  ) => siteOrderJournalSerial(() async {
+    if (![actorId, companyId].every(SiteOrderPendingPrepare.validId) ||
+        !{'original', 'share'}.contains(stage))
+      throw StateError('注文の本人・会社・保存段階を確認できません。');
+    final preferences = await _preferences();
+    await preferences.reload();
+    siteOrderRequireUnrecorded(
+      preferences,
+      actorId,
+      companyId,
+      reference.prepare.siteId,
+      reference.prepare.requestId,
+    );
+    final key =
+        'sko.site_order.execution.v1.$actorId.$companyId.${reference.prepare.siteId}.${reference.prepare.requestId}.$stage';
+    final encoded = jsonEncode(reference.toJson()),
+        old = preferences.getString(key);
+    if (old != null && old != encoded)
+      throw StateError('保存中の注文が一致しません。再送せず状態を確認してください。');
+    if (old != null) return false;
+    if (!await preferences.setString(key, encoded))
+      throw StateError('注文の照合情報を保存できません。');
+    return true;
+  });
 }

@@ -1,7 +1,8 @@
-import 'dart:async';
 import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'site_order_journal_serial.dart';
 
 /// A request quarantine, not an editable order. Only UUIDs are durable.
 class SiteOrderPendingPrepare {
@@ -67,7 +68,6 @@ class SiteOrderOutgoingJournal {
   SiteOrderOutgoingJournal({Future<SharedPreferences> Function()? preferences})
     : _preferences = preferences ?? SharedPreferences.getInstance;
   final Future<SharedPreferences> Function() _preferences;
-  static Future<void> _tail = Future<void>.value();
   String _prefix(String actor, String company, String site) {
     if (![actor, company, site].every(SiteOrderPendingPrepare.validId)) {
       throw StateError('会社・本人・現場を確認できません。');
@@ -75,17 +75,8 @@ class SiteOrderOutgoingJournal {
     return 'sko.site_order.outgoing.v1.$actor.$company.$site.';
   }
 
-  Future<T> _serial<T>(Future<T> Function() action) {
-    final done = Completer<T>();
-    _tail = _tail.then((_) async {
-      try {
-        done.complete(await action());
-      } catch (e, s) {
-        done.completeError(e, s);
-      }
-    });
-    return done.future;
-  }
+  Future<T> _serial<T>(Future<T> Function() action) =>
+      siteOrderJournalSerial(action);
 
   Future<List<SiteOrderPendingPrepare>> read(
     String actor,
@@ -119,6 +110,13 @@ class SiteOrderOutgoingJournal {
     final p = await _preferences();
     await p.reload();
     final prefix = _prefix(actor, company, entry.siteId);
+    siteOrderRequireUnrecorded(
+      p,
+      actor,
+      company,
+      entry.siteId,
+      entry.requestId,
+    );
     if (p.getKeys().any((k) => k.startsWith(prefix))) {
       throw StateError('前の注文の結果を確認してください。');
     }
