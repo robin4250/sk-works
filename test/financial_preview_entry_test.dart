@@ -81,6 +81,8 @@ class _FontResponse extends Stream<List<int>> implements HttpClientResponse {
   @override
   String get reasonPhrase => 'OK';
   @override
+  List<RedirectInfo> get redirects => const [];
+  @override
   int get contentLength => bytes.length;
   @override
   HttpClientResponseCompressionState get compressionState =>
