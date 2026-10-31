@@ -92,7 +92,7 @@ class EmployeeInviteRepository {
     final generation = _generation;
     final captured = binding;
     if (session == null || captured == null) throw StateError('ログイン情報を確認してください。');
-    final Object? raw = await _client.from('company_members').select('company_id,role')
+    final Object raw = await _client.from('company_members').select('company_id,role')
         .eq('user_id', captured.actorId)
         .setHeader('Authorization', 'Bearer ${session.accessToken}').retry(enabled: false);
     if (_disposed || _generation != generation || binding != captured || raw is! List || raw.length != 1 || raw.single is! Map) throw StateError('ログイン状態が変わりました。');
