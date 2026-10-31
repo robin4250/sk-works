@@ -2,6 +2,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
 import '../people/worker_document_exemption.dart';
+import '../people/people_cloud_repository.dart';
 import '../people/worker_document_photos.dart';
 import '../shared/trade_document_form_session.dart';
 import '../notifications/required_document_evidence.dart';
@@ -129,6 +130,45 @@ class TutorialEvidenceRepository {
         ? null : '$evidencePrefix:$key',
   );
 
+  /// Official saved data is independent of writable capability.
+  TutorialEvidenceCheckpoint _birthdayField(Map<String, dynamic>? row) {
+    const key = 'birth_date';
+    const label = '生年月日';
+    const unknown = TutorialEvidenceCheckpoint(
+      key, TutorialEvidenceState.unknown, label: label,
+    );
+    final worker = row?['worker_id'];
+    final contract = row?['birth_date_contract_version'];
+    if (row == null || worker is! String ||
+        !RegExp(r'^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$').hasMatch(worker) ||
+        contract is! int || (contract != 1 && contract != 2) ||
+        !row.containsKey(key)) {
+      return unknown;
+    }
+    final digest = row['personnel_cas_digest'];
+    if (contract == 2 && (digest is! String ||
+        !RegExp(r'^[0-9a-f]{32}$').hasMatch(digest))) {
+      return unknown;
+    }
+    final value = row[key];
+    if (value == null || value == '') {
+      return TutorialEvidenceCheckpoint(key, TutorialEvidenceState.missing,
+        label: label, statusLabel: '未設定');
+    }
+    if (value is! String || value != value.trim()) {
+      return unknown;
+    }
+    try {
+      PeopleCloudRepository.validatePersonnelMetadata({
+        'birthDateSubmitted': true, 'birthDate': value,
+      });
+    } catch (_) {
+      return unknown;
+    }
+    return TutorialEvidenceCheckpoint(key, TutorialEvidenceState.saved,
+      label: label, evidenceKey: '$worker:$key');
+  }
+
   /// Caller supplies existing routes visible after role/module/feature checks.
   /// No tutorial completion flags or display-name fallbacks enter this result.
   Future<TutorialEvidenceSnapshot> load({
@@ -165,8 +205,8 @@ class TutorialEvidenceRepository {
         actionKey: 'profile',
         requiredForCompletion: false,
         checkpoints: [
-          for (final field in <String, String>{
-            'birth_date': '生年月日', 'address': '住所', 'blood_type': '血液型', 'role': '職種',
+          _birthdayField(personnel),
+          for (final field in <String, String>{ 'address': '住所', 'blood_type': '血液型', 'role': '職種',
             'emergency_name': '緊急連絡先氏名', 'emergency_relation': '続柄',
             'emergency_phone': '緊急連絡先電話番号', 'emergency_address': '緊急連絡先住所',
           }.entries)
