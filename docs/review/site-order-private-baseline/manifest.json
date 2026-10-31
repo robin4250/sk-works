@@ -1,0 +1,269 @@
+{
+  "status": "review-only-not-install-ready",
+  "source_parent": "98cdc5606730b80a33ef7a835c77ffd6be9a13c5",
+  "sources": {
+    "docs/candidates/trade_document_bound_seal_consent_20261021.sql.review-only": "dce7ca9653988c642d49325ff331d0548448206ae3e8c2e2dc24202d36a04e01",
+    "docs/candidates/trade_document_confirmation_api_20261022.sql.review-only": "18d738705b4f55a82e67faec31f115473df38c5a51bcb31da6e621c10646db83"
+  },
+  "actor_statement_sha256": "0da8df5dd78bdd44daa9757da346a48e4e7cbb63bada0b65f849cc060d2e3b15",
+  "actor_body_md5": "42329b7b0775eec0aad5ac018233011d",
+  "existing_function_contracts": [
+    {
+      "signature": "auth.jwt()",
+      "source_md5": "2db09c3fc855ba90e71d3ae28cfadae3",
+      "security_definer": false,
+      "volatility": "s",
+      "config": null,
+      "owner": "supabase_auth_admin",
+      "acl": [
+        {
+          "grantee": "PUBLIC",
+          "grantor": "supabase_auth_admin",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        },
+        {
+          "grantee": "postgres",
+          "grantor": "supabase_auth_admin",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        },
+        {
+          "grantee": "supabase_auth_admin",
+          "grantor": "supabase_auth_admin",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        },
+        {
+          "grantee": "dashboard_user",
+          "grantor": "supabase_auth_admin",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        }
+      ]
+    },
+    {
+      "signature": "auth.uid()",
+      "source_md5": "cdef18c69c4f4cbbced2eaf81e628b49",
+      "security_definer": false,
+      "volatility": "s",
+      "config": null,
+      "owner": "supabase_auth_admin",
+      "acl": [
+        {
+          "grantee": "PUBLIC",
+          "grantor": "supabase_auth_admin",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        },
+        {
+          "grantee": "supabase_auth_admin",
+          "grantor": "supabase_auth_admin",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        },
+        {
+          "grantee": "dashboard_user",
+          "grantor": "supabase_auth_admin",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        }
+      ]
+    },
+    {
+      "signature": "private.account_access_allowed()",
+      "source_md5": "aeca25db212c043c472334026bd98724",
+      "security_definer": true,
+      "volatility": "s",
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": [
+        {
+          "grantee": "postgres",
+          "grantor": "postgres",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        },
+        {
+          "grantee": "anon",
+          "grantor": "postgres",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        },
+        {
+          "grantee": "authenticated",
+          "grantor": "postgres",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        },
+        {
+          "grantee": "service_role",
+          "grantor": "postgres",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        }
+      ]
+    },
+    {
+      "signature": "private.document_company_seal_snapshot(jsonb,uuid,boolean)",
+      "source_md5": "823cc52d0c652e7f04ff816a8a8eaf64",
+      "security_definer": true,
+      "volatility": "v",
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": [
+        {
+          "grantee": "postgres",
+          "grantor": "postgres",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        }
+      ]
+    },
+    {
+      "signature": "private.require_reauthentication_session()",
+      "source_md5": "b5c8e2f259a99b3c69694ad0640080e5",
+      "security_definer": true,
+      "volatility": "v",
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": [
+        {
+          "grantee": "postgres",
+          "grantor": "postgres",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        }
+      ]
+    },
+    {
+      "signature": "private.account_deletion_barrier_key(uuid)",
+      "source_md5": "84db8dfee728dd9187f3c05b29e29e1a",
+      "security_definer": false,
+      "volatility": "i",
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": [
+        {
+          "grantee": "postgres",
+          "grantor": "postgres",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        },
+        {
+          "grantee": "authenticated",
+          "grantor": "postgres",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        },
+        {
+          "grantee": "service_role",
+          "grantor": "postgres",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        }
+      ]
+    },
+    {
+      "signature": "private.aoyagi_reisho_name_supported(text)",
+      "source_md5": "ca6eecc48cfcbb24faac27c82bc3ed30",
+      "security_definer": false,
+      "volatility": "i",
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": [
+        {
+          "grantee": "postgres",
+          "grantor": "postgres",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        }
+      ]
+    },
+    {
+      "signature": "private.uploaded_company_seal_snapshot(uuid)",
+      "source_md5": "8d941e41fa11beadff7f36b95fd71035",
+      "security_definer": false,
+      "volatility": "v",
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": [
+        {
+          "grantee": "postgres",
+          "grantor": "postgres",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        }
+      ]
+    }
+  ],
+  "new_namespaces": [
+    "trade_document_consent_private",
+    "trade_document_confirmation_api_private"
+  ],
+  "forbidden_financial_exports": [
+    "scope",
+    "resolve",
+    "parent_links",
+    "receipts",
+    "preview_confirmation",
+    "confirm_monthly_review"
+  ],
+  "remaining_gate": [
+    "Formal C three dependency functions are absent in the 2026-10-31 READ ONLY observation; preserve the separate approved-scope dependency and STOP",
+    "Native PostgreSQL 17.6 full composition with all eight actual helper bodies and a before/after contract matching the actual existing catalog",
+    "independent latest-head review",
+    "new outgoing and company/site history modules must be composed at their frozen source heads",
+    "explicit scoped production approval and separate production/runtime/iPhone verification"
+  ],
+  "public_fixture_actual_sources": {
+    "private.uploaded_company_seal_snapshot(uuid)": "docs/candidates/company_seal_uploaded_png_20261020.sql.review-only",
+    "private.require_reauthentication_session()": "docs/review/collector-current-core-20261026/sources/reauthentication_proofs.sql",
+    "private.account_access_allowed()": "tool/security/worker_document_change_session/baseline.sql",
+    "private.aoyagi_reisho_name_supported(text)": "supabase/migrations/20261009011357_company_seal_aoyagi_style.sql",
+    "auth.uid()": "docs/review/site-order-private-baseline/current-generic-auth-functions.fixture.sql",
+    "auth.jwt()": "docs/review/site-order-private-baseline/current-generic-auth-functions.fixture.sql",
+    "private.account_deletion_barrier_key(uuid)": "docs/review/site-order-private-baseline/current-generic-auth-functions.fixture.sql"
+  },
+  "public_fixture_nonmatching_helper": "private.document_company_seal_snapshot(jsonb,uuid,boolean)",
+  "public_fixture_seal_limit": "Formal C base seal snapshot is synthetic; private actual eight-body composition is separate.",
+  "existing_relation_names": [
+    "auth.sessions",
+    "auth.users",
+    "private.account_deletion_access_restrictions",
+    "private.company_connections",
+    "private.company_seal_png_selection",
+    "private.company_seal_png_versions",
+    "public.companies",
+    "public.company_members",
+    "public.trade_companies"
+  ],
+  "latest_readonly_observation": {
+    "captured_at": "2026-10-31T01:49:26.377209+00:00",
+    "server_version_num": "170006",
+    "actual_existing_functions": 10,
+    "actual_existing_relations": 15,
+    "all_eight_existing_helper_contracts_match": true,
+    "all_five_new_namespaces_absent": true,
+    "missing_formal_c_function_names": [
+      "private.require_trade_documents_master_feature",
+      "private.require_standalone_trade_document_access",
+      "private.standalone_trade_document_registration_context"
+    ],
+    "production_mutations": 0,
+    "business_rows_selected": 0,
+    "installation_ready": false
+  }
+}

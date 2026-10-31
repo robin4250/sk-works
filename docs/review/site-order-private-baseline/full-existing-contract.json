@@ -1,0 +1,23 @@
+{
+  "additional_function_names": [
+    "private.require_trade_documents_master_feature",
+    "private.require_standalone_trade_document_access",
+    "private.standalone_trade_document_registration_context",
+    "private.respond_site_share",
+    "public.respond_site_share"
+  ],
+  "additional_relation_names": [
+    "private.master_feature_settings",
+    "private.document_deliveries",
+    "private.company_data_delivery_items",
+    "private.site_share_inbox",
+    "public.sites",
+    "public.app_notifications"
+  ],
+  "intended_legacy_change": {
+    "function_name": "private.respond_site_share",
+    "before_md5": "adf5eb7363546e9c05d34c8e780a4ce2",
+    "after_md5": "c61612a94b05a42facfdf6b5a4c396f7",
+    "public_wrapper_before_and_after_md5": "40d48b399537a5d95cead6dcc61dc264"
+  }
+}
