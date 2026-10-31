@@ -10,6 +10,7 @@ import 'qualification_cloud_repository.dart';
 import 'qualification_send_page.dart';
 import 'qualification_certificate_page.dart';
 import 'qualification_certificate_repository.dart';
+import 'admin_saved_qualification_photo_page.dart';
 import '../shared/resource_registration_card.dart';
 
 class QualificationCloudPage extends StatefulWidget {
@@ -793,6 +794,20 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
               ))
                 Text(label),
               const SizedBox(height: 16),
+              if (_canManageWorkerQualifications && QualificationCloudRepository.ownPhotoAttachments(row).isNotEmpty)
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    final generation=_galleryGeneration;
+                    final capturedWorker=_selectedWorkerId;
+                    Navigator.pop(sheetContext);
+                    await Navigator.push<void>(context, MaterialPageRoute(builder: (_) =>
+                      AdminSavedQualificationPhotoPage(row:Map<String,dynamic>.from(row),
+                        current:()=>mounted && generation==_galleryGeneration &&
+                          capturedWorker==_selectedWorkerId)));
+                    if(mounted)await _load();
+                  },
+                  icon:const Icon(Icons.edit_note_outlined),
+                  label:const Text('保存済み写真の変更申請')),
               if (_canManageWorkerQualifications && _canEditCertificates)
                 OutlinedButton.icon(
                   onPressed: () async {
