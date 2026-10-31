@@ -1,0 +1,27 @@
+name: Apple storage owner preparation (unconnected)
+on:
+  pull_request:
+    paths:
+      - 'lib/features/auth/app_auth_storage_owner.dart'
+      - 'lib/features/auth/native_auth_session_storage.dart'
+      - 'tool/ios/auth_session_storage.swift'
+      - 'test/app_auth_storage_owner_test.dart'
+      - 'test/native_auth_session_storage_test.dart'
+      - '.github/workflows/apple-storage-owner-preparation.yml'
+permissions:
+  contents: read
+jobs:
+  storage-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: git diff --exit-code -- pubspec.lock
+      - run: dart analyze lib/features/auth/app_auth_storage_owner.dart lib/features/auth/native_auth_session_storage.dart test/app_auth_storage_owner_test.dart test/native_auth_session_storage_test.dart
+      - run: flutter test test/app_auth_storage_owner_test.dart test/native_auth_session_storage_test.dart --reporter expanded
