@@ -1,0 +1,140 @@
+-- REVIEW ONLY. No tables, grants, draft writes, consent, rendering or sending.
+begin;
+do $$ declare e record;p pg_proc; begin
+ for e in select * from(values
+  ('private.require_standalone_trade_document_access()','63c57e18a04499e8d6bcfad4ead7837f',true,'v'),
+  ('private.partner_company_profile_value(uuid)','06ce79748602c8ca5aebda226bc7f742',false,'s'),
+  ('trade_document_consent_private.own_seal(uuid)','fc0ca4038ae151980216657a46ddc58d',false,'v'),
+  ('site_order_manager_private.counterparty_context(uuid,uuid,text)','6e8915f47ec3daa03eafd8ee2960bd24',false,'v'),
+  ('site_order_manager_private.prepare_site_document(uuid,uuid,uuid,text,text,integer,jsonb)','8be1d561da69f306823b3a51558370e6',false,'v')
+ )v(signature,body_md5,allow_authenticated,volatility) loop
+  select * into p from pg_proc where oid=to_regprocedure(e.signature);
+  if p.oid is null or md5(p.prosrc) is distinct from e.body_md5 or not p.prosecdef
+   or pg_get_userbyid(p.proowner)<>'postgres' or p.proconfig is distinct from array['search_path=""']::text[]
+   or p.provolatile::text<>e.volatility
+   or exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) x
+    where x.privilege_type<>'EXECUTE' or x.is_grantable or x.grantor<>p.proowner
+     or (x.grantee<>p.proowner and not(e.allow_authenticated and x.grantee='authenticated'::regrole)))
+   or not exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) x
+    where x.grantee=p.proowner and x.privilege_type='EXECUTE')
+   or (e.allow_authenticated and not exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) x
+    where x.grantee='authenticated'::regrole and x.privilege_type='EXECUTE'))
+  then raise exception 'outgoing_observation_dependency_changed: %',e.signature using errcode='55000';end if;
+ end loop;
+ if to_regclass('private.partner_company_profile_extensions') is null
+  or to_regprocedure('site_order_manager_private.outgoing_context(uuid,uuid)') is not null
+  or to_regprocedure('site_order_manager_private.observe_prepare(uuid,uuid,uuid,uuid)') is not null
+ then raise exception 'outgoing_observation_catalog_changed' using errcode='55000';end if;
+ if not exists(select 1 from pg_class c where c.oid='private.partner_company_profile_extensions'::regclass
+   and pg_get_userbyid(c.relowner)='postgres' and c.relkind='r' and c.relrowsecurity and not c.relforcerowsecurity
+   and not exists(select 1 from aclexplode(coalesce(c.relacl,acldefault('r',c.relowner))) x
+     where x.grantee<>c.relowner or x.grantor<>c.relowner))
+ then raise exception 'outgoing_profile_relation_changed' using errcode='55000';end if;
+end $$;
+
+create function site_order_manager_private.outgoing_context(p_site uuid,p_trade uuid)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare a jsonb;cid uuid;peer jsonb;s public.sites%rowtype;t public.trade_companies%rowtype;
+ c public.companies%rowtype;profile jsonb;seal jsonb;
+begin
+ a:=private.require_standalone_trade_document_access();cid:=(a->>'company_id')::uuid;
+ if p_site is null or p_trade is null then raise exception 'outgoing_context_target_required' using errcode='22023';end if;
+ -- Match the existing prepare lock order: company pair before any site lock.
+ peer:=site_order_manager_private.counterparty_context(cid,p_trade,'order');
+ select * into s from public.sites where id=p_site and company_id=cid for share;
+ select * into t from public.trade_companies where id=p_trade and company_id=cid for share;
+ select * into c from public.companies where id=cid for share;
+ if s.id is null or t.id is null or c.id is null or t.name is distinct from peer->>'name'
+ then raise exception 'outgoing_context_unavailable' using errcode='42501';end if;
+ perform 1 from private.partner_company_profile_extensions where company_id=cid for share;
+ profile:=private.partner_company_profile_value(cid);
+ seal:=trade_document_consent_private.own_seal(cid);
+ if profile->>'name' is distinct from c.name or seal#>>'{snapshot,name}' is distinct from c.name
+ then raise exception 'outgoing_context_source_changed' using errcode='40001';end if;
+ if private.require_standalone_trade_document_access() is distinct from a
+ then raise exception 'outgoing_context_actor_changed' using errcode='40001';end if;
+ return jsonb_build_object('contract_version',1,'actor_id',auth.uid(),'session_id',a->'session_id',
+  'company_id',cid,'site_id',s.id,'trade_company_id',t.id,
+  'counterparty_company_id',peer->'company_id','connection_fingerprint',peer->'connection_fingerprint',
+  'issuer',jsonb_build_object('name',c.name,'address',coalesce(c.address,''),
+   'representative_name',coalesce(profile->>'representative_name',''),
+   'corporate_number',coalesce(c.corporate_number,''),'phone',coalesce(c.phone,''),'fax',coalesce(c.fax,'')),
+  'counterparty',jsonb_build_object('name',t.name,'address',coalesce(t.address,''),
+   'representative_name',coalesce(t.representative_name,''),
+   'corporate_number',coalesce(t.corporate_number,''),'phone',coalesce(t.phone,'')),
+  'site',jsonb_build_object('name',coalesce(nullif(s.formal_name,''),s.name),
+   'address',coalesce(s.address,''),'period_start',s.starts_at,'period_end',s.ends_at),
+  'own_seal',seal,'creates_document',false,'records_consent',false,'can_send',false);
+end $$;
+
+create function site_order_manager_private.observe_prepare(p_site uuid,p_document uuid,p_local uuid,p_trade uuid)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare a jsonb;cid uuid;peer jsonb;s site_order_manager_private.document_scopes%rowtype;
+ d trade_document_consent_private.documents%rowtype;r trade_document_consent_private.revisions%rowtype;
+ context jsonb;local_document uuid;result jsonb;
+begin
+ a:=private.require_standalone_trade_document_access();cid:=(a->>'company_id')::uuid;
+ if p_site is null or p_document is null or p_local is null or p_trade is null or p_local=p_document
+ then raise exception 'outgoing_observation_target_required' using errcode='22023';end if;
+ -- Existing prepare takes the pair lock, scope lock and consent lock in this order.
+ peer:=site_order_manager_private.counterparty_context(cid,p_trade,'order');
+ perform pg_advisory_xact_lock(hashtextextended('site-manager-scope:'||p_document::text,0));
+ perform pg_advisory_xact_lock(hashtextextended('trade-document-consent:'||p_document::text,0));
+ perform 1 from public.sites where id=p_site and company_id=cid for share;
+ if not found then raise exception 'outgoing_observation_unavailable' using errcode='42501';end if;
+ result:=jsonb_build_object('contract_version',1,'company_id',cid,'site_id',p_site,
+  'document_id',p_document,'local_document_id',p_local,'trade_company_id',p_trade,
+  'retry_automatically',false,'may_prepare_again',false,'can_send',false,'journal_clearable',false);
+ select * into s from site_order_manager_private.document_scopes where document_id=p_document for share;
+ select * into d from trade_document_consent_private.documents where id=p_document for share;
+ select document_id into local_document from trade_document_consent_private.local_links
+  where company_id=cid and local_document_id=p_local for share;
+ if s.document_id is null then
+  if d.id is not null or local_document is not null then
+   raise exception 'outgoing_observation_unavailable' using errcode='42501';end if;
+  -- This is not a cancellation tombstone: a delayed original HTTP may arrive later.
+  return result||jsonb_build_object('operation_state','not_observed');
+ end if;
+ if (s.company_id,s.site_id,s.trade_company_id,s.created_by,s.kind)
+  is distinct from (cid,p_site,p_trade,auth.uid(),'order'::text)
+ then raise exception 'outgoing_observation_unavailable' using errcode='42501';end if;
+ if s.counterparty_company_id::text is distinct from peer->>'company_id'
+  or s.connection_fingerprint is distinct from peer->>'connection_fingerprint'
+ then return result||jsonb_build_object('operation_state','changed');end if;
+ select * into r from trade_document_consent_private.revisions where document_id=p_document and revision=1 for share;
+ if d.id is null or local_document is distinct from p_document
+  or (d.issuer_company_id,d.counterparty_company_id,d.transaction_id,d.document_kind,d.current_revision)
+   is distinct from (cid,s.counterparty_company_id,p_document,'order'::text,1)
+  or r.document_id is null or r.binding is not null or r.state<>'open' or r.epoch<>0 or r.created_by<>auth.uid()
+  or r.body_hash is distinct from encode(sha256(convert_to(r.body::text,'UTF8')),'hex')
+  or exists(select 1 from trade_document_consent_private.revisions where document_id=p_document and revision<>1)
+  or exists(select 1 from trade_document_consent_private.consents where document_id=p_document)
+  or exists(select 1 from trade_document_consent_private.events where document_id=p_document)
+  or exists(select 1 from trade_document_consent_private.receipts where payload->>'document_id'=p_document::text)
+  or exists(select 1 from site_order_artifact_private.render_jobs where document_id=p_document)
+ then return result||jsonb_build_object('operation_state','not_a_pending_prepare');end if;
+ context:=site_order_manager_private.outgoing_context(p_site,p_trade);
+ if r.body->'issuer' is distinct from context->'issuer' or r.body->'counterparty' is distinct from context->'counterparty'
+  or r.body->>'issuer_company_id' is distinct from cid::text
+  or r.body->>'counterparty_company_id' is distinct from s.counterparty_company_id::text
+  or r.body->>'transaction_id' is distinct from p_document::text or r.body->>'kind' is distinct from 'order'
+ then return result||jsonb_build_object('operation_state','changed');end if;
+ if private.require_standalone_trade_document_access() is distinct from a
+ then raise exception 'outgoing_observation_actor_changed' using errcode='40001';end if;
+ return result||jsonb_build_object('operation_state','prepared_review_required','revision',1,
+  'body',r.body,'body_hash',r.body_hash,'may_request_fresh_preview',true,'reuses_previous_consent',false);
+end $$;
+revoke all on function site_order_manager_private.outgoing_context(uuid,uuid),
+ site_order_manager_private.observe_prepare(uuid,uuid,uuid,uuid) from public,anon,authenticated,service_role;
+do $$ declare signature text;p pg_proc; begin
+ foreach signature in array array['site_order_manager_private.outgoing_context(uuid,uuid)',
+  'site_order_manager_private.observe_prepare(uuid,uuid,uuid,uuid)'] loop
+  select * into p from pg_proc where oid=to_regprocedure(signature);
+  if pg_get_userbyid(p.proowner)<>'postgres' or not p.prosecdef
+   or p.proconfig is distinct from array['search_path=""']::text[]
+   or exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) x
+    where x.grantee<>p.proowner or x.grantor<>p.proowner or x.privilege_type<>'EXECUTE' or x.is_grantable)
+  then raise exception 'outgoing_observation_seal_changed' using errcode='55000';end if;
+ end loop;
+end $$;
+commit;

@@ -136,6 +136,97 @@ Future<(SupabaseClient, SiteOrderWorkflowRepository)> _fixture(
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+  Map<String, dynamic> outgoingSource() => {
+    'contract_version': 1, 'actor_id': actor, 'session_id': sid, 'company_id': company,
+    'site_id': package, 'trade_company_id': package, 'counterparty_company_id': package,
+    'connection_fingerprint': 'a' * 64,
+    'issuer': {'name': '合成会社', 'address': '登録自社住所', 'representative_name': '登録代表者',
+      'corporate_number': '', 'phone': '', 'fax': ''},
+    'counterparty': {'name': '合成相手', 'address': '登録相手住所', 'representative_name': '',
+      'corporate_number': '', 'phone': ''},
+    'site': {'name': '登録現場', 'address': '現場住所', 'period_start': null, 'period_end': null},
+    'own_seal': {'snapshot': {'version': 1, 'style': 'legacy', 'name': '合成会社'}, 'seal_hash': 'b' * 64,
+      'version_id': null, 'asset_hash': null, 'version_key': 'snapshot-v1:${'b' * 64}',
+      'renderer_contract': 'company-seal-pdf@2853e2d8d530f3fc65ce74ef307a1c63b21b0496'},
+    'creates_document': false, 'records_consent': false, 'can_send': false,
+  };
+  Map<String, dynamic> observation(String state) => {
+    'contract_version': 1, 'company_id': company, 'site_id': package,
+    'document_id': package, 'local_document_id': sid, 'trade_company_id': package,
+    'retry_automatically': false, 'may_prepare_again': false, 'can_send': false,
+    'journal_clearable': false, 'operation_state': state,
+    if (state == 'prepared_review_required') ...{
+      'revision': 1, 'body': {'kind': 'order', 'transaction_id': package,
+        'issuer_company_id': company, 'counterparty_company_id': actor},
+      'body_hash': 'a' * 64, 'may_request_fresh_preview': true, 'reuses_previous_consent': false,
+    },
+  };
+  test('outgoing context uses registered scoped facts without granting send or persisting body', () async {
+    final wire = _Wire()..functionJson = {'result': outgoingSource()};
+    final f = await _fixture(wire);
+    addTearDown(f.$2.dispose); addTearDown(f.$1.dispose);
+    final context = await f.$2.outgoingContext(package, package);
+    expect(context['issuer']['representative_name'], '登録代表者');
+    expect(wire.command, {'action': 'outgoing_context', 'site_id': package, 'trade_id': package});
+    expect(wire.authorization, 'Bearer ${wire.token()}');
+    expect((await SharedPreferences.getInstance()).getKeys().where((key) => key.startsWith('sko.site_order.')), isEmpty);
+  });
+  test('outgoing context rejects wrong company, SID and unexpected bank fields', () async {
+    for (final change in <Map<String, dynamic>>[
+      {'company_id': actor}, {'session_id': package}, {'counterparty_bank': <String, dynamic>{}},
+      {'can_send': true},
+    ]) {
+      final wire = _Wire()..functionJson = {'result': {...outgoingSource(), ...change}};
+      final f = await _fixture(wire);
+      addTearDown(f.$2.dispose); addTearDown(f.$1.dispose);
+      await expectLater(f.$2.outgoingContext(package, package), throwsStateError);
+      expect(wire.functions, 1);
+    }
+  });
+  test('role loss discards an in-flight outgoing source without retaining private fields', () async {
+    final wire = _Wire()..functionJson = {'result': outgoingSource()}
+      ..hold = Completer<void>()..started = Completer<void>();
+    final f = await _fixture(wire);
+    addTearDown(f.$1.dispose); addTearDown(f.$2.dispose);
+    final pending = f.$2.outgoingContext(package, package);
+    final rejected = expectLater(pending, throwsStateError);
+    await wire.started!.future;
+    wire.role = 'worker'; wire.hold!.complete();
+    await rejected;
+    expect(f.$2.invalidated, true);
+    expect(wire.functions, 1);
+    expect((await SharedPreferences.getInstance()).getKeys().where((key) => key.startsWith('sko.site_order.')), isEmpty);
+  });
+  test('prepare observations never clear retained identifiers or permit retry on absence', () async {
+    final journal = SiteOrderApprovalJournal();
+    await journal.begin(actor, company, package, package, sid);
+    final wire = _Wire();
+    final f = await _fixture(wire);
+    addTearDown(f.$2.dispose); addTearDown(f.$1.dispose);
+    for (final state in ['not_observed','changed','not_a_pending_prepare','prepared_review_required']) {
+      wire.functionJson = {'result': observation(state)};
+      final result = await f.$2.observePrepare(package, package, sid, package);
+      expect(result['operation_state'], state);
+      expect(result['journal_clearable'], false);
+      expect(result['may_prepare_again'], false);
+      expect((await journal.read(actor, company, package))!['request_id'], sid);
+      expect(wire.command, {'action': 'observe_prepare', 'site_id': package,
+        'document_id': package, 'local_id': sid, 'trade_id': package});
+    }
+    expect(wire.functions, 4);
+  });
+  test('invalid prepare observations remain unknown, never cancelled or automatically retried', () async {
+    for (final change in <Map<String, dynamic>>[
+      {'operation_state': 'cancelled'}, {'journal_clearable': true}, {'may_prepare_again': true},
+      {'company_id': actor}, {'body': {'financial': 'must not escape'}},
+    ]) {
+      final wire = _Wire()..functionJson = {'result': {...observation('not_observed'), ...change}};
+      final f = await _fixture(wire);
+      addTearDown(f.$2.dispose); addTearDown(f.$1.dispose);
+      await expectLater(f.$2.observePrepare(package, package, sid, package), throwsA(isA<SiteOrderResultUnknown>()));
+      expect(wire.functions, 1);
+    }
+  });
   test('site history uses one fixed scoped command with captured bearer and paired cursor', () async {
     final wire = _Wire()..functionJson = {'result': <Object?>[]};
     final f = await _fixture(wire);

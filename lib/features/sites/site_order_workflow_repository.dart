@@ -37,6 +37,10 @@ abstract class SiteOrderWorkflowApi extends ChangeNotifier {
     String? before,
     String? beforeId,
   }) async => throw StateError('現場の注文履歴を確認できません。');
+  Future<Map<String, dynamic>> outgoingContext(String siteId, String tradeId) async =>
+      throw StateError('注文書の登録元を確認できません。');
+  Future<Map<String, dynamic>> observePrepare(String siteId, String documentId, String localId, String tradeId) async =>
+      throw StateError('注文書の準備結果を確認できません。');
   Future<List<Map<String, dynamic>>> targets(String packageId);
   Future<Map<String, dynamic>> preview(
     String packageId,
@@ -189,6 +193,91 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
   @override
   Future<Map<String, dynamic>> detail(String id) =>
       _result({'action': 'detail', 'package_id': id});
+
+  String? get _capturedSessionId {
+    try {
+      final payload = jsonDecode(utf8.decode(base64Url.decode(base64Url.normalize(_token.split('.')[1]))));
+      final value = payload is Map ? payload['session_id'] : null;
+      return _savedId(value) ? value as String : null;
+    } catch (_) { return null; }
+  }
+
+  bool _exactKeys(Map<String, dynamic> value, Set<String> keys) =>
+      value.length == keys.length && value.keys.every(keys.contains);
+
+  @override
+  Future<Map<String, dynamic>> outgoingContext(String siteId, String tradeId) async {
+    final value = await _result({'action': 'outgoing_context', 'site_id': siteId, 'trade_id': tradeId});
+    if (!_exactKeys(value, const {'contract_version','actor_id','session_id','company_id',
+          'site_id','trade_company_id','counterparty_company_id','connection_fingerprint',
+          'issuer','counterparty','site','own_seal','creates_document','records_consent','can_send'}) ||
+        value['contract_version'] != 1 || value['actor_id'] != _actor ||
+        value['session_id'] != _capturedSessionId || _capturedSessionId == null ||
+        value['company_id'] != _company || value['site_id'] != siteId || value['trade_company_id'] != tradeId ||
+        value['issuer'] is! Map || value['counterparty'] is! Map || value['site'] is! Map ||
+        value['own_seal'] is! Map || value['creates_document'] != false ||
+        value['records_consent'] != false || value['can_send'] != false ||
+        !_savedId(value['counterparty_company_id']) || value['counterparty_company_id'] == _company ||
+        value['connection_fingerprint'] is! String ||
+        !RegExp(r'^[0-9a-f]{64}$').hasMatch(value['connection_fingerprint'] as String)) {
+      throw StateError('注文書の登録元・会社を確認できません。');
+    }
+    final issuer = _map(value['issuer']), counterparty = _map(value['counterparty']);
+    if (!_exactKeys(issuer, const {'name','address','representative_name','corporate_number','phone','fax'}) ||
+        !_exactKeys(counterparty, const {'name','address','representative_name','corporate_number','phone'}) ||
+        !_exactKeys(_map(value['site']), const {'name','address','period_start','period_end'}) ||
+        issuer.values.any((v) => v is! String) || counterparty.values.any((v) => v is! String) ||
+        (issuer['name'] as String).trim().isEmpty || (counterparty['name'] as String).trim().isEmpty) {
+      throw StateError('注文書の登録情報を確認できません。');
+    }
+    final seal = _map(value['own_seal']);
+    if (!_exactKeys(seal, const {'snapshot','seal_hash','version_id','asset_hash','version_key','renderer_contract'}) ||
+        seal['version_key'] is! String || seal['renderer_contract'] is! String ||
+        seal['snapshot'] is! Map || seal['seal_hash'] is! String ||
+        !RegExp(r'^[0-9a-f]{64}$').hasMatch(seal['seal_hash'] as String)) {
+      throw StateError('自社の登録角印を確認できません。');
+    }
+    final snapshot = CompanySealSnapshot.fromJson(seal['snapshot']);
+    if (snapshot.name != issuer['name'] || (snapshot.companyId != null && snapshot.companyId != _company)) {
+      throw StateError('自社の登録角印を確認できません。');
+    }
+    requireCurrent();
+    return value;
+  }
+
+  @override
+  Future<Map<String, dynamic>> observePrepare(String siteId, String documentId, String localId, String tradeId) async {
+    final value = await _result({'action': 'observe_prepare', 'site_id': siteId,
+      'document_id': documentId, 'local_id': localId, 'trade_id': tradeId});
+    final keys = <String>{'contract_version','company_id','site_id','document_id','local_document_id',
+      'trade_company_id','retry_automatically','may_prepare_again','can_send','journal_clearable','operation_state',
+      if (value['operation_state'] == 'prepared_review_required') ...{
+        'revision','body','body_hash','may_request_fresh_preview','reuses_previous_consent'}};
+    if (!_exactKeys(value, keys) || value['contract_version'] != 1 || value['company_id'] != _company ||
+        value['site_id'] != siteId || value['document_id'] != documentId ||
+        value['local_document_id'] != localId || value['trade_company_id'] != tradeId ||
+        value['retry_automatically'] != false || value['may_prepare_again'] != false ||
+        value['can_send'] != false || value['journal_clearable'] != false ||
+        !const {'not_observed','changed','not_a_pending_prepare','prepared_review_required'}.contains(value['operation_state'])) {
+      throw const SiteOrderResultUnknown();
+    }
+    if (value['operation_state'] == 'prepared_review_required') {
+      final body = value['body'];
+      if (body is! Map || body['transaction_id'] != documentId || body['issuer_company_id'] != _company ||
+          !_savedId(body['counterparty_company_id']) || body['counterparty_company_id'] == _company ||
+          const ['company_seal_snapshot','company_seal_enabled','seals','approved_by','actor_id'].any(body.containsKey) ||
+          body['kind'] != 'order' || value['revision'] != 1 || value['body_hash'] is! String ||
+          !RegExp(r'^[0-9a-f]{64}$').hasMatch(value['body_hash'] as String) ||
+          value['may_request_fresh_preview'] != true || value['reuses_previous_consent'] != false) {
+        throw const SiteOrderResultUnknown();
+      }
+    } else if (value.containsKey('body') || value.containsKey('body_hash')) {
+      throw const SiteOrderResultUnknown();
+    }
+    // This read never clears a journal or turns absence into cancellation.
+    requireCurrent();
+    return value;
+  }
   @override
   Future<List<Map<String, dynamic>>> history({
     String? before,
