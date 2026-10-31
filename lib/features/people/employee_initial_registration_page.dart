@@ -193,6 +193,7 @@ class _EmployeeInitialRegistrationPageState
 
   @override
   Widget build(BuildContext context) {
+    final result = _current() ? _result : null;
     final unsent = _employees.where((item) => !item.invited).length;
     return Scaffold(
       appBar: AppBar(
@@ -336,13 +337,13 @@ class _EmployeeInitialRegistrationPageState
                               ),
                       ),
                     ),
-                  if (_current() && _result != null) ...[
+                  if (result != null) ...[
                     const SizedBox(height: 14),
                     _ResultCard(
-                      result: _result!,
-                      onShare: () => _share(_result!),
-                      onSms: () => _openSms(_result!),
-                      isCurrent: () => _current() && _result != null,
+                      result: result,
+                      onShare: () => _share(result),
+                      onSms: () => _openSms(result),
+                      isCurrent: () => _current() && identical(result, _result),
                     ),
                   ],
                 ],

@@ -132,26 +132,30 @@ void main() {
   });
 
   testWidgets('new employee page hides credentials immediately after same-user new SID', (tester) async {
-    final f = Fixture(); addTearDown(f.close); await f.login();
+    final f = Fixture(); addTearDown(f.close); await tester.runAsync(f.login);
     await tester.pumpWidget(MaterialApp(home: EmployeeInvitePage(repository: f.repository)));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).at(0), 'Synthetic Employee');
     await tester.enterText(find.byType(TextField).at(1), '07000000000');
     final create = find.byWidgetPredicate((w) => w is FilledButton);
-    await tester.ensureVisible(create.first); await tester.tap(create.first); await tester.pumpAndSettle();
+    await tester.ensureVisible(create.first);
+    await tester.runAsync(() async { await tester.tap(create.first); await Future<void>.delayed(Duration.zero); });
+    await tester.pumpAndSettle();
     expect(find.text(fixturePassword), findsOneWidget);
-    f.session = nextSid; await f.login(); await tester.pumpAndSettle();
+    f.session = nextSid; await tester.runAsync(f.login); await tester.pumpAndSettle();
     expect(find.text(fixturePassword), findsNothing); expect(find.text('ログイン状態または会社が変わりました。画面を開き直してください。'), findsOneWidget);
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
   testWidgets('existing worker page hides QR/password after same-user new SID', (tester) async {
-    final f = Fixture(); addTearDown(f.close); await f.login();
+    final f = Fixture(); addTearDown(f.close); await tester.runAsync(f.login);
     await tester.pumpWidget(MaterialApp(home: EmployeeInitialRegistrationPage(repository: f.repository)));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('送信')); await tester.tap(find.text('送信')); await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('送信'));
+    await tester.runAsync(() async { await tester.tap(find.text('送信')); await Future<void>.delayed(Duration.zero); });
+    await tester.pumpAndSettle();
     expect(find.text('初期パスワード: $fixturePassword'), findsOneWidget);
-    f.session = nextSid; await f.login(); await tester.pumpAndSettle();
+    f.session = nextSid; await tester.runAsync(f.login); await tester.pumpAndSettle();
     expect(find.text('初期パスワード: $fixturePassword'), findsNothing);
     await tester.pumpWidget(const SizedBox.shrink());
   });

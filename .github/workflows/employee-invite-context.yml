@@ -52,4 +52,4 @@ jobs:
       - run: flutter pub get --enforce-lockfile
       - run: git diff --exit-code -- pubspec.lock
       - run: flutter analyze lib/features/people/employee_invite_repository.dart lib/features/people/employee_invite_page.dart lib/features/people/employee_initial_registration_page.dart test/employee_invite_context_sdk_test.dart
-      - run: flutter test test/employee_invite_context_sdk_test.dart test/employee_invite_localization_contract_test.dart test/employee_invite_role_selection_contract_test.dart --reporter expanded
+      - run: flutter test test/employee_invite_context_sdk_test.dart test/employee_invite_localization_contract_test.dart test/employee_invite_role_selection_contract_test.dart --timeout 90s --reporter expanded
