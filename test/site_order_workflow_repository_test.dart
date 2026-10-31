@@ -134,6 +134,55 @@ Future<(SupabaseClient, SiteOrderWorkflowRepository)> _fixture(
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+  test('uncertain reply retains identifiers across restart until exact cancellation barrier', () async {
+    final wire = _Wire()..functionStatus = 409;
+    final f = await _fixture(wire);
+    await expectLater(
+      f.$2.recoverReply({
+        'package_id': package,
+        'preview_id': package,
+        'body_hash': 'b' * 64,
+        'render_hash': 'c' * 64,
+        'seal_hash': 'd' * 64,
+      }, package),
+      throwsA(isA<SiteOrderResultUnknown>()),
+    );
+    expect(wire.functions, 1);
+    f.$2.dispose();
+    final reopened = SiteOrderWorkflowRepository(f.$1);
+    addTearDown(reopened.dispose);
+    addTearDown(f.$1.dispose);
+    expect(await reopened.hasPendingReplyRecovery(package), isTrue);
+    await expectLater(
+      reopened.previewReplyRecovery(package),
+      throwsA(isA<SiteOrderResultUnknown>()),
+    );
+    expect(wire.functions, 1);
+    wire.functionStatus = 200;
+    wire.functionJson = {
+      'result': {
+        'package_id': package,
+        'preview_id': package,
+        'request_id': package,
+        'operation_state': 'pending',
+      },
+    };
+    await expectLater(
+      reopened.reconcileReplyRecovery(package),
+      throwsA(isA<SiteOrderResultUnknown>()),
+    );
+    expect(await reopened.hasPendingReplyRecovery(package), isTrue);
+    wire.functionJson = {
+      'result': {
+        'package_id': package,
+        'preview_id': package,
+        'request_id': package,
+        'operation_state': 'cancelled',
+      },
+    };
+    expect(await reopened.reconcileReplyRecovery(package), 'cancelled');
+    expect(await reopened.hasPendingReplyRecovery(package), isFalse);
+  });
   test('uncertain refusal survives reopen and fences approval until the exact barrier result', () async {
     final wire = _Wire()..functionStatus = 409;
     final f = await _fixture(wire);

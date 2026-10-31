@@ -8,6 +8,7 @@ on:
       - 'tool/site_order_edge_http.test.mjs'
       - 'tool/site_order_reply_worker.test.mjs'
       - 'tool/site_order_http_jwt_fixture.mjs'
+      - 'tool/site_order_reply_recovery_races.mjs'
       - 'tool/site_order_canonical_core.mjs'
       - 'tool/site_order_package_flow_fixture.mjs'
       - 'tool/site_order_approval_operation_fixture.mjs'

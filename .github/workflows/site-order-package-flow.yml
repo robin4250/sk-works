@@ -6,6 +6,10 @@ on:
       - 'tool/site_order_package_flow_fixture.mjs'
       - 'tool/site_order_approval_operation_fixture.mjs'
       - 'tool/site_order_refusal_fixture.mjs'
+      - 'tool/site_order_reply_recovery_fixture.mjs'
+      - 'tool/site_order_reply_recovery_worker.test.mjs'
+      - 'tool/site_order_reply_recovery_races.mjs'
+      - 'tool/site_order_canonical_core.mjs'
       - 'tool/fixtures/site_order_legacy_public_respond.fixture.sql'
       - 'tool/site_order_canonical_renderer.mjs'
       - 'tool/verify_site_order_package_flow.mjs'
@@ -41,7 +45,7 @@ jobs:
       - run: npm ci --prefix tool/site_order_edge_dependencies --ignore-scripts
       - run: node --check tool/site_order_package_flow_fixture.mjs
       - run: node --check tool/verify_site_order_package_flow.mjs
-      - run: node --test tool/site_order_manager_renderer.test.mjs tool/site_order_canonical_renderer.test.mjs
+      - run: node --test tool/site_order_manager_renderer.test.mjs tool/site_order_canonical_renderer.test.mjs tool/site_order_reply_recovery_worker.test.mjs
       - name: Canonical original, sanitized package, prepared legacy response guard
         env:
           SKO_CONFIRMED_TERMS_HOOK: content-v1

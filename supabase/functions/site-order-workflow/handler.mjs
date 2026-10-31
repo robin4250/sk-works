@@ -1,4 +1,4 @@
-import {registerManagerCanonicalSiteOrderJob,processCanonicalSiteOrderReply} from '../../../tool/site_order_canonical_core.mjs';
+import {registerManagerCanonicalSiteOrderJob,processCanonicalSiteOrderReply,processRecoveredSiteOrderReply} from '../../../tool/site_order_canonical_core.mjs';
 const uuid=/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/;
 const commands={
  detail:{keys:['package_id'],sql:'select site_order_package_private.package_decision_detail($1) as result'},
@@ -15,6 +15,11 @@ const commands={
  send_order:{keys:['job_id','original_receipt_id','request_id'],sql:`with sent as materialized(select site_order_package_private.send_order($1,$2,$3) as result) select result||jsonb_build_object('notifications',site_order_package_private.dispatch_notifications((result->>'package_id')::uuid)) as result from sent`},
  register_original:{keys:['job_id'],worker:true},
  process_reply:{keys:['package_id'],replyWorker:true},
+ preview_reply_recovery:{keys:['package_id','request_id'],sql:'select site_order_package_private.preview_reply_recovery($1,$2) as result'},
+ confirm_reply_recovery:{keys:['preview_id','body_hash','render_hash','seal_hash','confirmed','request_id'],sql:'select site_order_package_private.confirm_reply_recovery($1,$2,$3,$4,$5,$6) as result'},
+ reply_recovery_status:{keys:['package_id','request_id'],sql:'select site_order_package_private.reply_recovery_status($1,$2) as result'},
+ reconcile_reply_recovery:{keys:['package_id','preview_id','request_id'],sql:'select site_order_package_private.reconcile_reply_recovery($1,$2,$3) as result'},
+ process_recovered_reply:{keys:['package_id','lease_id'],recoveredWorker:true},
 };
 function response(data,status=200){return new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store'}});}
 async function body(req){
@@ -33,7 +38,7 @@ function validate(b){
  else if(k==='limit'){if(!Number.isInteger(v)||v<1||v>50)throw Error('invalid');}
  else if(k==='kind'){if(!['order','acceptance'].includes(v))throw Error('invalid');}
  else if(k==='confirmed'){if(v!==true)throw Error('invalid');}
- else if(['body_hash','seal_hash','connection_fingerprint'].includes(k)){if(typeof v!=='string'||!/^[0-9a-f]{64}$/.test(v))throw Error('invalid');}
+ else if(['body_hash','render_hash','seal_hash','connection_fingerprint'].includes(k)){if(typeof v!=='string'||!/^[0-9a-f]{64}$/.test(v))throw Error('invalid');}
  else if(typeof v!=='string'||!uuid.test(v))throw Error('invalid');
  }return c;
 }
@@ -51,6 +56,7 @@ export function createSiteOrderHandler({verify,connect,render}){
    db=await connect();
    // The connection is never pooled/reused; close it even after UNKNOWN.
    if(c.replyWorker){const result=await processCanonicalSiteOrderReply(db,b.package_id,render,claims);return response({result});}
+   if(c.recoveredWorker){const result=await processRecoveredSiteOrderReply(db,b.package_id,b.lease_id,render,claims);return response({result});}
    if(c.worker){const result=await registerManagerCanonicalSiteOrderJob(db,b.job_id,render,claims);return response({result});}
    await db.query('begin isolation level read committed');
    const role=(await db.query('select session_user as role')).rows[0]?.role;

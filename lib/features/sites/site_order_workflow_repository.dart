@@ -46,6 +46,16 @@ abstract class SiteOrderWorkflowApi extends ChangeNotifier {
   Future<Uint8List> original(String packageId, String kind);
   Future<Map<String, dynamic>> originalPayload(String packageId, String kind);
   Future<void> verify();
+  Future<bool> hasPendingReplyRecovery(String id) async => false;
+  Future<String?> reconcileReplyRecovery(String id) async => null;
+  Future<Map<String, dynamic>> previewReplyRecovery(String id) async =>
+      throw StateError('請書の再確認を開始できません。');
+  Future<Uint8List> renderReplyRecovery(Map<String, dynamic> preview) async =>
+      throw StateError('請書の再確認を開始できません。');
+  Future<Map<String, dynamic>> recoverReply(
+    Map<String, dynamic> preview,
+    String requestId,
+  ) async => throw StateError('請書の再開を確認できません。');
   Future<bool> hasPendingRefusal(String packageId) async => false;
   Future<String?> reconcileRefusal(String packageId) async => null;
   Future<Map<String, dynamic>> refuse(
@@ -84,6 +94,7 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
   final TradeDocumentFormSession _session;
   final _retired = Completer<void>();
   final SiteOrderApprovalJournal _approvalJournal;
+  final _replyJournal = SiteOrderApprovalJournal.forReplyRecovery();
   final _refusalJournal = SiteOrderRefusalJournal();
   String get _actor => _client.auth.currentUser!.id;
   String? _company, _role;
@@ -221,6 +232,121 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
       throw StateError('確認する注文の保存版が変わりました。');
     }
     return value;
+  }
+
+  @override
+  Future<bool> hasPendingReplyRecovery(String id) async {
+    await verify();
+    return await _replyJournal.read(_actor, _company!, id) != null;
+  }
+
+  @override
+  Future<String?> reconcileReplyRecovery(String id) async {
+    await verify();
+    final pending = await _replyJournal.read(_actor, _company!, id);
+    if (pending == null) return null;
+    final result = _map(
+      _map(
+        await _call({
+          'action': 'reconcile_reply_recovery',
+          ...pending,
+        }, write: true),
+      )['result'],
+    );
+    if (result['package_id'] != id ||
+        result['preview_id'] != pending['preview_id'] ||
+        result['request_id'] != pending['request_id'] ||
+        !const {'accepted', 'cancelled'}.contains(result['operation_state'])) {
+      throw const SiteOrderResultUnknown();
+    }
+    await verify();
+    await _replyJournal.resolve(_actor, _company!, id, pending['request_id']!);
+    return result['operation_state'] as String;
+  }
+
+  @override
+  Future<Map<String, dynamic>> previewReplyRecovery(String id) async {
+    await verify();
+    if (await hasPendingReplyRecovery(id)) throw const SiteOrderResultUnknown();
+    final result = await _result({
+      'action': 'preview_reply_recovery',
+      'package_id': id,
+      'request_id': siteOrderRequestId(),
+    });
+    if (result['package_id'] != id || !_savedId(result['preview_id'])) {
+      throw StateError('請書の保存版を確認できません。');
+    }
+    return result;
+  }
+
+  @override
+  Future<Uint8List> renderReplyRecovery(Map<String, dynamic> preview) async {
+    final evidence = _map(preview['evidence']);
+    final seals = evidence['seals'];
+    if (seals is! List || seals.length != 1) throw StateError('自社印を確認できません。');
+    return renderReview({
+      'body': preview['body'],
+      'own_seal': {'snapshot': _map(seals.single)['seal_snapshot']},
+    });
+  }
+
+  @override
+  Future<Map<String, dynamic>> recoverReply(
+    Map<String, dynamic> preview,
+    String requestId,
+  ) async {
+    await verify();
+    final id = preview['package_id'];
+    if (!_savedId(id) ||
+        !_savedId(preview['preview_id']) ||
+        !_savedId(requestId)) {
+      throw StateError('請書の再確認情報が変わりました。');
+    }
+    await _replyJournal.begin(
+      _actor,
+      _company!,
+      id as String,
+      preview['preview_id'] as String,
+      requestId,
+    );
+    try {
+      final lease = _map(
+        _map(
+          await _call({
+            'action': 'confirm_reply_recovery',
+            'preview_id': preview['preview_id'],
+            'body_hash': preview['body_hash'],
+            'render_hash': preview['render_hash'],
+            'seal_hash': preview['seal_hash'],
+            'confirmed': true,
+            'request_id': requestId,
+          }, write: true),
+        )['result'],
+      );
+      if (lease['package_id'] != id ||
+          !_savedId(lease['lease_id']) ||
+          lease['status'] != 'reply_recovery_confirmed') {
+        throw const SiteOrderResultUnknown();
+      }
+      final outcome = _writeOutcome(
+        await _call({
+          'action': 'process_recovered_reply',
+          'package_id': id,
+          'lease_id': lease['lease_id'],
+        }, write: true),
+        id,
+      );
+      // Only the serialized delivery/cancellation barrier clears this journal.
+      // A queued/unknown worker response remains quarantined across restarts.
+      if (_map(outcome['result'])['status'] == 'recipient_stored') {
+        if (await reconcileReplyRecovery(id) != 'accepted') {
+          throw const SiteOrderResultUnknown();
+        }
+      }
+      return outcome;
+    } catch (_) {
+      throw const SiteOrderResultUnknown();
+    }
   }
 
   Map<String, dynamic> _writeOutcome(Object? raw, Object? expectedPackage) {

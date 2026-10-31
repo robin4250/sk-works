@@ -13,6 +13,48 @@ const request = '10000000-0000-0000-0000-000000000005';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
+  test(
+    'reply recovery survives restart and is isolated from decisions',
+    () async {
+      final journal = SiteOrderApprovalJournal.forReplyRecovery();
+      await journal.begin(actor, company, package, preview, request);
+      expect(
+        await SiteOrderApprovalJournal.forReplyRecovery().read(
+          actor,
+          company,
+          package,
+        ),
+        {'package_id': package, 'preview_id': preview, 'request_id': request},
+      );
+      expect(
+        await SiteOrderApprovalJournal().read(actor, company, package),
+        isNull,
+      );
+      expect(
+        await SiteOrderRefusalJournal().read(actor, company, package),
+        isNull,
+      );
+      expect(await journal.read(preview, company, package), isNull);
+      await expectLater(
+        journal.resolve(actor, company, package, preview),
+        throwsStateError,
+      );
+      await expectLater(
+        journal.begin(actor, company, package, preview, request),
+        throwsStateError,
+      );
+      expect(
+        (jsonDecode(
+          (await SharedPreferences.getInstance()).getString(
+            'sko.site_order.reply_recovery.v1.$actor.$company.$package',
+          )!,
+        ) as Map).keys.toSet(),
+        {'package_id', 'preview_id', 'request_id'},
+      );
+      await journal.resolve(actor, company, package, request);
+      expect(await journal.read(actor, company, package), isNull);
+    },
+  );
   test('refusal uses an independent durable ID-only journal without a fabricated preview', () async {
     final journal = SiteOrderRefusalJournal();
     await journal.begin(actor, company, package, request);

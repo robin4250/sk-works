@@ -264,7 +264,8 @@ class _SiteOrderPackagePageState extends State<SiteOrderPackagePage> {
     try {
       pendingApproval =
           await widget.api.hasPendingApproval(widget.packageId) ||
-          await widget.api.hasPendingRefusal(widget.packageId);
+          await widget.api.hasPendingRefusal(widget.packageId) ||
+          await widget.api.hasPendingReplyRecovery(widget.packageId);
       final value = await widget.api.detail(widget.packageId);
       if (mounted && !widget.api.invalidated) {
         setState(() {
@@ -298,11 +299,16 @@ class _SiteOrderPackagePageState extends State<SiteOrderPackagePage> {
     try {
       final state = await widget.api.reconcileApproval(widget.packageId);
       final refusal = await widget.api.reconcileRefusal(widget.packageId);
+      final reply = await widget.api.reconcileReplyRecovery(widget.packageId);
       if (!mounted || widget.api.invalidated) return;
-      if (state != null || refusal != null) {
+      if (state != null || refusal != null || reply != null) {
         setState(() {
           _unknown = false;
-          _message = refusal != null
+          _message = reply != null
+              ? (reply == 'accepted'
+                    ? '請書の相手先保管を確認しました。'
+                    : '前の返信を停止しました。内容と自社印を確認して再開できます。')
+              : refusal != null
               ? (refusal == 'accepted'
                     ? '注文の辞退が保存されています。'
                     : '前の辞退は受け付けられていません。内容をご確認ください。')
@@ -433,7 +439,22 @@ class _SiteOrderPackagePageState extends State<SiteOrderPackagePage> {
       _error = null;
     });
     try {
-      final outcome = await widget.api.resume(widget.packageId);
+      final preview = await widget.api.previewReplyRecovery(widget.packageId);
+      final bytes = await widget.api.renderReplyRecovery(preview);
+      if (!mounted || widget.api.invalidated) return;
+      final outcome = await Navigator.push<Map<String, dynamic>>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => _ApprovalReviewPage(
+            api: widget.api,
+            preview: preview,
+            bytes: bytes,
+            previewBuilder: widget.previewBuilder,
+            recovery: true,
+          ),
+        ),
+      );
+      if (!mounted || outcome == null) return;
       final saved = outcome['result'];
       if (saved is! Map || saved['status'] != 'recipient_stored') {
         throw const SiteOrderResultUnknown();
@@ -579,7 +600,7 @@ class _SiteOrderPackagePageState extends State<SiteOrderPackagePage> {
                   if (recipient && approved && !stored && canWrite)
                     FilledButton(
                       onPressed: _busy || _unknown ? null : _resume,
-                      child: const Text('請書の送信を再開'),
+                      child: const Text('内容と自社印を確認して返信を再開'),
                     ),
                 ],
                 if (_message != null)
@@ -609,7 +630,9 @@ class _ApprovalReviewPage extends StatefulWidget {
     required this.preview,
     required this.bytes,
     this.previewBuilder,
+    this.recovery = false,
   });
+  final bool recovery;
   final SiteOrderWorkflowApi api;
   final Map<String, dynamic> preview;
   final Uint8List bytes;
@@ -651,7 +674,9 @@ class _ApprovalReviewPageState extends State<_ApprovalReviewPage> {
     if (!_confirmed || _sending || _closing) return;
     setState(() => _sending = true);
     try {
-      final result = await widget.api.approve(widget.preview, _requestId);
+      final result = widget.recovery
+          ? await widget.api.recoverReply(widget.preview, _requestId)
+          : await widget.api.approve(widget.preview, _requestId);
       if (mounted && !_closing) Navigator.pop(context, result);
     } on SiteOrderResultUnknown {
       if (mounted && !_closing) Navigator.pop(context, _unknownOutcome());
@@ -687,9 +712,9 @@ class _ApprovalReviewPageState extends State<_ApprovalReviewPage> {
           ? const Center(child: Text('画面を閉じて開き直してください。'))
           : Column(
               children: [
-                const Padding(
-                  padding: EdgeInsets.all(8),
-                  child: Text('確認用・未承認'),
+                Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Text(widget.recovery ? '保存済みの請書・印影を再確認' : '確認用・未承認'),
                 ),
                 Expanded(
                   child:
@@ -733,7 +758,13 @@ class _ApprovalReviewPageState extends State<_ApprovalReviewPage> {
                           onPressed: !_confirmed || _sending || _closing
                               ? null
                               : _approve,
-                          child: Text(_sending ? '保存状態を確認中…' : '承認して請書を送る'),
+                          child: Text(
+                            _sending
+                                ? '保存状態を確認中…'
+                                : widget.recovery
+                                ? '確認して返信を再開'
+                                : '承認して請書を送る',
+                          ),
                         ),
                       ],
                     ),
