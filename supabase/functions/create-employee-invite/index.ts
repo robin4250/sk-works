@@ -199,6 +199,10 @@ Deno.serve(async (req: Request) => {
       return json({ error: "対象の従業員が見つかりません。" }, 404);
     }
     existingWorker = workers[0];
+    // Invitation links an active employee; it is never a reinstatement operation.
+    if (existingWorker.status !== "active") {
+      return json({ error: "在籍中の従業員だけ招待できます。退職状態を確認してください。" }, 409);
+    }
     if (existingWorker.user_id) {
       return json({ error: "この従業員は初回登録作成済みです。" }, 409);
     }
@@ -371,14 +375,13 @@ Deno.serve(async (req: Request) => {
           "&company_id=eq." + encodeURIComponent(companyId) + "&user_id=is.null" +
           "&phone=eq." + encodeURIComponent(existingWorker.phone) +
           "&name=eq." + encodeURIComponent(existingWorker.name) +
-          (existingWorker.status == null ? "&status=is.null" : "&status=eq." + encodeURIComponent(existingWorker.status)) +
+          "&status=eq.active" +
           "&affiliation=eq.employee&select=id",
         {
           method: "PATCH",
           headers: { Prefer: "return=representation" },
           body: JSON.stringify({
             user_id: authUserId,
-            status: "active",
             updated_at: new Date().toISOString(),
           }),
         },
@@ -575,5 +578,6 @@ Deno.serve(async (req: Request) => {
   }
 
 });
+
 
 
