@@ -185,7 +185,10 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
         status,
         today,
       );
-      return effectiveStatus == 'submitted' || effectiveStatus == 'verified';
+      if (documentExemptionFor(_exemptions, workerId,
+          requirement['id']?.toString())?['active'] == true) return false;
+      return workerDocumentDisplayStatus(requirement, status,
+          effectiveStatus: effectiveStatus, today: today).complete;
     }).length;
     final exemptCount = visibleRequirements.where((requirement) =>
         documentExemptionFor(_exemptions, workerId, requirement['id']?.toString())?['active'] == true).length;
@@ -379,7 +382,7 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                                 updatedAt: status?['updated_at']);
                               final exemption = documentExemptionFor(_exemptions, workerId, requirement['id']?.toString());
                               final exempt = exemption?['active'] == true;
-                              final display = workerDocumentDisplayStatus(requirement, status, effectiveStatus: effective);
+                              final display = workerDocumentDisplayStatus(requirement, status, effectiveStatus: effective, today: today);
                               return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                               ResourceRegistrationCard(
                                 key: ValueKey('managed-document:$actor:$workerId:${requirement['id']}'),

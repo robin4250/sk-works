@@ -52,12 +52,69 @@ void main() {
         {'name': '銀行口座情報', 'is_required': true},
         {'status': 'submitted'},
       ).label,
-      '登録済み',
+      '口座情報を確認',
     );
     expect(
       workerDocumentDisplayStatus(
         {...required, 'is_required': false},
         {'status': 'submitted'},
+      ).complete,
+      true,
+    );
+  });
+  test('multi-photo evidence uses the canonical parser and rejects malformed lists', () {
+    for (final row in [
+      {
+        'status': 'submitted',
+        'attachment_paths': ['retained/a', 'retained/b'],
+      },
+      {'status': 'submitted', 'attachment_path': 'retained/a'},
+    ]) {
+      expect(workerDocumentDisplayStatus(required, row).complete, true);
+    }
+    for (final paths in [
+      42,
+      ['a', 'a'],
+      [' '],
+      [null],
+    ]) {
+      expect(
+        workerDocumentDisplayStatus(required, {
+          'status': 'submitted',
+          'attachment_path': 'retained/legacy',
+          'attachment_paths': paths,
+        }).complete,
+        false,
+      );
+    }
+    expect(
+      workerDocumentDisplayStatus(
+        {...required, 'expiry_required': true},
+        {
+          'status': 'submitted',
+          'attachment_paths': ['a'],
+          'expires_at': '2026-02-30',
+        },
+      ).complete,
+      false,
+    );
+    expect(
+      workerDocumentDisplayStatus(
+        {...required, 'expiry_required': true},
+        {
+          'status': 'submitted',
+          'attachment_paths': ['a'],
+          'expires_at': '2026-10-30',
+        },
+        today: DateTime(2026, 10, 31),
+      ).label,
+      '期限切れ',
+    );
+    expect(
+      workerDocumentDisplayStatus(
+        {'name': '銀行口座情報'},
+        {'status': 'submitted'},
+        bankRegistered: true,
       ).complete,
       true,
     );
