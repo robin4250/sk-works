@@ -186,7 +186,7 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
         today,
       );
       if (documentExemptionFor(_exemptions, workerId,
-          requirement['id']?.toString())?['active'] == true) return false;
+          requirement['id']?.toString())?['active'] == true) { return false; }
       return workerDocumentDisplayStatus(requirement, status,
           effectiveStatus: effectiveStatus, today: today).complete;
     }).length;
