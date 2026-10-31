@@ -90,17 +90,30 @@ class WorkerDocumentRepository {
   ];
 
   Future<({String companyId, String role})> membership() async {
+    final session = _client.auth.currentSession;
+    final current = await captureAttachmentReadScope();
     final user = _client.auth.currentUser;
-    if (user == null) throw StateError('SKOへのログインが必要です。');
+    if (user == null || session == null || !current() ||
+        !identical(session, _client.auth.currentSession)) {
+      throw StateError('SKOへのログインが必要です。');
+    }
     final rows = await _client
         .from('company_members')
         .select('company_id, role')
         .eq('user_id', user.id)
-        .limit(1);
-    if (rows.isEmpty) throw StateError('会社情報が見つかりません。');
+        .limit(2)
+        .setHeader('Authorization', 'Bearer ${session.accessToken}');
+    if (!current() || !identical(session, _client.auth.currentSession)) {
+      throw StateError('ログイン情報が変更されました。画面を開き直してください。');
+    }
+    if (rows.isEmpty) { throw StateError('会社情報が見つかりません。'); }
+    if (rows.length != 1 || rows.single['company_id'] is! String ||
+        (rows.single['company_id'] as String).isEmpty) {
+      throw StateError('所属会社が複数あるため処理できません。');
+    }
     return (
-      companyId: rows.first['company_id'] as String,
-      role: rows.first['role']?.toString() ?? 'viewer',
+      companyId: rows.single['company_id'] as String,
+      role: rows.single['role']?.toString() ?? 'viewer',
     );
   }
 
@@ -124,17 +137,7 @@ class WorkerDocumentRepository {
     }
   }
 
-  Future<String> _companyId() async {
-    final user = _client.auth.currentUser;
-    if (user == null) throw StateError('SKOへのログインが必要です。');
-    final rows = await _client
-        .from('company_members')
-        .select('company_id')
-        .eq('user_id', user.id)
-        .limit(1);
-    if (rows.isEmpty) throw StateError('会社情報が見つかりません。');
-    return rows.first['company_id'] as String;
-  }
+  Future<String> _companyId() async => (await membership()).companyId;
 
   bool _photoSchemaAvailable = true;
   bool get photoEditingAvailable => _photoSchemaAvailable;
@@ -851,17 +854,39 @@ class WorkerDocumentRepository {
   }
 
   Future<({String workerId, String workerName})> currentWorker() async {
-    final raw = await _client.rpc('ensure_current_user_worker');
-    final workerId = raw?.toString() ?? '';
-    if (workerId.isEmpty) {
-      throw StateError('本人の作業員情報を確認できません。');
+    // The existing initializer has no company argument. Admit it only after
+    // confirming one membership; never provision an arbitrary first company.
+    final session = _client.auth.currentSession;
+    final current = await captureAttachmentReadScope();
+    final actor = _client.auth.currentUser?.id;
+    if (session == null || actor == null || !current() ||
+        !identical(session, _client.auth.currentSession)) {
+      throw StateError('本人の社員情報を確認できません。');
     }
+    final companyId = await _companyId();
+    if (!current() || !identical(session, _client.auth.currentSession)) {
+      throw StateError('ログイン情報が変更されました。画面を開き直してください。');
+    }
+    final raw = await _client.rpc('ensure_current_user_worker')
+        .setHeader('Authorization', 'Bearer ${session.accessToken}');
+    if (!current() || !identical(session, _client.auth.currentSession)) {
+      throw StateError('ログイン情報が変更されました。画面を開き直してください。');
+    }
+    final workerId = raw?.toString() ?? '';
+    if (workerId.isEmpty) { throw StateError('本人の社員情報を確認できません。'); }
     final row = await _client
         .from('workers')
         .select('name')
         .eq('id', workerId)
-        .maybeSingle();
-    final name = row?['name']?.toString().trim();
+        .eq('company_id', companyId)
+        .eq('user_id', actor)
+        .eq('status', 'active')
+        .maybeSingle()
+        .setHeader('Authorization', 'Bearer ${session.accessToken}');
+    if (!current() || !identical(session, _client.auth.currentSession) || row == null) {
+      throw StateError('本人と所属会社の社員情報を確認できません。');
+    }
+    final name = row['name']?.toString().trim();
     return (
       workerId: workerId,
       workerName: name?.isNotEmpty == true ? name! : '本人',
@@ -1197,5 +1222,6 @@ class WorkerDocumentRepository {
     requireActor();
   }
 }
+
 
 
