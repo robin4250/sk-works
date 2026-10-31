@@ -1,0 +1,34 @@
+{
+  "state": "REVIEW ONLY; NOT APPLIED",
+  "head": "8311734bcfaee45553e055eb9cbb40d2a20bf6f2",
+  "sources": {
+    "docs/review/scoped-required-document-attention/install.sql.review-only": "582c1ca3393cad906de682d1afe94b52daa0e9ced718963c9dac617cc3decc95",
+    "docs/review/scoped-required-document-attention/scoped-function.sql.review-only": "b05298a4bc01d38cce188487a9f6b06ea4fadb929ee7254e6811341cf3a1fa15",
+    "docs/review/scoped-required-document-attention/helper-contracts.json": "e8bf4bb4c665078f7f41ceef5a4fb6fe7a044dec67ad73a794b3c923cd810aa2",
+    "docs/review/scoped-required-document-attention/actual-generic-helper-fixture.sql": "06a08a6b0d66269780045e8bb5740c9358e8afd5b630cc23a532db8b6d87e594"
+  },
+  "catalog_hashes": {
+    "functions_hash": "ad161cc55dd63b5a206af0e34c9ad92c",
+    "schemas_hash": "7f652c845f5bfa1c22ee778782addc3b",
+    "defaults_hash": "621511c71ccf83434033692540588327",
+    "relations_hash": "cf9a2a146017a874d1d5730576731fbe"
+  },
+  "server_version_num": "170006",
+  "generated_sha256": "302c14b652d703059927628ecd964e3a653a4e00c2f8ebf703d500b04b0e644b",
+  "legacy_body_update_required": false,
+  "global_exemption_enabled": true,
+  "individual_decision_count_assumption": null,
+  "production_writes": 0,
+  "native_validation": "PENDING",
+  "relation_count": 9,
+  "validation": "Local PGlite 14 checks passed; Native/CI/independent review pending",
+  "bundle_sources": {
+    "catalog-fingerprint.sql": "2ac3d0e12bbdfffc6bdeed1d7cd7fb9eb83e95957bea424a0b8fa335eb333973",
+    "helper-contracts.json": "e8bf4bb4c665078f7f41ceef5a4fb6fe7a044dec67ad73a794b3c923cd810aa2",
+    "verify.mjs": "db2c6d159e538b3373c11ec747c3b577b7952523bd4ce466a7aa945ebcd67c84",
+    "actual-generic-helper-fixture.sql": "06a08a6b0d66269780045e8bb5740c9358e8afd5b630cc23a532db8b6d87e594",
+    "legacy-original.sql.review-only": "624d1763b701becd8fc505068a8567476ffb8ce03a2e524af397f058544676b0",
+    "README.md": "33d4f111af678a9dd199a1ab116a555c8e4694b3b8c3fa53d0f97c5f48663276",
+    "install.sql.review-only": "302c14b652d703059927628ecd964e3a653a4e00c2f8ebf703d500b04b0e644b"
+  }
+}
