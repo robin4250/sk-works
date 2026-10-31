@@ -647,7 +647,7 @@ class _SiteOrderOutgoingComposePageState
                                       record.jobId == _preparedJobId &&
                                       record.recipientCompanyId ==
                                           _preview!.recipientCompanyId) {
-                                    Navigator.pop(context);
+                                    Navigator.pop(this.context);
                                   }
                                 }
                               },

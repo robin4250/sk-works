@@ -100,8 +100,9 @@ class FaultPreferences implements SharedPreferences {
     if (cut == 'before_write') throw StateError('simulated store interruption');
     if (cut == 'write_false') return false;
     final result = await delegate.setString(key, value);
-    if (cut == 'after_write')
+    if (cut == 'after_write') {
       throw StateError('simulated ACK loss after store write');
+    }
     return result;
   }
 
