@@ -98,6 +98,8 @@ def transform(signature, source):
 
 def build():
     inputs = json.loads((ROOT / 'docs/review/site-order-compatibility/pinned-consumers.json').read_text())
+    attributes = {r['signature']:r['metadata'] for r in json.loads((ROOT / 'docs/review/site-order-compatibility/initial-function-attributes.json').read_text())}
+    attribute_expression = (ROOT / 'docs/review/site-order-compatibility/function-attributes.sql.fragment').read_text()
     blocks = []
     for row in inputs:
         signature = row['signature']
@@ -113,14 +115,18 @@ def build():
      or p.proacl::text is distinct from %s)) then
   raise exception 'compatibility dependency owner/config/ACL drift: %%', signature;
  end if;
+ if (select %s from pg_proc p join pg_namespace n on n.oid=p.pronamespace join pg_language l on l.oid=p.prolang where p.oid=to_regprocedure(signature))
+   is distinct from $initial_attributes$%s$initial_attributes$::jsonb then
+  raise exception 'compatibility full initial function attributes drift: %%', signature;
+ end if;
  select to_jsonb(p)-'prosrc' into before_attributes from pg_proc p where p.oid=to_regprocedure(signature);
  execute $replacement$%s$replacement$;
  if (select to_jsonb(p)-'prosrc' from pg_proc p where p.oid=to_regprocedure(signature)) is distinct from before_attributes then
   raise exception 'compatibility function attributes changed: %%', signature;
  end if;
-""" % ("'" + signature + "'", "'" + hashlib.md5(row['definition'].encode()).hexdigest() + "'", ("'{postgres=X/postgres,authenticated=X/postgres}'" if ('company_document_exchange' in signature or 'site_payment_agreement_targets' in signature) else ("'{postgres=X/postgres}'" if 'site_payment_pair' in signature else 'null')), revised))
+""" % ("'" + signature + "'", "'" + hashlib.md5(row['definition'].encode()).hexdigest() + "'", ("'{postgres=X/postgres,authenticated=X/postgres}'" if ('company_document_exchange' in signature or 'site_payment_agreement_targets' in signature) else ("'{postgres=X/postgres}'" if 'site_payment_pair' in signature else 'null')), attribute_expression, json.dumps(attributes[signature]), revised))
     return """-- REVIEW ONLY. Separate production approval required; feature remains OFF.
--- Install after package foundation; before any delivery mutation becomes reachable.
+-- Install after package foundation AND its separately reviewed legacy response guard; before delivery mutations become reachable.
 begin;
 set local lock_timeout='2s';
 set local statement_timeout='20s';
@@ -137,7 +143,7 @@ begin
  if check_definition is distinct from 'CHECK ((payload_kind = ANY (ARRAY[''qualification''::text, ''personnel''::text])))' then
   raise exception 'payload-kind CHECK drift';
  end if;
-""" + ''.join(blocks) + """
+""" + (ROOT / 'docs/review/site-order-compatibility/package-ownership-guard.sql.fragment').read_text() + ''.join(blocks) + """
  alter table private.company_data_delivery_items drop constraint company_data_delivery_items_payload_kind_check;
  alter table private.company_data_delivery_items add constraint company_data_delivery_items_payload_kind_check
  check(payload_kind in ('qualification','personnel','site_share'));

@@ -1,0 +1,6 @@
+(to_jsonb(p)-array['oid','pronamespace','proowner','prolang','prorettype','proargtypes','proallargtypes','provariadic','prosupport','prosrc','proacl']::text[])
+ || jsonb_build_object('namespace',n.nspname,'owner',pg_get_userbyid(p.proowner),'language',l.lanname,
+ 'result_type',format_type(p.prorettype,null),'argument_types',(select jsonb_agg(format_type(t,null) order by i) from unnest(p.proargtypes::oid[]) with ordinality a(t,i)),
+ 'all_argument_types',(select jsonb_agg(format_type(t,null) order by i) from unnest(p.proallargtypes) with ordinality a(t,i)),
+ 'variadic_type',case when p.provariadic=0 then null else format_type(p.provariadic,null) end,
+ 'support',p.prosupport::regproc::text,'acl',(select jsonb_agg(jsonb_build_array(case when a.grantee=0 then 'PUBLIC' else pg_get_userbyid(a.grantee) end,pg_get_userbyid(a.grantor),a.privilege_type,a.is_grantable) order by a.grantee,a.privilege_type) from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a))

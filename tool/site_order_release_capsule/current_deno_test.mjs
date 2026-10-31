@@ -31,4 +31,4 @@ const pdf=await render(evidence);
 check(pdf instanceof Uint8Array&&new TextDecoder().decode(pdf.subarray(0,5))==='%PDF-','fixed_actual_pdf');
 check(before===JSON.stringify(evidence),'synthetic_evidence_unchanged');
 check(!('skoCanonicalPdfRender' in globalThis),'private_runtime_export');
-console.log(JSON.stringify({current_nine_source_imports:true,rejected_http_boundaries:rejected,unknown_route:true,actual_staged_pdf:true,real_jwt_or_sql:false,network_or_project_permission:false,deployed:false,production_changed:false}));
+console.log(JSON.stringify({runtime_transitive_imports:true,index_entrypoint_executed:false,nine_source_files_hash_pinned_by_stager:true,rejected_http_boundaries:rejected,unknown_route:true,actual_staged_pdf:true,real_jwt_or_sql:false,network_or_project_permission:false,deployed:false,production_changed:false}));

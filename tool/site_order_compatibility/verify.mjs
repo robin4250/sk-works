@@ -14,7 +14,9 @@ const assert=(v,message)=>{if(!v)throw Error(message);checks++;};
 const deny=async(fn,code)=>{let error;try{await fn();}catch(e){error=e;}assert(error?.code===code,`expected ${code}: ${error?.message}`);};
 const id=n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 try{
-await db.exec(`create role authenticated;create schema private;create schema auth;create schema site_order_package_private;
+const foundation=await fs.readFile('docs/review/site-order-package-flow/foundation.sql.review-only','utf8');
+const packageDDL=foundation.slice(foundation.indexOf('create table site_order_package_private.packages('),foundation.indexOf('create table site_order_package_private.notice_intents('));
+await db.exec(`create role authenticated;create schema private;create schema auth;create schema site_order_package_private;create schema site_order_artifact_private;create schema trade_document_consent_private;
 create function private.account_access_allowed() returns boolean language sql as $$select true$$;
 create function auth.uid() returns uuid language sql as $$select '${id(1)}'::uuid$$;
 create table companies(id uuid primary key,name text);
@@ -26,7 +28,16 @@ create table private.document_delivery_items(id uuid primary key default gen_ran
 create table private.company_delivery_saved_items(company_id uuid,item_key text,saved_by uuid,saved_at timestamptz,primary key(company_id,item_key));
 create table private.document_receive_codes(code uuid primary key,company_id uuid,created_by uuid,expires_at timestamptz default now()+interval '1 day',used_at timestamptz);
 create table public.app_notifications(company_id uuid,recipient_user_id uuid,kind text,title text,body text,action_key text,action_id uuid);
-create table site_order_package_private.packages(id uuid primary key,data_item_id uuid unique references private.company_data_delivery_items(id));
+create table site_order_artifact_private.render_jobs(id uuid primary key);
+create table site_order_artifact_private.pdf_records(receipt_id uuid primary key);
+${packageDDL}
+alter table site_order_package_private.packages enable row level security;
+create function trade_document_consent_private.immutable() returns trigger language plpgsql set search_path='' as $$begin raise exception 'immutable consent history';end $$;
+revoke all on function trade_document_consent_private.immutable() from public;
+create trigger immutable_package before update or delete on site_order_package_private.packages for each row execute function trade_document_consent_private.immutable();
+create trigger immutable_package_truncate before truncate on site_order_package_private.packages for each statement execute function trade_document_consent_private.immutable();
+insert into site_order_artifact_private.render_jobs values('${id(60)}');
+insert into site_order_artifact_private.pdf_records values('${id(61)}');
 create table private.site_share_inbox(data_item_id uuid primary key,recipient_company_id uuid,status text,created_at timestamptz,accepted_site_id uuid);
 create table public.sites(id uuid primary key,company_id uuid,name text);
 create table private.company_connections(parent_company_id uuid,child_company_id uuid,status text);
@@ -43,8 +54,29 @@ await deny(()=>db.exec(`insert into private.company_data_delivery_items(id,deliv
 const rows=async()=>JSON.stringify((await db.query('select * from private.company_data_delivery_items order by id')).rows);
 const initial=await rows();
 const attrs=async()=>JSON.stringify((await db.query(`select oid,to_jsonb(p)-'prosrc' metadata from pg_proc p where oid in(${originals.map(f=>`'${f.signature}'::regprocedure`).join(',')}) order by oid`)).rows);
+await db.exec(await fs.readFile('tool/fixtures/site_order_legacy_private_respond.fixture.sql','utf8'));
+await db.exec(await fs.readFile('tool/fixtures/site_order_legacy_public_respond.fixture.sql','utf8'));
+await db.exec(`create temporary table site_order_legacy_expected(signature text primary key,attrs jsonb);
+insert into site_order_legacy_expected select p.oid::regprocedure::text,to_jsonb(p)-'prosrc' from pg_proc p
+where p.oid in ('private.respond_site_share(uuid,boolean)'::regprocedure,'public.respond_site_share(uuid,boolean)'::regprocedure)`);
+// regprocedure renders the public name unqualified under the test search_path.
+await db.exec("update site_order_legacy_expected set signature='public.respond_site_share(uuid,boolean)' where signature='respond_site_share(uuid,boolean)'");
+await db.exec(await fs.readFile('docs/review/site-order-package-flow/legacy-response-guard.sql.review-only','utf8'));
 const before=await attrs();
 const patch=await fs.readFile('docs/review/site-order-compatibility/consumer-boundary.sql.review-only','utf8');
+for(const change of [
+ 'alter table site_order_package_private.packages disable trigger immutable_package',
+ 'alter table site_order_package_private.packages disable row level security',
+ 'grant select on site_order_package_private.packages to authenticated',
+ 'create policy unexpected on site_order_package_private.packages using(true)',
+ 'alter table site_order_package_private.packages drop constraint packages_data_item_id_fkey',
+ 'alter table site_order_package_private.packages add column unknown_column text',
+]){
+ await db.exec('begin;'+change);
+ await deny(()=>db.exec(patch),'P0001');await db.exec('rollback');
+ assert(before===await attrs(),'dependency rejection preserves consumer metadata');
+ assert(initial===await rows(),'dependency rejection preserves existing rows');
+}
 const invalidPatch=patch.replace("check(payload_kind in ('qualification','personnel','site_share'))",'check(false)');
 await deny(()=>db.exec(invalidPatch),'23514');await db.exec('rollback');
 assert(before===await attrs(),'failed patch all function attributes rolled back');
@@ -73,7 +105,7 @@ if(native){
  }finally{await peer.query('rollback');await peer.end();}
 }
 await db.exec(patch);assert(before===await attrs(),'function OID/ACL/attributes preserved');assert(initial===await rows(),'existing rows unchanged');
-await db.exec(`insert into private.company_data_delivery_items(id,delivery_id,payload_kind,payload) values('${id(13)}','${id(10)}','site_share','{}');insert into site_order_package_private.packages values('${id(20)}','${id(13)}');insert into private.site_share_inbox values('${id(13)}','${id(2)}','pending',now(),null)`);
+await db.exec(`insert into private.company_data_delivery_items(id,delivery_id,payload_kind,payload) values('${id(13)}','${id(10)}','site_share','{}');insert into site_order_package_private.packages values('${id(20)}','${id(3)}','${id(2)}','${id(1)}','${id(70)}','${id(71)}','${id(60)}','${id(61)}','${id(13)}','{}',now());insert into private.site_share_inbox values('${id(13)}','${id(2)}','pending',now(),null)`);
 await deny(()=>db.exec(`insert into private.company_data_delivery_items(id,delivery_id,payload_kind,payload) values('${id(99)}','${id(10)}','unknown','{}')`),'23514');
 await deny(()=>db.exec(`insert into private.company_data_delivery_items(id,delivery_id,payload_kind,payload) values('${id(99)}','${id(10)}','personnel','[]')`),'23514');
 const data=(await db.query("select private.company_document_exchange('data_items',$1::jsonb) v",[JSON.stringify({id:id(10)})])).rows[0].v;
@@ -84,8 +116,12 @@ await db.exec('delete from private.company_delivery_saved_items');
 await deny(()=>db.query('select private.save_company_delivery_items($1::text[])',[[`data:${id(11)}`,`data:${id(13)}`]]),'22023');
 assert((await db.query('select count(*)::int n from private.company_delivery_saved_items')).rows[0].n===0,'mixed batch no partial saves');
 for(const bad of [null,'bad',`data:${id(11)}:extra`])await deny(()=>db.query('select private.save_company_delivery_items($1::text[])',[[bad]]),'22023');
+await deny(()=>db.exec(`update site_order_package_private.packages set data_item_id='${id(11)}' where id='${id(20)}'`),'P0001');
+assert((await db.query('select data_item_id from site_order_package_private.packages where id=$1',[id(20)])).rows[0].data_item_id===id(13),'immutable ownership binding preserved');
 await deny(()=>db.query('select private.send_site_share($1,$2::uuid[])',[id(30),[id(3)]]),'22023');
 assert((await db.query('select private.site_share_inbox() v')).rows[0].v.length===0,'owned package excluded from legacy inbox');
+await deny(()=>db.query('select public.respond_site_share($1,true)',[id(13)]),'0A000');
+await deny(()=>db.query('select public.respond_site_share($1,false)',[id(13)]),'0A000');
 await deny(()=>db.query('select private.site_payment_pair($1,$2)',[id(13),id(2)]),'22023');
 await db.exec(`insert into sites values('${id(31)}','${id(3)}','legacy source'),('${id(32)}','${id(2)}','legacy recipient');
 insert into private.company_connections values('${id(3)}','${id(2)}','accepted');

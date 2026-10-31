@@ -57,8 +57,27 @@
       "definition_sha256": "3efaea0f6929a6a84f8b8cc2aa3b40513b2ddf3e042725bf1390bdd3ea38427d",
       "pair_call_present": true,
       "native_entry_tested": false
+    },
+    {
+      "signature": "private.get_site_contract_notification_target(uuid)",
+      "body_md5": "8307511acf2aedf2d5b1f34543d19131",
+      "definition_sha256": "c405b80ba4753bf4131414db18b870e65d9ac2d7873bebb8a22c938fd3b32199",
+      "pair_call_present": true,
+      "native_entry_tested": false,
+      "pair_before_result_or_mutation": true,
+      "catch_bypass": false
+    },
+    {
+      "signature": "private.site_payment_agreement_workspace(uuid,uuid)",
+      "body_md5": "847c334c6eb2e8fb2030e9ae4344d6fd",
+      "definition_sha256": "fb126989e78971efc2f858586fe0395e1c34cda67e267a8e71290d6d1d312954",
+      "pair_call_present": true,
+      "native_entry_tested": false,
+      "pair_before_result_or_mutation": true,
+      "catch_bypass": false
     }
   ],
-  "all_eight_native_entries_proven": false,
-  "direct_views_or_unknown_callers_exhaustively_proven": false
+  "direct_views_or_unknown_callers_exhaustively_proven": false,
+  "known_direct_pair_callers": 10,
+  "all_ten_native_entries_proven": false
 }

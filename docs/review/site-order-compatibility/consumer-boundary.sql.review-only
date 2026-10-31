@@ -1,5 +1,5 @@
 -- REVIEW ONLY. Separate production approval required; feature remains OFF.
--- Install after package foundation; before any delivery mutation becomes reachable.
+-- Install after package foundation AND its separately reviewed legacy response guard; before delivery mutations become reachable.
 begin;
 set local lock_timeout='2s';
 set local statement_timeout='20s';
@@ -16,6 +16,72 @@ begin
  if check_definition is distinct from 'CHECK ((payload_kind = ANY (ARRAY[''qualification''::text, ''personnel''::text])))' then
   raise exception 'payload-kind CHECK drift';
  end if;
+ -- Only immutable, owner-only installed package IDs can classify ownership.
+ lock table site_order_package_private.packages in share mode;
+ if not exists(select 1 from pg_namespace n where n.oid='site_order_package_private'::regnamespace
+   and n.nspowner='postgres'::regrole
+   and not exists(select 1 from aclexplode(coalesce(n.nspacl,acldefault('n',n.nspowner))) a where a.grantee<>n.nspowner or a.is_grantable)) then
+  raise exception 'package namespace protection changed';
+ end if;
+ if not exists(select 1 from pg_class c where c.oid='site_order_package_private.packages'::regclass
+   and c.relowner='postgres'::regrole and c.relkind='r' and c.relrowsecurity and not c.relforcerowsecurity
+   and not c.relispartition and not c.relhassubclass
+   and not exists(select 1 from aclexplode(coalesce(c.relacl,acldefault('r',c.relowner))) a where a.grantee<>c.relowner or a.is_grantable)
+   and not exists(select 1 from pg_policy p where p.polrelid=c.oid)
+   and not exists(select 1 from pg_attribute a where a.attrelid=c.oid and not a.attisdropped and a.attnum>0 and (a.attacl is not null or a.attidentity<>'' or a.attgenerated<>''))) then
+  raise exception 'package relation protection changed';
+ end if;
+ if (select jsonb_agg(jsonb_build_array(a.attname,format_type(a.atttypid,a.atttypmod),a.attnotnull,
+       coalesce(pg_get_expr(d.adbin,d.adrelid),'')) order by a.attnum)
+    from pg_attribute a left join pg_attrdef d on d.adrelid=a.attrelid and d.adnum=a.attnum
+    where a.attrelid='site_order_package_private.packages'::regclass and a.attnum>0 and not a.attisdropped)
+   is distinct from '[
+   ["id","uuid",true,""],["sender_company_id","uuid",true,""],["recipient_company_id","uuid",true,""],
+   ["actor_id","uuid",true,""],["session_id","uuid",true,""],["request_id","uuid",true,""],
+   ["source_job_id","uuid",true,""],["original_receipt_id","uuid",true,""],["data_item_id","uuid",true,""],
+   ["site_projection","jsonb",true,""],["created_at","timestamp with time zone",true,"clock_timestamp()"]]'::jsonb then
+  raise exception 'package columns changed';
+ end if;
+ if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('trade_document_consent_private.immutable()')
+   and p.proowner='postgres'::regrole and md5(p.prosrc)='73660d9947f20d6f99c59d8451078e7e'
+   and not p.prosecdef and not p.proisstrict and not p.proleakproof and p.provolatile='v' and p.proparallel='u'
+   and p.prorettype='trigger'::regtype and p.proconfig=array['search_path=""']::text[]
+   and not exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a where a.grantee<>p.proowner or a.is_grantable)) then
+  raise exception 'package immutable function changed';
+ end if;
+ if (select jsonb_agg(jsonb_build_array(t.tgname,t.tgtype,t.tgenabled,t.tgfoid::regprocedure::text,
+     t.tgconstraint::bigint,t.tgnargs,encode(t.tgargs,'hex'),t.tgqual is null) order by t.tgname)
+   from pg_trigger t where t.tgrelid='site_order_package_private.packages'::regclass and not t.tgisinternal)
+   is distinct from '[["immutable_package",27,"O","trade_document_consent_private.immutable()",0,0,"",true],
+    ["immutable_package_truncate",34,"O","trade_document_consent_private.immutable()",0,0,"",true]]'::jsonb then
+  raise exception 'package immutable triggers changed';
+ end if;
+
+ if (select jsonb_agg(jsonb_build_array(c.conname,c.contype,c.convalidated,c.condeferrable,c.condeferred,c.connoinherit,pg_get_constraintdef(c.oid)) order by c.conname)
+   from pg_constraint c where c.conrelid='site_order_package_private.packages'::regclass)
+   is distinct from '[
+ ["packages_check","c",true,false,false,false,"CHECK ((recipient_company_id <> sender_company_id))"],
+ ["packages_data_item_id_fkey","f",true,false,false,true,"FOREIGN KEY (data_item_id) REFERENCES private.company_data_delivery_items(id)"],
+ ["packages_data_item_id_key","u",true,false,false,true,"UNIQUE (data_item_id)"],
+ ["packages_original_receipt_id_fkey","f",true,false,false,true,"FOREIGN KEY (original_receipt_id) REFERENCES site_order_artifact_private.pdf_records(receipt_id)"],
+ ["packages_pkey","p",true,false,false,true,"PRIMARY KEY (id)"],
+ ["packages_sender_company_id_actor_id_request_id_key","u",true,false,false,true,"UNIQUE (sender_company_id, actor_id, request_id)"],
+ ["packages_site_projection_check","c",true,false,false,false,"CHECK ((jsonb_typeof(site_projection) = ''object''::text))"],
+ ["packages_source_job_id_fkey","f",true,false,false,true,"FOREIGN KEY (source_job_id) REFERENCES site_order_artifact_private.render_jobs(id)"]]'::jsonb
+   or (select count(*) from pg_index i where i.indrelid='site_order_package_private.packages'::regclass)<>3
+   or exists(select 1 from pg_index i where i.indrelid='site_order_package_private.packages'::regclass and (not i.indisvalid or not i.indisready or not i.indisunique))
+   or exists(select 1 from pg_rewrite r where r.ev_class='site_order_package_private.packages'::regclass) then
+  raise exception 'package constraints/index/rules changed';
+ end if;
+ -- The separately reviewed legacy response guard must already be installed.
+ if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('private.respond_site_share(uuid,boolean)')
+   and md5(p.prosrc)='c61612a94b05a42facfdf6b5a4c396f7'
+   and p.proowner='postgres'::regrole and p.prosecdef and p.proconfig=array['search_path=""']::text[])
+   or not exists(select 1 from pg_proc p where p.oid=to_regprocedure('public.respond_site_share(uuid,boolean)')
+   and md5(p.prosrc)='40d48b399537a5d95cead6dcc61dc264'
+   and p.proowner='postgres'::regrole and not p.prosecdef and p.proconfig=array['search_path=""']::text[]) then
+  raise exception 'guarded legacy response dependency changed';
+ end if;
 
  signature := 'private.company_document_exchange(text,jsonb)';
  if to_regprocedure(signature) is null or md5(pg_get_functiondef(to_regprocedure(signature))) <> '1cdade431386654aaf123955b5fc49b2' then
@@ -25,6 +91,16 @@ begin
    and (p.proowner<>'postgres'::regrole or not p.prosecdef or p.proconfig is distinct from array['search_path=""']::text[]
      or p.proacl::text is distinct from '{postgres=X/postgres,authenticated=X/postgres}')) then
   raise exception 'compatibility dependency owner/config/ACL drift: %', signature;
+ end if;
+ if (select (to_jsonb(p)-array['oid','pronamespace','proowner','prolang','prorettype','proargtypes','proallargtypes','provariadic','prosupport','prosrc','proacl']::text[])
+ || jsonb_build_object('namespace',n.nspname,'owner',pg_get_userbyid(p.proowner),'language',l.lanname,
+ 'result_type',format_type(p.prorettype,null),'argument_types',(select jsonb_agg(format_type(t,null) order by i) from unnest(p.proargtypes::oid[]) with ordinality a(t,i)),
+ 'all_argument_types',(select jsonb_agg(format_type(t,null) order by i) from unnest(p.proallargtypes) with ordinality a(t,i)),
+ 'variadic_type',case when p.provariadic=0 then null else format_type(p.provariadic,null) end,
+ 'support',p.prosupport::regproc::text,'acl',(select jsonb_agg(jsonb_build_array(case when a.grantee=0 then 'PUBLIC' else pg_get_userbyid(a.grantee) end,pg_get_userbyid(a.grantor),a.privilege_type,a.is_grantable) order by a.grantee,a.privilege_type) from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a))
+ from pg_proc p join pg_namespace n on n.oid=p.pronamespace join pg_language l on l.oid=p.prolang where p.oid=to_regprocedure(signature))
+   is distinct from $initial_attributes${"acl": [["postgres", "postgres", "EXECUTE", false], ["authenticated", "postgres", "EXECUTE", false]], "owner": "postgres", "probin": null, "procost": 100, "prokind": "f", "proname": "company_document_exchange", "prorows": 0, "support": "-", "language": "plpgsql", "pronargs": 2, "namespace": "private", "proconfig": ["search_path=\"\""], "proretset": false, "prosecdef": true, "prosqlbody": null, "proargmodes": null, "proargnames": ["p_action", "p_data"], "proisstrict": false, "proparallel": "u", "protrftypes": null, "provolatile": "v", "result_type": "jsonb", "proleakproof": false, "variadic_type": null, "argument_types": ["text", "jsonb"], "proargdefaults": "({CONST :consttype 3802 :consttypmod -1 :constcollid 0 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 8 [ 32 0 0 0 0 0 0 32 ]})", "pronargdefaults": 1, "all_argument_types": null}$initial_attributes$::jsonb then
+  raise exception 'compatibility full initial function attributes drift: %', signature;
  end if;
  select to_jsonb(p)-'prosrc' into before_attributes from pg_proc p where p.oid=to_regprocedure(signature);
  execute $replacement$CREATE OR REPLACE FUNCTION private.company_document_exchange(p_action text, p_data jsonb DEFAULT '{}'::jsonb)
@@ -361,6 +437,16 @@ $replacement$;
      or p.proacl::text is distinct from null)) then
   raise exception 'compatibility dependency owner/config/ACL drift: %', signature;
  end if;
+ if (select (to_jsonb(p)-array['oid','pronamespace','proowner','prolang','prorettype','proargtypes','proallargtypes','provariadic','prosupport','prosrc','proacl']::text[])
+ || jsonb_build_object('namespace',n.nspname,'owner',pg_get_userbyid(p.proowner),'language',l.lanname,
+ 'result_type',format_type(p.prorettype,null),'argument_types',(select jsonb_agg(format_type(t,null) order by i) from unnest(p.proargtypes::oid[]) with ordinality a(t,i)),
+ 'all_argument_types',(select jsonb_agg(format_type(t,null) order by i) from unnest(p.proallargtypes) with ordinality a(t,i)),
+ 'variadic_type',case when p.provariadic=0 then null else format_type(p.provariadic,null) end,
+ 'support',p.prosupport::regproc::text,'acl',(select jsonb_agg(jsonb_build_array(case when a.grantee=0 then 'PUBLIC' else pg_get_userbyid(a.grantee) end,pg_get_userbyid(a.grantor),a.privilege_type,a.is_grantable) order by a.grantee,a.privilege_type) from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a))
+ from pg_proc p join pg_namespace n on n.oid=p.pronamespace join pg_language l on l.oid=p.prolang where p.oid=to_regprocedure(signature))
+   is distinct from $initial_attributes${"acl": [["PUBLIC", "postgres", "EXECUTE", false], ["postgres", "postgres", "EXECUTE", false]], "owner": "postgres", "probin": null, "procost": 100, "prokind": "f", "proname": "save_company_delivery_items", "prorows": 0, "support": "-", "language": "plpgsql", "pronargs": 1, "namespace": "private", "proconfig": ["search_path=\"\""], "proretset": false, "prosecdef": true, "prosqlbody": null, "proargmodes": null, "proargnames": ["p_item_keys"], "proisstrict": false, "proparallel": "u", "protrftypes": null, "provolatile": "v", "result_type": "void", "proleakproof": false, "variadic_type": null, "argument_types": ["text[]"], "proargdefaults": null, "pronargdefaults": 0, "all_argument_types": null}$initial_attributes$::jsonb then
+  raise exception 'compatibility full initial function attributes drift: %', signature;
+ end if;
  select to_jsonb(p)-'prosrc' into before_attributes from pg_proc p where p.oid=to_regprocedure(signature);
  execute $replacement$CREATE OR REPLACE FUNCTION private.save_company_delivery_items(p_item_keys text[])
  RETURNS void
@@ -457,6 +543,16 @@ $replacement$;
    and (p.proowner<>'postgres'::regrole or not p.prosecdef or p.proconfig is distinct from array['search_path=""']::text[]
      or p.proacl::text is distinct from null)) then
   raise exception 'compatibility dependency owner/config/ACL drift: %', signature;
+ end if;
+ if (select (to_jsonb(p)-array['oid','pronamespace','proowner','prolang','prorettype','proargtypes','proallargtypes','provariadic','prosupport','prosrc','proacl']::text[])
+ || jsonb_build_object('namespace',n.nspname,'owner',pg_get_userbyid(p.proowner),'language',l.lanname,
+ 'result_type',format_type(p.prorettype,null),'argument_types',(select jsonb_agg(format_type(t,null) order by i) from unnest(p.proargtypes::oid[]) with ordinality a(t,i)),
+ 'all_argument_types',(select jsonb_agg(format_type(t,null) order by i) from unnest(p.proallargtypes) with ordinality a(t,i)),
+ 'variadic_type',case when p.provariadic=0 then null else format_type(p.provariadic,null) end,
+ 'support',p.prosupport::regproc::text,'acl',(select jsonb_agg(jsonb_build_array(case when a.grantee=0 then 'PUBLIC' else pg_get_userbyid(a.grantee) end,pg_get_userbyid(a.grantor),a.privilege_type,a.is_grantable) order by a.grantee,a.privilege_type) from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a))
+ from pg_proc p join pg_namespace n on n.oid=p.pronamespace join pg_language l on l.oid=p.prolang where p.oid=to_regprocedure(signature))
+   is distinct from $initial_attributes${"acl": [["PUBLIC", "postgres", "EXECUTE", false], ["postgres", "postgres", "EXECUTE", false]], "owner": "postgres", "probin": null, "procost": 100, "prokind": "f", "proname": "send_site_share", "prorows": 0, "support": "-", "language": "plpgsql", "pronargs": 2, "namespace": "private", "proconfig": ["search_path=\"\""], "proretset": false, "prosecdef": true, "prosqlbody": null, "proargmodes": null, "proargnames": ["p_site_id", "p_target_company_ids"], "proisstrict": false, "proparallel": "u", "protrftypes": null, "provolatile": "v", "result_type": "integer", "proleakproof": false, "variadic_type": null, "argument_types": ["uuid", "uuid[]"], "proargdefaults": null, "pronargdefaults": 0, "all_argument_types": null}$initial_attributes$::jsonb then
+  raise exception 'compatibility full initial function attributes drift: %', signature;
  end if;
  select to_jsonb(p)-'prosrc' into before_attributes from pg_proc p where p.oid=to_regprocedure(signature);
  execute $replacement$CREATE OR REPLACE FUNCTION private.send_site_share(p_site_id uuid, p_target_company_ids uuid[])
@@ -588,6 +684,16 @@ $replacement$;
      or p.proacl::text is distinct from '{postgres=X/postgres,authenticated=X/postgres}')) then
   raise exception 'compatibility dependency owner/config/ACL drift: %', signature;
  end if;
+ if (select (to_jsonb(p)-array['oid','pronamespace','proowner','prolang','prorettype','proargtypes','proallargtypes','provariadic','prosupport','prosrc','proacl']::text[])
+ || jsonb_build_object('namespace',n.nspname,'owner',pg_get_userbyid(p.proowner),'language',l.lanname,
+ 'result_type',format_type(p.prorettype,null),'argument_types',(select jsonb_agg(format_type(t,null) order by i) from unnest(p.proargtypes::oid[]) with ordinality a(t,i)),
+ 'all_argument_types',(select jsonb_agg(format_type(t,null) order by i) from unnest(p.proallargtypes) with ordinality a(t,i)),
+ 'variadic_type',case when p.provariadic=0 then null else format_type(p.provariadic,null) end,
+ 'support',p.prosupport::regproc::text,'acl',(select jsonb_agg(jsonb_build_array(case when a.grantee=0 then 'PUBLIC' else pg_get_userbyid(a.grantee) end,pg_get_userbyid(a.grantor),a.privilege_type,a.is_grantable) order by a.grantee,a.privilege_type) from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a))
+ from pg_proc p join pg_namespace n on n.oid=p.pronamespace join pg_language l on l.oid=p.prolang where p.oid=to_regprocedure(signature))
+   is distinct from $initial_attributes${"acl": [["postgres", "postgres", "EXECUTE", false], ["authenticated", "postgres", "EXECUTE", false]], "owner": "postgres", "probin": null, "procost": 100, "prokind": "f", "proname": "site_payment_agreement_targets", "prorows": 0, "support": "-", "language": "plpgsql", "pronargs": 1, "namespace": "private", "proconfig": ["search_path=\"\""], "proretset": false, "prosecdef": true, "prosqlbody": null, "proargmodes": null, "proargnames": ["p_company"], "proisstrict": false, "proparallel": "u", "protrftypes": null, "provolatile": "s", "result_type": "jsonb", "proleakproof": false, "variadic_type": null, "argument_types": ["uuid"], "proargdefaults": null, "pronargdefaults": 0, "all_argument_types": null}$initial_attributes$::jsonb then
+  raise exception 'compatibility full initial function attributes drift: %', signature;
+ end if;
  select to_jsonb(p)-'prosrc' into before_attributes from pg_proc p where p.oid=to_regprocedure(signature);
  execute $replacement$CREATE OR REPLACE FUNCTION private.site_payment_agreement_targets(p_company uuid)
  RETURNS jsonb
@@ -631,6 +737,16 @@ $replacement$;
    and (p.proowner<>'postgres'::regrole or not p.prosecdef or p.proconfig is distinct from array['search_path=""']::text[]
      or p.proacl::text is distinct from '{postgres=X/postgres}')) then
   raise exception 'compatibility dependency owner/config/ACL drift: %', signature;
+ end if;
+ if (select (to_jsonb(p)-array['oid','pronamespace','proowner','prolang','prorettype','proargtypes','proallargtypes','provariadic','prosupport','prosrc','proacl']::text[])
+ || jsonb_build_object('namespace',n.nspname,'owner',pg_get_userbyid(p.proowner),'language',l.lanname,
+ 'result_type',format_type(p.prorettype,null),'argument_types',(select jsonb_agg(format_type(t,null) order by i) from unnest(p.proargtypes::oid[]) with ordinality a(t,i)),
+ 'all_argument_types',(select jsonb_agg(format_type(t,null) order by i) from unnest(p.proallargtypes) with ordinality a(t,i)),
+ 'variadic_type',case when p.provariadic=0 then null else format_type(p.provariadic,null) end,
+ 'support',p.prosupport::regproc::text,'acl',(select jsonb_agg(jsonb_build_array(case when a.grantee=0 then 'PUBLIC' else pg_get_userbyid(a.grantee) end,pg_get_userbyid(a.grantor),a.privilege_type,a.is_grantable) order by a.grantee,a.privilege_type) from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a))
+ from pg_proc p join pg_namespace n on n.oid=p.pronamespace join pg_language l on l.oid=p.prolang where p.oid=to_regprocedure(signature))
+   is distinct from $initial_attributes${"acl": [["postgres", "postgres", "EXECUTE", false]], "owner": "postgres", "probin": null, "procost": 100, "prokind": "f", "proname": "site_payment_pair", "prorows": 0, "support": "-", "language": "plpgsql", "pronargs": 2, "namespace": "private", "proconfig": ["search_path=\"\""], "proretset": false, "prosecdef": true, "prosqlbody": null, "proargmodes": null, "proargnames": ["p_item", "p_company"], "proisstrict": false, "proparallel": "u", "protrftypes": null, "provolatile": "v", "result_type": "jsonb", "proleakproof": false, "variadic_type": null, "argument_types": ["uuid", "uuid"], "proargdefaults": null, "pronargdefaults": 0, "all_argument_types": null}$initial_attributes$::jsonb then
+  raise exception 'compatibility full initial function attributes drift: %', signature;
  end if;
  select to_jsonb(p)-'prosrc' into before_attributes from pg_proc p where p.oid=to_regprocedure(signature);
  execute $replacement$CREATE OR REPLACE FUNCTION private.site_payment_pair(p_item uuid, p_company uuid)
@@ -686,6 +802,16 @@ $replacement$;
    and (p.proowner<>'postgres'::regrole or not p.prosecdef or p.proconfig is distinct from array['search_path=""']::text[]
      or p.proacl::text is distinct from null)) then
   raise exception 'compatibility dependency owner/config/ACL drift: %', signature;
+ end if;
+ if (select (to_jsonb(p)-array['oid','pronamespace','proowner','prolang','prorettype','proargtypes','proallargtypes','provariadic','prosupport','prosrc','proacl']::text[])
+ || jsonb_build_object('namespace',n.nspname,'owner',pg_get_userbyid(p.proowner),'language',l.lanname,
+ 'result_type',format_type(p.prorettype,null),'argument_types',(select jsonb_agg(format_type(t,null) order by i) from unnest(p.proargtypes::oid[]) with ordinality a(t,i)),
+ 'all_argument_types',(select jsonb_agg(format_type(t,null) order by i) from unnest(p.proallargtypes) with ordinality a(t,i)),
+ 'variadic_type',case when p.provariadic=0 then null else format_type(p.provariadic,null) end,
+ 'support',p.prosupport::regproc::text,'acl',(select jsonb_agg(jsonb_build_array(case when a.grantee=0 then 'PUBLIC' else pg_get_userbyid(a.grantee) end,pg_get_userbyid(a.grantor),a.privilege_type,a.is_grantable) order by a.grantee,a.privilege_type) from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a))
+ from pg_proc p join pg_namespace n on n.oid=p.pronamespace join pg_language l on l.oid=p.prolang where p.oid=to_regprocedure(signature))
+   is distinct from $initial_attributes${"acl": [["PUBLIC", "postgres", "EXECUTE", false], ["postgres", "postgres", "EXECUTE", false]], "owner": "postgres", "probin": null, "procost": 100, "prokind": "f", "proname": "site_share_inbox", "prorows": 0, "support": "-", "language": "plpgsql", "pronargs": 0, "namespace": "private", "proconfig": ["search_path=\"\""], "proretset": false, "prosecdef": true, "prosqlbody": null, "proargmodes": null, "proargnames": null, "proisstrict": false, "proparallel": "u", "protrftypes": null, "provolatile": "s", "result_type": "jsonb", "proleakproof": false, "variadic_type": null, "argument_types": null, "proargdefaults": null, "pronargdefaults": 0, "all_argument_types": null}$initial_attributes$::jsonb then
+  raise exception 'compatibility full initial function attributes drift: %', signature;
  end if;
  select to_jsonb(p)-'prosrc' into before_attributes from pg_proc p where p.oid=to_regprocedure(signature);
  execute $replacement$CREATE OR REPLACE FUNCTION private.site_share_inbox()
