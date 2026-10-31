@@ -135,6 +135,8 @@ void main() {
         await tester.pumpWidget(MaterialApp(home:PeopleCloudPage(
           companyId:otherCompany,repositoryOverride:repository)));
       } else {
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
         tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
       }
       pending.complete([oldRow]);
@@ -143,6 +145,8 @@ void main() {
       expect(wire.calls.where((r)=>r.method!='GET'),isEmpty);
       await close(tester);
       if(boundary=='paused') {
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
         tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       }
     });
