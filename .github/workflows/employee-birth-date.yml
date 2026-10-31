@@ -9,6 +9,7 @@ on:
       - 'lib/features/people/employee_personnel_edit_page.dart'
       - 'lib/features/people/worker_personnel_change_approvals_page.dart'
       - 'test/employee_birth_date_test.dart'
+      - 'test/birthday_v2_loader_test.dart'
       - 'tool/employee_personnel_birth_date_check.mjs'
       - 'tool/staged/employee_personnel_birth_date*'
       - 'docs/review/employee-birthdate-20261029/**'
@@ -27,8 +28,8 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
-      - run: dart analyze lib/features/people/people_page.dart lib/features/people/people_cloud_page.dart lib/features/people/people_cloud_repository.dart lib/features/people/employee_personnel_detail_page.dart lib/features/people/employee_personnel_edit_page.dart lib/features/people/worker_personnel_change_approvals_page.dart test/employee_birth_date_test.dart
-      - run: flutter test test/employee_birth_date_test.dart test/employee_retirement_test.dart test/personnel_privacy_session_test.dart test/employee_personnel_detail_restore_contract_test.dart
+      - run: dart analyze lib/features/people/people_page.dart lib/features/people/people_cloud_page.dart lib/features/people/people_cloud_repository.dart lib/features/people/employee_personnel_detail_page.dart lib/features/people/employee_personnel_edit_page.dart lib/features/people/worker_personnel_change_approvals_page.dart test/employee_birth_date_test.dart test/birthday_v2_loader_test.dart
+      - run: flutter test test/employee_birth_date_test.dart test/birthday_v2_loader_test.dart test/employee_retirement_test.dart test/personnel_privacy_session_test.dart test/employee_personnel_detail_restore_contract_test.dart --reporter expanded
   birthday-pg17:
     runs-on: ubuntu-latest
     timeout-minutes: 5

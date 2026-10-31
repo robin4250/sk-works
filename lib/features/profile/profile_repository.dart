@@ -1,9 +1,11 @@
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show ChangeNotifier;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
 import '../auth/app_auth_mutation_gateway.dart';
+import '../shared/trade_document_form_session.dart';
 
 class ProfileData {
   const ProfileData({
@@ -27,6 +29,46 @@ class ProfileData {
   final String personalSkoId;
   final String? avatarPath;
   final String? avatarUrl;
+}
+
+/// Read evidence, never an alternative birthday store or Auth owner.
+class ProfileBirthdayEvidence extends ChangeNotifier {
+  ProfileBirthdayEvidence._({
+    required SupabaseClient client,
+    required TradeDocumentFormSession lease,
+    required Session session,
+    required this.workerId,
+    required this.companyId,
+    required this.supported,
+    required this.birthDate,
+    required this.initialPayload,
+    required this.personnelDigest,
+  }) : _client = client, _lease = lease, _session = session {
+    _lease.addListener(_changed);
+  }
+
+  final SupabaseClient _client;
+  final TradeDocumentFormSession _lease;
+  final Session _session;
+  final String workerId;
+  final String companyId;
+  final bool supported;
+  final String? birthDate;
+  final Map<String, dynamic> initialPayload;
+  final String? personnelDigest;
+  bool _disposed = false;
+
+  bool get canEdit => !_disposed && supported && _lease.isCurrent;
+  void _changed() => notifyListeners();
+
+  @override
+  void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    _lease.removeListener(_changed);
+    _lease.dispose();
+    super.dispose();
+  }
 }
 
 class ProfileRepository {
@@ -117,10 +159,136 @@ class ProfileRepository {
     return Map<String, dynamic>.from(raw);
   }
 
+  static DateTime birthdayToday() {
+    final now = DateTime.now().toUtc().add(const Duration(hours: 9));
+    return DateTime(now.year, now.month, now.day);
+  }
+
+  static String? _birthday(Object? value) {
+    if (value == null || value == '') return null;
+    if (value is! String || !RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(value)) {
+      throw StateError('生年月日を正しい日付で確認してください。');
+    }
+    final date = DateTime.tryParse(value);
+    if (date == null || date.toIso8601String().substring(0, 10) != value ||
+        date.isBefore(DateTime(1900)) || date.isAfter(birthdayToday())) {
+      throw StateError('生年月日を正しい日付で確認してください。');
+    }
+    return value;
+  }
+
+  Future<Map<String, dynamic>> _readBirthday({
+    required TradeDocumentFormSession lease,
+    required Session session,
+    required String workerId,
+    required String companyId,
+  }) async {
+    await lease.ready();
+    final members = await lease.readOwnMemberships();
+    // This profile has no explicit company chooser. Never adopt load()'s first
+    // membership as birthday authority when there is more than one company.
+    if (members is! List || members.length != 1 || members.single is! Map ||
+        (members.single as Map)['company_id'] != companyId) {
+      throw StateError('生年月日の対象会社を一意に確認できません。');
+    }
+    final workers = await _client.from('workers').select('id')
+        .eq('company_id', companyId).eq('user_id', session.user.id)
+        .eq('status', 'active').limit(2)
+        .setHeader('Authorization', 'Bearer ${session.accessToken}')
+        .timeout(const Duration(seconds: 30));
+    await lease.ready();
+    if (workers.length != 1 || workers.single['id'] != workerId) {
+      throw StateError('本人の社員情報を確認できません。');
+    }
+    final raw = await lease.rpc('current_worker_personnel_profile', const {});
+    if (raw is! Map || raw['worker_id'] != workerId) {
+      throw StateError('本人の生年月日を照合できません。');
+    }
+    final contract = raw['birth_date_contract_version'];
+    if (contract == null || contract == 1) return {'supported': false, 'birth_date': raw['birth_date']};
+    if (contract is! int || contract != 2 || !raw.containsKey('birth_date') || raw['personnel_cas_digest'] is! String ||
+        !RegExp(r'^[0-9a-f]{32}$').hasMatch(raw['personnel_cas_digest'] as String)) {
+      throw StateError('生年月日の保存形式を確認できません。');
+    }
+    return {'supported': true, 'birth_date': _birthday(raw['birth_date']),
+      'personnel_digest': raw['personnel_cas_digest'], 'initial_payload': Map<String, dynamic>.from(raw)};
+  }
+
+  Future<ProfileBirthdayEvidence> loadOwnBirthday({
+    required String workerId,
+    required String companyId,
+  }) async {
+    if (workerId.isEmpty || companyId.isEmpty) {
+      throw StateError('本人の社員情報を確認できません。');
+    }
+    final session = _client.auth.currentSession;
+    if (session == null) throw StateError('ログイン状態を確認してください。');
+    final lease = TradeDocumentFormSession(_client);
+    try {
+      final raw = await _readBirthday(lease: lease, session: session,
+        workerId: workerId, companyId: companyId);
+      lease.requireScope();
+      return ProfileBirthdayEvidence._(client: _client, lease: lease,
+        session: session, workerId: workerId, companyId: companyId,
+        supported: raw['supported'] == true, birthDate: _birthday(raw['birth_date']),
+        initialPayload: Map<String, dynamic>.unmodifiable(raw['initial_payload'] is Map ? Map<String, dynamic>.from(raw['initial_payload'] as Map) : const {}),
+        personnelDigest: raw['personnel_digest'] as String?);
+    } catch (_) {
+      lease.dispose();
+      rethrow;
+    }
+  }
+
   Future<Map<String, dynamic>> savePersonnelProfile({
     required String workerId,
     required Map<String, dynamic> payload,
+    ProfileBirthdayEvidence? birthdayEvidence,
+    bool birthdayOnly = false,
   }) async {
+    if (payload.containsKey('birth_date')) {
+      final evidence = birthdayEvidence;
+      if (evidence == null || !identical(evidence._client, _client) ||
+          evidence.workerId != workerId || !evidence.canEdit) {
+        throw StateError('生年月日を再読み込みしてから変更してください。');
+      }
+      final date = _birthday(payload['birth_date']);
+      try {
+        final current = await _readBirthday(lease: evidence._lease,
+          session: evidence._session, workerId: workerId,
+          companyId: evidence.companyId);
+        if (current['supported'] != true || current['birth_date'] != evidence.birthDate ||
+            (!birthdayOnly && current['personnel_digest'] != evidence.personnelDigest)) {
+          throw StateError('保存済みの生年月日が変わりました。再読み込みして確認してください。');
+        }
+        evidence._lease.requireScope();
+        final raw = await evidence._lease.rpc('save_worker_personnel_profile', {
+          'p_worker_id': workerId,
+          'p_payload': {
+            if (!birthdayOnly) ...payload, 'birth_date': date,
+            '_birth_date_mode': birthdayOnly ? 'only' : 'combined',
+            '_birth_date_cas': {'version': 2, 'worker_id': workerId,
+              'company_id': evidence.companyId, 'expected_birth_date': evidence.birthDate,
+              'expected_personnel_digest': evidence.personnelDigest},
+          },
+        });
+        if (raw is! Map || !const ['saved', 'unchanged', 'pending'].contains(raw['status']) ||
+            raw['requires_approval'] != (raw['status'] == 'pending') ||
+            raw['saved_directly'] != (raw['status'] == 'saved') ||
+            (raw['status'] == 'pending' &&
+                (raw['request_id'] is! String ||
+                 !RegExp(r'^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$').hasMatch(raw['request_id'] as String) ||
+                 raw['required_approvals'] is! int ||
+                 (raw['required_approvals'] as int) < 1 ||
+                 (raw['required_approvals'] as int) > 3))) {
+          throw StateError('生年月日の保存結果を確認できません。');
+        }
+        return Map<String, dynamic>.from(raw);
+      } finally {
+        // A dispatched failure may have committed. Require a new authoritative
+        // read, rather than repeating a writer with the old editing evidence.
+        evidence.dispose();
+      }
+    }
     final raw = await _client.rpc(
       'save_worker_personnel_profile',
       params: {
@@ -290,3 +458,4 @@ class ProfileRepository {
     return text.isEmpty ? null : text;
   }
 }
+

@@ -1,0 +1,44 @@
+name: Birthday CAS v2 source-only
+on:
+  pull_request:
+    paths:
+      - 'docs/review/personnel-birthday-cas-v2/**'
+      - 'tool/security/personnel_birthday_cas_v2/**'
+      - '.github/workflows/personnel-birthday-cas-v2.yml'
+permissions:
+  contents: read
+jobs:
+  birthday-cas-v2:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy:
+      matrix:
+        engine: [pglite, postgres]
+    services:
+      postgres:
+        image: postgres:17.6
+        env:
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_personnel_fixture
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '24.10.0'}
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts
+      - name: Normal non-root runner and Native service
+        env:
+          PG_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          test "$(id -u)" -ne 0
+          docker exec "$PG_CONTAINER" sh -c 'test "$(stat -c %u /proc/1)" -ne 0; test "$(id -u postgres)" -ne 0; test "$(stat -c %u /var/lib/postgresql/data/PG_VERSION)" -ne 0'
+      - name: New v2 cases only
+        run: |
+          if [ '${{ matrix.engine }}' = 'postgres' ]; then
+            export SKO_PERSONNEL_FIXTURE_URL=postgresql://postgres:fixture-only@127.0.0.1:5432/sko_personnel_fixture
+            node tool/security/personnel_birthday_cas_v2/verify.mjs tool/security/personnel_rls/pg_adapter.mjs
+          else
+            node tool/security/personnel_birthday_cas_v2/verify.mjs tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js
+          fi

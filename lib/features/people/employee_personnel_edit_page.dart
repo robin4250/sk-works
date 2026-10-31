@@ -1,5 +1,7 @@
 // ignore_for_file: prefer_interpolation_to_compose_strings
 
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 import 'people_cloud_repository.dart';
@@ -8,10 +10,11 @@ import 'people_page.dart';
 import 'personnel_family_member.dart';
 
 class EmployeePersonnelEditPage extends StatefulWidget {
-  const EmployeePersonnelEditPage({super.key, required this.record,this.privacySession});
+  const EmployeePersonnelEditPage({super.key, required this.record,this.privacySession,this.repository});
 
   final PersonRecord record;
   final PersonnelPrivacySession? privacySession;
+  final PeopleCloudRepository? repository;
 
   @override
   State<EmployeePersonnelEditPage> createState() =>
@@ -19,7 +22,7 @@ class EmployeePersonnelEditPage extends StatefulWidget {
 }
 
 class _EmployeePersonnelEditPageState extends State<EmployeePersonnelEditPage> {
-  final _repository = PeopleCloudRepository.maybeCreate();
+  late final PeopleCloudRepository? _repository;
 
   late final TextEditingController _name;
   late final TextEditingController _role;
@@ -28,6 +31,11 @@ class _EmployeePersonnelEditPageState extends State<EmployeePersonnelEditPage> {
   DateTime? _hireDate;
   DateTime? _birthDate;
   bool _birthDateDirty = false;
+  bool _birthdayIntentRetired = false;
+  late final String _initialBirthdayFields;
+  bool get _birthdaySupported => widget.record.birthDateContractVersion == 2 &&
+      RegExp(r'^[0-9a-f]{32}$').hasMatch(widget.record.personnelCasDigest);
+  bool get _canEditBirthday => !_birthdayIntentRetired && _birthdaySupported;
   late final TextEditingController _phone;
   late final TextEditingController _address;
   late final TextEditingController _emergencyName;
@@ -50,6 +58,7 @@ class _EmployeePersonnelEditPageState extends State<EmployeePersonnelEditPage> {
   @override
   void initState() {
     super.initState();
+    _repository = widget.repository ?? PeopleCloudRepository.maybeCreate();
     final record = widget.record;
     _name = TextEditingController(text: record.name);
     _role = TextEditingController(text: record.role);
@@ -69,6 +78,7 @@ class _EmployeePersonnelEditPageState extends State<EmployeePersonnelEditPage> {
         .map(EditableFamilyMember.fromValue)
         .toList();
     _bloodType = record.bloodType;
+    _initialBirthdayFields = jsonEncode(_saveRecord(includeBirthday: false));
     _loadSaveMode();
   }
 
@@ -126,9 +136,40 @@ class _EmployeePersonnelEditPageState extends State<EmployeePersonnelEditPage> {
     super.dispose();
   }
 
+  Map<String, dynamic> _saveRecord({bool includeBirthday = true}) {
+    final result = <String, dynamic>{
+        ...widget.record.toJson(),
+        'name': _name.text.trim(),
+        'bloodType': _bloodType,
+        'role': _role.text.trim(),
+        'employeeCategorySubmitted': _categoryReady && _categoryDirty,
+        'employeeCategoryId': _categoryId,
+        'employeeNumber': _employeeNumber.text.trim(),
+        'department': _department.text.trim(),
+        'birthDateSubmitted': _birthDateDirty,
+        'birthDateExpected': widget.record.birthDate.isEmpty ? null : widget.record.birthDate,
+        'birthDate': _birthDate?.toIso8601String().substring(0, 10) ?? '',
+        'hireDate': _hireDate == null
+            ? ''
+            : _hireDate!.toIso8601String().substring(0, 10),
+        'phone': _phone.text.trim(),
+        'address': _address.text.trim(),
+        'emergencyName': _emergencyName.text.trim(),
+        'emergencyRelation': _emergencyRelation.text.trim(),
+        'emergencyPhone': _emergencyPhone.text.trim(),
+        'emergencyAddress': _emergencyAddress.text.trim(),
+        'familyComposition': _familyComposition.text.trim(),
+        'familyMembers': [
+          for (final member in _familyMembers) member.toValue().toJson(),
+        ],
+      };
+    if (!includeBirthday) { result.remove('birthDate'); result.remove('birthDateSubmitted'); }
+    return result;
+  }
+
   Future<void> _save() async {
     final repository = _repository;
-    if (repository == null || _saving) return;
+    if (repository == null || _saving || (_birthDateDirty && _birthdayIntentRetired)) return;
     if (_name.text.trim().isEmpty) {
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('名前を入力してください')));
@@ -170,7 +211,10 @@ class _EmployeePersonnelEditPageState extends State<EmployeePersonnelEditPage> {
     );
     if (confirmed != true || !mounted) return;
 
-    setState(() => _saving = true);
+    setState(() {
+      _saving = true;
+      if (_birthDateDirty) _birthdayIntentRetired = true;
+    });
     try {
       final session=widget.privacySession;
       if(session!=null){
@@ -179,30 +223,8 @@ class _EmployeePersonnelEditPageState extends State<EmployeePersonnelEditPage> {
         if(!mounted)return;
         session.verify(session.epoch);
       }
-      final result = await repository.savePersonnelProfile({
-        ...widget.record.toJson(),
-        'name': _name.text.trim(),
-        'bloodType': _bloodType,
-        'role': _role.text.trim(),
-        'employeeCategorySubmitted': _categoryReady && _categoryDirty,
-        'employeeCategoryId': _categoryId,
-        'employeeNumber': _employeeNumber.text.trim(),
-        'department': _department.text.trim(),
-        'birthDateSubmitted': _birthDateDirty,
-        'birthDate': _birthDate?.toIso8601String().substring(0, 10) ?? '',
-        'hireDate': _hireDate == null
-            ? ''
-            : _hireDate!.toIso8601String().substring(0, 10),
-        'phone': _phone.text.trim(),
-        'address': _address.text.trim(),
-        'emergencyName': _emergencyName.text.trim(),
-        'emergencyRelation': _emergencyRelation.text.trim(),
-        'emergencyPhone': _emergencyPhone.text.trim(),
-        'emergencyAddress': _emergencyAddress.text.trim(),
-        'familyComposition': _familyComposition.text.trim(),
-        'familyMembers': [
-          for (final member in _familyMembers) member.toValue().toJson(),
-        ],
+      final result = await repository.savePersonnelProfile({..._saveRecord(),
+        'birthDateOnly': jsonEncode(_saveRecord(includeBirthday: false)) == _initialBirthdayFields,
       }, expectedCompany: widget.privacySession?.company ?? _categoryCompany);
       if (!mounted) return;
       final pending = result['requires_approval'] == true;
@@ -297,15 +319,17 @@ class _EmployeePersonnelEditPageState extends State<EmployeePersonnelEditPage> {
           ListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text('生年月日'),
-            subtitle: Text(widget.record.birthDateContractVersion != 1
+            subtitle: Text(_birthdayIntentRetired && _birthDateDirty && !_saving
+                ? '入力内容を保持しています。一覧を更新して保存結果を確認してください。'
+                : !_birthdaySupported
                 ? '生年月日の登録は準備中です'
                 : _birthDate?.toIso8601String().substring(0, 10).replaceAll('-', '/') ?? '未登録'),
             trailing: _birthDate == null ? null : IconButton(
               tooltip: '生年月日を未登録に戻す',
-              onPressed: _saving || widget.record.birthDateContractVersion != 1 ? null
+              onPressed: _saving || !_canEditBirthday ? null
                   : () => setState(() { _birthDate = null; _birthDateDirty = true; }),
               icon: const Icon(Icons.clear)),
-            onTap: _saving || widget.record.birthDateContractVersion != 1 ? null : () async {
+            onTap: _saving || !_canEditBirthday ? null : () async {
               final now = DateTime.now();
               final selected = await showDatePicker(context: context,
                 initialDate: _birthDate ?? DateTime(now.year - 30),
@@ -407,7 +431,7 @@ class _EmployeePersonnelEditPageState extends State<EmployeePersonnelEditPage> {
           ),
           const SizedBox(height: 18),
           FilledButton.icon(
-            onPressed: _saving || _loadingSaveMode ? null : _save,
+            onPressed: _saving || _loadingSaveMode || (_birthDateDirty && _birthdayIntentRetired) ? null : _save,
             icon: Icon(
               _directAdminSave ? Icons.save_outlined : Icons.approval_outlined,
             ),
@@ -524,4 +548,5 @@ class _EmployeePersonnelEditPageState extends State<EmployeePersonnelEditPage> {
     ),
   );
 }
+
 

@@ -1,0 +1,25 @@
+name: Profile own birthday
+on:
+  pull_request:
+    paths:
+      - 'lib/features/profile/profile_page.dart'
+      - 'lib/features/profile/profile_repository.dart'
+      - 'lib/features/shared/trade_document_form_session.dart'
+      - 'test/profile_birthday_test.dart'
+      - '.github/workflows/profile-birthday.yml'
+permissions:
+  contents: read
+jobs:
+  profile-birthday:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: dart analyze lib/features/profile/profile_page.dart lib/features/profile/profile_repository.dart test/profile_birthday_test.dart
+      - run: flutter test test/profile_birthday_test.dart --reporter expanded

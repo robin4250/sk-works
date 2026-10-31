@@ -31,6 +31,7 @@ class PersonRecord {
     this.hireDate = '',
     this.birthDate = '',
     this.birthDateContractVersion = 0,
+    this.personnelCasDigest = '',
     this.notes = '',
     this.active = true,
     this.createdAt = '',
@@ -59,6 +60,7 @@ class PersonRecord {
   final String hireDate;
   final String birthDate;
   final int birthDateContractVersion;
+  final String personnelCasDigest;
   final String notes;
   final bool active;
   final String createdAt;
@@ -87,6 +89,7 @@ class PersonRecord {
     'hireDate': hireDate,
     'birthDate': birthDate,
     'birthDateContractVersion': birthDateContractVersion,
+    'personnelCasDigest': personnelCasDigest,
     'notes': notes,
     'active': active,
     'createdAt': createdAt,
@@ -120,7 +123,8 @@ class PersonRecord {
       department: json['department']?.toString() ?? '',
       hireDate: (json['hireDate'] ?? json['hire_date'])?.toString() ?? '',
       birthDate: (json['birthDate'] ?? json['birth_date'])?.toString() ?? '',
-      birthDateContractVersion: (json['birthDateContractVersion'] ?? json['birth_date_contract_version']) == 1 ? 1 : 0,
+      birthDateContractVersion: (json['birthDateContractVersion'] ?? json['birth_date_contract_version']) == 2 ? 2 : 0,
+      personnelCasDigest: json['personnelCasDigest']?.toString() ?? '',
       notes: json['notes']?.toString() ?? '',
       active: json['active'] is bool ? json['active'] as bool : true,
       createdAt: json['createdAt']?.toString() ?? '',
@@ -558,4 +562,5 @@ class _PersonFormPageState extends State<PersonFormPage> {
     );
   }
 }
+
 
