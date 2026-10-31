@@ -1990,6 +1990,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     };
     const admin = <String>{
       'admin_sites',
+      'trade_documents',
       'company_modules',
       'company_documents',
       'site_map',
