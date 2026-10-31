@@ -58,3 +58,10 @@ Catalog normalization preserves ACL role/grantor identities and grant options, c
 The full harness executes the generated SQL equality guards as well as JavaScript comparisons: exact catalogs are accepted, changed function cost is denied with SQLSTATE 55000 and rolled back. This verifies guard execution in a disposable database, not production approval or app connectivity.
 
 References: [PostgreSQL 17 pg_trigger](https://www.postgresql.org/docs/17/catalog-pg-trigger.html), [pg_constraint](https://www.postgresql.org/docs/17/catalog-pg-constraint.html).
+
+
+## Fixed reply-recovery composition
+
+The CI harness additionally checks out PR1657 source at immutable commit `de4d4bb018e8c8ca56b0c85bde09fadebca312a4`. Its `reply-recovery.sql.review-only` is read unchanged, accepted only at SHA256 `991281df5f789e1e6a3d469dd854609a065d2a6d56db33b85a08d3cf57fd9979`, and appended inside the same outer transaction after the twelve existing site modules. No B-owned source file is copied or edited in this PR. Set `SKO_SITE_REPLY_RECOVERY_SOURCE_ROOT` to that fixed checkout to exercise thirteen site modules; omission retains the twelve-module baseline. The blocked-review builder accepts the same optional fifth positional source root and adds its exact hash to the required rehearsal receipt.
+
+Local thirteen-module results: public PGlite **82 checks**, private actual-eight-body PGlite **94 checks**, Python **8 tests**, Node offline/scanner **10 tests**. The private thirteen-module log and catalog receipt are separate files, preserving the earlier twelve-module evidence. The run proves DDL/ACL/catalog/atomic guard composition and calls the existing eight helper paths; it does not re-prove all recovery business paths, concurrency barriers or a real-session reply delivery. PR1657's own exact-head behavior/race evidence remains a separate layer. New exact-head Native CI is required for this extension.

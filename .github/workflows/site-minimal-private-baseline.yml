@@ -29,6 +29,11 @@ jobs:
           ref: 6a24114471a9c264fad1aeec5dd2222915ddbedf
           path: .c-source
           persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: de4d4bb018e8c8ca56b0c85bde09fadebca312a4
+          path: .reply-source
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with: {node-version: '22.21.0'}
       - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts
@@ -38,6 +43,7 @@ jobs:
         env:
           SKO_CONSENT_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_document_consent_fixture
         run: |
+          export SKO_SITE_REPLY_RECOVERY_SOURCE_ROOT="$GITHUB_WORKSPACE/.reply-source"
           export SKO_TRADE_C_SOURCE_ROOT="$GITHUB_WORKSPACE/.c-source"
           if [ '${{ matrix.engine }}' = 'postgres' ]; then
             node docs/review/site-order-private-baseline/verify_composition.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js" postgres --full

@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {catalogSql,equalityGuard,assertReceipts,newSchemas} from './prepare_atomic_review.mjs';
+import {catalogSql,equalityGuard,assertReceipts,newSchemas,loadReplyRecovery} from './prepare_atomic_review.mjs';
 import {createHash} from 'node:crypto';
 const hash=s=>createHash('sha256').update(s).digest('hex');
 const pinned={existing_function_contracts:Array.from({length:8},(_,i)=>({signature:'f'+i+'()',source_md5:'hash'+i})),existing_relation_names:Array.from({length:9},(_,i)=>'t'+i)};
@@ -23,4 +23,9 @@ test('guard emits exact JSON, escapes literals and chooses a collision-free doll
  const sql=equalityGuard('select 1 v',{x:"' $sko_catalog_guard$"},"guard'label");
  assert.match(sql,/is distinct from/);assert.match(sql,/errcode='55000'/);assert.match(sql,/guard''label/);
  const tags=sql.match(/\$sko_guard_[a-f0-9]+\$/g);assert.equal(tags.length,2);assert.equal(tags[0],tags[1]);
+});
+
+test('optional reply recovery cannot read an arbitrary relative root',async()=>{
+ assert.equal(await loadReplyRecovery(),null);
+ await assert.rejects(()=>loadReplyRecovery('relative'),/absolute_root_required/);
 });

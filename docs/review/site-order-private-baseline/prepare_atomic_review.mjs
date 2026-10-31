@@ -7,6 +7,14 @@ const sha=s=>createHash('sha256').update(s).digest('hex');
 const literal=s=>"'"+s.replaceAll("'","''")+"'";
 export const siteSources=['docs/review/site-order-artifact-registration/private-register.sql.review-only','docs/review/site-order-manager-purpose/adapter.sql.review-only',...['foundation','legacy-response-guard','approval','approval-consent','archive-read','delivery','read-surfaces','archive-payload','approval-operation','refusal'].map(n=>'docs/review/site-order-package-flow/'+n+'.sql.review-only')];
 export const newSchemas=['trade_document_consent_private','trade_document_confirmation_api_private','site_order_artifact_private','site_order_manager_private','site_order_package_private'];
+export const replyRecoveryContract={head:'de4d4bb018e8c8ca56b0c85bde09fadebca312a4',path:'docs/review/site-order-package-flow/reply-recovery.sql.review-only',sha256:'991281df5f789e1e6a3d469dd854609a065d2a6d56db33b85a08d3cf57fd9979'};
+export async function loadReplyRecovery(root){
+ if(!root)return null;
+ if(!path.isAbsolute(root))throw Error('reply_source_absolute_root_required');
+ const sql=await fs.readFile(path.join(root,replyRecoveryContract.path),'utf8');
+ if(sha(sql)!==replyRecoveryContract.sha256)throw Error('reply_recovery_source_drift');
+ transactionBody(sql);return {sql,...replyRecoveryContract};
+}
 export function catalogSql(source,schemas){
  if(!source.includes('$1::text[]'))throw Error('catalog_schema_parameter_missing');
  return source.trim().replace(/;$/,'').replaceAll('$1::text[]','array['+schemas.map(literal).join(',')+']::text[]');
@@ -33,7 +41,7 @@ export function equalityGuard(query,expected,label){
  do{tag='$sko_guard_'+sha(query+payload+label+index++).slice(0,24)+'$';}while((query+payload+label).includes(tag));
  return `do ${tag} declare actual jsonb; begin select v into actual from (${query}) captured; if actual is distinct from ${literal(payload)}::jsonb then raise exception using errcode='55000',message=${literal(label)};end if;end ${tag};`;
 }
-export async function prepare(root,{before,after}={}){
+export async function prepare(root,{before,after,replyRecoveryRoot}={}){
  const read=p=>fs.readFile(path.join(root,p),'utf8');
  const manifest=JSON.parse(await read('docs/review/site-order-private-baseline/manifest.json'));
  const core='docs/candidates/trade_document_bound_seal_consent_20261021.sql.review-only',api='docs/candidates/trade_document_confirmation_api_20261022.sql.review-only';
@@ -43,6 +51,8 @@ export async function prepare(root,{before,after}={}){
  const hashes=Object.fromEntries([core,...siteSources].map((n,i)=>[n,sha(sources[i])]));
  const pinned=JSON.parse(await read('docs/review/site-order-private-baseline/full-source-contract.json'));
  if(JSON.stringify(hashes)!==JSON.stringify(pinned))throw Error('site_source_drift');
+ const recovery=await loadReplyRecovery(replyRecoveryRoot);
+ if(recovery){hashes['external/'+recovery.head+'/'+recovery.path]=recovery.sha256;sources.push(recovery.sql);}
  assertReceipts(before,after,hashes,manifest);
  const catalog=await read('docs/review/site-order-private-baseline/catalog_normalized.sql');
  // The existing capture SQL is caller-supplied only by this pinned package.
@@ -54,8 +64,8 @@ export async function prepare(root,{before,after}={}){
  return {sql,manifest:{blocked_review_only:true,production_approved:false,source_sha256:hashes,before_sha256:sha(JSON.stringify(before.snapshot)),existing_after_sha256:sha(JSON.stringify(after.existing_after)),new_after_sha256:sha(JSON.stringify(after.new_after)),sql_sha256:sha(sql)}};
 }
 if(process.argv[1]===new URL(import.meta.url).pathname){
- const [root,beforePath,afterPath,output]=process.argv.slice(2);
+ const [root,beforePath,afterPath,output,replyRecoveryRoot]=process.argv.slice(2);
  if(![root,beforePath,afterPath,output].every(Boolean))throw Error('usage: root before.json after.json new-output-directory');
- const result=await prepare(path.resolve(root),{before:JSON.parse(await fs.readFile(beforePath,'utf8')),after:JSON.parse(await fs.readFile(afterPath,'utf8'))});
+ const result=await prepare(path.resolve(root),{before:JSON.parse(await fs.readFile(beforePath,'utf8')),after:JSON.parse(await fs.readFile(afterPath,'utf8')),replyRecoveryRoot});
  await fs.mkdir(output,{recursive:false});await fs.writeFile(path.join(output,'atomic-forward.sql.review-only'),result.sql);await fs.writeFile(path.join(output,'manifest.json'),JSON.stringify(result.manifest,null,2)+'\n');
 }

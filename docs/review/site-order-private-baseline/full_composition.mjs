@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {transactionBody} from './sql_transaction.mjs';
-import {catalogSql as inlineCatalogSql,equalityGuard} from './prepare_atomic_review.mjs';
+import {catalogSql as inlineCatalogSql,equalityGuard,loadReplyRecovery} from './prepare_atomic_review.mjs';
 const modules=['foundation','legacy-response-guard','approval','approval-consent','archive-read','delivery','read-surfaces','archive-payload','approval-operation','refusal'];
 const coreSchemas=['trade_document_consent_private','trade_document_confirmation_api_private'];
 const allSchemas=[...coreSchemas,'site_order_artifact_private','site_order_manager_private','site_order_package_private'];
@@ -78,6 +78,8 @@ export async function composeFull(db,{read,q,check,manifest}){
  const actor=api.match(/create function trade_document_confirmation_api_private\.actor\(\)[\s\S]*?end \$\$;/)[0];
  check(Object.fromEntries(paths.map((name,i)=>[name,createHash('sha256').update(texts[i]).digest('hex')])),JSON.parse(await read('docs/review/site-order-private-baseline/full-source-contract.json')));
  check(createHash('sha256').update(actor).digest('hex'),manifest.actor_statement_sha256);
+ const recovery=await loadReplyRecovery(process.env.SKO_SITE_REPLY_RECOVERY_SOURCE_ROOT);
+ if(recovery){texts.push(recovery.sql);paths.push('external/'+recovery.head+'/'+recovery.path);check(recovery.sha256,'991281df5f789e1e6a3d469dd854609a065d2a6d56db33b85a08d3cf57fd9979');}
  const bodies=texts.map(transactionBody);
  async function install(){
   await db.exec('begin');
@@ -122,11 +124,12 @@ export async function composeFull(db,{read,q,check,manifest}){
  const oldGuard=equalityGuard(inlineCatalogSql(existingCatalogSql,['auth','private','public']),existingAfter,'site_existing_catalog_changed');
  await db.exec('begin');
  try{
+  await db.exec("set local log_min_error_statement='fatal'");
   await db.exec(sqlGuard);await db.exec(oldGuard);check(true,true);
   await db.exec('alter function site_order_package_private.read_actor() cost 987654');
   let denied=false;try{await db.exec(sqlGuard);}catch(e){denied=e.code==='55000';}check(denied,true);
  }finally{await db.exec('rollback');}
  check(await newCatalog(),result);
- return {modules_installed:12,core_namespaces:2,native_contract_capture:{before:existingBefore,after:existingAfter},catalog:result,protected_catalog:before,allowed_new_fk_reference_triggers:allowedReferenceTriggers,faults:faults.length,atomic_rollback:true,source_paths:paths};
+ return {modules_installed:12+(recovery?1:0),reply_recovery_source:recovery?{head:recovery.head,sha256:recovery.sha256}:null,core_namespaces:2,native_contract_capture:{before:existingBefore,after:existingAfter},catalog:result,protected_catalog:before,allowed_new_fk_reference_triggers:allowedReferenceTriggers,faults:faults.length,atomic_rollback:true,source_paths:paths};
 }
 function nNotIndex(name,catalog){return ['r','S'].includes(catalog.relations[name].relkind);}
