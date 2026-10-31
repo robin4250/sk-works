@@ -100,9 +100,24 @@ class _Api extends SiteOrderWorkflowApi {
 }
 
 Future<void> _inputDone(WidgetTester tester) async {
-  await tester.ensureVisible(find.text('入力を確定'));
+  await tester.pumpAndSettle();
+  await tester.scrollUntilVisible(
+    find.text('入力を確定'),
+    300,
+    scrollable: find.byType(Scrollable).first,
+  );
   await tester.tap(find.text('入力を確定'));
   await tester.pumpAndSettle();
+}
+
+Future<TextField> _inputField(WidgetTester tester, String key) async {
+  final finder = find.byKey(ValueKey('outgoing-input:$key'));
+  await tester.scrollUntilVisible(
+    finder,
+    -250,
+    scrollable: find.byType(Scrollable).first,
+  );
+  return tester.widget<TextField>(finder);
 }
 
 Future<void> _selectAndPreview(WidgetTester tester) async {
@@ -216,30 +231,14 @@ void main() {
       await _inputDone(tester);
       await tester.tap(find.text('入力画面に戻る'));
       await tester.pumpAndSettle();
-      expect(
-        tester
-            .widget<TextField>(
-              find.byKey(const ValueKey('outgoing-input:unit_price')),
-            )
-            .controller!
-            .text,
-        '100',
-      );
+      expect((await _inputField(tester, 'unit_price')).controller!.text, '100');
       await _inputDone(tester);
       await _selectAndPreview(tester);
       await tester.tap(find.text('注文内容を確認'));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(TextButton, '入力画面に戻る').last);
       await tester.pumpAndSettle();
-      expect(
-        tester
-            .widget<TextField>(
-              find.byKey(const ValueKey('outgoing-input:work_name')),
-            )
-            .controller!
-            .text,
-        '合成工事',
-      );
+      expect((await _inputField(tester, 'work_name')).controller!.text, '合成工事');
       expect(api.contexts, 1);
     },
   );
