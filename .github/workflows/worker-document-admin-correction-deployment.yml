@@ -12,6 +12,11 @@ jobs:
   guarded-pglite:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      matrix:
+        legacy: ['0', '1']
+    env:
+      SKO_DOCUMENT_ADMIN_WITH_LEGACY: ${{ matrix.legacy }}
     steps:
       - uses: actions/checkout@v4
         with: {persist-credentials: false}
@@ -22,6 +27,11 @@ jobs:
   guarded-native:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      matrix:
+        legacy: ['0', '1']
+    env:
+      SKO_DOCUMENT_ADMIN_WITH_LEGACY: ${{ matrix.legacy }}
     services:
       postgres:
         image: postgres:17.6

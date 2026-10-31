@@ -3,7 +3,9 @@ with target(name) as (values
  ('public.companies'),('public.company_members'),('public.member_feature_permissions'),
  ('public.company_approval_assignees'),('public.workers'),('public.document_requirements'),
  ('public.worker_document_statuses'),('public.worker_document_status_history'),
- ('private.account_deletion_access_restrictions'),('auth.users'),('auth.sessions'),('storage.objects')),
+ ('private.account_deletion_access_restrictions'),('auth.users'),('auth.sessions'),('storage.objects'),
+ ('private.worker_document_changes'),('private.worker_document_apply_tickets'),
+ ('private.worker_document_change_events'),('private.worker_document_change_rollout'),('private.worker_document_change_installation')),
 rels as (select name,to_regclass(name) oid from target),
 fn as (select p.oid,n.nspname,p.proname,p.proargtypes::text args,
  encode(sha256(convert_to((to_jsonb(p)-'oid')::text,'UTF8')),'hex') attributes_sha256,
@@ -26,7 +28,8 @@ relation_values as (select r.name,r.oid is not null as present,
  'comment',obj_description(r.oid,'pg_class')) as catalog
  from rels r left join pg_class c on c.oid=r.oid)
 select jsonb_build_object(
- 'version',1,
+ 'version',2,
+ 'server_version_num',current_setting('server_version_num')::int,
  'database_oid',(select oid from pg_database where datname=current_database()),
  'role',current_user,
  'functions',(select jsonb_agg(to_jsonb(fn) order by oid) from fn),

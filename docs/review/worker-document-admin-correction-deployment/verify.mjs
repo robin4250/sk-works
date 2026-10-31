@@ -9,6 +9,37 @@ const needle=" await db.exec(await fs.readFile(new URL('../../candidates/worker_
 if(source.split(needle).length!==2)throw Error('exact candidate installation anchor changed');
 const tmp=await fs.mkdtemp(path.join(os.tmpdir(),'sko-admin-guard-fixture-'));
 const generated=path.join(path.dirname(base),'.guarded-execution.generated.mjs');
+const withLegacy=process.env.SKO_DOCUMENT_ADMIN_WITH_LEGACY==='1';
+const legacyInstall=withLegacy?`
+ const legacyCandidate=await read('docs/candidates/worker_document_change_session_20261029/install.sql.review-only');
+ assert.equal(createHash('sha256').update(legacyCandidate).digest('hex'),'1f078c9a60e8c19163e7656a5067dec8ae9e20e0703cbd06073069c9e6f830ca');
+ await db.exec(legacyCandidate);
+ // Match the already-reviewed OFF deployment's new-wrapper narrowing only.
+ await db.exec('revoke all on function public.worker_document_change(text,jsonb) from service_role');
+ await db.exec('update private.worker_document_change_installation set catalog=private.worker_document_change_catalog() where singleton');
+ await db.exec('update private.worker_document_change_rollout set enabled=true');
+ console.log('Legacy actual candidate/guard installed and ON only in disposable fixture');
+`:'';
+const additionalPhotos=`
+ const secondPhoto=photo.replace('old.png','second.png');
+ await db.query('insert into storage.objects(bucket_id,name) values($1,$2)',['worker-documents',secondPhoto]);
+ await db.query('update public.worker_document_statuses set attachment_paths=$1 where id=$2',[[photo,secondPhoto],target]);
+`;
+const retainedChecks=`
+ await db.exec('reset role');
+ for(const retainedPath of original.attachment_paths){
+  assert.equal((await db.query('select exists(select 1 from public.worker_document_status_history where $1=any(attachment_paths)) v',[retainedPath])).rows[0].v,true);
+ }
+ await actor(owner,uid(30));
+ for(const retainedPath of original.attachment_paths){
+  assert.equal((await db.query('select private.worker_document_photos_are_retained($1) v',[retainedPath])).rows[0].v,true);
+  assert.deepEqual((await db.query('delete from storage.objects where bucket_id=$1 and name=$2 returning id',['worker-documents',retainedPath])).rows,[]);
+  assert.deepEqual((await db.query('update storage.objects set name=name||$1 where bucket_id=$2 and name=$3 returning id',['.overwrite','worker-documents',retainedPath])).rows,[]);
+ }
+ const retentionMetadata=(await db.query("select p.oid::regprocedure::text signature,md5(pg_get_functiondef(p.oid)) definition_md5,md5(p.prosrc) source_md5 from pg_proc p where p.oid in(to_regprocedure('private.normalize_worker_document_photos()'),to_regprocedure('private.capture_worker_document_photo_baseline()'),to_regprocedure('public.capture_worker_document_status_history()'),to_regprocedure('private.worker_document_photos_are_retained(text)')) order by signature")).rows;
+ console.log('RETENTION METADATA '+JSON.stringify(retentionMetadata));
+ console.log('RETENTION PASS: both originals including removed photo reach real baseline history/helper and restrictive authenticated DELETE/UPDATE policies; real Storage/cleanup not exercised');
+`;
 const injection=`
  const deploymentDirectory=${JSON.stringify(directory)};
  const captureQuery=(await fs.readFile(path.join(deploymentDirectory,'catalog.sql'),'utf8')).trim().replace(/;$/,'');
@@ -39,6 +70,11 @@ const injection=`
 `;
 // This fixture only replaces direct installation with the generated guarded
 // capsule. Candidate SQL and the rest of the 18 Native checks remain unchanged.
-const transformed=source.replace(needle,injection).replace("import fs from 'node:fs/promises';", "import fs from 'node:fs/promises';import{spawnSync}from'node:child_process';import{fileURLToPath}from'node:url';");
+let transformed=source.replace(needle,injection).replace(" const original=await status();",legacyInstall+additionalPhotos+" const original=await status();").replace(" console.log(JSON.stringify({checks:count",retainedChecks+" console.log(JSON.stringify({checks:count");
+if(withLegacy){
+ transformed=transformed.replace("await db.exec('create table private.worker_document_changes(target_id uuid,status text)');",'');
+ transformed=transformed.replace('await db.query("insert into private.worker_document_changes values($1,\'pending\')",[target]);', `await db.query("insert into private.worker_document_changes(id,company_id,worker_id,requirement_id,target_id,requested_by,created_session_id,status,previous,proposed) values($1,$2,$3,$4,$5,$6,$7,'pending',$8::jsonb,$8::jsonb)",[uid(99),company,worker,req,target,owner,sid,JSON.stringify(original)]);`);
+}
+transformed=transformed.replace("import fs from 'node:fs/promises';", "import fs from 'node:fs/promises';import{spawnSync}from'node:child_process';import{fileURLToPath}from'node:url';import{createHash}from'node:crypto';");
 await fs.writeFile(generated,transformed,{flag:'wx'});
 try{await import(pathToFileURL(generated));}finally{await fs.rm(generated);await fs.rm(tmp,{recursive:true,force:true});}

@@ -3,7 +3,7 @@
 import argparse, hashlib, json, pathlib, re, uuid
 
 CANDIDATE_SHA='8e7dcb4b2fcc3fe77ada3c5d39333d1cb0802858690fd59584d216436868b04a'
-CATALOG_SHA='1b7d4a4dfee14dc7abce1b0b8398a9cc4f4f1aa3c1b40d73b49abe2675ea1245'
+CATALOG_SHA='a98c37ad6b76d8db46e30bcb840288c51ba87ab201f63891af367a946f8be8af'
 NAMES=['worker_document_admin_correction_immutable','worker_document_admin_correction_retains','worker_document_admin_correction_ticket_guard']
 TABLES=['worker_document_admin_correction_state','worker_document_admin_corrections','worker_document_admin_correction_tickets','worker_document_admin_correction_photos']
 POLICIES=['worker_document_admin_archive_no_overwrite','worker_document_admin_archive_no_delete']
@@ -63,7 +63,10 @@ def prepare(capture,catalog,candidate,output,nonce=None):
  if sha(catalog)!=CATALOG_SHA or sha(candidate)!=CANDIDATE_SHA:raise ValueError('pinned source changed')
  snap=capture.get('snapshot');digest=capture.get('snapshot_sha256')
  if not isinstance(snap,dict) or not isinstance(digest,str) or not re.fullmatch('[0-9a-f]{64}',digest):raise ValueError('full server catalog/hash required')
- if snap.get('role')!='postgres' or len(snap.get('relations',[]))!=12 or not all(r.get('present') for r in snap['relations']) or len(snap.get('schemas',[]))!=4:raise ValueError('complete deployment-role dependency catalog required')
+ if snap.get('role')!='postgres' or len(snap.get('relations',[]))!=17 or not all(r.get('present') for r in snap['relations'] if not r['name'].startswith('private.worker_document_')) or len(snap.get('schemas',[]))!=4:raise ValueError('complete deployment-role dependency catalog required')
+ if snap.get('version')!=2 or int(snap.get('server_version_num',0))//10000!=17:raise ValueError('PostgreSQL17 catalog/version required')
+ legacy=[r for r in snap['relations'] if r['name'].startswith('private.worker_document_')]
+ if len(legacy)!=5 or sum(bool(r.get('present')) for r in legacy) not in (0,5):raise ValueError('partial old request module requires independent review')
  if snap.get('worker_document_bucket',{}).get('public') is not False:raise ValueError('private document bucket required')
  marker={'contract':'worker_document_admin_self_correction_guard_v1','source_sha256':CANDIDATE_SHA,'before_sha256':digest,'before_export_sha256':sha(canon(snap)),'deployment_id':nonce or uuid.uuid4().hex,'activated':False}
  query=catalog.strip().rstrip(';');base=base_assert(query,digest)
