@@ -49,7 +49,7 @@ const server=http.createServer(async(req,res)=>{
   trace.push({rpc:match[1],actor:who,params,result});
   if(match[1]==='expense_manager_remove' && req.headers['x-fixture-unknown-first-delete-result']==='1' && !dropped){dropped=true;return reply(res,200,null);}
   return reply(res,200,result);
- }catch(error){if(client)await client.query('rollback').catch(()=>{});reply(res,400,{code:error.code??'FIXTURE_INVALID',message:error.message});}
+ }catch(error){console.error('FIXTURE_RPC_ERROR',req.url,error.code??'FIXTURE_INVALID',error.message);if(client)await client.query('rollback').catch(()=>{});reply(res,400,{code:error.code??'FIXTURE_INVALID',message:error.message});}
  finally{if(client)await client.end();}
 });
 server.requestTimeout=10000;server.headersTimeout=5000;server.timeout=20000;server.keepAliveTimeout=1000;server.maxRequestsPerSocket=20;

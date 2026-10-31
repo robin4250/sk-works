@@ -46,7 +46,7 @@ jobs:
           node tool/review/expense_manager_removal_bridge_20261101/server.mjs "$RUNNER_TEMP/expense-bridge-pg/node_modules/pg/lib/index.js" > "$RUNNER_TEMP/expense-bridge.log" 2>&1 &
           echo "$!" > "$RUNNER_TEMP/expense-bridge.pid"
           for attempt in $(seq 1 60); do
-            if curl --fail --silent http://127.0.0.1:55439/bridge-info > /dev/null; then exit 0; fi
+            if curl --noproxy '*' --connect-timeout 2 --max-time 3 --fail --silent http://127.0.0.1:55439/bridge-info > /dev/null; then exit 0; fi
             sleep 1
           done
           cat "$RUNNER_TEMP/expense-bridge.log"
@@ -58,5 +58,6 @@ jobs:
       - name: Preserve synthetic bridge evidence and close server
         if: always()
         run: |
+          curl --noproxy '*' --connect-timeout 2 --max-time 3 --fail --silent http://127.0.0.1:55439/bridge-info || true
           if test -f "$RUNNER_TEMP/expense-bridge.log"; then cat "$RUNNER_TEMP/expense-bridge.log"; fi
           if test -f "$RUNNER_TEMP/expense-bridge.pid"; then kill "$(cat "$RUNNER_TEMP/expense-bridge.pid")" 2>/dev/null || true; fi
