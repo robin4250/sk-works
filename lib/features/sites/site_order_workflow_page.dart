@@ -8,6 +8,7 @@ import 'site_order_workflow_pdf_page.dart';
 import 'site_order_saved_preview_pager.dart';
 import 'site_order_workflow_repository.dart';
 import 'site_order_outgoing_recovery_page.dart';
+import 'site_order_outgoing_compose_page.dart';
 
 class SiteOrderWorkflowPage extends StatefulWidget {
   const SiteOrderWorkflowPage({
@@ -34,7 +35,7 @@ class _SiteOrderWorkflowPageState extends State<SiteOrderWorkflowPage> {
   bool _loading = true, _more = true, _opening = false;
   String? _error;
   late final String? _siteId;
-  bool _scopeRetired = false;
+  bool _scopeRetired = false, _canCreate = false;
   final _scopeChanges = ValueNotifier<int>(0);
   @override
   void initState() {
@@ -100,8 +101,10 @@ class _SiteOrderWorkflowPageState extends State<SiteOrderWorkflowPage> {
         before: last?['created_at']?.toString(),
         beforeId: last?['package_id']?.toString(),
       );
+      final canCreate = _siteId != null && !more ? await api.canCreateOutgoing() : _canCreate;
       if (!mounted || api.invalidated || _scopeRetired) return;
       setState(() {
+        _canCreate = canCreate;
         if (!more) _rows.clear();
         _rows.addAll(result);
         _more = result.length == 50;
@@ -199,6 +202,13 @@ class _SiteOrderWorkflowPageState extends State<SiteOrderWorkflowPage> {
       appBar: AppBar(
         title: Text(_siteId == null ? '過去の注文書・請書' : '${widget.siteName?.trim().isNotEmpty == true ? widget.siteName : '現場'}の注文履歴'),
         actions: [
+          if (_siteId != null && api != null && _canCreate) IconButton(
+            tooltip: '注文書を作る',
+            onPressed: _loading || _scopeRetired || api.invalidated ? null : () => Navigator.push<void>(context,
+              MaterialPageRoute(builder: (_) => SiteOrderOutgoingComposePage(api: api, siteId: _siteId,
+                issueDate: DateTime.now().toIso8601String().substring(0, 10), previewBuilder: widget.previewBuilder))),
+            icon: const Icon(Icons.note_add_outlined),
+          ),
           if (_siteId != null && api != null) IconButton(
             tooltip: '注文の準備結果',
             onPressed: _scopeRetired || api.invalidated ? null : () => Navigator.push<void>(context,

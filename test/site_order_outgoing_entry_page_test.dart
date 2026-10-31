@@ -6,6 +6,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sk_works/features/shared/trade_document_touch_editor_page.dart';
 import 'package:sk_works/features/sites/site_order_outgoing_entries.dart';
+import 'package:sk_works/features/sites/site_order_outgoing_body_factory.dart';
+import 'package:sk_works/features/sites/site_order_outgoing_journal.dart';
+import 'package:sk_works/domain/trade_document_terms_snapshot.dart';
 import 'package:sk_works/features/sites/site_order_outgoing_entry_page.dart';
 import 'package:sk_works/features/sites/site_order_workflow_repository.dart';
 
@@ -463,4 +466,38 @@ void main() {
       expect((await _inputField(tester, 'work_name')).controller!.text, '合成工事');
     },
   );
+  testWidgets('retired RAM input reopens with retained edits and entirely fresh IDs', (tester) async {
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    final api = _Api();
+    await api.verify();
+    final context = await api.outgoingContext(_id(3), _id(7));
+    final old = SiteOrderPendingPrepare(siteId: _id(3), documentId: _id(501),
+      localId: _id(502), tradeId: _id(7), requestId: _id(503), sessionId: _id(4));
+    final factory = SiteOrderOutgoingBodyFactory(verifiedContext: context,
+      actorId: _id(1), companyId: _id(2), pending: old,
+      termsSnapshot: TradeDocumentTermsSnapshot.reference);
+    final draft = SiteOrderOutgoingEntries(_input()).applyTo(
+      factory.newEditor(issueDate: '2026-10-31')).withChanges({'notes': '引き継ぐ備考'});
+    final retained = SiteOrderReviewedInput(old, factory.canonicalForPrepare(draft), 'a' * 64);
+    SiteOrderReviewedInput? returned;
+    await tester.pumpWidget(MaterialApp(home: Builder(builder: (context) => Scaffold(
+      body: FilledButton(onPressed: () async {
+        returned = await Navigator.push<SiteOrderReviewedInput>(context, MaterialPageRoute(builder: (_) =>
+          SiteOrderOutgoingEntryPage(api: api, siteId: _id(3), issueDate: '2026-10-31',
+            initialReviewed: retained, targets: [SiteOrderRegisteredTarget(id: _id(7), name: '登録表示名')],
+            render: (_) async => Uint8List.fromList('%PDF-synthetic'.codeUnits),
+            previewBuilder: (_) => const Text('再確認PDF'))));
+      }, child: const Text('再入力を開く'))))));
+    await tester.tap(find.text('再入力を開く')); await tester.pumpAndSettle();
+    await _inputDone(tester); await _selectAndPreview(tester);
+    await tester.tap(find.text('注文内容を確認')); await tester.pumpAndSettle();
+    await tester.tap(find.text('内容を確認')); await tester.pumpAndSettle();
+    expect(returned, isNotNull);
+    expect(returned!.pending.documentId, isNot(old.documentId));
+    expect(returned!.pending.localId, isNot(old.localId));
+    expect(returned!.pending.requestId, isNot(old.requestId));
+    expect(returned!.body['notes'], '引き継ぐ備考');
+    expect((returned!.body['form_fields'] as Map)['rows'][0]['unit_price_yen'], 100);
+  });
+
 }

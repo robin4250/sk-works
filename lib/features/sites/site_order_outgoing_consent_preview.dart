@@ -96,5 +96,27 @@ class SiteOrderOutgoingConsentPreview {
     );
   }
 
+  /// Exact semantic comparison with the RAM input acknowledged by prepare.
+  /// The server seal is checked independently and never accepted from input.
+  bool matchesPreparedBody(Map<String, dynamic> input) {
+    if (input.containsKey('company_seal_snapshot') ||
+        input.containsKey('company_seal_enabled')) {
+      return false;
+    }
+    Object? ordered(Object? value) {
+      if (value is Map) {
+        final keys = value.keys.cast<String>().toList()..sort();
+        return {for (final key in keys) key: ordered(value[key])};
+      }
+      if (value is List) return value.map(ordered).toList(growable: false);
+      return value;
+    }
+
+    final body = Map<String, dynamic>.from(_payload)
+      ..remove('company_seal_snapshot')
+      ..remove('company_seal_enabled');
+    return jsonEncode(ordered(body)) == jsonEncode(ordered(input));
+  }
+
   Future<Uint8List> render() => TradeDocumentFormRenderer.canonical(_payload);
 }

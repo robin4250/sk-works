@@ -4,7 +4,7 @@ import {createRequire} from 'node:module';
 import {createProjectVerifier} from '../../../supabase/functions/site-order-workflow/auth.mjs';
 import {createOutgoingPrepareHandler} from '../../../supabase/functions/site-order-workflow/outgoing-handler.mjs';
 const require=createRequire(import.meta.url);
-export async function verifyConsentHttp(db,{q,check,UA,A,sid,sid2,make,prepare,params}){
+export async function verifyConsentHttp(db,{q,check,UA,A,sid,sid2,make,params}){
  const {createClient}=require('../../../tool/site_order_edge_dependencies/node_modules/@supabase/supabase-js');
  const base='https://isolated-order-consent.invalid';
  const keys=await crypto.subtle.generateKey({name:'ECDSA',namedCurve:'P-256'},true,['sign','verify']);
@@ -16,17 +16,21 @@ export async function verifyConsentHttp(db,{q,check,UA,A,sid,sid2,make,prepare,p
  }}});
  const jwt=async(session=sid)=>{const now=Math.floor(Date.now()/1000);const claims={iss:base+'/auth/v1',aud:'authenticated',role:'authenticated',sub:UA,session_id:session,iat:now,exp:now+300,user_metadata:{role:'owner'}};
   const data=b64(JSON.stringify({alg:'ES256',kid:jwk.kid}))+'.'+b64(JSON.stringify(claims));return data+'.'+b64(await crypto.subtle.sign({name:'ECDSA',hash:'SHA-256'},keys.privateKey,new TextEncoder().encode(data)));};
- let connections=0,closed=0,mutations=0,dropAck=false;
+ let connections=0,closed=0,mutations=0,prepareMutations=0,dropAck=false;
  const handler=createOutgoingPrepareHandler({verify:createProjectVerifier(client,base),connect:async()=>{
   connections++;let peer=db;
   if(process.argv[3]==='postgres'){const pg=(await import(process.argv[2])).default;peer=new pg.Client({connectionString:process.env.SKO_CONSENT_FIXTURE_URL});await peer.connect();}
   const before=(await peer.query("select coalesce(nullif(current_setting('request.jwt.claims',true),''),'{}')::jsonb v")).rows[0].v;
   await peer.query("select set_config('request.jwt.claim.sub','',false),set_config('request.jwt.claim','',false)");
-  return {query:async(sql,args)=>{if(sql.includes('.confirm_unsigned('))mutations++;const result=await peer.query(sql,args);if(sql==='commit'){const state=(await peer.query("select jsonb_build_object('claims',coalesce(nullif(current_setting('request.jwt.claims',true),''),'{}')::jsonb,'sub',coalesce(current_setting('request.jwt.claim.sub',true),''),'claim',coalesce(current_setting('request.jwt.claim',true),''))v")).rows[0].v;check(state,{claims:before,sub:'',claim:''});}if(sql==='commit'&&dropAck){dropAck=false;throw Error('fixture committed ACK lost');}return result;},end:async()=>{closed++;if(peer!==db)await peer.end();}};
+  return {query:async(sql,args)=>{if(sql.includes('.confirm_unsigned('))mutations++;if(sql.includes('.prepare_order('))prepareMutations++;const result=await peer.query(sql,args);if(sql==='commit'){const state=(await peer.query("select jsonb_build_object('claims',coalesce(nullif(current_setting('request.jwt.claims',true),''),'{}')::jsonb,'sub',coalesce(current_setting('request.jwt.claim.sub',true),''),'claim',coalesce(current_setting('request.jwt.claim',true),''))v")).rows[0].v;check(state,{claims:before,sub:'',claim:''});}if(sql==='commit'&&dropAck){dropAck=false;throw Error('fixture committed ACK lost');}return result;},end:async()=>{closed++;if(peer!==db)await peer.end();}};
  }});
  const post=async(body,session=sid,token)=>handler(new Request(base+'/functions/v1/site-order-workflow/outgoing',{method:'POST',headers:{authorization:'Bearer '+(token??await jwt(session))},body:JSON.stringify(body)}));
- const x=await make(300);await prepare(x);const [site,doc,local,trade,request]=params(x);
+ const x=await make(300);const [site,doc,local,trade,request]=params(x);
  const identity={site_id:site,document_id:doc,local_id:local,trade_id:trade,request_id:request};
+ dropAck=true;const prepareUnknown=await post({action:'prepare',...identity,connection_fingerprint:x.context.connection_fingerprint,body:x.body});
+ check(prepareUnknown.status,409);check((await prepareUnknown.json()).error,'result_unknown');check(prepareMutations,1);
+ const prepareObserved=await post({action:'status',...identity});check(prepareObserved.status,200);const prepared=(await prepareObserved.json()).result;
+ check(prepared.operation_state,'prepared_review_required');check(prepared.same_session,true);check(prepareMutations,1);
  const previewResponse=await post({action:'preview_unsigned',...identity});check(previewResponse.status,200);const preview=(await previewResponse.json()).result;check(preview.preview_only,true);
  const decision={...identity,preview_id:preview.preview_id,decision_id:x.decision};
  dropAck=true;const uncertain=await post({action:'confirm_unsigned',...decision,confirmed:true});check(uncertain.status,409);check((await uncertain.json()).error,'result_unknown');check(mutations,1);
@@ -37,8 +41,8 @@ export async function verifyConsentHttp(db,{q,check,UA,A,sid,sid2,make,prepare,p
  await db.query("update private.master_feature_settings set enabled=true where feature_key='site_order_documents'");
  const before=connections;check((await post({action:'confirm_unsigned',...decision,confirmed:false})).status,400);check(connections,before);
  const parts=(await jwt()).split('.');parts[2]=b64(new Uint8Array(64));check((await post({action:'decision_status',...decision},sid,parts.join('.'))).status,401);check(connections,before);
- check(closed,connections);check(connections,5);
+ check(closed,connections);check(connections,7);check(prepareMutations,1);
  check(await q('select count(*)::int v from site_order_artifact_private.render_jobs where request_id=$1',[x.decision]),1);
- if(process.env.SKO_CONSENT_RECEIPT_PATH){await fs.mkdir(path.dirname(process.env.SKO_CONSENT_RECEIPT_PATH),{recursive:true});await fs.writeFile(process.env.SKO_CONSENT_RECEIPT_PATH,JSON.stringify({actor:UA,company:A,session:sid,identity,decision_id:x.decision,preview,result}));}
- console.log(JSON.stringify({fixed_es256_http_sql:true,ack_lost_after_actual_commit:true,status_without_repeat_mutation:true,connections_closed:closed,synthetic_auth:true,real_GoTrue:false}));
+ if(process.env.SKO_CONSENT_RECEIPT_PATH){await fs.mkdir(path.dirname(process.env.SKO_CONSENT_RECEIPT_PATH),{recursive:true});await fs.writeFile(process.env.SKO_CONSENT_RECEIPT_PATH,JSON.stringify({actor:UA,company:A,session:sid,identity,decision_id:x.decision,input_body:x.body,connection_fingerprint:x.context.connection_fingerprint,prepared,preview,result}));}
+ console.log(JSON.stringify({fixed_es256_http_sql:true,ack_lost_after_actual_commit:true,status_without_repeat_mutation:true,prepare_mutations:prepareMutations,confirm_mutations:mutations,connections_closed:closed,synthetic_auth:true,real_GoTrue:false}));
 }
