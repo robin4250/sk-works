@@ -125,6 +125,7 @@ Future<(SupabaseClient, SiteOrderWorkflowRepository)> _repository(
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   Future<void> accept(Map<String, dynamic> data) async {
     final wire = _Wire(data);
     final (client, repository) = await _repository(wire);
