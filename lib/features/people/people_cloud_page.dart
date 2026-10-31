@@ -161,6 +161,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
       _records.clear();
       _canManagePeople = false;
       _canViewPeople = false;
+      _canConfigurePersonnelApprovers = false;
       _loading = true;
       _error = null;
     });
@@ -187,6 +188,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
         })));
         _canManagePeople = session.snapshot!.canManage;
         _canViewPeople = true;
+        _canConfigurePersonnelApprovers = const ['owner','admin'].contains(session.snapshot!.role);
         _loading = false;
       });
     } catch (_) {
@@ -197,6 +199,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
         _canViewPeople = false;
         _loading = false;
         _error = '社員一覧を確認できません。再読み込みしてください。';
+        _canConfigurePersonnelApprovers = false;
         if (!session.active && !session.revoked) _reloadOnResume = true;
       });
     }

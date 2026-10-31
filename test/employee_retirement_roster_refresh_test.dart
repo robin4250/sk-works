@@ -25,7 +25,7 @@ class RosterFixture extends PeopleCloudRepository {
   @override Future<String> companyName({String? companyId}) async => 'Fixture company';
   @override Future<bool> canManagePeople({String? companyId}) async => role == 'admin';
   @override Future<bool> canViewPeople({String? companyId}) async => true;
-  @override Future<bool> canConfigurePersonnelApprovers({String? companyId}) async => false;
+  @override Future<bool> canConfigurePersonnelApprovers({String? companyId}) async => const ['owner','admin'].contains(role);
   @override Future<List<Map<String,dynamic>>> loadAll({String? expectedCompany}) async {
     reads++;
     final pending=pendingRoster;
@@ -127,6 +127,7 @@ void main() {
       }
       expect(find.byType(EmployeePersonnelDetailPage),findsNothing);
       expect(find.text(workerName),findsNothing);
+      expect(find.byTooltip('社員個人情報の承認者設定'),findsNothing);
       if(boundary=='actor') {
         await tester.runAsync(()=>wire.seed(uid:fixture.other));
       } else if(boundary=='role') {
@@ -143,6 +144,7 @@ void main() {
         pending.complete([oldRow]);
         await tester.pumpAndSettle();
         expect(find.text(workerName),findsNothing);
+        expect(find.byTooltip('社員個人情報の承認者設定'),findsNothing);
         expect(wire.calls.where((r)=>r.method!='GET'),isEmpty);
       } finally {
         await close(tester);
