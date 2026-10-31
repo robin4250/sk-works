@@ -53,6 +53,7 @@ class Fixture {
       authOptions: const AuthClientOptions(autoRefreshToken: false),
       httpClient: MockClient((request) async {
         requests.add(request);
+        debugPrint('invite-sdk fixture request: ${request.url.path}');
         if (request.url.path == '/auth/v1/token') {
           return http.Response(
             jsonEncode({
@@ -122,12 +123,15 @@ class Fixture {
     {'company_id': company, 'role': 'owner'},
   ];
   final requests = <http.Request>[];
-  Future<void> login() => client.auth
-      .signInWithPassword(
-        email: 'fixture@example.invalid',
-        password: 'synthetic',
-      )
-      .then((_) {});
+  Future<void> login() async {
+    debugPrint('invite-sdk login begin');
+    await client.auth.signInWithPassword(
+      email: 'fixture@example.invalid',
+      password: 'synthetic',
+    );
+    debugPrint('invite-sdk login complete');
+  }
+
   Future<void> close() async {
     await repository.dispose();
     await client.dispose();

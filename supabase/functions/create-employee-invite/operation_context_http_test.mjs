@@ -23,7 +23,8 @@ const contextSQL=(account='true')=>prefix(account)+`select public.employee_invit
 
 test('actual HTTP handler binds selected company/live SID and never exposes uncertain credentials',async()=>{
  const originalFetch=globalThis.fetch,originalDeno=globalThis.Deno,originalError=console.error;
- const logs=[],calls=[];let handler,scenario='ok',contextCalls=0,issued=0,memberRole='owner';
+ const logs=[],calls=[];let handler,scenario='ok',contextCalls=0,issued=0,memberRole='owner',storedWorker=null,storedInvite=null;
+ const ownAuthDeletes=[];
  if(sqlMode){
   sql(`create schema auth;create schema private;
    do $$begin if not exists(select 1 from pg_roles where rolname='service_role') then create role service_role; end if;
@@ -51,7 +52,7 @@ test('actual HTTP handler binds selected company/live SID and never exposes unce
  }
  const upstream=http.createServer(async(req,res)=>{
   let raw='';for await(const chunk of req)raw+=chunk;const body=raw?JSON.parse(raw):{};
-  const path=new URL(req.url,'http://fixture.invalid').pathname;
+  const url=new URL(req.url,'http://fixture.invalid'),path=url.pathname;
   calls.push({path,method:req.method});
   const reply=(value,status=200)=>{res.writeHead(status,{'content-type':'application/json'});res.end(JSON.stringify(value));};
   if(path==='/auth/v1/user')return reply({id:actor});
@@ -71,9 +72,40 @@ test('actual HTTP handler binds selected company/live SID and never exposes unce
   if(path==='/auth/v1/settings')return reply({external:{phone:true}});
   if(path==='/rest/v1/rpc/begin_account_server_activity')return reply('20000000-0000-0000-0000-000000000001');
   if(path==='/rest/v1/rpc/finish_account_server_activity')return reply(true);
-  if(path==='/auth/v1/admin/users'&&req.method==='POST'){issued++;return reply({id:authUser});}
-  if(path==='/rest/v1/employee_registration_invites')return reply(req.method==='POST'?[{id:invite}]:[]);
-  if(path==='/rest/v1/workers')return reply(req.method==='GET'?[{id:worker,name:'Synthetic',phone:'07000000000',user_id:null}]:[{id:worker}]);
+  if(path==='/auth/v1/admin/users'&&req.method==='POST'){
+   issued++;
+   if(scenario==='phone-during-auth')storedWorker.phone='08000000000';
+   if(scenario==='linked-during-auth')storedWorker.user_id='60000000-0000-0000-0000-000000000001';
+   if(scenario==='company-during-auth')storedWorker.company_id=worker;
+   return reply({id:authUser});
+  }
+  if(path==='/auth/v1/admin/users/'+authUser&&req.method==='DELETE'){ownAuthDeletes.push(authUser);return reply({});} 
+  if(path==='/rest/v1/employee_registration_invites'){
+   if(req.method==='POST'){
+    storedInvite={id:invite,...body};
+    if(scenario==='phone-after-link')storedWorker.phone='08000000000';
+    if(scenario==='invite-commit-ack-loss'){req.socket.destroy();return;}
+    return reply([{id:invite}]);
+   }
+   return reply(url.searchParams.has('auth_user_id')&&storedInvite?.auth_user_id===authUser?[storedInvite]:[]);
+  }
+  if(path==='/rest/v1/workers'){
+   const matches=()=>storedWorker&&[...url.searchParams].every(([key,value])=>
+    ['select','limit'].includes(key)||value==='is.null'&&storedWorker[key]==null||value.startsWith('eq.')&&String(storedWorker[key])===value.slice(3));
+   if(req.method==='GET')return reply(matches()?[storedWorker]:[]);
+   if(req.method==='PATCH'){
+    if(!matches())return reply([]);
+    Object.assign(storedWorker,body);
+    if(scenario==='patch-commit-ack-loss'){req.socket.destroy();return;}
+    return reply([{id:worker}]);
+   }
+   if(req.method==='POST'){
+    storedWorker={id:worker,...body};
+    if(scenario==='post-commit-ack-loss'){req.socket.destroy();return;}
+    return reply([{id:worker}]);
+   }
+   return reply({error:'destructive worker cleanup forbidden'},500);
+  }
   if(path==='/rest/v1/companies')return reply([{employee_testflight_url:''}]);
   return reply({},404);
  });
@@ -96,7 +128,7 @@ test('actual HTTP handler binds selected company/live SID and never exposes unce
   await new Promise(r=>setImmediate(r));logs.length=0;
   await new Promise(r=>incoming.listen(0,'127.0.0.1',r));
   const endpoint=`http://127.0.0.1:${incoming.address().port}/`;
-  const send=payload=>originalFetch(endpoint,{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({name:'Synthetic',phone:'07000000000',companyId:company,sessionId:sid,...payload})});
+  const send=payload=>{storedInvite=null;storedWorker={id:worker,company_id:company,affiliation:'employee',name:'Synthetic',phone:'07000000000',user_id:null,status:'inactive'};return originalFetch(endpoint,{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({name:'Synthetic',phone:'07000000000',companyId:company,sessionId:sid,...payload})});};
   for(const payload of [{companyId:undefined},{sessionId:undefined},{sessionId:worker},{companyId:'not-uuid'}]){
    calls.length=0;issued=0;const response=await send(payload);assert.equal(response.status,403);assert.equal(issued,0);
    assert.equal(calls.some(c=>c.path.includes('employee_invite_operation_context')),false);
@@ -130,6 +162,26 @@ test('actual HTTP handler binds selected company/live SID and never exposes unce
   }
   memberRole='owner';if(sqlMode)sql("update public.company_members set role='owner'");
   if(!sqlMode){scenario='role-revoked';contextCalls=0;issued=0;assert.equal((await send({})).status,403);assert.equal(issued,0);}
+  for(scenario of ['phone-during-auth','linked-during-auth','company-during-auth']){
+   contextCalls=0;issued=0;ownAuthDeletes.length=0;logs.length=0;
+   const response=await send({workerId:worker,expectedPhone:'07000000000'});
+   assert.equal(response.status,409);assert.equal((await response.json()).code,'invite_result_unknown');
+   assert.equal(storedInvite,null);assert.equal(issued,1);
+   assert.deepEqual(ownAuthDeletes,[authUser],'only own unreferenced Auth from CAS-zero is removed');
+   if(scenario==='linked-during-auth')assert.equal(storedWorker.user_id,'60000000-0000-0000-0000-000000000001');
+   if(scenario==='phone-during-auth')assert.equal(storedWorker.phone,'08000000000');
+   if(scenario==='company-during-auth')assert.equal(storedWorker.company_id,worker);
+  }
+  for(scenario of ['patch-commit-ack-loss','post-commit-ack-loss','invite-commit-ack-loss','phone-after-link']){
+   contextCalls=0;issued=0;ownAuthDeletes.length=0;logs.length=0;
+   const response=await send(scenario==='patch-commit-ack-loss'?{workerId:worker,expectedPhone:'07000000000'}:{});
+   assert.equal(response.status,409);const out=await response.json();assert.equal(out.code,'invite_result_unknown');
+   assert.equal('temporaryPassword'in out,false);assert.equal('qrPayload'in out,false);
+   assert.equal(storedWorker.user_id,authUser);assert.deepEqual(ownAuthDeletes,[],'committed worker/Auth are preserved after lost ACK');
+   if(scenario==='invite-commit-ack-loss')assert.equal(storedInvite.auth_user_id,authUser);
+   assert.equal(issued,1);
+  }
+  logs.length=0;
   scenario='post-revoked';contextCalls=0;issued=0;
   let response=await send({});assert.equal(response.status,409);assert.equal(issued,1);
   let value=await response.json();assert.equal(value.code,'invite_result_unknown');

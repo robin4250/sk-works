@@ -355,15 +355,18 @@ Deno.serve(async (req: Request) => {
   if (!uuid.test(authUserId ?? '')) return json({ error: "利用者IDを確認できません。結果は未解決です。" }, 500);
 
   let persistedWorkerId: string | null = workerId;
-  let linkedExistingWorker = false;
-  let newWorkerCreated = false;
+  let confirmedWorkerCasNoWrite = false;
   let persistenceStage = "worker";
   let persistenceStatus: number | null = null;
   try {
     if (existingWorker && persistedWorkerId) {
       const workerResponse = await serviceFetch(
         "/rest/v1/workers?id=eq." + encodeURIComponent(persistedWorkerId) +
-          "&company_id=eq." + encodeURIComponent(companyId) + "&user_id=is.null&select=id",
+          "&company_id=eq." + encodeURIComponent(companyId) + "&user_id=is.null" +
+          "&phone=eq." + encodeURIComponent(existingWorker.phone) +
+          "&name=eq." + encodeURIComponent(existingWorker.name) +
+          (existingWorker.status == null ? "&status=is.null" : "&status=eq." + encodeURIComponent(existingWorker.status)) +
+          "&affiliation=eq.employee&select=id",
         {
           method: "PATCH",
           headers: { Prefer: "return=representation" },
@@ -378,10 +381,10 @@ Deno.serve(async (req: Request) => {
         persistenceStatus = workerResponse.status;
         throw new Error("employee worker persistence failed");
       }
-      // A successful response may still have an unreadable body. Cleanup is
-      // conditional on the new Auth ID, so never touches a concurrent owner.
-      linkedExistingWorker = true;
+      // HTTP failure or an unreadable body can follow a committed write. Only
+      // an exact empty representation proves this CAS did not change a row.
       const linkedRows = await workerResponse.json();
+      confirmedWorkerCasNoWrite = Array.isArray(linkedRows) && linkedRows.length === 0;
       if (!Array.isArray(linkedRows) || linkedRows.length !== 1 ||
           linkedRows[0]?.id !== persistedWorkerId) {
         throw new Error("employee worker linkage unconfirmed");
@@ -403,9 +406,9 @@ Deno.serve(async (req: Request) => {
         persistenceStatus = workerResponse.status;
         throw new Error("employee worker persistence failed");
       }
-      newWorkerCreated = true;
       const workers = await workerResponse.json();
-      persistedWorkerId = workers?.[0]?.id ?? null;
+      if (!Array.isArray(workers) || workers.length !== 1) throw new Error('worker result unknown');
+      persistedWorkerId = workers[0]?.id ?? null;
     }
     if (!uuid.test(persistedWorkerId ?? '')) throw new Error("worker id missing");
 
@@ -458,11 +461,23 @@ Deno.serve(async (req: Request) => {
     if (!testFlightUrl) {
       testFlightUrl = Deno.env.get("SKO_TESTFLIGHT_URL") ?? "";
     }
+    const expectedRawPhone = existingWorker ? existingWorker.phone : phone;
+    const verifyRecipient = async () => {
+      const current = await serviceFetch('/rest/v1/workers?id=eq.' + encodeURIComponent(persistedWorkerId!) +
+        '&company_id=eq.' + encodeURIComponent(companyId) + '&user_id=eq.' + encodeURIComponent(authUserId) +
+        '&phone=eq.' + encodeURIComponent(expectedRawPhone) + '&affiliation=eq.employee&select=id,user_id,phone');
+      if (!current.ok) throw Error('recipient_binding_unavailable');
+      const rows = await current.json();
+      if (!Array.isArray(rows) || rows.length !== 1 || rows[0]?.id !== persistedWorkerId ||
+          rows[0]?.user_id !== authUserId || rows[0]?.phone !== expectedRawPhone) throw Error('recipient_binding_changed');
+    };
+
     // Never disclose credentials or deliver after context revocation. Existing
     // created rows remain an unresolved operation; no blind recreation/cleanup.
     try {
       const fresh = await inviteContext(caller.id, sessionId, companyId);
       if (fresh.role !== callerRole) throw Error('role_changed');
+      await verifyRecipient();
     } catch {
       return json({error: '作成結果は未解決です。再作成せず管理者に確認してください。',
         code: 'invite_result_unknown'}, 409);
@@ -500,7 +515,7 @@ Deno.serve(async (req: Request) => {
           }
         } catch {
           console.error("employee invite sms delivery failed");
-          deliveryMessage = "SMS送信サービスへ接続できませんでした。";
+          deliveryMessage = "SMS送信結果は未確認です。再送せず配信状況を確認してください。";
         }
       }
     }
@@ -515,6 +530,7 @@ Deno.serve(async (req: Request) => {
     try {
       const fresh = await inviteContext(caller.id, sessionId, companyId);
       if (fresh.role !== callerRole) throw Error('role_changed');
+      await verifyRecipient();
     } catch {
       return json({error: '作成結果は未解決です。再作成せず管理者に確認してください。',
         code: 'invite_result_unknown'}, 409);
@@ -533,38 +549,25 @@ Deno.serve(async (req: Request) => {
   } catch {
     // Never log upstream details or exception text: either may contain personal data.
     console.error("employee invite persistence failed", persistenceStage, persistenceStatus);
-    // Existing employees must never be deleted when a link attempt fails.
-    // Undo only this attempt's successful linkage; concurrent reassignment wins.
-    if ((persistedWorkerId && linkedExistingWorker) || newWorkerCreated) {
+    // Never compensate an uncertain REST write: worker/invite may have
+    // committed before the response was lost. Preserve Auth, rows and the
+    // pending activity for operator reconciliation; never return credentials.
+    // Exact CAS-zero is the only known no-link case. Even then verify BOTH
+    // reference sets before deleting only the Auth ID created by this attempt.
+    if (confirmedWorkerCasNoWrite && persistenceStage === 'worker') {
       try {
-        const cleanupResponse = await serviceFetch(
-          "/rest/v1/workers?company_id=eq." + encodeURIComponent(companyId) +
-            (persistedWorkerId ? "&id=eq." + encodeURIComponent(persistedWorkerId) : "") +
-            "&user_id=eq." + encodeURIComponent(authUserId),
-          linkedExistingWorker
-            ? { method: "PATCH", body: JSON.stringify({ user_id: null, status: existingWorker.status }) }
-            : { method: "DELETE" },
-        );
-        if (!cleanupResponse.ok) {
-          console.error("employee invite worker cleanup failed", cleanupResponse.status);
+        const workers = await serviceFetch('/rest/v1/workers?user_id=eq.' + encodeURIComponent(authUserId) + '&select=id&limit=1');
+        const invites = await serviceFetch('/rest/v1/employee_registration_invites?auth_user_id=eq.' + encodeURIComponent(authUserId) + '&select=id&limit=1');
+        if (!workers.ok || !invites.ok) throw Error('reference_read_unknown');
+        const workerRows = await workers.json(), inviteRows = await invites.json();
+        if (!Array.isArray(workerRows) || !Array.isArray(inviteRows)) throw Error('reference_read_unknown');
+        if (workerRows.length === 0 && inviteRows.length === 0) {
+          const removed = await serviceFetch('/auth/v1/admin/users/' + encodeURIComponent(authUserId), {method:'DELETE'});
+          if (!removed.ok) console.error('employee invite auth cleanup unconfirmed', removed.status);
         }
-      } catch {
-        console.error("employee invite worker cleanup failed");
-      }
+      } catch { console.error('employee invite auth cleanup unconfirmed'); }
     }
-    // A failed worker cleanup must not skip cleanup of the Auth user created here.
-    try {
-      const cleanupResponse = await serviceFetch(
-        "/auth/v1/admin/users/" + encodeURIComponent(authUserId),
-        { method: "DELETE" },
-      );
-      if (!cleanupResponse.ok) {
-        console.error("employee invite auth cleanup failed", cleanupResponse.status);
-      }
-    } catch {
-      console.error("employee invite auth cleanup failed");
-    }
-    return json({ error: "従業員登録を保存できませんでした。" }, 500);
+    return json({error: '作成結果は未解決です。再作成せず管理者に確認してください。', code:'invite_result_unknown'}, 409);
   }
 });
 
