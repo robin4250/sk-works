@@ -4,6 +4,7 @@ import 'site_order_outgoing_journal.dart';
 import 'site_order_outgoing_consent.dart';
 import 'site_order_outgoing_execution.dart';
 import 'site_order_original_review_page.dart';
+import 'site_order_delivery_journal.dart';
 import 'site_order_workflow_repository.dart';
 
 /// Recovery stays available while generation is OFF. It cannot prepare, sign,
@@ -26,6 +27,7 @@ class _SiteOrderOutgoingRecoveryPageState
     extends State<SiteOrderOutgoingRecoveryPage> {
   List<SiteOrderPendingPrepare> _entries = const [];
   List<SiteOrderConsentReference> _decisions = const [];
+  List<SiteOrderDeliveryRecord> _recorded = const [];
   final _observed = <String, SiteOrderExecutionObservation>{};
   bool _busy = true, _retired = false, _readSucceeded = false;
   String? _message;
@@ -37,11 +39,14 @@ class _SiteOrderOutgoingRecoveryPageState
   }
 
   void _changed() {
-    if (!widget.api.invalidated || !mounted) return;
+    if (!widget.api.invalidated || !mounted) {
+      return;
+    }
     setState(() {
       _retired = true;
       _entries = const [];
       _decisions = const [];
+      _recorded = const [];
       _observed.clear();
       _message = 'ログイン・会社の状態が変わりました。開き直してください。';
     });
@@ -55,20 +60,27 @@ class _SiteOrderOutgoingRecoveryPageState
       _retired = true;
       _entries = const [];
       _decisions = const [];
+      _recorded = const [];
       _observed.clear();
       _message = '現場が変わりました。開き直してください。';
     }
   }
 
   Future<void> _load() async {
-    if (_retired) return;
+    if (_retired) {
+      return;
+    }
     _readSucceeded = false;
     try {
       final entries = await widget.api.pendingOutgoing(widget.siteId);
       final decisions = await widget.api.pendingOutgoingConsents(widget.siteId);
-      if (!mounted || _retired || widget.api.invalidated) return;
+      final recorded = await widget.api.recordedOutgoing(widget.siteId);
+      if (!mounted || _retired || widget.api.invalidated) {
+        return;
+      }
       setState(() {
         _decisions = decisions;
+        _recorded = recorded;
         _observed.clear();
         final requests = decisions.map((d) => d.prepare.requestId).toSet();
         _entries = entries
@@ -81,12 +93,16 @@ class _SiteOrderOutgoingRecoveryPageState
         setState(() => _message = '保存状態を確認できません。記録は保持しています。');
       }
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() => _busy = false);
+      }
     }
   }
 
   Future<void> _act(SiteOrderPendingPrepare entry, {required bool stop}) async {
-    if (_busy || _retired || widget.api.invalidated) return;
+    if (_busy || _retired || widget.api.invalidated) {
+      return;
+    }
     if (stop) {
       final confirmed = await showDialog<bool>(
         context: context,
@@ -117,7 +133,9 @@ class _SiteOrderOutgoingRecoveryPageState
       final state = stop
           ? await widget.api.retireOutgoing(entry, confirmed: true)
           : await widget.api.inspectOutgoing(entry);
-      if (!mounted || _retired || widget.api.invalidated) return;
+      if (!mounted || _retired || widget.api.invalidated) {
+        return;
+      }
       setState(
         () => _message = switch (state) {
           'retired' => '準備の停止を確認しました。注文の取消ではありません。',
@@ -133,26 +151,34 @@ class _SiteOrderOutgoingRecoveryPageState
         setState(() => _message = '結果を確認できません。再送せず、記録を保持しています。');
       }
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() => _busy = false);
+      }
     }
   }
 
   Future<void> _inspectDecision(SiteOrderConsentReference reference) async {
-    if (_busy || _retired || widget.api.invalidated) return;
+    if (_busy || _retired || widget.api.invalidated) {
+      return;
+    }
     setState(() {
       _busy = true;
       _message = null;
     });
     try {
       final result = await widget.api.inspectOutgoingConsent(reference);
-      if (!mounted || _retired || widget.api.invalidated) return;
+      if (!mounted || _retired || widget.api.invalidated) {
+        return;
+      }
       SiteOrderExecutionObservation? execution;
       if (result.observed) {
         execution = await widget.api.resolveOutgoingExecutionForReview(
           reference,
           jobId: result.jobId!,
         );
-        if (!mounted || _retired || widget.api.invalidated) return;
+        if (!mounted || _retired || widget.api.invalidated) {
+          return;
+        }
       }
       setState(() {
         _observed.remove(reference.prepare.requestId);
@@ -175,7 +201,9 @@ class _SiteOrderOutgoingRecoveryPageState
         });
       }
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() => _busy = false);
+      }
     }
   }
 
@@ -237,7 +265,7 @@ class _SiteOrderOutgoingRecoveryPageState
                           ? null
                           : () async {
                               widget.api.requireCurrent();
-                              await Navigator.push<void>(
+                              await Navigator.push<SiteOrderDeliveryRecord>(
                                 context,
                                 MaterialPageRoute(
                                   builder: (_) => SiteOrderOriginalReviewPage(
@@ -249,9 +277,51 @@ class _SiteOrderOutgoingRecoveryPageState
                                   ),
                                 ),
                               );
+                              if (mounted &&
+                                  !_retired &&
+                                  !widget.api.invalidated) {
+                                await _load();
+                              }
                             },
                       child: const Text('保存原本・共有状態を確認'),
                     ),
+                ],
+              ),
+            ),
+          ),
+        for (final record in _recorded)
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text('共有結果の保管記録（相手の承認は未確認）'),
+                  Text('識別番号 ${record.reference.prepare.requestId}'),
+                  OutlinedButton(
+                    onPressed: _busy || _retired
+                        ? null
+                        : () async {
+                            widget.api.requireCurrent();
+                            await Navigator.push<SiteOrderDeliveryRecord>(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => SiteOrderOriginalReviewPage(
+                                  api: widget.api,
+                                  reference: record.reference,
+                                  jobId: record.jobId,
+                                  recipientCompanyId: record.recipientCompanyId,
+                                ),
+                              ),
+                            );
+                            if (mounted &&
+                                !_retired &&
+                                !widget.api.invalidated) {
+                              await _load();
+                            }
+                          },
+                    child: const Text('保存原本・共有状態を再照会'),
+                  ),
                 ],
               ),
             ),

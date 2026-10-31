@@ -1,9 +1,9 @@
-import 'dart:async';
 import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'site_order_outgoing_journal.dart';
+import 'site_order_journal_serial.dart';
 import 'site_order_outgoing_consent_preview.dart';
 
 /// Durable IDs/digest only. No document body, stamp, amount or PDF is stored.
@@ -181,7 +181,6 @@ class SiteOrderConsentJournal {
   SiteOrderConsentJournal({Future<SharedPreferences> Function()? preferences})
     : _preferences = preferences ?? SharedPreferences.getInstance;
   final Future<SharedPreferences> Function() _preferences;
-  static Future<void> _tail = Future<void>.value();
   String _prefix(String actor, String company, String site) {
     if (![actor, company, site].every(SiteOrderPendingPrepare.validId)) {
       throw StateError('注文の会社・本人・現場を確認できません。');
@@ -189,17 +188,8 @@ class SiteOrderConsentJournal {
     return 'sko.site_order.consent.v1.$actor.$company.$site.';
   }
 
-  Future<T> _serial<T>(Future<T> Function() action) {
-    final done = Completer<T>();
-    _tail = _tail.then((_) async {
-      try {
-        done.complete(await action());
-      } catch (e, s) {
-        done.completeError(e, s);
-      }
-    });
-    return done.future;
-  }
+  Future<T> _serial<T>(Future<T> Function() action) =>
+      siteOrderJournalSerial(action);
 
   Future<bool> save(
     String actor,
@@ -208,6 +198,14 @@ class SiteOrderConsentJournal {
   ) => _serial(() async {
     final p = await _preferences();
     await p.reload();
+    siteOrderDeliveryMarkers(p, actor, company, reference.prepare.siteId);
+    siteOrderRequireUnrecorded(
+      p,
+      actor,
+      company,
+      reference.prepare.siteId,
+      reference.prepare.requestId,
+    );
     final key =
         '${_prefix(actor, company, reference.prepare.siteId)}${reference.prepare.requestId}';
     final encoded = jsonEncode(reference.toJson());
@@ -229,19 +227,24 @@ class SiteOrderConsentJournal {
     final p = await _preferences();
     await p.reload();
     final prefix = _prefix(actor, company, site);
+    final archived = siteOrderDeliveryMarkers(p, actor, company, site);
     final keys = p.getKeys().where((k) => k.startsWith(prefix)).toList()
       ..sort();
     return List.unmodifiable(
-      keys.map((key) {
-        final reference = SiteOrderConsentReference.fromJson(
-          jsonDecode(p.getString(key)!),
-        );
-        if (reference.prepare.siteId != site ||
-            key != '$prefix${reference.prepare.requestId}') {
-          throw StateError('保存した注文確認を照合できません。');
-        }
-        return reference;
-      }),
+      keys
+          .map((key) {
+            final reference = SiteOrderConsentReference.fromJson(
+              jsonDecode(p.getString(key)!),
+            );
+            if (reference.prepare.siteId != site ||
+                key != '$prefix${reference.prepare.requestId}') {
+              throw StateError('保存した注文確認を照合できません。');
+            }
+            return reference;
+          })
+          .where(
+            (reference) => !archived.containsKey(reference.prepare.requestId),
+          ),
     );
   });
 }
