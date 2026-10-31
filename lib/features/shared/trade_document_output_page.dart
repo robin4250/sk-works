@@ -8,6 +8,8 @@ import 'trade_document_form_renderer.dart';
 import 'trade_document_output_layout.dart';
 import 'trade_document_output_selector.dart';
 import 'standalone_trade_document_print_scope.dart';
+import 'financial_preview_chrome.dart';
+import 'pdf_pinch_pages.dart';
 
 /// Authorized form-only derivative. Parent financial pages are a separate output.
 class TradeDocumentOutputPage extends StatefulWidget {
@@ -58,12 +60,29 @@ class _OutputState extends State<TradeDocumentOutputPage> with WidgetsBindingObs
  }
  @override void dispose(){widget.scopeChanges?.removeListener(_scopeChanged);WidgetsBinding.instance.removeObserver(this);_revoked=true;_bytes=null;_epoch++;_print.invalidate();super.dispose();}
  @override Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:Text(_payload['kind']=='order'?'注文書を保存・印刷':'請書を保存・印刷')),
-  body:SafeArea(child:Column(children:[
-   if(_error!=null)Text(_error!),
-   if(!_revoked&&_known)Padding(padding:const EdgeInsets.all(12),child:TradeDocumentOutputSelector(key:ValueKey(_layout),value:_layout,enabled:!_busy,onChanged:_choose)),
-   if(!_revoked&&!_known)const Text('保存された原本の形式を保持します。過去書類に新しい条項は追加しません。'),
-   if(_busy)const LinearProgressIndicator(),
-   if(!_revoked&&_bytes!=null)Expanded(child:PdfPreview(build:(_)async{_verify();return _bytes!;},canChangePageFormat:false,canChangeOrientation:false,allowPrinting:false,allowSharing:false)),
-   if(!_revoked)Wrap(children:[OutlinedButton(onPressed:_busy?null:()=>_output(),child:const Text('印刷')),TextButton(onPressed:_busy?null:()=>_output(share:true),child:const Text('保存・共有'))]),
-  ])));
+  body:FinancialPreviewChrome(
+   status:[
+    if(_error!=null)Text(_error!),
+    if(!_revoked&&!_known)const Text('保存された原本の形式を保持します。過去書類に新しい条項は追加しません。'),
+    if(_busy)const LinearProgressIndicator(),
+   ],
+   actions:[
+    if(!_revoked&&_known)SizedBox(width:MediaQuery.sizeOf(context).width-24,
+      child:Theme(data:Theme.of(context).copyWith(inputDecorationTheme:const InputDecorationTheme(
+        isDense:true,contentPadding:EdgeInsets.symmetric(horizontal:12,vertical:8),
+        labelStyle:TextStyle(fontSize:12),helperStyle:TextStyle(fontSize:11))),
+        child:TradeDocumentOutputSelector(key:ValueKey(_layout),value:_layout,enabled:!_busy,onChanged:_choose))),
+   ],
+   preview:!_revoked&&_bytes!=null?PdfPreview.builder(
+     pagesBuilder:(context,pages)=>PdfPinchPages(pages:pages),
+     build:(_)async{_verify();return _bytes!;},canChangePageFormat:false,canChangeOrientation:false,
+     useActions:false,allowPrinting:false,allowSharing:false):const SizedBox.shrink(),
+   footer:!_revoked?Row(children:[
+    Expanded(child:OutlinedButton(onPressed:_busy?null:()=>_output(),
+      style:OutlinedButton.styleFrom(minimumSize:const Size(0,48),textStyle:const TextStyle(fontSize:14)),child:const Text('印刷'))),
+    const SizedBox(width:10),
+    Expanded(child:FilledButton(onPressed:_busy?null:()=>_output(share:true),
+      style:FilledButton.styleFrom(minimumSize:const Size(0,48),textStyle:const TextStyle(fontSize:14)),child:const Text('保存・共有'))),
+   ]):const SizedBox.shrink(),
+  ));
 }

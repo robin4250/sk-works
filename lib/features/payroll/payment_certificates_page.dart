@@ -21,6 +21,7 @@ import 'package:printing/printing.dart';
 import '../notifications/notification_bell.dart';
 import '../shared/pdf_bytes_cache.dart';
 import '../shared/pdf_pinch_pages.dart';
+import '../shared/financial_preview_chrome.dart';
 import '../../international/language_controller.dart';
 import '../../domain/rate_formula_settings.dart';
 import 'payment_certificate_pdf_service.dart';
@@ -346,6 +347,29 @@ class _PaymentCertificatePreviewPageState
   }
 
 
+  Future<void> _printCertificate() async {
+    if (_sharing) return;
+    final record = widget.record;
+    final actorLease = TradeDocumentActorLease();
+    setState(() => _sharing = true);
+    try {
+      final bytes = await _pdfBytes.get(() => PaymentCertificatePdfService.buildPdf(record));
+      actorLease.verify();
+      if (!mounted) throw StateError('画面を開き直してください。');
+      await Printing.layoutPdf(
+        name: '${record.monthLabel}_${record.partnerCompanyName}_支払証明書.pdf',
+        format: PdfPageFormat.a4,
+        onLayout: (_) async { actorLease.verify(); return bytes; },
+      );
+      actorLease.verify();
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('印刷の結果を確認してください。')));
+    } finally {
+      actorLease.dispose();
+      if (mounted) setState(() => _sharing = false);
+    }
+  }
+
   @override
   void didUpdateWidget(covariant PaymentCertificatePreviewPage oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -369,55 +393,51 @@ class _PaymentCertificatePreviewPageState
         actions: [
           const SkoNotificationBell()],
       ),
-      body: Column(children: [
-          if(!record.isPreview&&!record.isAgreementSnapshot&&RegExp(r'^[0-9a-fA-F-]{36}$').hasMatch(record.id))
-            TextButton(onPressed:()async{
-              try{await _readyForm();
-              if(!context.mounted)return;final saved=await Navigator.of(context).push<bool>(MaterialPageRoute(builder:(_)=>TradeDocumentAttachmentEditorPage(
-                subjectKind:'payment_certificate',subjectId:record.id,sourceRevision:record.revision.toString())));
-              _formScope!.requireScope();if(saved==true&&context.mounted)setState(()=>_pdfBytes.invalidate());
-              }catch(error){if(context.mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(error.toString())));}
-            },child:const Text('注文書の入力・設定')),
-          if (!record.isPreview && !record.isAgreementSnapshot && RegExp(r'^[0-9a-fA-F-]{36}$').hasMatch(record.id))
-            Wrap(children: [
-              TextButton(onPressed:_sharing?null:_formOutput,child:const Text('注文書を保存・印刷')),
-              TradeConfirmationAction(kind: 'payment_certificate', parentId: record.id,
-                sourceRevision: record.revision.toString(), label: '注文書の内容確認・角印'),
-              TradeConfirmationAction(kind: 'payment_certificate', parentId: record.id,
-                sourceRevision: '', label: '承認済み注文書を開く', inspectOnly: true),
-            ]),
-        Padding(padding: const EdgeInsets.all(8), child: Text(
-          SkoLanguageController.isEnglish
-              ? 'Pinch to zoom. Drag to move while zoomed.'
-              : '2本指で拡大・縮小／拡大後はドラッグで移動')),
-        Expanded(child: PdfPreview.builder(
-        pagesBuilder: (context, pages) => PdfPinchPages(pages: pages),
-        initialPageFormat: PdfPageFormat.a4,
-        canChangePageFormat: false,
-        canChangeOrientation: false,
-        allowPrinting: true,
-        allowSharing: false,
-        pdfFileName:
-            '${record.monthLabel}_${record.partnerCompanyName}_支払証明書.pdf',
-        build: _buildPreviewPdf,
-      )),
-        SafeArea(top: false, child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Text(SkoLanguageController.isEnglish
-              ? 'On iPhone, choose Save to Files in the share menu.'
-              : 'iPhoneでは共有メニューの「ファイルに保存」でPDFを保存できます。'),
-            const SizedBox(height: 8),
-            FilledButton.icon(
-              onPressed: _sharing ? null : _saveOrShare,
-              icon: const Icon(Icons.ios_share_outlined),
-              label: Text(SkoLanguageController.isEnglish
-                ? (_sharing ? 'Opening…' : 'Save / Share')
-                : (_sharing ? '開いています…' : '保存・共有')),
-            ),
-          ]),
-        )),
-      ]),
+      body: FinancialPreviewChrome(
+        actions: [
+          if (!record.isPreview && !record.isAgreementSnapshot && RegExp(r'^[0-9a-fA-F-]{36}$').hasMatch(record.id)) ...[
+            TextButton.icon(onPressed: _sharing ? null : () async {
+              try { await _readyForm();
+                if (!context.mounted) return;
+                final saved = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => TradeDocumentAttachmentEditorPage(
+                  subjectKind: 'payment_certificate', subjectId: record.id, sourceRevision: record.revision.toString())));
+                _formScope!.requireScope();
+                if (saved == true && context.mounted) setState(() => _pdfBytes.invalidate());
+              } catch (error) { if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString()))); }
+            }, icon: const Icon(Icons.edit_outlined, size: 20), label: const Text('注文書入力')),
+            TextButton.icon(onPressed: _sharing ? null : _formOutput,
+              icon: const Icon(Icons.print_outlined, size: 20), label: const Text('注文書保存・印刷')),
+            TradeConfirmationAction(kind: 'payment_certificate', parentId: record.id,
+              sourceRevision: record.revision.toString(), label: '内容確認・角印'),
+            TradeConfirmationAction(kind: 'payment_certificate', parentId: record.id,
+              sourceRevision: '', label: '承認済み注文書', inspectOnly: true),
+          ],
+          IconButton(tooltip: '表示・保存の案内', constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+            onPressed: () => showModalBottomSheet<void>(context: context, builder: (_) => SafeArea(
+              child: SingleChildScrollView(padding: const EdgeInsets.all(16), child: Text(SkoLanguageController.isEnglish
+                ? 'Pinch to zoom. Drag to move while zoomed.\n\nOn iPhone, choose Save to Files in the share menu.'
+                : '2本指で拡大・縮小／拡大後はドラッグで移動できます。\n\niPhoneでは共有メニューの「ファイルに保存」でPDFを保存できます。')))),
+            icon: const Icon(Icons.help_outline, size: 22)),
+        ],
+        status: const [],
+        preview: PdfPreview.builder(
+          pagesBuilder: (context, pages) => PdfPinchPages(pages: pages),
+          initialPageFormat: PdfPageFormat.a4,
+          canChangePageFormat: false, canChangeOrientation: false,
+          useActions: false, allowPrinting: false, allowSharing: false,
+          pdfFileName: '${record.monthLabel}_${record.partnerCompanyName}_支払証明書.pdf',
+          build: _buildPreviewPdf,
+        ),
+        footer: Row(children: [
+          Expanded(child: OutlinedButton.icon(onPressed: _sharing ? null : _printCertificate,
+            style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48), textStyle: const TextStyle(fontSize: 14)),
+            icon: const Icon(Icons.print_outlined), label: Text(SkoLanguageController.isEnglish ? 'Print' : '印刷'))),
+          const SizedBox(width: 10),
+          Expanded(child: FilledButton.icon(onPressed: _sharing ? null : _saveOrShare,
+            style: FilledButton.styleFrom(minimumSize: const Size(0, 48), textStyle: const TextStyle(fontSize: 14)),
+            icon: const Icon(Icons.ios_share_outlined), label: Text(SkoLanguageController.isEnglish ? (_sharing ? 'Opening…' : 'Save / Share') : (_sharing ? '開いています…' : '保存・共有')))),
+        ]),
+      ),
     ));
   }
 }

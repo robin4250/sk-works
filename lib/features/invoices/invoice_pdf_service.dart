@@ -31,6 +31,7 @@ import 'invoice_notice_candidate_rpc.dart';
 import 'invoice_preview_raster.dart';
 import 'invoice_preview_failure.dart';
 import 'invoice_native_pdf_view.dart';
+import '../shared/financial_preview_chrome.dart';
 import 'invoice_stamp_surname_dialog.dart';
 import 'invoice_settings_repository.dart';
 import '../shared/r33_input.dart';
@@ -1008,6 +1009,7 @@ class InvoicePdfPreviewPage extends StatefulWidget {
     super.key,
     required this.invoices,
     this.title,
+    this.additionalActions = const [],
     this.allowLegacyApprovalInitialization = true,
     this.approvalFromNotification = false,
     this.approvalNotificationId,
@@ -1015,6 +1017,7 @@ class InvoicePdfPreviewPage extends StatefulWidget {
 
   final List<InvoiceCalculationResult> invoices;
   final String? title;
+  final List<Widget> additionalActions;
   final bool allowLegacyApprovalInitialization;
   final bool approvalFromNotification;
   final String? approvalNotificationId;
@@ -1371,18 +1374,32 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                   return saved;
                 },
               );
-              return Column(
-                children: [
+              return FinancialPreviewChrome(
+                actions: [
+                  ...widget.additionalActions,
                   if (previewData.missingAcceptanceCount == 0 &&
                       _singleInvoice?.invoiceId.isNotEmpty == true &&
                       _singleInvoice?.documentUpdatedAt != null)
                     TextButton.icon(
                       onPressed: _openingAcceptance ? null : _openAcceptanceEditor,
-                      icon: const Icon(Icons.description_outlined),
-                      label: const Text('請書の入力・設定'),
+                      icon: const Icon(Icons.description_outlined, size: 20),
+                      label: const Text('請書入力'),
                     ),
-                  if(_singleInvoice?.invoiceId.isNotEmpty==true&&_singleInvoice?.documentUpdatedAt!=null)
-                    TextButton(onPressed:_openingAcceptance?null:_formOutput,child:const Text('請書を保存・印刷')),
+                  if (_singleInvoice?.invoiceId.isNotEmpty == true && _singleInvoice?.documentUpdatedAt != null)
+                    TextButton.icon(onPressed: _openingAcceptance ? null : _formOutput,
+                      icon: const Icon(Icons.print_outlined, size: 20), label: const Text('請書保存・印刷')),
+                  if (_singleInvoice != null)
+                    TradeConfirmationAction(kind: 'invoice', parentId: _singleInvoice!.invoiceId,
+                      sourceRevision: '', label: '承認済み請書', inspectOnly: true),
+                  IconButton(tooltip: '表示・保存の案内',
+                    constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                    onPressed: () => showModalBottomSheet<void>(context: context, isScrollControlled: true,
+                      builder: (context) => SafeArea(child: SingleChildScrollView(
+                        child: InvoicePreviewGuidance(initiallyExpanded: true,
+                          needsStampSurname: approvals.any((row) => row.stampSurname == null))))),
+                    icon: const Icon(Icons.help_outline, size: 22)),
+                ],
+                status: [
                   if (previewData.missingAcceptanceCount > 0)
                     InvoiceAcceptanceNotice(
                       missingCount: previewData.missingAcceptanceCount,
@@ -1426,14 +1443,9 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                       padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
                       child: approvalEntry,
                     ),
-                  if (_singleInvoice != null)
-                    TradeConfirmationAction(kind: 'invoice', parentId: _singleInvoice!.invoiceId,
-                      sourceRevision: '', label: '承認済み注文請書を開く', inspectOnly: true),
-                  InvoicePreviewGuidance(
-                    needsStampSurname: approvals.any((row) => row.stampSurname == null),
-                  ),
-                  Expanded(
-                    child: Container(
+
+                ],
+                preview: Container(
                       key: ValueKey(_previewRevision),
                       color: Colors.grey.shade200,
                       alignment: Alignment.topCenter,
@@ -1442,17 +1454,10 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                         pdfBytes: pdfBytes,
                       ),
                     ),
-                  ),
-                  SafeArea(
-                    top: false,
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Row(children: [
+                footer: Row(children: [
                           Expanded(
                             child: OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48), textStyle: const TextStyle(fontSize: 14)),
                               onPressed: () async { _actorLease.verify(); await Printing.layoutPdf(
                                 name: InvoicePdfService.fileNameFor(
                                   widget.invoices,
@@ -1468,6 +1473,7 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                           const SizedBox(width: 10),
                           Expanded(
                             child: FilledButton.icon(
+                              style: FilledButton.styleFrom(minimumSize: const Size(0, 48), textStyle: const TextStyle(fontSize: 14)),
                               onPressed: () async { _actorLease.verify(); await Printing.sharePdf(
                                 bytes: pdfBytes,
                                 filename: InvoicePdfService.fileNameFor(
@@ -1480,11 +1486,6 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                             ),
                           ),
                           ]),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
               );
             },
           );
@@ -1496,14 +1497,16 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
 
 /// Optional preview instructions stay collapsed so the document has priority.
 class InvoicePreviewGuidance extends StatelessWidget {
-  const InvoicePreviewGuidance({super.key, this.needsStampSurname = false});
+  const InvoicePreviewGuidance({super.key, this.needsStampSurname = false, this.initiallyExpanded = false});
   final bool needsStampSurname;
+  final bool initiallyExpanded;
 
   @override
   Widget build(BuildContext context) {
     SkoLanguageController.watch(context);
     final english = SkoLanguageController.isEnglish;
     return ExpansionTile(
+      initiallyExpanded: initiallyExpanded,
       dense: true,
       tilePadding: const EdgeInsets.symmetric(horizontal: 12),
       title: Text(english ? 'Display and save help' : '表示・保存の案内'),
