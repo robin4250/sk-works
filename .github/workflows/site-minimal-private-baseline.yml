@@ -33,7 +33,7 @@ jobs:
         with: {node-version: '22.21.0'}
       - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts
       - run: python -m unittest discover -s docs/review/site-order-private-baseline -p 'test_*.py' -v
-      - run: node --test docs/review/site-order-private-baseline/sql_transaction.test.mjs
+      - run: node --test docs/review/site-order-private-baseline/sql_transaction.test.mjs docs/review/site-order-private-baseline/prepare_atomic_review.test.mjs
       - name: Twelve atomic modules; seven exact helpers and synthetic seal/Auth
         env:
           SKO_CONSENT_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_document_consent_fixture

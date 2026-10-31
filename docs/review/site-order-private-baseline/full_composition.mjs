@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import {transactionBody} from './sql_transaction.mjs';
+import {catalogSql as inlineCatalogSql,equalityGuard} from './prepare_atomic_review.mjs';
 const modules=['foundation','legacy-response-guard','approval','approval-consent','archive-read','delivery','read-surfaces','archive-payload','approval-operation','refusal'];
 const coreSchemas=['trade_document_consent_private','trade_document_confirmation_api_private'];
 const allSchemas=[...coreSchemas,'site_order_artifact_private','site_order_manager_private','site_order_package_private'];
@@ -26,6 +28,10 @@ export async function composeFull(db,{read,q,check,manifest}){
  await db.exec(await read('tool/fixtures/site_order_legacy_public_respond.fixture.sql'));
  await db.exec('revoke all on function public.respond_site_share(uuid,boolean) from public,anon;grant execute on function public.respond_site_share(uuid,boolean) to authenticated,service_role');
  await db.exec("create temporary table site_order_legacy_expected(signature text primary key,attrs jsonb);insert into site_order_legacy_expected select case when p.oid='private.respond_site_share(uuid,boolean)'::regprocedure then 'private.respond_site_share(uuid,boolean)' else 'public.respond_site_share(uuid,boolean)'end,to_jsonb(p)-'prosrc' from pg_proc p where p.oid in('private.respond_site_share(uuid,boolean)'::regprocedure,'public.respond_site_share(uuid,boolean)'::regprocedure)");
+ await db.exec("set search_path=''");
+ const existingCatalogSql=await read('docs/review/site-order-private-baseline/existing_catalog_normalized.sql');
+ const existingBefore=await q(existingCatalogSql,[['auth','private','public']]);
+ check(Object.keys(existingBefore.functions).length,11);check(Object.keys(existingBefore.relations).length,9);
  const catalogSql=await read('docs/review/site-order-private-baseline/catalog_normalized.sql');
  const catalog=async schemas=>q(catalogSql,[schemas]);
  let allowedReferenceTriggers=[];
@@ -38,6 +44,9 @@ export async function composeFull(db,{read,q,check,manifest}){
     (select jsonb_agg(a.attname::text order by x.ord)from unnest(k.conkey)with ordinality x(num,ord)join pg_attribute a on a.attrelid=k.conrelid and a.attnum=x.num) child_columns,
     (select jsonb_agg(a.attname::text order by x.ord)from unnest(k.confkey)with ordinality x(num,ord)join pg_attribute a on a.attrelid=k.confrelid and a.attnum=x.num) parent_columns,
     k.confupdtype,k.confdeltype,k.confmatchtype,k.condeferrable,k.condeferred,k.convalidated,t.tgfoid::regprocedure::text function,t.tgtype,t.tgenabled,t.tgisinternal,t.tgnargs,t.tgdeferrable,t.tginitdeferred,
+    t.tgqual is null qualification_absent,encode(t.tgargs,'hex') args_hex,t.tgattr::text attributes_text,
+    t.tgparentid=0 not_cloned,t.tgoldtable is null and t.tgnewtable is null transition_tables_absent,
+    case t.tgtype when 9 then t.tgfoid='pg_catalog."RI_FKey_noaction_del"()'::regprocedure when 17 then t.tgfoid='pg_catalog."RI_FKey_noaction_upd"()'::regprocedure else false end exact_event_function,
     t.tgconstrrelid=k.conrelid child_binding,t.tgconstrindid=k.conindid index_binding,
     exists(select 1 from pg_depend d where d.classid='pg_trigger'::regclass and d.objid=t.oid and d.refclassid='pg_constraint'::regclass and d.refobjid=k.oid and d.deptype='i') internal_dependency
     from pg_trigger t join pg_constraint k on k.oid=t.tgconstraint join pg_class child on child.oid=k.conrelid join pg_namespace nc on nc.oid=child.relnamespace
@@ -50,10 +59,10 @@ export async function composeFull(db,{read,q,check,manifest}){
    assert.deepEqual(actual,expected,'only exact canonical reference FK triggers may be added');
   }
   for(const t of additions.rows){
-   assert.equal(t.confupdtype,'a');assert.equal(t.confdeltype,'a');assert.equal(t.confmatchtype,'s');assert.equal(t.condeferrable,false);assert.equal(t.condeferred,false);assert.equal(t.convalidated,true);assert.equal(t.child_binding,true);assert.equal(t.index_binding,true);assert.equal(t.internal_dependency,true);
+   assert.equal(t.qualification_absent,true);assert.equal(t.args_hex,'');assert.equal(t.attributes_text,'');assert.equal(t.not_cloned,true);assert.equal(t.transition_tables_absent,true);assert.equal(t.exact_event_function,true);assert.equal(t.confupdtype,'a');assert.equal(t.confdeltype,'a');assert.equal(t.confmatchtype,'s');assert.equal(t.condeferrable,false);assert.equal(t.condeferred,false);assert.equal(t.convalidated,true);assert.equal(t.child_binding,true);assert.equal(t.index_binding,true);assert.equal(t.internal_dependency,true);
    assert.equal(t.tgdeferrable,false);assert.equal(t.tginitdeferred,false);assert.equal(t.tgisinternal,true);assert.equal(t.tgenabled,'O');assert.equal(t.tgnargs,0);
    assert.ok(['\"RI_FKey_noaction_del\"()','\"RI_FKey_noaction_upd\"()'].includes(t.function));
-   const table=relations[t.parent];table.triggers=table.triggers.filter(x=>x.name!==t.name);
+   const table=relations[t.parent];table.triggers=table.triggers.filter(x=>x.name!=='internal:'+t.child.split('.')[0]+'.'+t.constraint_name+':'+t.tgtype);
   }
   for(const [name,table]of Object.entries(relations)){
    if(table.triggers?.length===0)table.triggers=null;
@@ -67,6 +76,8 @@ export async function composeFull(db,{read,q,check,manifest}){
  const texts=await Promise.all(paths.map(read));
  const api=await read('docs/candidates/trade_document_confirmation_api_20261022.sql.review-only');
  const actor=api.match(/create function trade_document_confirmation_api_private\.actor\(\)[\s\S]*?end \$\$;/)[0];
+ check(Object.fromEntries(paths.map((name,i)=>[name,createHash('sha256').update(texts[i]).digest('hex')])),JSON.parse(await read('docs/review/site-order-private-baseline/full-source-contract.json')));
+ check(createHash('sha256').update(actor).digest('hex'),manifest.actor_statement_sha256);
  const bodies=texts.map(transactionBody);
  async function install(){
   await db.exec('begin');
@@ -105,6 +116,17 @@ export async function composeFull(db,{read,q,check,manifest}){
   if(table.relkind==='r')check(table.relrowsecurity,true);
  }
  await db.exec('commit');check(await protectedCatalog(),before);
- return {modules_installed:12,core_namespaces:2,catalog:result,protected_catalog:before,allowed_new_fk_reference_triggers:allowedReferenceTriggers,faults:faults.length,atomic_rollback:true,source_paths:paths};
+ const existingAfter=await q(existingCatalogSql,[['auth','private','public']]);
+ check(existingAfter.functions,existingBefore.functions);check(existingAfter.default_acls,existingBefore.default_acls);check(existingAfter.namespaces,existingBefore.namespaces);
+ const sqlGuard=equalityGuard(inlineCatalogSql(catalogSql,allSchemas),result,'site_new_catalog_changed');
+ const oldGuard=equalityGuard(inlineCatalogSql(existingCatalogSql,['auth','private','public']),existingAfter,'site_existing_catalog_changed');
+ await db.exec('begin');
+ try{
+  await db.exec(sqlGuard);await db.exec(oldGuard);check(true,true);
+  await db.exec('alter function site_order_package_private.read_actor() cost 987654');
+  let denied=false;try{await db.exec(sqlGuard);}catch(e){denied=e.code==='55000';}check(denied,true);
+ }finally{await db.exec('rollback');}
+ check(await newCatalog(),result);
+ return {modules_installed:12,core_namespaces:2,native_contract_capture:{before:existingBefore,after:existingAfter},catalog:result,protected_catalog:before,allowed_new_fk_reference_triggers:allowedReferenceTriggers,faults:faults.length,atomic_rollback:true,source_paths:paths};
 }
 function nNotIndex(name,catalog){return ['r','S'].includes(catalog.relations[name].relkind);}

@@ -1,0 +1,15 @@
+{
+  "docs/candidates/trade_document_bound_seal_consent_20261021.sql.review-only": "dce7ca9653988c642d49325ff331d0548448206ae3e8c2e2dc24202d36a04e01",
+  "docs/review/site-order-artifact-registration/private-register.sql.review-only": "330ce27c0bbed24fbcfa60ae3f34201ee704d0b4fddd69fc76cd049c4c5119db",
+  "docs/review/site-order-manager-purpose/adapter.sql.review-only": "b46c730079f47477e8c73e89b192867b34c833ea263ddc7f9d348d65add36960",
+  "docs/review/site-order-package-flow/foundation.sql.review-only": "3c0bc1489767e879c39d3dbf44b94b201d4296f0711233363e9c54de8849ab67",
+  "docs/review/site-order-package-flow/legacy-response-guard.sql.review-only": "6cba3f988e2494261f404ad2cf4bc0c3816ccf88fb34bcfbcf9ea62cdae1bbae",
+  "docs/review/site-order-package-flow/approval.sql.review-only": "5e538255e740c4449512ffb83c04e682a5f5d4e7efe9ff15c56c8a098e912005",
+  "docs/review/site-order-package-flow/approval-consent.sql.review-only": "eb41d5f8dd426e11b40cbc5c3affa4a02ace009dd1bae756b97b155770fe31de",
+  "docs/review/site-order-package-flow/archive-read.sql.review-only": "6d2047dead2eb2c85efdf7a9bd49513b482ff373309807fca2dc23b786848e9f",
+  "docs/review/site-order-package-flow/delivery.sql.review-only": "7f5c1e708c3144693547038e7e581c492f81dc16c18a9cb6c176007018a8e295",
+  "docs/review/site-order-package-flow/read-surfaces.sql.review-only": "d411e79f8aa7379f0c0aefa1a6667994731b7adbe4c5d1da5e91bcdb752d975f",
+  "docs/review/site-order-package-flow/archive-payload.sql.review-only": "596ec400fe26aeee592ecd168474974d05a3ff5c23c97011e6f8e6e0c8e4262f",
+  "docs/review/site-order-package-flow/approval-operation.sql.review-only": "1a1552dd162c8081612609d7dc8b52c0829a243581e805dc623fd652d4bd4352",
+  "docs/review/site-order-package-flow/refusal.sql.review-only": "bb1d84441475ee8d5a87eb84e7fd1401489ab44258ba30d354d47693c20414be"
+}
