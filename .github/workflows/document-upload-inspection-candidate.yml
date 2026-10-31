@@ -18,6 +18,6 @@ jobs:
         with:
           node-version: '22'
       - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
-      - run: node --test tool/document_upload_evidence.test.mjs tool/document_upload_inspection.test.mjs tool/document_validator_limits.test.mjs
+      - run: node --test tool/document_upload_authenticated_inspection.test.mjs tool/document_upload_evidence.test.mjs tool/document_upload_inspection.test.mjs tool/document_validator_limits.test.mjs
       - run: node tool/document_upload_inspection_sql.test.mjs
       - run: node tool/document_upload_approval_overlay.test.mjs
