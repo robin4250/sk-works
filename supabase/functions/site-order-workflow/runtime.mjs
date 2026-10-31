@@ -3,6 +3,8 @@ import pg from 'npm:pg@8.16.3';
 import {createCanonicalEdgeRenderer} from './_canonical/edge_adapter.mjs';
 import {createProjectVerifier} from './auth.mjs';
 import {createSiteOrderHandler} from './handler.mjs';
+import {createOutgoingPrepareHandler} from './outgoing-handler.mjs';
+import {createSiteOrderRouter} from './router.mjs';
 
 export function serveSiteOrderWorkflow(runtime){
  const project=runtime.env.get('SUPABASE_URL');
@@ -24,5 +26,8 @@ export function serveSiteOrderWorkflow(runtime){
    application_name:'sko-site-order-workflow',query_timeout:45_000});
   try{await client.connect();return client;}catch{await client.end().catch(()=>{});throw Error('site_order_database_unavailable');}
  };
- runtime.serve(createSiteOrderHandler({verify,connect,render}));
+ runtime.serve(createSiteOrderRouter({
+  workflow:createSiteOrderHandler({verify,connect,render}),
+  outgoing:createOutgoingPrepareHandler({verify,connect}),
+ }));
 }

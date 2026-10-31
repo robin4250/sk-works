@@ -1,0 +1,55 @@
+name: Site-order prepare operation barriers
+on:
+  pull_request:
+    paths:
+      - 'docs/review/site-order-outgoing/**'
+      - 'supabase/functions/site-order-workflow/*.mjs'
+      - 'tool/site_order_prepare_operation_fixture.mjs'
+      - 'tool/site_order_prepare_http_jwt_fixture.mjs'
+      - 'tool/verify_site_order_prepare_operation.mjs'
+      - 'tool/site_order_edge_http.test.mjs'
+      - '.github/workflows/site-order-prepare-operation.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  operation-sql:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      matrix:
+        engine: [pglite, postgres]
+    services:
+      postgres:
+        image: postgres:17.6
+        env:
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_document_consent_fixture
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: dart-lang/setup-dart@v1
+        with: {sdk: '3.13.7'}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22.21.0'}
+      - run: dart pub get --enforce-lockfile --directory=tool/canonical_renderer
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts
+      - run: npm ci --prefix tool/site_order_edge_dependencies --ignore-scripts
+      - run: node --test tool/site_order_edge_http.test.mjs
+      - name: Append-only operation and four actual two-connection lock barriers
+        env:
+          SKO_CONFIRMED_TERMS_HOOK: content-v1
+          SKO_MONTHLY_PAYMENT_REVIEW_HOOK: contract-v1
+          SKO_TRADE_DOCUMENT_API_REVIEW_HOOK: contract-v1
+          SKO_SITE_ORDER_ARTIFACT_REGISTRATION_HOOK: contract-v1
+          SKO_CONSENT_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_document_consent_fixture
+        run: |
+          export SKO_CANONICAL_DART="$(command -v dart)"
+          if [ '${{ matrix.engine }}' = 'postgres' ]; then
+            node tool/verify_site_order_prepare_operation.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js" postgres
+          else
+            node tool/verify_site_order_prepare_operation.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
+          fi
+      - run: git diff --exit-code -- pubspec.yaml pubspec.lock tool/canonical_renderer/pubspec.yaml tool/canonical_renderer/pubspec.lock tool/security/fixture_dependencies/package-lock.json tool/verify_trade_document_bound_seal_consent.mjs tool/fixtures/trade_reciprocal_gate/source_manifest.json
