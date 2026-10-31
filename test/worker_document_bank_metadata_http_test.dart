@@ -165,11 +165,18 @@ void main() {
     for (final kind in ['foreign', 'duplicate', 'sensitive', 'date']) {
       final f = await Fixture.create();
       addTearDown(f.close);
-      if (kind == 'foreign') f.metadata.single['company_id'] = 'foreign';
-      if (kind == 'duplicate') f.metadata.add(Map.of(f.metadata.single));
-      if (kind == 'sensitive')
+      if (kind == 'foreign') {
+        f.metadata.single['company_id'] = 'foreign';
+      }
+      if (kind == 'duplicate') {
+        f.metadata.add(Map.of(f.metadata.single));
+      }
+      if (kind == 'sensitive') {
         f.metadata.single['account_number'] = 'synthetic-forbidden';
-      if (kind == 'date') f.metadata.single['updated_at'] = 'invalid';
+      }
+      if (kind == 'date') {
+        f.metadata.single['updated_at'] = 'invalid';
+      }
       await expectLater(f.repository.loadAll(), throwsStateError);
     }
   });
