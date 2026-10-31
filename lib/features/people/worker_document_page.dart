@@ -45,6 +45,7 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
   List<Map<String, dynamic>> _archivedRequirements = [];
   List<Map<String, dynamic>> _statuses = [];
   List<Map<String, dynamic>> _exemptions = [];
+  List<Map<String, dynamic>> _bankMetadata = [];
   bool Function()? _galleryLease;
   int _galleryGeneration = 0;
   final _galleryChanges = ValueNotifier(0);
@@ -106,6 +107,7 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
             .where((row) => row['archived_at'] != null).toList();
         _statuses = data['statuses'] ?? const <Map<String, dynamic>>[];
         _exemptions = data['exemptions'] ?? const <Map<String, dynamic>>[];
+        _bankMetadata = data['bank_account_metadata'] ?? const <Map<String, dynamic>>[];
         _canManageRequirements = values[1] as bool;
         _canManageStatuses = values[2] as bool;
         if (_selectedWorkerId == null ||
@@ -161,6 +163,16 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
     return ResourceAttachmentGallery(source: rows, workerId: workerId, companyId: company, isCurrent: current, signal: _galleryChanges, changes: repository.attachmentAuthChanges, entries: entries);
   }
 
+  bool? _bankRegisteredFor(String? workerId) {
+    final workers = _workers.where((row) => row['id'] == workerId).toList();
+    if (workers.length != 1 || workers.single['company_id'] is! String) { return null; }
+    final companyId = workers.single['company_id'];
+    final matches = _bankMetadata.where((row) => row['worker_id'] == workerId &&
+        row['company_id'] == companyId &&
+        DateTime.tryParse(row['updated_at']?.toString() ?? '') != null).toList();
+    return matches.length == 1 ? true : null;
+  }
+
   @override
   Widget build(BuildContext context) {
     SkoLanguageController.watch(context);
@@ -188,7 +200,7 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
       if (documentExemptionFor(_exemptions, workerId,
           requirement['id']?.toString())?['active'] == true) { return false; }
       return workerDocumentDisplayStatus(requirement, status,
-          effectiveStatus: effectiveStatus, today: today).complete;
+          effectiveStatus: effectiveStatus, bankRegistered: _bankRegisteredFor(workerId), today: today).complete;
     }).length;
     final exemptCount = visibleRequirements.where((requirement) =>
         documentExemptionFor(_exemptions, workerId, requirement['id']?.toString())?['active'] == true).length;
@@ -382,7 +394,7 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                                 updatedAt: status?['updated_at']);
                               final exemption = documentExemptionFor(_exemptions, workerId, requirement['id']?.toString());
                               final exempt = exemption?['active'] == true;
-                              final display = workerDocumentDisplayStatus(requirement, status, effectiveStatus: effective, today: today);
+                              final display = workerDocumentDisplayStatus(requirement, status, effectiveStatus: effective, bankRegistered: _bankRegisteredFor(workerId), today: today);
                               return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                               ResourceRegistrationCard(
                                 key: ValueKey('managed-document:$actor:$workerId:${requirement['id']}'),

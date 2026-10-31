@@ -8,6 +8,7 @@ on:
       - 'docs/candidates/worker_document_exemption_20261027/**'
       - 'test/worker_document_exemption_test.dart'
       - 'test/worker_document_display_status_test.dart'
+      - 'test/worker_document_bank_metadata_http_test.dart'
       - 'tool/verify_worker_document_exemption.mjs'
       - '.github/workflows/worker-document-individual-exemption.yml'
 permissions:
@@ -44,7 +45,8 @@ jobs:
       - run: flutter pub get --enforce-lockfile
       - run: flutter analyze
       - run: >-
-          flutter test test/worker_document_display_status_test.dart
+          flutter test test/worker_document_bank_metadata_http_test.dart
+          test/worker_document_display_status_test.dart
           test/worker_document_exemption_test.dart
           test/worker_document_requirement_archive_page_test.dart
           test/worker_document_requirement_edit_http_test.dart
