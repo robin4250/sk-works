@@ -250,12 +250,20 @@ void main() {
   }
 
   testWidgets('OS back cancels owned confirmation before closing the parent page',(tester) async {
-    await mount(tester);await selectWorker(tester,'検証社員');await tester.pumpAndSettle();
+    await tester.pumpWidget(MaterialApp(home:Builder(builder:(context)=>Scaffold(body:TextButton(
+      onPressed:()=>Navigator.of(context).push(MaterialPageRoute<void>(
+        builder:(_)=>AttendanceManagementPage(repository:repository))),child:const Text('親画面から開く'))))));
+    await tester.tap(find.text('親画面から開く'));await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(Tab,'一括'));await tester.pumpAndSettle();
+    await selectWorker(tester,'検証社員');await tester.pumpAndSettle();
     await see(tester,day(3));await tester.tap(day(3));await tester.pump();
     await see(tester,deleteButton());await tester.tap(deleteButton());await tester.pumpAndSettle();
     await tester.binding.handlePopRoute();await tester.pumpAndSettle();
     expect(find.byType(AlertDialog),findsNothing);
     expect(find.byType(AttendanceManagementPage),findsOneWidget);
+    await tester.binding.handlePopRoute();await tester.pumpAndSettle();
+    expect(find.byType(AttendanceManagementPage),findsNothing);
+    expect(find.text('親画面から開く'),findsOneWidget);
     expect(writes(),isEmpty);
     await finish(tester);
   });
