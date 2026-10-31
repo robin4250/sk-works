@@ -70,6 +70,7 @@ const watch=promise=>{
 };
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 holder=await connect();oldCaller=await connect();observer=await connect();
+assert.equal((await observer.query('show server_version_num')).rows[0].server_version_num,'170006');
 const installerPid=(await db.query('select pg_backend_pid() pid')).rows[0].pid;
 const holderPid=(await holder.query('select pg_backend_pid() pid')).rows[0].pid;
 await oldCaller.exec('set role authenticated');
@@ -82,6 +83,17 @@ const rowBefore=await rowSnapshot();assert.deepEqual(rowBefore,beforeRows);
 const callers=async()=> (await observer.query("select n.nspname,p.proname,pg_get_functiondef(p.oid) definition,to_jsonb(p) attributes from pg_proc p join pg_namespace n on n.oid=p.pronamespace where (n.nspname='public' and p.proname in ('save_trade_document_attachment','trade_document_attachment_workspace')) or (n.nspname='private' and p.proname='trade_document_attachment_workspace') order by n.nspname,p.proname")).rows;
 const callersBefore=await callers();assert.equal(callersBefore.length,3);
 const baselineCatalog=await readCatalog();assert.equal(catalogClass(baselineCatalog),'exact_before10');
+const masterShape=async()=>({
+ table:(await observer.query("select to_jsonb(c) attrs from pg_class c where c.oid='private.master_feature_settings'::regclass")).rows[0].attrs,
+ columns:(await observer.query("select to_jsonb(a) attrs from pg_attribute a where attrelid='private.master_feature_settings'::regclass order by attnum")).rows,
+ defaults:(await observer.query("select to_jsonb(d) attrs,pg_get_expr(adbin,adrelid) expression from pg_attrdef d where adrelid='private.master_feature_settings'::regclass order by adnum")).rows,
+ constraints:(await observer.query("select to_jsonb(c) attributes,pg_get_constraintdef(c.oid) definition from pg_constraint c where c.conrelid='private.master_feature_settings'::regclass order by c.oid")).rows,
+});
+const masterBefore=await masterShape();
+const predecessor=captured.find(x=>x.schema==='private'&&x.name==='save_trade_document_attachment');
+assert.equal(predecessor.source_md5,'82fa37936aea1e0199e1b359e1379d65');
+assert.ok(predecessor.attributes.prosrc.indexOf('perform pg_advisory_xact_lock')>=0);
+assert.ok(predecessor.attributes.prosrc.indexOf('perform pg_advisory_xact_lock')<predecessor.attributes.prosrc.indexOf('source:=private.trade_document_source'));
 await holder.exec('begin');holderHeld=true;
 await holder.query('select pg_advisory_xact_lock(hashtextextended($1,0))',[key]);
 await oldCaller.exec('begin');oldTx=true;
@@ -132,10 +144,12 @@ if(installOutcome.ok){
  }
 }else{
  assert.equal(finalCatalogClass,'exact_before10');
+ assert.deepEqual(finalCatalog,baselineCatalog,'Controlled installer failure must roll back the complete public/private function catalog');
  assert.equal(finalCatalog.some(x=>x.schema==='private'&&['save_trade_document_before_confirmed_terms','save_trade_document_before_form_fields','validate_trade_document_form_fields'].includes(x.name)),false);
  const table=(await observer.query("select to_jsonb(c) attrs from pg_class c where c.oid='private.master_feature_settings'::regclass")).rows[0].attrs;
  const constraints=(await observer.query("select to_jsonb(c) attributes,pg_get_constraintdef(c.oid) definition from pg_constraint c where c.conrelid='private.master_feature_settings'::regclass order by c.oid")).rows;
  assert.deepEqual(table,hubBefore.table);assert.deepEqual(constraints,hubBefore.constraints);
+ assert.deepEqual(await masterShape(),masterBefore);
 }
 assert.deepEqual(await callers(),callersBefore);
 assert.deepEqual((await oldCaller.query('select pg_backend_pid() pid,current_user role')).rows[0],oldIdentity);
@@ -154,10 +168,10 @@ report={contract:'sko.actual_C_old_inflight.v1',classification,installer_observa
  catalog_before_holder_release:catalogBeforeRelease,final_catalog:finalCatalogClass,
  catalog_before_old_transaction_end:catalogBeforeOldCommit,installer_blocked_by_old_transaction_after_statement:installerHeldByOldTransaction,
  existing_predecessor_advisory_wait:{observed:true,key_identity:keyIdentity,blocker_verified:true},
- old_caller_entered_before_company_guard:true,old_statement:{ok:oldOutcome.ok,code:oldOutcome.code??null,message:oldOutcome.message??null},
+ source_asserted_old_lock_precedes_company_guard:true,old_saver_source_md5:predecessor.source_md5,old_statement:{ok:oldOutcome.ok,code:oldOutcome.code??null,message:oldOutcome.message??null},
  old_commit_ack_observed:oldCommitAck,old_invalid_form_commit_observed:oldCommitAck,
  installer:{ok:installOutcome.ok,code:installOutcome.code??null,message:installOutcome.message??null},
- explicit_after13_comparisons:installOutcome.ok?13:0,source_and_other_rows_preserved:true,old_caller_backend_role_unchanged:true,
+ server_version_num:170006,explicit_after13_comparisons:installOutcome.ok?13:0,expected_catalog_contract_and_unrelated_rows_preserved:true,old_caller_backend_role_unchanged:true,
  admitted_old_transaction_commit_after_C_observed:(installedBeforeOldRelease||catalogBeforeOldCommit==='exact_after13')&&oldCommitAck,
  unknown_intermediate_result_is_success:false,old_restore_executed:false,warmed1722_reexecuted:false,generic1711_executed:false,
  fixture_authentication_synthetic:true,real_GoTrue:false,actual_production_drain_proven:false,production:false,deployable:false};
