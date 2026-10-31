@@ -9,7 +9,6 @@ permissions:
   contents: read
 jobs:
   action-identity:
-    if: false # Independent source review before the focused regression.
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
