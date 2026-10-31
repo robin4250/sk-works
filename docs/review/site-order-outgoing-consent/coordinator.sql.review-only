@@ -1,0 +1,241 @@
+-- SOURCE REVIEW ONLY. Not a production migration or activation.
+-- New metadata/purpose functions only; canonical consent/job/Auth stay unchanged.
+begin;
+do $$ declare e record;p pg_proc;begin
+ if to_regclass('site_order_outgoing_private.preview_receipts') is not null
+ or to_regclass('site_order_outgoing_private.decision_receipts') is not null
+ then raise exception 'outgoing_consent_already_installed' using errcode='55000';end if;
+ for e in select * from(values
+ ('site_order_outgoing_private.require_unsigned_prepare(uuid,uuid,uuid,uuid,uuid)','a7e9893c6d05b8fe6465dbbf9802b7a6',false),
+ ('site_order_outgoing_private.lock_key(uuid,uuid,uuid)','a7396d56e6763737144c390e3fdc3821',false),
+ ('site_order_outgoing_private.source_hash(jsonb)','5d7f698dbe45fc905be19c7e06785310',false),
+ ('private.require_standalone_trade_document_access()','63c57e18a04499e8d6bcfad4ead7837f',true),
+ ('site_order_package_private.read_actor()','cc3b89f99b06543bcbedde33608b2920',false),
+ ('trade_document_consent_private.immutable()','73660d9947f20d6f99c59d8451078e7e',false)
+ )v(signature,body_md5,allow_authenticated) loop
+  select * into p from pg_proc where oid=to_regprocedure(e.signature);
+  if p.oid is null or md5(p.prosrc) is distinct from e.body_md5
+   or pg_get_userbyid(p.proowner)<>'postgres' or p.proconfig is distinct from array['search_path=""']::text[]
+   or exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) x
+    where x.privilege_type<>'EXECUTE' or x.is_grantable or x.grantor<>p.proowner
+     or (x.grantee<>p.proowner and not(e.allow_authenticated and x.grantee='authenticated'::regrole)))
+   or not exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) x where x.grantee=p.proowner and x.privilege_type='EXECUTE')
+   or (e.allow_authenticated and not exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) x where x.grantee='authenticated'::regrole and x.privilege_type='EXECUTE'))
+  then raise exception 'outgoing_consent_dependency_changed: %',e.signature using errcode='55000';end if;
+ end loop;
+ -- Existing immutable source registry attests the exact generated adapters.
+ for e in select * from(values
+ ('preview_own(uuid,integer,uuid)','trade_document_consent_private.preview_own(uuid,integer,uuid)','479151769943b00bf76ebd4e31ed69b4'),
+ ('decide(uuid,integer,uuid,integer,text,text,text,boolean,uuid)','trade_document_consent_private.decide(uuid,integer,uuid,integer,text,text,text,boolean,uuid)','15b5a7a4a961cfee60da6be237c180ec'),
+ ('prepare_job(uuid,uuid,uuid,integer,uuid,uuid)','site_order_artifact_private.prepare_job(uuid,uuid,uuid,integer,uuid,uuid)','0a641b5cefd8734a62a7f75e52b39084'),
+ ('render_approved(uuid,integer,uuid,boolean)','trade_document_consent_private.render_approved(uuid,integer,uuid,boolean)','b53668611851ab0bc211660e6f6d1f86')
+ )v(signature,original,source_md5) loop
+  select * into p from pg_proc where oid=to_regprocedure('site_order_manager_private.'||e.signature);
+  if p.oid is null or not p.prosecdef or pg_get_userbyid(p.proowner)<>'postgres'
+   or p.proconfig is distinct from array['search_path=""']::text[]
+   or not exists(select 1 from site_order_manager_private.generated_sources g
+    where g.signature=e.original and g.source_md5=e.source_md5 and g.generated_md5=md5(p.prosrc))
+   or exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) x
+    where x.grantee<>p.proowner or x.is_grantable or x.grantor<>p.proowner or x.privilege_type<>'EXECUTE')
+  then raise exception 'outgoing_consent_adapter_changed: %',e.signature using errcode='55000';end if;
+ end loop;
+end $$;
+
+create table site_order_outgoing_private.preview_receipts(
+ id uuid primary key,operation_id uuid not null references site_order_outgoing_private.prepared_operations(id),
+ company_id uuid not null,actor_id uuid not null,session_id uuid not null,
+ document_revision integer not null check(document_revision=1),epoch integer not null check(epoch=0),
+ body_hash text not null check(body_hash~'^[a-f0-9]{64}$'),
+ source_hash text not null check(source_hash~'^[a-f0-9]{64}$'),
+ seal_hash text not null check(seal_hash~'^[a-f0-9]{64}$'),
+ renderer_contract text not null check(renderer_contract='sko-original-form-20261029-v1'),
+ created_at timestamptz not null default clock_timestamp(),
+ unique(id,operation_id,company_id,actor_id,session_id)
+);
+create table site_order_outgoing_private.decision_receipts(
+ request_id uuid primary key,preview_id uuid not null unique,
+ operation_id uuid not null unique,company_id uuid not null,actor_id uuid not null,session_id uuid not null,
+ job_id uuid not null unique references site_order_artifact_private.render_jobs(id),
+ body_hash text not null check(body_hash~'^[a-f0-9]{64}$'),
+ render_hash text not null check(render_hash~'^[a-f0-9]{64}$'),
+ created_at timestamptz not null default clock_timestamp(),
+ foreign key(preview_id,operation_id,company_id,actor_id,session_id)
+  references site_order_outgoing_private.preview_receipts(id,operation_id,company_id,actor_id,session_id),
+ foreign key(request_id) references trade_document_consent_private.receipts(request_id)
+);
+alter table site_order_outgoing_private.preview_receipts enable row level security;
+alter table site_order_outgoing_private.decision_receipts enable row level security;
+create trigger immutable_preview_receipt before update or delete on site_order_outgoing_private.preview_receipts
+ for each row execute function trade_document_consent_private.immutable();
+create trigger immutable_preview_receipt_truncate before truncate on site_order_outgoing_private.preview_receipts
+ for each statement execute function trade_document_consent_private.immutable();
+create trigger immutable_decision_receipt before update or delete on site_order_outgoing_private.decision_receipts
+ for each row execute function trade_document_consent_private.immutable();
+create trigger immutable_decision_receipt_truncate before truncate on site_order_outgoing_private.decision_receipts
+ for each statement execute function trade_document_consent_private.immutable();
+
+-- No new lock: caller already holds the pair/operation/scope/consent locks.
+create function site_order_outgoing_private.preview_unsigned(p_site uuid,p_doc uuid,p_local uuid,p_trade uuid,p_request uuid)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare a jsonb;g jsonb;v jsonb;o site_order_outgoing_private.prepared_operations%rowtype;
+ r trade_document_consent_private.revisions%rowtype;p site_order_outgoing_private.preview_receipts%rowtype;
+begin
+ g:=site_order_outgoing_private.require_unsigned_prepare(p_site,p_doc,p_local,p_trade,p_request);
+ a:=private.require_standalone_trade_document_access();
+ select * into o from site_order_outgoing_private.prepared_operations where id=(g->>'operation_id')::uuid;
+ v:=site_order_manager_private.preview_own(p_doc,1,o.company_id);
+ select * into r from trade_document_consent_private.revisions where document_id=p_doc and revision=1;
+ if v->>'epoch' is distinct from '0' or v->>'body_hash' is distinct from o.body_sha256
+  or v#>>'{own_seal,seal_hash}' is distinct from o.seal_sha256 or r.body_hash is distinct from o.body_sha256
+ then raise exception 'outgoing_preview_evidence_changed' using errcode='40001';end if;
+ insert into site_order_outgoing_private.preview_receipts(id,operation_id,company_id,actor_id,session_id,
+ document_revision,epoch,body_hash,source_hash,seal_hash,renderer_contract)
+ values(gen_random_uuid(),o.id,o.company_id,o.actor_id,o.session_id,1,0,o.body_sha256,o.source_sha256,o.seal_sha256,
+ 'sko-original-form-20261029-v1') returning * into p;
+ if private.require_standalone_trade_document_access() is distinct from a
+ then raise exception 'outgoing_preview_actor_changed' using errcode='40001';end if;
+ return jsonb_build_object('purpose','unsigned_review','preview_only',true,'can_register',false,'can_send',false,
+ 'preview_id',p.id,'operation_id',o.id,'document_id',p_doc,'revision',1,'body_hash',p.body_hash,
+ 'source_hash',p.source_hash,'seal_hash',p.seal_hash,'renderer_contract',p.renderer_contract,'body',r.body,
+ 'own_seal',jsonb_build_object('company_id',o.company_id,'seal_hash',p.seal_hash,
+ 'seal_snapshot',v#>'{own_seal,snapshot}','version_key',v#>'{own_seal,version_key}'));
+end $$;
+
+-- Strict immutable row proof; does not consult live evidence or authorize mutation.
+create function site_order_outgoing_private.decision_result(d site_order_outgoing_private.decision_receipts)
+returns jsonb language plpgsql stable security invoker set search_path='' as $$
+declare o site_order_outgoing_private.prepared_operations%rowtype;p site_order_outgoing_private.preview_receipts%rowtype;
+ j site_order_artifact_private.render_jobs%rowtype;c trade_document_consent_private.receipts%rowtype;
+begin
+ select * into o from site_order_outgoing_private.prepared_operations where id=d.operation_id;
+ select * into p from site_order_outgoing_private.preview_receipts where id=d.preview_id;
+ select * into j from site_order_artifact_private.render_jobs where id=d.job_id;
+ select * into c from trade_document_consent_private.receipts where request_id=d.request_id;
+ if o.id is null or p.id is null or j.id is null or c.request_id is null
+ or (j.company_id,j.actor_id,j.session_id,j.request_id,j.site_id,j.document_id,j.document_revision,
+ j.counterparty_company_id,j.counterparty_trade_company_id,j.counterparty_connection_fingerprint,j.body_hash,j.render_hash)
+ is distinct from(d.company_id,d.actor_id,d.session_id,d.request_id,o.site_id,o.document_id,p.document_revision,
+ o.counterparty_company_id,o.trade_company_id,o.connection_fingerprint,d.body_hash,d.render_hash)
+ or j.layout_contract is distinct from p.renderer_contract or j.evidence->>'render_hash' is distinct from d.render_hash
+ or j.evidence->>'body_hash' is distinct from d.body_hash
+ or j.evidence#>>'{seals,0,seal_hash}' is distinct from p.seal_hash
+ or j.evidence#>>'{consents,0,seal_hash}' is distinct from p.seal_hash
+ or jsonb_array_length(j.evidence->'seals') is distinct from 1
+ or jsonb_array_length(j.evidence->'consents') is distinct from 1
+ or c.actor_id is distinct from d.actor_id
+ or c.payload is distinct from jsonb_build_object('document_id',o.document_id,'revision',1,
+ 'company_id',d.company_id,'epoch',p.epoch,'body_hash',p.body_hash,'action','approve','seal_hash',p.seal_hash)
+ or c.result->>'request_outcome' is distinct from 'approve'
+ then raise exception 'outgoing_decision_receipt_unresolved' using errcode='40001';end if;
+ return jsonb_build_object('contract_version',1,'operation_state','decision_job_prepared','decision_request_id',d.request_id,
+ 'preview_id',d.preview_id,'operation_id',d.operation_id,'job_id',d.job_id,'company_id',d.company_id,
+ 'site_id',o.site_id,'document_id',o.document_id,'local_document_id',o.local_document_id,'trade_company_id',o.trade_company_id,
+ 'request_id',o.request_id,'body_hash',d.body_hash,'render_hash',d.render_hash,
+ 'original_registered',false,'sent',false,'can_send',false,'journal_clearable',false,'retry_automatically',false);
+end $$;
+
+create function site_order_outgoing_private.confirm_unsigned(p_site uuid,p_doc uuid,p_local uuid,p_trade uuid,p_request uuid,
+ p_preview uuid,p_decision uuid,p_confirmed boolean)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare a jsonb;cid uuid;context jsonb;g jsonb;job jsonb;evidence jsonb;result jsonb;
+ o site_order_outgoing_private.prepared_operations%rowtype;p site_order_outgoing_private.preview_receipts%rowtype;
+ d site_order_outgoing_private.decision_receipts%rowtype;j site_order_artifact_private.render_jobs%rowtype;
+begin
+ if p_confirmed is distinct from true or p_preview is null or p_decision is null
+ or p_request is null or p_site is null or p_doc is null or p_local is null or p_trade is null
+ then raise exception 'outgoing_explicit_confirmation_required' using errcode='22023';end if;
+ a:=private.require_standalone_trade_document_access();cid:=(a->>'company_id')::uuid;
+ -- Existing context takes company-pair locks before the operation lock.
+ context:=site_order_manager_private.outgoing_context(p_site,p_trade);
+ perform pg_advisory_xact_lock(site_order_outgoing_private.lock_key(cid,auth.uid(),p_request));
+ select * into o from site_order_outgoing_private.prepared_operations
+ where company_id=cid and actor_id=auth.uid() and request_id=p_request;
+ if o.id is null or (o.site_id,o.document_id,o.local_document_id,o.trade_company_id,o.session_id)
+ is distinct from(p_site,p_doc,p_local,p_trade,(a->>'session_id')::uuid)
+ then raise exception 'outgoing_confirmation_identity_changed' using errcode='42501';end if;
+ select * into d from site_order_outgoing_private.decision_receipts where request_id=p_decision;
+ if d.request_id is not null then
+  if (d.operation_id,d.preview_id,d.company_id,d.actor_id,d.session_id)
+   is distinct from(o.id,p_preview,cid,auth.uid(),o.session_id)
+  then raise exception 'outgoing_confirmation_request_changed' using errcode='40001';end if;
+  result:=site_order_outgoing_private.decision_result(d);
+ else
+  g:=site_order_outgoing_private.require_unsigned_prepare(p_site,p_doc,p_local,p_trade,p_request);
+  select * into p from site_order_outgoing_private.preview_receipts where id=p_preview;
+  if p.id is null or (p.operation_id,p.company_id,p.actor_id,p.session_id,p.body_hash,p.source_hash,p.seal_hash)
+   is distinct from(o.id,cid,auth.uid(),o.session_id,o.body_sha256,o.source_sha256,o.seal_sha256)
+  then raise exception 'outgoing_exact_preview_required' using errcode='40001';end if;
+  -- Existing ledgers cannot establish that this coordinator ran. Never borrow them.
+  if exists(select 1 from trade_document_consent_private.receipts where request_id=p_decision)
+   or exists(select 1 from site_order_artifact_private.render_jobs where request_id=p_decision)
+  then raise exception 'outgoing_decision_request_already_used' using errcode='40001';end if;
+  perform site_order_manager_private.decide(p_doc,1,cid,p.epoch,p.body_hash,'approve',p.seal_hash,true,p_decision);
+  job:=site_order_manager_private.prepare_job(cid,p_site,p_doc,1,p_decision,p_trade);
+  select * into j from site_order_artifact_private.render_jobs where id=(job->>'job_id')::uuid;
+  evidence:=site_order_manager_private.render_approved(p_doc,1,cid,false);
+  if j.id is null or j.evidence is distinct from evidence
+   or j.render_hash is distinct from evidence->>'render_hash' or j.body_hash is distinct from p.body_hash
+  then raise exception 'outgoing_exact_new_job_required' using errcode='40001';end if;
+  insert into site_order_outgoing_private.decision_receipts(request_id,preview_id,operation_id,company_id,actor_id,
+  session_id,job_id,body_hash,render_hash)
+  values(p_decision,p.id,o.id,cid,auth.uid(),o.session_id,j.id,p.body_hash,j.render_hash) returning * into d;
+  result:=site_order_outgoing_private.decision_result(d);
+ end if;
+ if private.require_standalone_trade_document_access() is distinct from a
+  or site_order_outgoing_private.source_hash(site_order_manager_private.outgoing_context(p_site,p_trade))
+   is distinct from o.source_sha256
+ then raise exception 'outgoing_confirmation_source_changed' using errcode='40001';end if;
+ return result;
+end $$;
+
+-- OFF/new valid SID observation only: no consent/job/register/send mutations.
+create function site_order_outgoing_private.decision_status(p_site uuid,p_doc uuid,p_local uuid,p_trade uuid,p_request uuid,
+ p_preview uuid,p_decision uuid)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare a jsonb;o site_order_outgoing_private.prepared_operations%rowtype;
+ d site_order_outgoing_private.decision_receipts%rowtype;result jsonb;
+begin
+ a:=site_order_package_private.read_actor();
+ perform pg_advisory_xact_lock(site_order_outgoing_private.lock_key((a->>'company_id')::uuid,auth.uid(),p_request));
+ select * into o from site_order_outgoing_private.prepared_operations
+ where company_id=(a->>'company_id')::uuid and actor_id=auth.uid() and request_id=p_request;
+ if o.id is null or (o.site_id,o.document_id,o.local_document_id,o.trade_company_id)
+ is distinct from(p_site,p_doc,p_local,p_trade)
+ then raise exception 'outgoing_status_identity_unavailable' using errcode='42501';end if;
+ select * into d from site_order_outgoing_private.decision_receipts where request_id=p_decision;
+ if d.request_id is null then
+  result:=jsonb_build_object('contract_version',1,'operation_state','decision_not_observed',
+  'retry_automatically',false,'can_send',false,'journal_clearable',false);
+ else
+  if (d.operation_id,d.preview_id,d.company_id,d.actor_id)
+   is distinct from(o.id,p_preview,o.company_id,o.actor_id)
+  then raise exception 'outgoing_status_request_changed' using errcode='42501';end if;
+  result:=site_order_outgoing_private.decision_result(d);
+ end if;
+ if site_order_package_private.read_actor() is distinct from a
+ then raise exception 'outgoing_status_actor_changed' using errcode='40001';end if;
+ return result||jsonb_build_object('read_only',true,'same_session',o.session_id::text=a->>'session_id');
+end $$;
+revoke all on site_order_outgoing_private.preview_receipts,site_order_outgoing_private.decision_receipts
+ from public,anon,authenticated,service_role;
+revoke all on function site_order_outgoing_private.preview_unsigned(uuid,uuid,uuid,uuid,uuid),
+ site_order_outgoing_private.decision_result(site_order_outgoing_private.decision_receipts),
+ site_order_outgoing_private.confirm_unsigned(uuid,uuid,uuid,uuid,uuid,uuid,uuid,boolean),
+ site_order_outgoing_private.decision_status(uuid,uuid,uuid,uuid,uuid,uuid,uuid)
+ from public,anon,authenticated,service_role;
+do $$ declare p pg_proc;c pg_class;n pg_namespace;begin
+ select * into n from pg_namespace where nspname='site_order_outgoing_private';
+ if pg_get_userbyid(n.nspowner)<>'postgres' or exists(select 1 from aclexplode(coalesce(n.nspacl,acldefault('n',n.nspowner))) x where x.grantee<>n.nspowner or x.grantor<>n.nspowner)
+ then raise exception 'outgoing_consent_namespace_acl_changed';end if;
+ for c in select * from pg_class where oid in('site_order_outgoing_private.preview_receipts'::regclass,'site_order_outgoing_private.decision_receipts'::regclass) loop
+  if pg_get_userbyid(c.relowner)<>'postgres' or not c.relrowsecurity or c.relforcerowsecurity
+   or exists(select 1 from aclexplode(coalesce(c.relacl,acldefault('r',c.relowner))) x where x.grantee<>c.relowner or x.grantor<>c.relowner)
+  then raise exception 'outgoing_consent_table_acl_changed';end if;
+ end loop;
+ for p in select * from pg_proc where pronamespace=n.oid and proname in('preview_unsigned','decision_result','confirm_unsigned','decision_status') loop
+  if pg_get_userbyid(p.proowner)<>'postgres' or p.proconfig is distinct from array['search_path=""']::text[]
+   or exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) x where x.grantee<>p.proowner or x.grantor<>p.proowner or x.is_grantable)
+  then raise exception 'outgoing_consent_function_acl_changed';end if;
+ end loop;
+end $$;
+commit;

@@ -2,6 +2,9 @@
 const uuid=/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/;
 const identity=['site_id','document_id','local_id','trade_id','request_id'];
 const commands={
+ preview_unsigned:{keys:identity,sql:'select site_order_outgoing_private.preview_unsigned($1,$2,$3,$4,$5) as result'},
+ confirm_unsigned:{keys:[...identity,'preview_id','decision_id','confirmed'],sql:'select site_order_outgoing_private.confirm_unsigned($1,$2,$3,$4,$5,$6,$7,$8) as result'},
+ decision_status:{keys:[...identity,'preview_id','decision_id'],sql:'select site_order_outgoing_private.decision_status($1,$2,$3,$4,$5,$6,$7) as result'},
  targets:{keys:['site_id','before','limit'],sql:'select site_order_outgoing_private.registered_targets($1,$2,$3) as result'},
  prepare:{keys:[...identity,'connection_fingerprint','body'],sql:'select site_order_outgoing_private.prepare_order($1,$2,$3,$4,$5,$6,$7::jsonb) as result'},
  status:{keys:identity,sql:'select site_order_outgoing_private.operation_status($1,$2,$3,$4,$5) as result'},
