@@ -9,6 +9,7 @@ import '../common/data_date_labels.dart';
 import 'personnel_export_page.dart';
 import 'worker_document_repository.dart';
 import 'worker_document_exemption.dart';
+import 'worker_document_display_status.dart';
 import 'worker_document_change_flow.dart';
 import 'worker_document_change_review_page.dart';
 import '../shared/resource_registration_card.dart';
@@ -44,6 +45,7 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
   List<Map<String, dynamic>> _archivedRequirements = [];
   List<Map<String, dynamic>> _statuses = [];
   List<Map<String, dynamic>> _exemptions = [];
+  List<Map<String, dynamic>> _bankMetadata = [];
   bool Function()? _galleryLease;
   int _galleryGeneration = 0;
   final _galleryChanges = ValueNotifier(0);
@@ -105,6 +107,7 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
             .where((row) => row['archived_at'] != null).toList();
         _statuses = data['statuses'] ?? const <Map<String, dynamic>>[];
         _exemptions = data['exemptions'] ?? const <Map<String, dynamic>>[];
+        _bankMetadata = data['bank_account_metadata'] ?? const <Map<String, dynamic>>[];
         _canManageRequirements = values[1] as bool;
         _canManageStatuses = values[2] as bool;
         if (_selectedWorkerId == null ||
@@ -160,6 +163,16 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
     return ResourceAttachmentGallery(source: rows, workerId: workerId, companyId: company, isCurrent: current, signal: _galleryChanges, changes: repository.attachmentAuthChanges, entries: entries);
   }
 
+  bool? _bankRegisteredFor(String? workerId) {
+    final workers = _workers.where((row) => row['id'] == workerId).toList();
+    if (workers.length != 1 || workers.single['company_id'] is! String) { return null; }
+    final companyId = workers.single['company_id'];
+    final matches = _bankMetadata.where((row) => row['worker_id'] == workerId &&
+        row['company_id'] == companyId &&
+        DateTime.tryParse(row['updated_at']?.toString() ?? '') != null).toList();
+    return matches.length == 1 ? true : null;
+  }
+
   @override
   Widget build(BuildContext context) {
     SkoLanguageController.watch(context);
@@ -179,12 +192,10 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
     final today = DateTime.now();
     final completed = visibleRequirements.where((requirement) {
       final status = statusByRequirement[requirement['id']?.toString()];
-      final effectiveStatus = _effectiveDocumentStatus(
-        requirement,
-        status,
-        today,
-      );
-      return effectiveStatus == 'submitted' || effectiveStatus == 'verified';
+      if (documentExemptionFor(_exemptions, workerId,
+          requirement['id']?.toString())?['active'] == true) { return false; }
+      return workerDocumentDisplayStatus(requirement, status,
+          bankRegistered: _bankRegisteredFor(workerId), today: today).complete;
     }).length;
     final exemptCount = visibleRequirements.where((requirement) =>
         documentExemptionFor(_exemptions, workerId, requirement['id']?.toString())?['active'] == true).length;
@@ -378,12 +389,13 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                                 updatedAt: status?['updated_at']);
                               final exemption = documentExemptionFor(_exemptions, workerId, requirement['id']?.toString());
                               final exempt = exemption?['active'] == true;
+                              final display = workerDocumentDisplayStatus(requirement, status, bankRegistered: _bankRegisteredFor(workerId), today: today);
                               return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                               ResourceRegistrationCard(
                                 key: ValueKey('managed-document:$actor:$workerId:${requirement['id']}'),
                                 title: requirement['name']?.toString() ?? '書類',
-                                icon: Icons.description_outlined, registered: exempt || status != null,
-                                statusLabel: exempt ? '提出免除' : status == null ? '未登録' : '登録済み',
+                                icon: Icons.description_outlined, registered: exempt || display.complete,
+                                statusLabel: exempt ? '提出免除' : display.label,
                                 dateLabel: dates.isEmpty ? '' : dates.first,
                                 detailLabel: [if (exempt) '免除理由：${exemption!['reason']}',
                                   if (!exempt) resourceDocumentReviewLabel(effective),

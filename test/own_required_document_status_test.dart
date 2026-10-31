@@ -73,4 +73,22 @@ void main() {
     expect(gateway.saves,1);
   });
 
+  testWidgets('本人一覧も複数添付と期限未入力を共通判定する', (tester) async {
+    await show(tester, req('雇用保険被保険者証'),
+      {'requirement_id': 'r', 'status': 'submitted', 'attachment_paths': ['retained/a', 'retained/b']});
+    expect(find.text('添付待ち'), findsNothing);
+    expect(find.text('登録済み'), findsOneWidget);
+    await show(tester, {...req('健康診断書'), 'expiry_required': true},
+      {'requirement_id': 'r', 'status': 'submitted', 'attachment_paths': ['retained/a']});
+    expect(find.text('登録済み・期限未入力'), findsOneWidget);
+    expect(find.text('登録済み'), findsNothing);
+  });
+
+  testWidgets('本人一覧も任意の入力済み期限が過去なら完了扱いにしない', (tester) async {
+    await show(tester, req('証明書'), {'requirement_id': 'r', 'status': 'submitted',
+      'attachment_paths': ['retained/a'], 'expires_at': '2020-01-01'});
+    expect(find.text('登録済み・期限切れ'), findsOneWidget);
+    expect(find.text('登録済み'), findsNothing);
+  });
+
 }

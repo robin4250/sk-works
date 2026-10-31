@@ -300,7 +300,66 @@ class WorkerDocumentRepository {
     }
   }
 
+  /// Metadata only, through the existing table/RLS. A missing/invisible row
+  /// is deliberately unknown, not proof that another employee has no account.
+  Future<List<Map<String, dynamic>>> _bankRegistrationMetadata(
+      String companyId, List<Map<String, dynamic>> workers) async {
+    if (workers.isEmpty) { return []; }
+    final current = await captureAttachmentReadScope();
+    final actor = actorId;
+    final token = _client.auth.currentSession?.accessToken;
+    void check() {
+      if (!current() || actor == null || actorId != actor || token == null ||
+          _client.auth.currentSession?.accessToken != token) {
+        throw StateError('口座の登録状態を再確認してください。');
+      }
+    }
+    check();
+    final ids = workers.map((row) => row['id']?.toString()).whereType<String>().toSet();
+    if (ids.length != workers.length || workers.any((row) => row['company_id'] != companyId || row['status'] != 'active')) {
+      throw StateError('対象社員を確認できません。');
+    }
+    try {
+      final rows = await _client.from('worker_private_bank_accounts')
+          .select('worker_id,company_id,updated_at')
+          .eq('company_id', companyId).inFilter('worker_id', ids.toList())
+          .setHeader('Authorization', 'Bearer $token')
+          .timeout(const Duration(seconds: 30));
+      check();
+      final values = rows.map((row) => Map<String, dynamic>.from(row)).toList();
+      if (values.any((row) => row['company_id'] != companyId ||
+          !ids.contains(row['worker_id']) ||
+          DateTime.tryParse(row['updated_at']?.toString() ?? '') == null ||
+          row.keys.toSet().difference({'worker_id', 'company_id', 'updated_at'}).isNotEmpty) ||
+          values.map((row) => row['worker_id']).toSet().length != values.length) {
+        throw StateError('口座の登録状態を確認できません。');
+      }
+      final currentWorkers = await _client.from('workers').select('id,company_id,status')
+          .eq('company_id', companyId).eq('status', 'active').inFilter('id', ids.toList())
+          .setHeader('Authorization', 'Bearer $token').timeout(const Duration(seconds: 30));
+      check();
+      if (currentWorkers.length != ids.length || currentWorkers.any((row) =>
+          row['company_id'] != companyId || row['status'] != 'active' || !ids.contains(row['id'])) ||
+          currentWorkers.map((row) => row['id']).toSet().length != ids.length) {
+        throw StateError('対象社員が変更されました。再読み込みしてください。');
+      }
+      return values;
+    } on PostgrestException {
+      check();
+      // No grant or RLS change is made to obtain missing evidence.
+      return [];
+    }
+  }
+
   Future<Map<String, List<Map<String, dynamic>>>> loadAll({bool includeHiddenRequirements = false}) async {
+    final session = _client.auth.currentSession;
+    final current = await captureAttachmentReadScope();
+    void check() {
+      if (!current() || !identical(session, _client.auth.currentSession)) {
+        throw StateError('ログイン情報が変更されました。再読み込みしてください。');
+      }
+    }
+    check();
     final companyId = await _companyId();
     final canManage = await canManageStatuses();
     final exemptions = await _loadExemptions(companyId);
@@ -349,7 +408,13 @@ class WorkerDocumentRepository {
       workerDocumentPaths(row);
     }
 
+    check();
+    final bankMetadata = requirements.any((row) => row['name'] == '銀行口座情報')
+        ? await _bankRegistrationMetadata(companyId, List<Map<String, dynamic>>.from(workers))
+        : <Map<String, dynamic>>[];
+    check();
     return {
+      'bank_account_metadata': bankMetadata,
       'workers': List<Map<String, dynamic>>.from(workers),
       'requirements': List<Map<String, dynamic>>.from(requirements),
       'retained_requirements': retainedRequirements,

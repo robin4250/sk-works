@@ -14,6 +14,7 @@ class _Repository extends WorkerDocumentRepository {
   String actor = 'admin';
   int writes = 0;
   Map<String, dynamic>? exemption;
+  bool bankFixture = false;
   final status = <String, dynamic>{'id': 'saved', 'worker_id': 'worker',
     'requirement_id': 'requirement', 'status': 'submitted',
     'attachment_path': 'retained/original.pdf'};
@@ -27,10 +28,11 @@ class _Repository extends WorkerDocumentRepository {
   Future<bool> canManageStatuses() async => manager;
   @override
   Future<Map<String, List<Map<String, dynamic>>>> loadAll({bool includeHiddenRequirements = false}) async => {
-    'workers': [{'id': 'worker', 'name': '対象社員', 'status': 'active'}],
-    'requirements': [{'id': 'requirement', 'name': '本人書類', 'scope': 'internal',
+    'workers': [{'id': 'worker', 'company_id': 'company', 'name': '対象社員', 'status': 'active'}],
+    'requirements': [{'id': 'requirement', 'name': bankFixture ? '銀行口座情報' : '本人書類', 'scope': 'internal',
       'is_required': true, 'is_active': true, 'expiry_required': false}],
-    'statuses': [Map.of(status)], 'exemptions': [if (exemption != null) Map.of(exemption!)],
+    'bank_account_metadata': [if (bankFixture) {'worker_id': 'worker', 'company_id': 'company', 'updated_at': '2026-10-31T00:00:00Z'}],
+    'statuses': [if (!bankFixture) Map.of(status)], 'exemptions': [if (exemption != null) Map.of(exemption!)],
   };
   @override
   Future<void> setDocumentExemption({required String workerId, required String requirementId,
@@ -111,6 +113,27 @@ void main() {
     await tester.pumpAndSettle();
     expect(repo.writes, 2); expect(repo.exemption!['active'], false);
     expect(repo.status, retained); expect(find.text('提出免除'), findsNothing);
+  });
+  testWidgets('submitted required document without attachment stays incomplete in managed view', (tester) async {
+    repo.status.remove('attachment_path');
+    await open(tester);
+    final card = tester.widget<ResourceRegistrationCard>(find.byKey(
+      const ValueKey('managed-document:admin:worker:requirement')));
+    expect(card.statusLabel, '添付待ち');
+    expect(card.registered, false);
+    expect(card.onAction, isNotNull);
+    expect(repo.status['status'], 'submitted');
+    expect(repo.writes, 0);
+  });
+  testWidgets('private bank metadata completes managed card without a mirrored document status', (tester) async {
+    repo.bankFixture = true;
+    await open(tester);
+    final card = tester.widget<ResourceRegistrationCard>(find.byKey(
+      const ValueKey('managed-document:admin:worker:requirement')));
+    expect(card.statusLabel, '登録済み');
+    expect(card.registered, true);
+    expect(find.text('完了 1/1'), findsOneWidget);
+    expect(repo.writes, 0);
   });
   testWidgets('worker role and disabled backend do not offer exemption action', (tester) async {
     repo.manager = false;
