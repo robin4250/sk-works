@@ -9,7 +9,6 @@ permissions:
   contents: read
 jobs:
   bridge:
-    if: false # Source review first; remove only after independent review.
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
