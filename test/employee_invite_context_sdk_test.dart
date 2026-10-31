@@ -7,9 +7,9 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../lib/features/people/employee_initial_registration_page.dart';
-import '../lib/features/people/employee_invite_page.dart';
-import '../lib/features/people/employee_invite_repository.dart';
+import 'package:sk_works/features/people/employee_initial_registration_page.dart';
+import 'package:sk_works/features/people/employee_invite_page.dart';
+import 'package:sk_works/features/people/employee_invite_repository.dart';
 
 const actor = '10000000-0000-0000-0000-000000000001';
 const company = '30000000-0000-0000-0000-000000000001';
@@ -75,7 +75,7 @@ class Fixture {
   List<Object> memberships = [{'company_id': company, 'role': 'owner'}];
   final requests = <http.Request>[];
   Future<void> login() => client.auth.signInWithPassword(email: 'fixture@example.invalid', password: 'synthetic').then((_) {});
-  Future<void> close() => client.dispose();
+  Future<void> close() async { await repository.dispose(); await client.dispose(); }
 }
 
 void main() {
@@ -119,12 +119,13 @@ void main() {
     });
   }
 
-  test('same actor replacement SID retires a late result and never reuses new ambient Bearer', () async {
+  test('same actor SID ABA retires a late result and never reuses new ambient Bearer', () async {
     final f = Fixture(); addTearDown(f.close); await f.login();
     final context = await f.repository.beginRequest(); f.pending = Completer<http.Response>();
     final creation = f.repository.createInviteForWorker(worker, request: context);
     await Future<void>.delayed(Duration.zero);
     f.session = nextSid; await f.login();
+    f.session = sid; await f.login();
     f.pending!.complete(http.Response(jsonEncode(result()), 200));
     await expectLater(creation, throwsStateError);
     expect(context.isCurrent, isFalse); expect(f.invokes, 1);

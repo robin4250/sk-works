@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -55,30 +56,53 @@ class InitialRegistrationEmployee {
 }
 
 class EmployeeInviteRepository {
-  EmployeeInviteRepository(this._client);
+  EmployeeInviteRepository(this._client) {
+    _observedBinding = binding;
+    _subscription = _client.auth.onAuthStateChange.listen((event) {
+      _observe(event.session);
+    });
+  }
 
   final SupabaseClient _client;
+  StreamSubscription<AuthState>? _subscription;
+  AppleSessionNavigationBinding? _observedBinding;
+  int _generation = 0;
+  bool _disposed = false;
+  void _observe(Session? session) {
+    AppleSessionNavigationBinding? value;
+    try { value = AppleSessionNavigationBinding.fromSession(session); } catch (_) { value = null; }
+    if (value != _observedBinding) { _generation++; _observedBinding = value; }
+  }
+  Future<void> dispose() async {
+    _disposed = true; _generation++;
+    await _subscription?.cancel();
+  }
+
   final Set<String> _attempted = {};
   String? get currentActorId => binding?.actorId;
   Stream<AuthState> get authChanges => _client.auth.onAuthStateChange;
-  AppleSessionNavigationBinding? get binding =>
-      AppleSessionNavigationBinding.fromSession(_client.auth.currentSession);
+  AppleSessionNavigationBinding? get binding {
+    try { return AppleSessionNavigationBinding.fromSession(_client.auth.currentSession); }
+    catch (_) { return null; }
+  }
 
   Future<EmployeeInviteRequest> beginRequest({String? companyId}) async {
     final session = _client.auth.currentSession;
+    _observe(session);
+    final generation = _generation;
     final captured = binding;
     if (session == null || captured == null) throw StateError('ログイン情報を確認してください。');
-    final raw = await _client.from('company_members').select('company_id,role')
+    final Object? raw = await _client.from('company_members').select('company_id,role')
         .eq('user_id', captured.actorId)
         .setHeader('Authorization', 'Bearer ${session.accessToken}').retry(enabled: false);
-    if (binding != captured || raw is! List || raw.length != 1 || raw.single is! Map) throw StateError('ログイン状態が変わりました。');
+    if (_disposed || _generation != generation || binding != captured || raw is! List || raw.length != 1 || raw.single is! Map) throw StateError('ログイン状態が変わりました。');
     final rows = raw.whereType<Map>().where((r) => companyId == null || r['company_id'] == companyId).toList();
     if (rows.length != 1 || !_uuid.hasMatch(rows.single['company_id']?.toString() ?? '') ||
         !const {'owner','admin','manager','viewer'}.contains(rows.single['role'])) {
       throw StateError('対象会社を一意に確認できません。会社を選び直してください。');
     }
     final request = EmployeeInviteRequest._(captured, rows.single['company_id'] as String,
-      session.accessToken, () => binding == captured);
+      session.accessToken, () => !_disposed && _generation == generation && binding == captured);
     request.check();
     return request;
   }
@@ -256,6 +280,14 @@ class EmployeeInviteRequest {
   String get actorId => _binding.actorId;
   String get sessionId => _binding.sessionId;
   String get authorization => 'Bearer $_token';
-  bool get isCurrent => _current();
+  bool _retired = false;
+  bool get isCurrent {
+    if (!_current()) _retired = true;
+    return !_retired;
+  }
+  void observeSession(Session? session) {
+    try { if (AppleSessionNavigationBinding.fromSession(session) != _binding) _retired = true; }
+    catch (_) { _retired = true; }
+  }
   void check() { if (!isCurrent) throw StateError('ログイン状態が変わりました。画面を開き直してください。'); }
 }

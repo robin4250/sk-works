@@ -18,7 +18,7 @@ function sql(query, allowFailure=false) {
  if(!allowFailure)assert.equal(r.status,0,r.stderr);
  return r;
 }
-const prefix=account=>`set role service_role; set request.jwt.claims='{"role":"service_role"}'; set sko.fixture.account='${account}'; `;
+const prefix=account=>`set role service_role; set request.jwt.claims='${JSON.stringify({role:'service_role'})}'; set sko.fixture.account='${account}'; `;
 const contextSQL=(account='true')=>prefix(account)+`select public.employee_invite_operation_context('${actor}','${sid}','${company}')::text;`;
 
 test('actual HTTP handler binds selected company/live SID and never exposes uncertain credentials',async()=>{

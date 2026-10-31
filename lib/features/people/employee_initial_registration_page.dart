@@ -55,7 +55,8 @@ class _EmployeeInitialRegistrationPageState
   void initState() {
     super.initState();
     _repository = widget.repository ?? EmployeeInviteRepository.maybeCreate();
-    _authSubscription = _repository?.authChanges.listen((_) {
+    _authSubscription = _repository?.authChanges.listen((event) {
+      _request?.observeSession(event.session);
       if (_request != null && !_request!.isCurrent) _invalidate();
     });
     _load();
@@ -124,6 +125,7 @@ class _EmployeeInitialRegistrationPageState
   @override
   void dispose() {
     _authSubscription?.cancel();
+    if (widget.repository == null) _repository?.dispose();
     _testFlightUrl.dispose();
     super.dispose();
   }
