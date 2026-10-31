@@ -88,7 +88,7 @@ begin
    where o.company_id=p_company and o.actor_id=actor and o.operation_id=p_operation;
   -- OFF permits current authorized read-only reconciliation; never reruns a command.
   value:=case when previous.operation_id is null then jsonb_build_object('state','unobserved')
-   else jsonb_build_object('state','committed','command',previous.command,
+   else jsonb_build_object('state','committed','command',previous.command,'payload',previous.payload,
      'original_session_id',previous.original_session_id,'result',previous.result) end;
  elsif p_command='workspace' then
   if p_payload<>'{}'::jsonb then raise exception 'invalid workspace payload'; end if;

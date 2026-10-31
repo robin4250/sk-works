@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'trade_company_repository.dart';
@@ -24,6 +26,8 @@ class _CompanyLinkPageState extends State<CompanyLinkPage> {
   List<Map<String, dynamic>> _results = const [];
   bool _busy = false;
   String? _error;
+  CompanyLinkBoundContext? _bound;
+  StreamSubscription<void>? _retirement;
 
   @override
   void initState() {
@@ -33,12 +37,30 @@ class _CompanyLinkPageState extends State<CompanyLinkPage> {
 
   @override
   void dispose() {
+    _retirement?.cancel();
+    _bound?.dispose();
     _query.dispose();
     super.dispose();
   }
 
   Future<void> _reload() async {
-    final value = await widget.repository.linkWorkspace();
+    if (_bound == null) {
+      final bound = await widget.repository.openBoundLinkContext();
+      if (!mounted) {
+        await bound.dispose();
+        return;
+      }
+      _bound = bound;
+      _retirement = bound.retirements.listen((_) {
+        if (mounted)
+          setState(() {
+            _workspace = null;
+            _results = const [];
+            _error = 'ログイン状態が変わりました。画面を開き直してください';
+          });
+      });
+    }
+    final value = await _bound!.workspace();
     if (mounted) setState(() => _workspace = value);
   }
 
@@ -50,13 +72,20 @@ class _CompanyLinkPageState extends State<CompanyLinkPage> {
     try {
       await action();
     } catch (error) {
-      if (mounted) setState(() => _error = error.toString());
+      if (mounted)
+        setState(
+          () => _error = error is StateError
+              ? error.message.toString()
+              : '処理結果を確認できません。再送せず状態を確認してください',
+        );
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
   Future<void> _request(Map<String, dynamic> company) async {
+    final bound = _bound;
+    if (bound == null || !bound.isCurrent || bound.hasUnknownResult) return;
     final now = DateTime.now();
     final selected = await showDatePicker(
       context: context,
@@ -65,7 +94,7 @@ class _CompanyLinkPageState extends State<CompanyLinkPage> {
       firstDate: DateTime(2000),
       lastDate: DateTime(now.year + 10, 12, 31),
     );
-    if (selected == null || !mounted) return;
+    if (selected == null || !mounted || !bound.isCurrent) return;
     final role = widget.mode == TradeCompanyPageMode.customer
         ? '相手を取引会社、自社を相手の協力会社として申請'
         : '相手を協力会社、自社を相手の取引会社として申請';
@@ -88,13 +117,16 @@ class _CompanyLinkPageState extends State<CompanyLinkPage> {
         ],
       ),
     );
-    if (confirm != true) return;
+    if (confirm != true || !mounted || !bound.isCurrent) return;
     await _run(() async {
-      await widget.repository.requestLink(
-        companyId: company['company_id'].toString(),
-        mode: widget.mode,
-        startMonth: DateTime(selected.year, selected.month),
-      );
+      await bound.mutate('request', {
+        'target_company_id': company['company_id'],
+        'local_role': widget.mode == TradeCompanyPageMode.customer
+            ? 'customer'
+            : 'subcontractor',
+        'start_month':
+            '${selected.year}-${selected.month.toString().padLeft(2, '0')}-01',
+      });
       await _reload();
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -104,6 +136,8 @@ class _CompanyLinkPageState extends State<CompanyLinkPage> {
   }
 
   Future<void> _respond(Map<String, dynamic> request, String action) async {
+    final bound = _bound;
+    if (bound == null || !bound.isCurrent || bound.hasUnknownResult) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -129,9 +163,12 @@ class _CompanyLinkPageState extends State<CompanyLinkPage> {
         ],
       ),
     );
-    if (confirmed != true) return;
+    if (confirmed != true || !mounted || !bound.isCurrent) return;
     await _run(() async {
-      await widget.repository.respondLink(request['id'].toString(), action);
+      await bound.mutate('respond', {
+        'request_id': request['id'],
+        'action': action,
+      });
       await _reload();
     });
   }
@@ -139,6 +176,8 @@ class _CompanyLinkPageState extends State<CompanyLinkPage> {
   @override
   Widget build(BuildContext context) {
     final enabled = _workspace?['enabled'] == true;
+    final blocked =
+        _busy || _bound?.isCurrent != true || _bound?.hasUnknownResult == true;
     final allRequests = (_workspace?['requests'] as List?) ?? const [];
     final requests = widget.initialRequestId == null
         ? allRequests
@@ -181,14 +220,28 @@ class _CompanyLinkPageState extends State<CompanyLinkPage> {
             SwitchListTile(
               title: const Text('会社検索・連携申請を利用する'),
               value: enabled,
-              onChanged: _busy
+              onChanged: blocked
                   ? null
                   : (value) => _run(() async {
-                      await widget.repository.setLinkEnabled(value);
+                      await _bound!.mutate('set_enabled', {'enabled': value});
                       await _reload();
                     }),
             ),
           if (_busy) const LinearProgressIndicator(),
+          if (_bound?.hasUnknownResult == true)
+            OutlinedButton(
+              onPressed: _busy
+                  ? null
+                  : () => _run(() async {
+                      final result = await _bound!.inspectUnknownResult();
+                      if (result['state'] == 'committed') {
+                        await _reload();
+                      } else if (mounted) {
+                        setState(() => _error = 'まだ保存結果を確認できません。再送しないでください');
+                      }
+                    }),
+              child: const Text('前の処理結果を確認（再送しません）'),
+            ),
           if (_error != null)
             Text(
               _error!,
@@ -201,10 +254,10 @@ class _CompanyLinkPageState extends State<CompanyLinkPage> {
           TextField(
             controller: _query,
             decoration: const InputDecoration(labelText: '会社名・法人番号（2文字以上）'),
-            onSubmitted: enabled && !_busy ? (_) => _search() : null,
+            onSubmitted: enabled && !blocked ? (_) => _search() : null,
           ),
           FilledButton.icon(
-            onPressed: enabled && !_busy ? _search : null,
+            onPressed: enabled && !blocked ? _search : null,
             icon: const Icon(Icons.search),
             label: const Text('検索'),
           ),
@@ -216,7 +269,9 @@ class _CompanyLinkPageState extends State<CompanyLinkPage> {
                   '${company['address'] ?? ''}\n法人番号：${company['corporate_number'] ?? ''}',
                 ),
                 trailing: OutlinedButton(
-                  onPressed: _busy || !enabled ? null : () => _request(company),
+                  onPressed: blocked || !enabled
+                      ? null
+                      : () => _request(company),
                   child: const Text('連携申請'),
                 ),
               ),
@@ -253,13 +308,13 @@ class _CompanyLinkPageState extends State<CompanyLinkPage> {
                               spacing: 8,
                               children: [
                                 FilledButton(
-                                  onPressed: _busy
+                                  onPressed: blocked
                                       ? null
                                       : () => _respond(request, 'accept'),
                                   child: const Text('承認'),
                                 ),
                                 OutlinedButton(
-                                  onPressed: _busy
+                                  onPressed: blocked
                                       ? null
                                       : () => _respond(request, 'reject'),
                                   child: const Text('却下'),
@@ -268,7 +323,7 @@ class _CompanyLinkPageState extends State<CompanyLinkPage> {
                             ),
                           if (pending && !incoming)
                             OutlinedButton(
-                              onPressed: _busy
+                              onPressed: blocked
                                   ? null
                                   : () => _respond(request, 'cancel'),
                               child: const Text('申請取消'),
@@ -285,7 +340,7 @@ class _CompanyLinkPageState extends State<CompanyLinkPage> {
   }
 
   Future<void> _search() => _run(() async {
-    final results = await widget.repository.searchLinkCompanies(_query.text);
+    final results = await _bound!.search(_query.text);
     if (mounted) {
       setState(() => _results = results);
       if (results.isEmpty) {

@@ -1,6 +1,13 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:math';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:crypto/crypto.dart';
 
 import '../../data/supabase_backend.dart';
+import '../auth/apple_session_navigation_binding.dart';
 
 enum TradeCompanyPageMode { customer, subcontractor }
 
@@ -109,8 +116,20 @@ class TradeCompanyLinkCandidate {
 
 class TradeCompanyRepository {
   TradeCompanyRepository._(this._client);
+  TradeCompanyRepository.forTesting(this._client);
 
   final SupabaseClient _client;
+
+  Future<CompanyLinkBoundContext> openBoundLinkContext() async {
+    final context = CompanyLinkBoundContext._(_client);
+    try {
+      await context.initialize();
+      return context;
+    } catch (_) {
+      await context.dispose();
+      rethrow;
+    }
+  }
 
   static TradeCompanyRepository? maybeCreate() {
     if (!SupabaseBackend.isInitialized) return null;
@@ -290,6 +309,330 @@ class TradeCompanyRepository {
         'p_source': source,
       },
     );
+  }
+}
+
+/// Route-local lifetime and operation binding; never an authorization decision.
+/// Server checks the live SID, membership and exact company on every command.
+class CompanyLinkBoundContext {
+  CompanyLinkBoundContext._(this._client) {
+    _binding = AppleSessionNavigationBinding.fromSession(
+      _client.auth.currentSession,
+    );
+    if (_binding == null) throw StateError('ログイン状態を確認してください');
+    _subscription = _client.auth.onAuthStateChange.listen((event) {
+      AppleSessionNavigationBinding? next;
+      try {
+        next = AppleSessionNavigationBinding.fromSession(event.session);
+      } catch (_) {
+        _retire();
+      }
+      if (next != _binding) _retire();
+    });
+  }
+  final SupabaseClient _client;
+  AppleSessionNavigationBinding? _binding;
+  StreamSubscription<AuthState>? _subscription;
+  bool _retired = false;
+  final _retirements = StreamController<void>.broadcast();
+  Stream<void> get retirements => _retirements.stream;
+  void _retire() {
+    if (_retired) return;
+    _retired = true;
+    _retirements.add(null);
+  }
+
+  String? _company;
+  String? _pendingOperation;
+  String? _pendingCommand;
+  Map<String, dynamic>? _pendingPayload;
+  String? _originalSession;
+  String? _pendingFingerprint;
+  SharedPreferences? _preferences;
+  bool _corruptPending = false;
+  static final Set<String> _activeMutations = {};
+  String get _pendingKey =>
+      'sko.company_link.pending.v1.${_binding!.actorId}.$_company';
+  static final _uuid = RegExp(
+    r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+  );
+  String get companyId => _company ?? '';
+  bool get hasUnknownResult => _pendingOperation != null || _corruptPending;
+  bool get isCurrent {
+    try {
+      if (AppleSessionNavigationBinding.fromSession(
+            _client.auth.currentSession,
+          ) !=
+          _binding)
+        _retire();
+    } catch (_) {
+      _retire();
+    }
+    return !_retired;
+  }
+
+  void requireCurrent() {
+    if (!isCurrent) throw StateError('ログイン・会社の状態が変わりました。画面を開き直してください');
+  }
+
+  Future<void> dispose() async {
+    _retired = true;
+    await _subscription?.cancel();
+    await _retirements.close();
+  }
+
+  Future<void> initialize() async {
+    requireCurrent();
+    final session = _client.auth.currentSession!;
+    final rows = await _client
+        .from('company_members')
+        .select('company_id,role')
+        .eq('user_id', _binding!.actorId)
+        .setHeader('Authorization', 'Bearer ${session.accessToken}')
+        .retry(enabled: false);
+    requireCurrent();
+    if (rows.length != 1 ||
+        rows.single['company_id'] is! String ||
+        !_uuid.hasMatch(rows.single['company_id'] as String) ||
+        !['owner', 'admin'].contains(rows.single['role'])) {
+      throw StateError('会社を一意に確認できません。管理者の所属会社を確認してください');
+    }
+    _company = rows.single['company_id'] as String;
+    _preferences = await SharedPreferences.getInstance();
+    requireCurrent();
+    final saved = _preferences!.getString(_pendingKey);
+    if (saved != null) {
+      try {
+        final row = jsonDecode(saved);
+        if (row is! Map ||
+            row.length != 7 ||
+            row['version'] != 1 ||
+            row['actor'] != _binding!.actorId ||
+            row['company'] != _company ||
+            row['operation'] is! String ||
+            !_uuid.hasMatch(row['operation'] as String) ||
+            row['session'] is! String ||
+            !_uuid.hasMatch(row['session'] as String) ||
+            row['fingerprint'] is! String ||
+            !RegExp(r'^[0-9a-f]{64}$').hasMatch(row['fingerprint'] as String) ||
+            !['set_enabled', 'request', 'respond'].contains(row['command'])) {
+          throw const FormatException();
+        }
+        _pendingOperation = row['operation'] as String;
+        _pendingCommand = row['command'] as String;
+        _originalSession = row['session'] as String;
+        _pendingFingerprint = row['fingerprint'] as String;
+      } catch (_) {
+        _corruptPending = true;
+      }
+    }
+  }
+
+  static String _operationId() {
+    final random = Random.secure();
+    final bytes = List.generate(16, (_) => random.nextInt(256));
+    bytes[6] = (bytes[6] & 15) | 64;
+    bytes[8] = (bytes[8] & 63) | 128;
+    final hex = bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
+  }
+
+  static String _fingerprint(String command, Map<String, dynamic> payload) {
+    final keys = payload.keys.toList()..sort();
+    return sha256
+        .convert(
+          utf8.encode(
+            jsonEncode({
+              'command': command,
+              'payload': {for (final key in keys) key: payload[key]},
+            }),
+          ),
+        )
+        .toString();
+  }
+
+  static bool _validResult(String command, Map payload, dynamic value) {
+    if (value is! Map || value['state'] != 'committed') return false;
+    if (command == 'set_enabled') {
+      return value.length == 2 &&
+          value['enabled'] is bool &&
+          value['enabled'] == payload['enabled'];
+    }
+    if (value.length != 3 ||
+        value['request_id'] is! String ||
+        !_uuid.hasMatch(value['request_id'] as String))
+      return false;
+    if (command == 'request') return value['status'] == 'pending';
+    return command == 'respond' &&
+        value['request_id'] == payload['request_id'] &&
+        value['status'] ==
+            {
+              'accept': 'accepted',
+              'reject': 'rejected',
+              'cancel': 'cancelled',
+            }[payload['action']];
+  }
+
+  Future<dynamic> _call(
+    String command,
+    Map<String, dynamic> payload, {
+    String? operation,
+  }) async {
+    requireCurrent();
+    if (_company == null) throw StateError('会社の確認が必要です');
+    final session = _client.auth.currentSession!;
+    final raw = await _client
+        .rpc(
+          'company_link_bound_v1',
+          params: {
+            'p_company': _company,
+            'p_session': _binding!.sessionId,
+            'p_operation': operation,
+            'p_command': command,
+            'p_payload': payload,
+          },
+        )
+        .setHeader('Authorization', 'Bearer ${session.accessToken}')
+        .retry(enabled: false);
+    requireCurrent();
+    const keys = {
+      'version',
+      'actor_id',
+      'company_id',
+      'session_id',
+      'operation_id',
+      'command',
+      'value',
+    };
+    if (raw is! Map ||
+        raw.length != keys.length ||
+        !raw.keys.every(keys.contains) ||
+        raw['version'] is! int ||
+        raw['version'] != 1 ||
+        raw['actor_id'] != _binding!.actorId ||
+        raw['company_id'] != _company ||
+        raw['session_id'] != _binding!.sessionId ||
+        raw['operation_id'] != operation ||
+        raw['command'] != command) {
+      throw StateError('処理結果を照合できません。再送せず状態を確認してください');
+    }
+    return raw['value'];
+  }
+
+  Future<Map<String, dynamic>> workspace() async {
+    final value = await _call('workspace', const {});
+    if (value is! Map ||
+        value['enabled'] is! bool ||
+        value['requests'] is! List) {
+      throw StateError('会社連携の状態を確認できません');
+    }
+    return Map<String, dynamic>.from(value);
+  }
+
+  Future<List<Map<String, dynamic>>> search(String query) async {
+    final value = await _call('search', {'query': query.trim()});
+    if (value is! List ||
+        value.any(
+          (r) =>
+              r is! Map ||
+              r['company_id'] is! String ||
+              !_uuid.hasMatch(r['company_id'] as String),
+        )) {
+      throw StateError('検索結果を確認できません');
+    }
+    return [for (final row in value) Map<String, dynamic>.from(row as Map)];
+  }
+
+  Future<Map<String, dynamic>> mutate(
+    String command,
+    Map<String, dynamic> payload,
+  ) async {
+    requireCurrent();
+    if (!['set_enabled', 'request', 'respond'].contains(command)) {
+      throw StateError('操作を確認できません');
+    }
+    if (_preferences!.getString(_pendingKey) != null) {
+      throw StateError('前の処理記録があります。画面を開き直して結果を確認してください');
+    }
+    if (hasUnknownResult) throw StateError('前の処理結果が不明です。再送せず状態を確認してください');
+    if (!_activeMutations.add(_pendingKey)) {
+      throw StateError('この会社の処理結果を確認中です');
+    }
+    try {
+      _pendingOperation = _operationId();
+      _pendingCommand = command;
+      _originalSession = _binding!.sessionId;
+      _pendingPayload = Map<String, dynamic>.unmodifiable(payload);
+      _pendingFingerprint = _fingerprint(command, payload);
+      // Only lookup identifiers are persisted, never bearer tokens or business payloads.
+      final saved = await _preferences!.setString(
+        _pendingKey,
+        jsonEncode({
+          'actor': _binding!.actorId,
+          'company': _company,
+          'operation': _pendingOperation,
+          'session': _originalSession,
+          'command': command,
+          'version': 1,
+          'fingerprint': _pendingFingerprint,
+        }),
+      );
+      if (!saved) throw StateError('処理記録を保存できません。送信していません');
+      requireCurrent();
+      final value = await _call(
+        command,
+        _pendingPayload!,
+        operation: _pendingOperation,
+      );
+      if (!_validResult(command, payload, value)) {
+        throw StateError('保存結果が不明です。再送しないでください');
+      }
+      if (!await _preferences!.remove(_pendingKey))
+        throw StateError('結果記録の更新が必要です。再送しないでください');
+      requireCurrent();
+      _pendingOperation = null;
+      _pendingCommand = null;
+      _pendingPayload = null;
+      return Map<String, dynamic>.from(value);
+    } finally {
+      _activeMutations.remove(_pendingKey);
+    }
+  }
+
+  Future<Map<String, dynamic>> inspectUnknownResult() async {
+    requireCurrent();
+    if (_pendingOperation == null || _pendingCommand == null)
+      throw StateError('照会対象がありません');
+    final value = await _call('result', const {}, operation: _pendingOperation);
+    if (value is! Map ||
+        !['committed', 'unobserved'].contains(value['state'])) {
+      throw StateError('処理結果を確認できません');
+    }
+    if (value['state'] == 'committed' &&
+        value['command'] == _pendingCommand &&
+        value['original_session_id'] == _originalSession &&
+        value.length == 5 &&
+        value['payload'] is Map &&
+        _fingerprint(
+              _pendingCommand!,
+              Map<String, dynamic>.from(value['payload'] as Map),
+            ) ==
+            _pendingFingerprint &&
+        _validResult(
+          _pendingCommand!,
+          value['payload'] as Map,
+          value['result'],
+        )) {
+      if (!await _preferences!.remove(_pendingKey))
+        throw StateError('結果記録を更新できません');
+      requireCurrent();
+      _pendingOperation = null;
+      _pendingCommand = null;
+      _pendingPayload = null;
+    } else if (value['state'] == 'committed' || value.length != 1) {
+      throw StateError('以前の処理結果と一致しません。未解決のため再送しないでください');
+    }
+    return Map<String, dynamic>.from(value);
   }
 }
 

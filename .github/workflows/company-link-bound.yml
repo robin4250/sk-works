@@ -42,3 +42,17 @@ jobs:
           PGUSER: postgres
           PGPASSWORD: synthetic_fixture_only
           PGDATABASE: company_link_fixture
+  sdk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.47.5'
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: git diff --exit-code -- pubspec.lock
+      - run: flutter analyze lib/features/companies/company_link_page.dart lib/features/companies/trade_company_repository.dart test/company_link_bound_sdk_test.dart
+      - run: flutter test test/company_link_bound_sdk_test.dart --timeout 20s --reporter expanded
