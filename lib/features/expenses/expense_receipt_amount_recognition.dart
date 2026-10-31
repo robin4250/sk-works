@@ -43,7 +43,7 @@ class ExpenseReceiptAmountRecognition {
       .map((line) => line.trim()).where((line) => line.isNotEmpty).toList();
     // A refund/cancellation is not a positive expense. Do not turn its amount
     // into a positive candidate even when OCR puts the label on another line.
-    if (lines.any((line) => RegExp(r'返金|返品|取消|キャンセル|払戻|払い戻し|返還').hasMatch(line))) {
+    if (lines.any((line) => RegExp(r'返金|返品|取消|キャンセル|払戻|払い戻し|返還|refund|return|void|cancel',caseSensitive:false).hasMatch(line))) {
       return const ExpenseReceiptAmountResult([]);
     }
     final excluded = RegExp(r'お?預[りか]|お?釣[り銭]?|釣銭|小計|税抜|消費税|外税|内税|税額|単価|数量|ポイント|残高|割引|値引');
@@ -51,6 +51,16 @@ class ExpenseReceiptAmountRecognition {
     final currency = RegExp(r'[¥￥]\s*([0-9][0-9,]*)(?![0-9,.])|(?<![0-9,.])([0-9][0-9,]*)\s*円');
     final bareAmount = RegExp(r'^\s*[:：]?\s*[¥￥]?\s*([0-9][0-9,]*)\s*円?\s*$');
     final byAmount = <int, ExpenseReceiptAmountCandidate>{};
+    final negativeSign = RegExp(r'^[-−‐‑‒–—﹣－▲△]$');
+    bool negative(int index) {
+      final line = lines[index];
+      return line.contains('マイナス') ||
+        RegExp(r'[-−‐‑‒–—﹣－▲△]\s*[¥￥]?\s*[0-9]').hasMatch(line) ||
+        RegExp(r'[0-9][0-9,]*\s*円?\s*[-−‐‑‒–—﹣－▲△]\s*$').hasMatch(line) ||
+        RegExp(r'[（(]\s*[¥￥]?\s*[0-9][0-9,]*\s*円?\s*[）)]').hasMatch(line) ||
+        (index > 0 && negativeSign.hasMatch(lines[index - 1])) ||
+        (index + 1 < lines.length && negativeSign.hasMatch(lines[index + 1]));
+    }
     void add(int amount, String label, bool explicit) {
       final old = byAmount[amount];
       if (old == null || (!old.explicitTotal && explicit)) {
@@ -59,10 +69,7 @@ class ExpenseReceiptAmountRecognition {
     }
     for (var index = 0; index < lines.length; index++) {
       final line = lines[index];
-      if (excluded.hasMatch(line) ||
-          RegExp(r'[-−‐‑‒–—﹣－▲△]\s*[¥￥]?\s*[0-9]').hasMatch(line) ||
-          RegExp(r'[0-9][0-9,]*\s*円?\s*[-−‐‑‒–—﹣－▲△]\s*$').hasMatch(line) ||
-          RegExp(r'[（(]\s*[¥￥]?\s*[0-9][0-9,]*\s*円?\s*[）)]').hasMatch(line)) continue;
+      if (excluded.hasMatch(line) || negative(index)) continue;
       final label = total.firstMatch(line);
       if (label != null) {
         final tail = line.substring(label.end);
@@ -73,7 +80,7 @@ class ExpenseReceiptAmountRecognition {
           continue;
         }
         // A label-only line may have its currency amount immediately below it.
-        if (tail.trim().isEmpty && index + 1 < lines.length && !excluded.hasMatch(lines[index + 1])) {
+        if (tail.trim().isEmpty && index + 1 < lines.length && !excluded.hasMatch(lines[index + 1]) && !negative(index + 1)) {
           final next = bareAmount.firstMatch(lines[index + 1]);
           if (next != null) {
             final value = _yen(next.group(1)!);

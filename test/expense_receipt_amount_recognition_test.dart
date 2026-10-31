@@ -33,7 +33,9 @@ void main() {
   });
   test('negative conventions never become positive currency candidates', () {
     for (final text in ['合計 －100円','合計 ▲100円','合計 △100円','合計 −100円',
-      '合計 (100円)','合計 （￥１００）','合計 100円－','合計 —¥100']) {
+      '合計 (100円)','合計 （￥１００）','合計 100円－','合計 —¥100',
+      '合計\n－100円','合計\n¥100\n▲','合計\n▲\n100円',
+      '合計 ￥−100円','合計 ¥100−','合計 (¥100)円','合計 マイナス100円']) {
       final result = ExpenseReceiptAmountRecognition.parse(text);
       expect(result.candidates,isEmpty,reason:text);
       expect(result.unambiguousTotal,isNull,reason:text);
