@@ -10,6 +10,7 @@ import '../../domain/company_seal_snapshot.dart';
 import '../shared/trade_document_form_renderer.dart';
 import '../shared/trade_document_form_session.dart';
 import 'site_order_approval_journal.dart';
+import 'site_order_outgoing_journal.dart';
 
 String siteOrderRequestId() {
   final random = Random.secure();
@@ -73,6 +74,11 @@ abstract class SiteOrderWorkflowApi extends ChangeNotifier {
   ) async => throw StateError('注文の辞退を確認できません。');
   Future<bool> hasPendingApproval(String packageId) async => false;
   Future<String?> reconcileApproval(String packageId) async => null;
+  Future<List<SiteOrderPendingPrepare>> pendingOutgoing(String siteId) async => const [];
+  Future<String> inspectOutgoing(SiteOrderPendingPrepare entry) async =>
+      throw StateError('注文の準備結果を確認できません。');
+  Future<String> retireOutgoing(SiteOrderPendingPrepare entry, {required bool confirmed}) async =>
+      throw StateError('注文の準備停止を確認できません。');
 }
 
 /// One captured SDK session/gateway lease. No automatic mutation retry or new
@@ -81,7 +87,9 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
   SiteOrderWorkflowRepository(
     this._client, {
     @visibleForTesting SiteOrderApprovalJournal? approvalJournal,
+    @visibleForTesting SiteOrderOutgoingJournal? outgoingJournal,
   }) : _approvalJournal = approvalJournal ?? SiteOrderApprovalJournal(),
+       _outgoingJournal = outgoingJournal ?? SiteOrderOutgoingJournal(),
        _token = _client.auth.currentSession!.accessToken,
        _session = TradeDocumentFormSession(_client) {
     _session.addListener(_scopeChanged);
@@ -103,6 +111,7 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
   final TradeDocumentFormSession _session;
   final _retired = Completer<void>();
   final SiteOrderApprovalJournal _approvalJournal;
+  final SiteOrderOutgoingJournal _outgoingJournal;
   final _replyJournal = SiteOrderApprovalJournal.forReplyRecovery();
   final _refusalJournal = SiteOrderRefusalJournal();
   String get _actor => _client.auth.currentUser!.id;
@@ -153,12 +162,12 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
     }
   }
 
-  Future<Object?> _call(Map<String, dynamic> body, {bool write = false}) async {
+  Future<Object?> _call(Map<String, dynamic> body, {bool write = false, bool outgoing = false}) async {
     await verify();
     try {
       final response = await _client.functions
           .invoke(
-            'site-order-workflow',
+            outgoing ? 'site-order-workflow/outgoing' : 'site-order-workflow',
             headers: {'Authorization': 'Bearer $_token'},
             body: body,
             abortSignal: _retired.future,
@@ -189,6 +198,94 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
 
   Future<Map<String, dynamic>> _result(Map<String, dynamic> command) async =>
       _map(_map(await _call(command))['result']);
+
+  @override
+  Future<List<SiteOrderPendingPrepare>> pendingOutgoing(String siteId) async {
+    await verify();
+    final entries = await _outgoingJournal.read(_actor, _company!, siteId);
+    await verify();
+    return entries;
+  }
+
+  Future<String> _outgoingState(
+    SiteOrderPendingPrepare entry, {
+    required bool retire,
+  }) async {
+    await verify();
+    final actor = _actor, company = _company!;
+    final saved = await _outgoingJournal.read(actor, company, entry.siteId);
+    if (!saved.any(
+      (e) => jsonEncode(e.toJson()) == jsonEncode(entry.toJson()),
+    )) {
+      throw StateError('保存された注文を確認できません。');
+    }
+    final value = _map(
+      _map(
+        await _call(
+          {
+            ...entry.command(retire ? 'retire' : 'status'),
+            if (retire) 'confirmed': true,
+          },
+          write: retire,
+          outgoing: true,
+        ),
+      )['result'],
+    );
+    final state = value['operation_state'];
+    if (value['contract_version'] != 1 ||
+        value['company_id'] != company ||
+        value['site_id'] != entry.siteId ||
+        value['document_id'] != entry.documentId ||
+        value['local_document_id'] != entry.localId ||
+        value['trade_company_id'] != entry.tradeId ||
+        value['request_id'] != entry.requestId ||
+        value['retry_automatically'] != false ||
+        value['may_prepare_again'] != false ||
+        value['can_send'] != false ||
+        !const {
+          'not_observed',
+          'prepared_review_required',
+          'advanced',
+          'changed',
+          'retired',
+        }.contains(state)) {
+      throw const SiteOrderResultUnknown();
+    }
+    if (state == 'retired') {
+      if (value['retired'] != true ||
+          value['order_cancelled'] != false ||
+          value['journal_clearable'] != true ||
+          !_savedId(value['retirement_id']) ||
+          (value['verified_prepared_operation'] != true &&
+              value['verified_prepared_operation'] != false) ||
+          (value['verified_prepared_operation'] == true &&
+              !_savedId(value['operation_id'])) ||
+          (value['verified_prepared_operation'] == false &&
+              value['operation_id'] != null)) {
+        throw const SiteOrderResultUnknown();
+      }
+      await verify();
+      await _outgoingJournal.resolveRetired(actor, company, entry);
+      await verify();
+    } else if (value['retired'] != false ||
+        value['journal_clearable'] != false) {
+      throw const SiteOrderResultUnknown();
+    }
+    return state as String;
+  }
+
+  @override
+  Future<String> inspectOutgoing(SiteOrderPendingPrepare entry) =>
+      _outgoingState(entry, retire: false);
+
+  @override
+  Future<String> retireOutgoing(
+    SiteOrderPendingPrepare entry, {
+    required bool confirmed,
+  }) {
+    if (!confirmed) throw StateError('準備停止の確認が必要です。');
+    return _outgoingState(entry, retire: true);
+  }
 
   @override
   Future<Map<String, dynamic>> detail(String id) =>

@@ -7,6 +7,7 @@ import '../shared/pdf_pinch_pages.dart';
 import 'site_order_workflow_pdf_page.dart';
 import 'site_order_saved_preview_pager.dart';
 import 'site_order_workflow_repository.dart';
+import 'site_order_outgoing_recovery_page.dart';
 
 class SiteOrderWorkflowPage extends StatefulWidget {
   const SiteOrderWorkflowPage({
@@ -198,6 +199,12 @@ class _SiteOrderWorkflowPageState extends State<SiteOrderWorkflowPage> {
       appBar: AppBar(
         title: Text(_siteId == null ? '過去の注文書・請書' : '${widget.siteName?.trim().isNotEmpty == true ? widget.siteName : '現場'}の注文履歴'),
         actions: [
+          if (_siteId != null && api != null) IconButton(
+            tooltip: '注文の準備結果',
+            onPressed: _scopeRetired || api.invalidated ? null : () => Navigator.push<void>(context,
+              MaterialPageRoute(builder: (_) => SiteOrderOutgoingRecoveryPage(api: api, siteId: _siteId))),
+            icon: const Icon(Icons.pending_actions_outlined),
+          ),
           IconButton(
             tooltip: '更新',
             onPressed: _loading ? null : () => _load(),
