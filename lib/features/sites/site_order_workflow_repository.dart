@@ -250,7 +250,9 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
       throw StateError('ログイン状態が変わりました。結果照会を先に行ってください。');
     }
     // Persist only IDs/digest before the first mutation; unknown results retain it.
-    await _consentJournal.save(_actor, _company!, reference);
+    if (!await _consentJournal.save(_actor, _company!, reference)) {
+      throw StateError('確認中の注文があります。再送せず保存結果を照会してください。');
+    }
     await verify();
     final result = _map(_map(await _call({...reference.command('confirm_unsigned'), 'confirmed': true}, write: true, outgoing: true))['result']);
     return SiteOrderConsentObservation.decode(result, reference, _company!);

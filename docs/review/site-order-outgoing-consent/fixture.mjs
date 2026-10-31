@@ -28,6 +28,17 @@ export async function verifyConsent(db,{q,check,sourceContract}){
  await db.exec(await read('docs/review/site-order-outgoing/prepare-operation.sql.review-only'));
  const sql=await read('docs/review/site-order-outgoing-consent/coordinator.sql.review-only');
  const denied=async(fn,pattern)=>{let e;try{await fn();}catch(x){e=x;}if(!e||!pattern.test(e.message))throw Error('expected '+pattern+' got '+e?.message);check(true,true);};
+ await db.exec('create role outgoing_consent_untrusted');
+ for(const [change,pattern]of[
+  ['alter function site_order_outgoing_private.require_unsigned_prepare(uuid,uuid,uuid,uuid,uuid) security invoker',/dependency_changed/],
+  ['alter default privileges grant execute on functions to outgoing_consent_untrusted',/function_acl_changed/],
+  ['alter default privileges grant select on tables to outgoing_consent_untrusted',/table_acl_changed/],
+ ]){
+  await db.exec('begin');
+  try{await db.exec(change);await denied(()=>db.exec(sql),pattern);}finally{await db.exec('rollback');}
+  check(await q("select to_regclass('site_order_outgoing_private.preview_receipts') is null v"),true);
+  check(await catalog(),before);
+ }
  await db.exec(sql);check(await catalog(),before);
  const id=n=>'91000000-0000-4000-8000-'+n.toString(16).padStart(12,'0');
  const A=id(1),B=id(2),UA=id(3),UB=id(4),sid=id(5),sid2=id(6),site=id(7),trade=id(8);

@@ -221,6 +221,11 @@ void main() {
         throwsA(isA<SiteOrderResultUnknown>()),
       );
       expect(wire.mutations, 1);
+      await expectLater(
+        repository.confirmUnsignedOutgoing(reference, confirmed: true),
+        throwsStateError,
+      );
+      expect(wire.mutations, 1);
       final pending = await repository.pendingOutgoingConsents(
         reference.prepare.siteId,
       );

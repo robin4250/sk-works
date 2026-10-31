@@ -232,7 +232,13 @@ do $$ declare p pg_proc;c pg_class;n pg_namespace;begin
  if pg_get_userbyid(n.nspowner)<>'postgres' or exists(select 1 from aclexplode(coalesce(n.nspacl,acldefault('n',n.nspowner))) x where x.grantee<>n.nspowner or x.grantor<>n.nspowner)
  then raise exception 'outgoing_consent_namespace_acl_changed';end if;
  for c in select * from pg_class where oid in('site_order_outgoing_private.preview_receipts'::regclass,'site_order_outgoing_private.decision_receipts'::regclass) loop
-  if pg_get_userbyid(c.relowner)<>'postgres' or not c.relrowsecurity or c.relforcerowsecurity
+  if c.relkind<>'r' or pg_get_userbyid(c.relowner)<>'postgres' or not c.relrowsecurity or c.relforcerowsecurity
+   or exists(select 1 from pg_policy where polrelid=c.oid)
+   or exists(select 1 from pg_attribute where attrelid=c.oid and attnum>0 and not attisdropped and attacl is not null)
+   or (select count(*) from pg_trigger where tgrelid=c.oid and not tgisinternal)<>2
+   or exists(select 1 from pg_trigger where tgrelid=c.oid and not tgisinternal
+    and(tgfoid<>'trade_document_consent_private.immutable()'::regprocedure or tgenabled<>'O'
+     or tgtype not in(27,34) or tgnargs<>0 or tgqual is not null or tgdeferrable or tginitdeferred))
    or exists(select 1 from aclexplode(coalesce(c.relacl,acldefault('r',c.relowner))) x where x.grantee<>c.relowner or x.grantor<>c.relowner)
   then raise exception 'outgoing_consent_table_acl_changed';end if;
  end loop;

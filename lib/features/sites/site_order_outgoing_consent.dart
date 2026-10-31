@@ -201,7 +201,7 @@ class SiteOrderConsentJournal {
     return done.future;
   }
 
-  Future<void> save(
+  Future<bool> save(
     String actor,
     String company,
     SiteOrderConsentReference reference,
@@ -215,9 +215,11 @@ class SiteOrderConsentJournal {
     if (old != null && old != encoded) {
       throw StateError('確認中の注文があります。保存状態を確認してください。');
     }
-    if (old == null && !await p.setString(key, encoded)) {
+    if (old != null) return false;
+    if (!await p.setString(key, encoded)) {
       throw StateError('注文の確認情報を保存できません。');
     }
+    return true;
   });
   Future<List<SiteOrderConsentReference>> read(
     String actor,
