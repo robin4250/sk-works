@@ -38,6 +38,8 @@ class _WireFixture {
   String sid = _sidA;
   final expiry = DateTime.now().millisecondsSinceEpoch ~/ 1000 + 3600;
   bool denyBank = false;
+  bool missingPhotoColumn = false, denyStatuses = false;
+  List<Map<String, dynamic>> statuses = _statuses;
   Completer<void>? bankEntered, bankRelease;
   late final client = SupabaseClient('https://synthetic.invalid', 'synthetic-public',
     authOptions: const AuthClientOptions(autoRefreshToken: false), httpClient: MockClient(_respond));
@@ -62,7 +64,11 @@ class _WireFixture {
       case '/rest/v1/company_members': value = {'company_id': _company, 'role': 'employee'};
       case '/rest/v1/workers': value = {'id': _worker};
       case '/rest/v1/document_requirements': value = _requirements;
-      case '/rest/v1/worker_document_statuses': value = _statuses;
+      case '/rest/v1/worker_document_statuses':
+        if (denyStatuses) { status = 403; value = {'code': '42501', 'message': 'synthetic access denied'}; }
+        else if (missingPhotoColumn && request.url.queryParameters['select']!.contains('attachment_paths')) {
+          status = 400; value = {'code': '42703', 'message': 'column attachment_paths does not exist'};
+        } else { value = statuses; }
       case '/rest/v1/rpc/worker_document_exemption': value = {'capability_version': 1, 'items': []};
       case '/rest/v1/worker_private_bank_accounts':
         bankEntered?.complete();
@@ -115,6 +121,39 @@ void main() {
       if (!request.url.path.contains('/rpc/')) { expect(request.url.queryParameters['company_id'], 'eq.$_company'); }
     }
     expect(jsonDecode(fixture.requests[4].body), {'p_action': 'list', 'p_data': {'company_id': _company}});
+  });
+
+  test('multi-photo SDK read and proven legacy-column fallback retain bearer and scope', () async {
+    for (final legacy in [false, true]) {
+      final fixture = _WireFixture()..missingPhotoColumn = legacy;
+      addTearDown(fixture.client.dispose);
+      fixture.statuses = [
+        _statuses.first,
+        {..._statuses.last, 'attachment_path': legacy ? 'synthetic/legacy' : null,
+          if (!legacy) 'attachment_paths': ['synthetic/a', 'synthetic/b']},
+      ];
+      await fixture.login(_sidA);
+      final items = (await fixture.load()).tasks.single.checkpoints;
+      expect(items.singleWhere((item) => item.key == 'document:health').state, TutorialEvidenceState.saved);
+      final reads = fixture.requests.where((r) => r.url.path.endsWith('/worker_document_statuses')).toList();
+      expect(reads.length, legacy ? 2 : 1);
+      expect(reads.first.url.queryParameters['select'], contains('attachment_paths'));
+      if (legacy) { expect(reads.last.url.queryParameters['select'], isNot(contains('attachment_paths'))); }
+      for (final request in reads) {
+        expect(request.headers['Authorization'], 'Bearer ${fixture.token(_sidA)}');
+        expect(request.url.queryParameters['company_id'], 'eq.$_company');
+        expect(request.url.queryParameters['worker_id'], 'eq.$_worker');
+      }
+    }
+  });
+
+  test('status RLS denial is unknown and never falls back to a weaker read', () async {
+    final fixture = _WireFixture()..denyStatuses = true;
+    addTearDown(fixture.client.dispose);
+    await fixture.login(_sidA);
+    final items = (await fixture.load()).tasks.single.checkpoints;
+    expect(items.single.state, TutorialEvidenceState.unknown);
+    expect(fixture.requests.where((r) => r.url.path.endsWith('/worker_document_statuses')).length, 1);
   });
 
   test('bank RLS denial stays unknown without erasing valid health evidence', () async {

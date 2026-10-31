@@ -2,6 +2,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
 import '../people/worker_document_exemption.dart';
+import '../people/worker_document_photos.dart';
 import '../auth/app_auth_mutation_gateway.dart';
 
 enum TutorialEvidenceState { unknown, missing, saved, notApplicable }
@@ -159,7 +160,7 @@ class TutorialEvidenceRepository {
         requiredForCompletion: false,
         checkpoints: [
           for (final field in <String, String>{
-            'address': '住所', 'blood_type': '血液型', 'role': '職種',
+            'birth_date': '生年月日', 'address': '住所', 'blood_type': '血液型', 'role': '職種',
             'emergency_name': '緊急連絡先氏名', 'emergency_relation': '続柄',
             'emergency_phone': '緊急連絡先電話番号', 'emergency_address': '緊急連絡先住所',
           }.entries)
@@ -269,7 +270,8 @@ class TutorialEvidenceRepository {
         {String? rowId}) => TutorialEvidenceCheckpoint(field,
           valid == null ? TutorialEvidenceState.unknown
               : valid ? TutorialEvidenceState.saved : TutorialEvidenceState.missing,
-          label: label, evidenceKey: valid == true
+          label: label, statusLabel: key == 'company_document_selection' && valid == true
+              ? '設定済み' : null, evidenceKey: valid == true
               ? '$key:${rowId ?? companyId}:$field' : null);
     if (key == 'company_payroll_policy') {
       bool? number(String field, int min, int max) {
@@ -415,12 +417,19 @@ class TutorialEvidenceRepository {
         } else if (status == 'submitted' || status == 'verified') {
           final name = requirement['name']?.toString();
           if (name == null || name.isEmpty || name == '銀行口座情報' ||
-              !row.containsKey('attachment_path')) {
+              (!row.containsKey('attachment_path') && !row.containsKey('attachment_paths'))) {
             // Bank evidence is held separately, and cannot be inferred from status.
             state = TutorialEvidenceState.unknown;
-          } else if ((row['attachment_path']?.toString() ?? '').isEmpty) {
-            // Matches the current required-document attention rule.
+          } else {
+          List<String>? paths;
+          try { paths = workerDocumentPaths(Map<String, dynamic>.from(row)); } catch (_) {
+            statusLabel = '添付情報を確認';
+          }
+          if (paths == null) {
+            state = TutorialEvidenceState.unknown;
+          } else if (paths.isEmpty) {
             state = TutorialEvidenceState.missing;
+            statusLabel = '添付待ち';
           } else {
           final rawExpiry = row['expires_at']?.toString() ?? '';
           final expiry = DateTime.tryParse(rawExpiry);
@@ -440,6 +449,8 @@ class TutorialEvidenceRepository {
             statusLabel = '登録済み・期限切れ';
           } else {
             state = TutorialEvidenceState.saved;
+            statusLabel = '提出済み';
+          }
           }
           }
         }
@@ -579,10 +590,26 @@ class _SupabaseTutorialEvidenceSource implements TutorialEvidenceSource, Tutoria
         .eq('company_id', companyId).eq('is_active', true).eq('is_required', true)
         .setHeader('Authorization', headers['Authorization']!);
     check();
-    final statuses = await client.from('worker_document_statuses')
-        .select('id,requirement_id,worker_id,status,expires_at,attachment_path')
-        .eq('company_id', companyId).eq('worker_id', workerId)
-        .setHeader('Authorization', headers['Authorization']!);
+    Future<List<Map<String, dynamic>>> readStatuses(bool multiplePhotos) async {
+      check();
+      final rows = await client.from('worker_document_statuses')
+          .select('id,requirement_id,worker_id,status,expires_at,attachment_path'
+              '${multiplePhotos ? ',attachment_paths' : ''}')
+          .eq('company_id', companyId).eq('worker_id', workerId)
+          .setHeader('Authorization', headers['Authorization']!);
+      check();
+      return rows;
+    }
+    List<Map<String, dynamic>> statuses;
+    try {
+      statuses = await readStatuses(true);
+    } on PostgrestException catch (error) {
+      if ((error.code != '42703' && error.code != 'PGRST204') ||
+          !error.message.contains('attachment_paths')) rethrow;
+      // Only a proven absent new column permits the legacy read. Auth/RLS and
+      // network errors remain unknown; every retry retains the original scope.
+      statuses = await readStatuses(false);
+    }
     check();
     List<Map<String, dynamic>> exemptions = [];
     try {
