@@ -45,14 +45,17 @@ server-stored prepared body. The intended client persists ID-only recovery data
 before a single atomic `correct` request, and never stores notes, paths, snapshots,
 tokens or file bytes in its journal. Thus it adds no cleanup Cron dependency. A
 lost response must be reconciled under the same ID before a new command is made.
-The journal and actual UI are still to be implemented and verified.
+The candidate includes a captured-session repository, ID-only journal with
+write/readback checks, and a management-correction form. These are not yet wired
+to the existing document entry. Dedicated client tests cover journal contents,
+uncertain results, mismatched receipts, retired scope and concurrent local calls.
 
 ## Remaining gates
 
 Before production approval: independent review; real helper/catalog/trigger/ACL
 composition; Native two-connection lock/cancellation tests; exact original object
-retention proof; client captured-Bearer/session/target binding; ID-only durable
-journal readback; visible management-correction reason/confirmation/error/recovery;
+retention proof; actual SDK captured-Bearer/session/target binding tests;
+visible management-correction reason/confirmation/error/recovery through the entry;
 health-expiry save through the actual entry; guarded OFF installer and unused-only
 restore; separate scoped ON approval; Release and iPhone verification.
 
