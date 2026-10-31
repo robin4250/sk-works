@@ -4,7 +4,9 @@ import assert from 'node:assert/strict';
 const url=new URL(process.env.SKO_STOP_FIXTURE_URL??'');
 if(!['postgres:','postgresql:'].includes(url.protocol)||url.hostname!=='127.0.0.1'||url.port!=='5432'
  ||url.username!=='postgres'||url.password!=='fixture-only'||url.pathname!=='/sko_stop_fixture'||url.search)throw Error('dedicated localhost fixture required');
-const {Client}=await import(process.argv[2]);
+const driver=await import(process.argv[2]);
+const Client=driver.Client??driver.default?.Client;
+if(typeof Client!=='function')throw Error('fixture pg Client missing');
 const clients=[];let opened=0,closed=0,cleanupCalls=0,cleanupFailures=0;
 const connect=async()=>{const c=new Client({connectionString:url.toString(),connectionTimeoutMillis:3000,query_timeout:10000});const entry={client:c,connected:false};clients.push(entry);await c.connect();entry.connected=true;opened++;await c.query("set statement_timeout='8s';set lock_timeout='4s'");return c;};
 let a,b,observer;
