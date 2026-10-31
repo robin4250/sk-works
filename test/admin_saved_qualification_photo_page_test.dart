@@ -40,8 +40,8 @@ class SaveWire extends Wire {
 Future<void> waitFor(WidgetTester tester,Finder finder)async{
   final deadline=DateTime.now().add(const Duration(seconds:12));
   while(finder.evaluate().isEmpty && DateTime.now().isBefore(deadline)){
-    await tester.runAsync(()=>Future<void>.delayed(const Duration(milliseconds:20)));
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds:20));
+    await tester.runAsync(()=>Future<void>.delayed(Duration.zero));
   }
   if(finder.evaluate().isEmpty){
     print('QUAL wait target absent; visible: '+tester.widgetList<Text>(find.byType(Text)).map((t)=>t.data??'').join('|'));
@@ -59,6 +59,46 @@ void main(){
     expect(find.text('残す写真・順番を選ぶ'),findsNothing);
     expect(p.calls,['admin_saved_photo_capability']);
   });
+  testWidgets('same State identity replacement permanently retires old editor', (tester)async{
+    final p=Port();final target=AdminSavedQualificationTarget(row());
+    final repository=AdminSavedQualificationSubmissionRepository(p,target);
+    final saved=row();bool current()=>true;
+    await tester.pumpWidget(MaterialApp(home:AdminSavedQualificationPhotoPage(
+      row:saved,current:current,repository:repository)));
+    await tester.pumpAndSettle();expect(find.text('残す写真・順番を選ぶ'),findsOneWidget);
+    final changed={...saved,'id':'10000000-0000-0000-0000-000000000099'};
+    await tester.pumpWidget(MaterialApp(home:AdminSavedQualificationPhotoPage(
+      row:changed,current:current,repository:repository)));
+    await tester.pumpAndSettle();
+    expect(find.text('残す写真・順番を選ぶ'),findsNothing);
+    await tester.pumpWidget(MaterialApp(home:AdminSavedQualificationPhotoPage(
+      row:saved,current:current,repository:repository)));
+    await tester.pumpAndSettle();expect(find.text('残す写真・順番を選ぶ'),findsNothing);
+    expect(p.calls,['admin_saved_photo_capability']);
+  });
+  for(final background in [false,true]){
+    testWidgets('open confirmation masks on '+(background?'background':'parent invalidation'),(tester)async{
+      final p=Port();final target=AdminSavedQualificationTarget(row());
+      final invalidations=ValueNotifier(0);
+      addTearDown(invalidations.dispose);
+      if(background){addTearDown(()=>tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed));}
+      await tester.pumpWidget(MaterialApp(home:AdminSavedQualificationPhotoPage(
+        row:row(),current:()=>true,repository:AdminSavedQualificationSubmissionRepository(p,target),
+        invalidations:invalidations,photoBuilder:(_,__)=>const Text('Synthetic retained image'))));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('残す写真・順番を選ぶ'));await tester.pumpAndSettle();
+      await tester.tap(find.text('選択を確認'));await tester.pumpAndSettle();
+      expect(find.text('申請を送信'),findsOneWidget);
+      if(background){tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);}
+      else{invalidations.value++;}
+      await tester.pumpAndSettle();
+      expect(find.text('申請を送信'),findsNothing);
+      expect(find.text('状態が変わりました'),findsOneWidget);
+      expect(find.textContaining('2件から 2件'),findsNothing);
+      expect(p.calls,['admin_saved_photo_capability']);
+      await tester.pumpWidget(const SizedBox.shrink());await tester.pump();
+    });
+  }
   testWidgets('actual SDK host selection confirmation fixed baseline submit and receipt', (tester)async{
     late SaveWire f;
     late LiveAdminSavedQualificationPort port;

@@ -801,7 +801,7 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
                     final capturedWorker=_selectedWorkerId;
                     Navigator.pop(sheetContext);
                     await Navigator.push<void>(context, MaterialPageRoute(builder: (_) =>
-                      AdminSavedQualificationPhotoPage(row:Map<String,dynamic>.from(row),
+                      AdminSavedQualificationPhotoPage(row:Map<String,dynamic>.from(row),invalidations:_galleryChanges,
                         current:()=>mounted && generation==_galleryGeneration &&
                           capturedWorker==_selectedWorkerId)));
                     if(mounted)await _load();

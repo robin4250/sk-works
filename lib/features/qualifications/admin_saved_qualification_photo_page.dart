@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../../data/supabase_backend.dart';
 import 'admin_saved_qualification_photo_contract.dart';
@@ -7,7 +8,8 @@ import 'admin_saved_qualification_photo_submission_repository.dart';
 /// Registered retained-photo changes only. No metadata or new-upload controls.
 class AdminSavedQualificationPhotoPage extends StatefulWidget {
   const AdminSavedQualificationPhotoPage({super.key,required this.row,required this.current,
-    this.repository,this.photoBuilder});
+    this.repository,this.photoBuilder,this.invalidations});
+  final Listenable? invalidations;
   @visibleForTesting
   final AdminSavedQualificationSubmissionRepository? repository;
   @visibleForTesting
@@ -17,7 +19,15 @@ class AdminSavedQualificationPhotoPage extends StatefulWidget {
   @override
   State<AdminSavedQualificationPhotoPage> createState()=>_AdminSavedQualificationPhotoPageState();
 }
-class _AdminSavedQualificationPhotoPageState extends State<AdminSavedQualificationPhotoPage> {
+class _AdminSavedQualificationPhotoPageState extends State<AdminSavedQualificationPhotoPage> with WidgetsBindingObserver {
+  late final String _initialRow;
+  late final bool Function() _initialCurrent;
+  late final AdminSavedQualificationSubmissionRepository? _initialRepository;
+  bool get _pageCurrent {
+    try {return !_retired && identical(widget.current,_initialCurrent) &&
+      identical(widget.repository,_initialRepository) && jsonEncode(widget.row)==_initialRow && widget.current();}
+    catch(_){return false;}
+  }
   LiveAdminSavedQualificationPort? _port;
   AdminSavedQualificationSubmissionRepository? _repository;
   AdminSavedQualificationPhotoCapability _cap=AdminSavedQualificationPhotoCapability.unavailable;
@@ -26,21 +36,46 @@ class _AdminSavedQualificationPhotoPageState extends State<AdminSavedQualificati
   String? _message;
   Map<String,dynamic>? _journal;
   @override
-  void initState(){super.initState();_open();}
+  void initState(){
+    super.initState();_initialRow=jsonEncode(widget.row);_initialCurrent=widget.current;
+    _initialRepository=widget.repository;
+    WidgetsBinding.instance.addObserver(this);
+    widget.invalidations?.addListener(_invalidate);
+    if(const [AppLifecycleState.paused,AppLifecycleState.hidden,AppLifecycleState.detached]
+      .contains(WidgetsBinding.instance.lifecycleState)){
+      _retired=true;_busy=false;
+    }else{_open();}
+  }
+  @override
+  void didUpdateWidget(covariant AdminSavedQualificationPhotoPage oldWidget){
+    super.didUpdateWidget(oldWidget);
+    if(!identical(oldWidget.invalidations,widget.invalidations)){
+      oldWidget.invalidations?.removeListener(_invalidate);
+      _invalidate();
+    }
+    if(!_pageCurrent || !identical(oldWidget.photoBuilder,widget.photoBuilder)){_invalidate();}
+  }
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state){
+    if(const [AppLifecycleState.paused,AppLifecycleState.hidden,AppLifecycleState.detached].contains(state)){
+      _invalidate();
+    }
+  }
   void _invalidate(){
     if (_retired || !mounted) return;
     _scope.value=const AdminSavedQualificationPhotoScope();
+    _port?.lease.removeListener(_invalidate);_port?.dispose();_port=null;
     setState((){_retired=true;_cap=AdminSavedQualificationPhotoCapability.unavailable;
       _message='ログイン・会社・資格の状態が変わりました。申請は再送せず、画面を開き直して同じ申請を確認してください。';});
   }
   Future<void> _open() async {
     try {
-      if (!widget.current() || (widget.repository==null && !SupabaseBackend.isInitialized)) {
+      if (!_pageCurrent || (widget.repository==null && !SupabaseBackend.isInitialized)) {
         throw StateError('資格の表示状態を確認してください。');
       }
       final target=widget.repository?.target ?? AdminSavedQualificationTarget(widget.row);
       final port=widget.repository?.port ??
-        LiveAdminSavedQualificationPort(SupabaseBackend.client,target,current:widget.current);
+        LiveAdminSavedQualificationPort(SupabaseBackend.client,target,current:()=>_pageCurrent);
       if(port is LiveAdminSavedQualificationPort){
         _port=port;port.lease.addListener(_invalidate);
       }
@@ -86,12 +121,21 @@ class _AdminSavedQualificationPhotoPageState extends State<AdminSavedQualificati
         capability:_cap,companyId:repo.target.company,actorId:port.actor,targetId:repo.target.id,
         savedPaths:repo.target.paths,scope:_scope,photoBuilder:_photo)));
     if(!mounted || selected==null || _retired)return;
-    final confirm=await showDialog<bool>(context:context,builder:(context)=>AlertDialog(
-      title:const Text('写真の変更申請を送信'),
-      content:Text('保存済み写真 ${selected.savedPaths.length}件から ${selected.selectedPaths.length}件を残す変更を申請します。別の管理者・承認担当者の承認後に反映します。元の写真ファイルは保持します。'),
-      actions:[TextButton(onPressed:()=>Navigator.pop(context,false),child:const Text('送信しない')),
-        FilledButton(onPressed:()=>Navigator.pop(context,true),child:const Text('申請を送信'))]));
-    if(!mounted || confirm!=true || _retired)return;
+    final confirm=await showDialog<bool>(context:context,builder:(dialogContext)=>
+      ValueListenableBuilder<AdminSavedQualificationPhotoScope>(valueListenable:_scope,
+        builder:(context,scope,_){
+          if(!_pageCurrent || scope.companyId!=repo.target.company || scope.actorId!=port.actor){
+            return AlertDialog(title:const Text('状態が変わりました'),
+              content:const Text('確認内容は非表示にしました。申請は送信しません。元の画面から開き直してください。'),
+              actions:[TextButton(onPressed:()=>Navigator.pop(dialogContext,false),child:const Text('閉じる'))]);
+          }
+          return AlertDialog(
+            title:const Text('写真の変更申請を送信'),
+            content:Text('保存済み写真 ${selected.savedPaths.length}件から ${selected.selectedPaths.length}件を残す変更を申請します。別の管理者・承認担当者の承認後に反映します。元の写真ファイルは保持します。'),
+            actions:[TextButton(onPressed:()=>Navigator.pop(dialogContext,false),child:const Text('送信しない')),
+              FilledButton(onPressed:()=>Navigator.pop(dialogContext,true),child:const Text('申請を送信'))]);
+        }));
+    if(!mounted || confirm!=true || !_pageCurrent){if(mounted && !_pageCurrent)_invalidate();return;}
     setState(()=>_busy=true);
     try {
       final result=await repo.submit(selected.selectedPaths);
@@ -127,12 +171,13 @@ class _AdminSavedQualificationPhotoPageState extends State<AdminSavedQualificati
   }
   @override
   void dispose(){
+    WidgetsBinding.instance.removeObserver(this);widget.invalidations?.removeListener(_invalidate);
     _port?.lease.removeListener(_invalidate);_port?.dispose();_scope.dispose();super.dispose();
   }
   @override
   Widget build(BuildContext context)=>Scaffold(
     appBar:AppBar(title:const Text('資格写真の変更申請')),
-    body:SafeArea(child:ListView(padding:const EdgeInsets.all(16),children:[
+    body:_retired ? const Center(child:Text('表示状態が変わりました。元の画面から開き直してください。')) : SafeArea(child:ListView(padding:const EdgeInsets.all(16),children:[
       const Text('保存済み写真の並べ替え・除外だけを申請できます。新しい写真の追加と資格番号・有効期限などの内容変更は準備中です。'),
       if(_message!=null)Padding(padding:const EdgeInsets.symmetric(vertical:16),child:Text(_message!)),
       if(_busy)const Center(child:CircularProgressIndicator()),
