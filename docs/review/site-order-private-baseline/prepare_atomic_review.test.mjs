@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {catalogSql,equalityGuard,assertReceipts,newSchemas,loadReplyRecovery} from './prepare_atomic_review.mjs';
+import {catalogSql,equalityGuard,assertReceipts,newSchemas,loadReplyRecovery,loadSiteHistory} from './prepare_atomic_review.mjs';
 import {createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 const hash=s=>createHash('sha256').update(s).digest('hex');
@@ -43,4 +43,8 @@ test('full preflight emits a bounded READ ONLY metadata query',async()=>{
 test('missing formal C stops before any rehearsal is supplied',()=>{
  const missing=structuredClone(before);for(const n of ['private.require_trade_documents_master_feature','private.require_standalone_trade_document_access','private.standalone_trade_document_registration_context'])delete missing.snapshot.functions[n+'()'];
  assert.throws(()=>assertReceipts(missing,undefined,{},pinned),/complete_thirteen_function_before_required/);
+});
+
+test('optional site history requires the fixed absolute source root',async()=>{
+ assert.equal(await loadSiteHistory(),null);await assert.rejects(()=>loadSiteHistory('relative'),/absolute_root_required/);
 });

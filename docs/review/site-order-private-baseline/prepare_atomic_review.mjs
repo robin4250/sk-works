@@ -15,6 +15,14 @@ export async function loadReplyRecovery(root){
  if(sha(sql)!==replyRecoveryContract.sha256)throw Error('reply_recovery_source_drift');
  transactionBody(sql);return {sql,...replyRecoveryContract};
 }
+export const siteHistoryContract={head:'f4c6da47e8c6bd894c920ab1d85399a4dc5da7bb',path:'docs/review/site-order-package-flow/site-history.sql.review-only',sha256:'0f9cc2f094e8146089a8cdf89f10fb0244ce5d80da239497b76d5c602285e577'};
+export async function loadSiteHistory(root){
+ if(!root)return null;
+ if(!path.isAbsolute(root))throw Error('history_source_absolute_root_required');
+ const sql=await fs.readFile(path.join(root,siteHistoryContract.path),'utf8');
+ if(sha(sql)!==siteHistoryContract.sha256)throw Error('site_history_source_drift');
+ transactionBody(sql);return {sql,...siteHistoryContract};
+}
 export function legacyCaptureSql(){return "create temporary table site_order_legacy_expected(signature text primary key,attrs jsonb) on commit drop;insert into site_order_legacy_expected select case when p.oid='private.respond_site_share(uuid,boolean)'::regprocedure then 'private.respond_site_share(uuid,boolean)' else 'public.respond_site_share(uuid,boolean)'end,to_jsonb(p)-'prosrc' from pg_proc p where p.oid in('private.respond_site_share(uuid,boolean)'::regprocedure,'public.respond_site_share(uuid,boolean)'::regprocedure);";}
 export function catalogSql(source,schemas){
  if(!source.includes('$1::text[]'))throw Error('catalog_schema_parameter_missing');
@@ -54,7 +62,7 @@ export function equalityGuard(query,expected,label){
  do{tag='$sko_guard_'+sha(query+payload+label+index++).slice(0,24)+'$';}while((query+payload+label).includes(tag));
  return `do ${tag} declare actual jsonb; begin select v into actual from (${query}) captured; if actual is distinct from ${literal(payload)}::jsonb then raise exception using errcode='55000',message=${literal(label)};end if;end ${tag};`;
 }
-export async function prepare(root,{before,after,replyRecoveryRoot}={}){
+export async function prepare(root,{before,after,replyRecoveryRoot,siteHistoryRoot}={}){
  const read=p=>fs.readFile(path.join(root,p),'utf8');
  const manifest=JSON.parse(await read('docs/review/site-order-private-baseline/manifest.json'));
  manifest.full_existing_contract=JSON.parse(await read('docs/review/site-order-private-baseline/full-existing-contract.json'));
@@ -67,6 +75,8 @@ export async function prepare(root,{before,after,replyRecoveryRoot}={}){
  if(JSON.stringify(hashes)!==JSON.stringify(pinned))throw Error('site_source_drift');
  const recovery=await loadReplyRecovery(replyRecoveryRoot);
  if(recovery){hashes['external/'+recovery.head+'/'+recovery.path]=recovery.sha256;sources.push(recovery.sql);}
+ const history=await loadSiteHistory(siteHistoryRoot);
+ if(history){hashes['external/'+history.head+'/'+history.path]=history.sha256;sources.push(history.sql);}
  assertReceipts(before,after,hashes,manifest);
  const catalog=await read('docs/review/site-order-private-baseline/catalog_normalized.sql');
  // The existing capture SQL is caller-supplied only by this pinned package.
@@ -79,8 +89,8 @@ export async function prepare(root,{before,after,replyRecoveryRoot}={}){
  return {sql,manifest:{blocked_review_only:true,production_approved:false,source_sha256:hashes,before_sha256:sha(JSON.stringify(before.snapshot)),existing_after_sha256:sha(JSON.stringify(after.existing_after)),new_after_sha256:sha(JSON.stringify(after.new_after)),sql_sha256:sha(sql)}};
 }
 if(process.argv[1]===new URL(import.meta.url).pathname){
- const [root,beforePath,afterPath,output,replyRecoveryRoot]=process.argv.slice(2);
+ const [root,beforePath,afterPath,output,replyRecoveryRoot,siteHistoryRoot]=process.argv.slice(2);
  if(![root,beforePath,afterPath,output].every(Boolean))throw Error('usage: root before.json after.json new-output-directory');
- const result=await prepare(path.resolve(root),{before:JSON.parse(await fs.readFile(beforePath,'utf8')),after:JSON.parse(await fs.readFile(afterPath,'utf8')),replyRecoveryRoot});
+ const result=await prepare(path.resolve(root),{before:JSON.parse(await fs.readFile(beforePath,'utf8')),after:JSON.parse(await fs.readFile(afterPath,'utf8')),replyRecoveryRoot,siteHistoryRoot});
  await fs.mkdir(output,{recursive:false});await fs.writeFile(path.join(output,'atomic-forward.sql.review-only'),result.sql);await fs.writeFile(path.join(output,'manifest.json'),JSON.stringify(result.manifest,null,2)+'\n');
 }

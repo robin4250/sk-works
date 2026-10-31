@@ -85,3 +85,19 @@ Expanded local results with the fixed recovery module: public PGlite **86 checks
 On 2026-10-31 at 01:49:26 UTC (10:49 JST), root reviewed the complete generated 8,193-byte query (SHA256 `e948ed3036d856fbfc8ca3ffcebe0e79bd29e719e85d6dcc4c4c97327b1b6bec`) and executed it READ ONLY. The result has Native PostgreSQL **17.6**, **10 existing functions**, **all 15 existing relations**, and **all five new namespaces absent**. All eight original helper body/owner/security/config/ACL contracts still match the earlier manifest; both legacy response body hashes match their expected before values. No business rows were selected and production writes were zero. The detailed metadata stays private.
 
 The three missing functions are formal C's `require_trade_documents_master_feature`, `require_standalone_trade_document_access` and `standalone_trade_document_registration_context`. Their source is not invalidated or rewritten: the separate formal-C scope has not been applied. The expanded atomic-review builder correctly rejects this 10-function snapshot because its baseline prerequisite is 13 functions. No projected post-C rehearsal is labeled as the actual production-before state, and no deployment approval is inferred from the READ ONLY query.
+
+
+## Fixed site-history composition
+
+PR1666's immutable source `f4c6da47e8c6bd894c920ab1d85399a4dc5da7bb` adds the owner-only `site_history_entries` read function without new tables or public grants. The harness reads that SQL unchanged from `SKO_SITE_HISTORY_SOURCE_ROOT`, requires blob `ad74648b330d6e786402a773461812c73f173e83` / SHA256 `0f9cc2f094e8146089a8cdf89f10fb0244ce5d80da239497b76d5c602285e577`, and appends it after the fixed reply-recovery source inside the same transaction. The blocked builder accepts an optional sixth positional history source root and adds the corresponding hash to its rehearsal contract.
+
+The fourteen-module combination locally passes public PGlite **87 checks**, private actual-eight-body PGlite **99 checks**, Python **8 tests**, and Node offline/scanner **13 tests**. It retains the expanded 13-function/15-relation prerequisites, exact 9-FK/18-reference-trigger additions, sole intended legacy source transition, and all six atomic catalog fault cases. Exact-head Native CI and independent review remain separate requirements; PR1666's own successful checks are not re-labeled as this new composition evidence.
+
+## Local Native PostgreSQL 17.6 feasibility
+
+The official PostgreSQL 17.6 tar archive was downloaded and verified against the official SHA256 `e0630a3600aea27511715563259ec2111cd5f4353a4b040e0be827f94cd7a8b0`. Its unmodified source built and installed into an isolated task prefix; `postgres --version` and `initdb --version` both report 17.6. Missing bison/flex/m4 were obtained as individually official-hash-verified Ubuntu packages and extracted only under that task toolchain, without system package installation.
+
+The current execution namespace maps only UID/GID 0. `initdb` correctly refuses root; non-root ownership, `runuser`, and a legitimate nested user-namespace mapping are unavailable. No PostgreSQL root guard or OS identity function was altered. No cluster was initialized or server started, and **private actual-eight-body Native execution did not occur**. A legitimate non-root isolated runner is still required. The private receipt records archive/package/binary/log hashes and the exact failures; private helper definitions were not sent to public CI.
+
+
+The public Native composition service is now version-pinned to `postgres:17.6`, with an explicit runtime `server_version_num = 170006` assertion. This changes the disposable fixture engine, not production. Its extra engine-version check makes the expected Native total **88**, compared with public PGlite **87**; the public seal helper remains synthetic.

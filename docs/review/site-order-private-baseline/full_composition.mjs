@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {preflightStatement} from './capture_full_preflight.mjs';
 import {transactionBody} from './sql_transaction.mjs';
-import {catalogSql as inlineCatalogSql,equalityGuard,loadReplyRecovery,legacyCaptureSql} from './prepare_atomic_review.mjs';
+import {catalogSql as inlineCatalogSql,equalityGuard,loadReplyRecovery,loadSiteHistory,legacyCaptureSql} from './prepare_atomic_review.mjs';
 const modules=['foundation','legacy-response-guard','approval','approval-consent','archive-read','delivery','read-surfaces','archive-payload','approval-operation','refusal'];
 const coreSchemas=['trade_document_consent_private','trade_document_confirmation_api_private'];
 const allSchemas=[...coreSchemas,'site_order_artifact_private','site_order_manager_private','site_order_package_private'];
@@ -87,6 +87,8 @@ export async function composeFull(db,{read,q,check,manifest}){
  check(createHash('sha256').update(actor).digest('hex'),manifest.actor_statement_sha256);
  const recovery=await loadReplyRecovery(process.env.SKO_SITE_REPLY_RECOVERY_SOURCE_ROOT);
  if(recovery){texts.push(recovery.sql);paths.push('external/'+recovery.head+'/'+recovery.path);check(recovery.sha256,'991281df5f789e1e6a3d469dd854609a065d2a6d56db33b85a08d3cf57fd9979');}
+ const history=await loadSiteHistory(process.env.SKO_SITE_HISTORY_SOURCE_ROOT);
+ if(history){texts.push(history.sql);paths.push('external/'+history.head+'/'+history.path);check(history.sha256,'0f9cc2f094e8146089a8cdf89f10fb0244ce5d80da239497b76d5c602285e577');}
  const bodies=texts.map(transactionBody);
  async function install(){
   await db.exec('begin');
@@ -142,6 +144,6 @@ export async function composeFull(db,{read,q,check,manifest}){
  check(await newCatalog(),result);
  const boundedQuery=preflightStatement(existingCatalogSql).replace(/^begin read only;set local search_path='';/,'').replace(/;commit;\n$/,'');
  const captured=await q(boundedQuery);check(captured.production_mutation,false);check(Object.keys(captured.snapshot.functions).length,13);check(Object.keys(captured.snapshot.relations).length,15);
- return {modules_installed:12+(recovery?1:0),reply_recovery_source:recovery?{head:recovery.head,sha256:recovery.sha256}:null,core_namespaces:2,native_contract_capture:{before:existingBefore,after:existingAfter},catalog:result,protected_catalog:before,allowed_new_fk_reference_triggers:allowedReferenceTriggers,faults:faults.length,atomic_rollback:true,source_paths:paths};
+ return {modules_installed:12+(recovery?1:0)+(history?1:0),site_history_source:history?{head:history.head,sha256:history.sha256}:null,reply_recovery_source:recovery?{head:recovery.head,sha256:recovery.sha256}:null,core_namespaces:2,native_contract_capture:{before:existingBefore,after:existingAfter},catalog:result,protected_catalog:before,allowed_new_fk_reference_triggers:allowedReferenceTriggers,faults:faults.length,atomic_rollback:true,source_paths:paths};
 }
 function nNotIndex(name,catalog){return ['r','S'].includes(catalog.relations[name].relkind);}

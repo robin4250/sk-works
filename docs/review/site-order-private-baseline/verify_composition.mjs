@@ -17,11 +17,12 @@ if(process.argv[3]==='postgres'){
  if(!['127.0.0.1','localhost'].includes(u.hostname)||u.pathname!=='/sko_document_consent_fixture')throw Error('disposable_loopback_required');
  const client=new pg.Client({connectionString:u.href});await client.connect();db={exec:s=>client.query(s),query:(...a)=>client.query(...a),close:()=>client.end()};
 }else {const {PGlite}=await import(process.argv[2]);db=new PGlite();}
-let checks=0;const check=(a,b)=>{assert.deepEqual(a,b);checks++;};
+let nativeVersion=null;let checks=0;const check=(a,b)=>{assert.deepEqual(a,b);checks++;};
 const q=async(s,a=[])=>(await db.query(s,a)).rows[0]?.v;
 const reject=async sql=>{let error;try{await db.exec(sql);}catch(e){error=e;}if(!error||error.code!=='42501')throw Error('expected 42501: '+error?.message);checks++;};
 const escape=s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
 try{
+ if(process.argv[3]==='postgres'){nativeVersion=await q("select current_setting('server_version_num') v");check(nativeVersion,'170006');}
  await db.exec(await fs.readFile(path.join(cRoot,'docs/review/trade-documents-hub/base-fixture.sql'),'utf8'));
  await db.exec('alter table private.company_seal_png_versions add column company_name text');
  for(const [sig,file] of Object.entries(manifest.public_fixture_actual_sources)){
@@ -76,5 +77,5 @@ try{
  await reject('select private.require_standalone_trade_document_access()');
  await db.exec(`update auth.users set is_anonymous=false where id='${uid}';insert into private.account_deletion_access_restrictions values('${uid}')`);
  await reject('select private.require_standalone_trade_document_access()');
- console.log(JSON.stringify({result:'PASS minimal private site composition',checks,actual_current_generic_helpers:7,seal_snapshot_synthetic:true,private_eight_body_result_separate:true,synthetic_auth_identity_and_rows:true,financial_api_installed:false,full_modules:fullReceipt?.modules_installed??0,atomic_faults:fullReceipt?.faults??0,production_changed:false}));
+ console.log(JSON.stringify({result:'PASS minimal private site composition',checks,native_server_version_num:nativeVersion,actual_current_generic_helpers:7,seal_snapshot_synthetic:true,private_eight_body_result_separate:true,synthetic_auth_identity_and_rows:true,financial_api_installed:false,full_modules:fullReceipt?.modules_installed??0,atomic_faults:fullReceipt?.faults??0,production_changed:false}));
 }catch(error){console.error(JSON.stringify({error:error.message,code:error.code,where:error.where}));process.exitCode=1;}finally{await db.close();}
