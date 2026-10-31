@@ -42,6 +42,12 @@ create table private.company_link_bound_operations (
 alter table private.company_link_bound_operations owner to postgres;
 alter table private.company_link_bound_operations enable row level security;
 revoke all on private.company_link_bound_operations from public,anon,authenticated,service_role;
+create function private.company_link_bound_receipt_immutable_v1()
+returns trigger language plpgsql security definer set search_path='' as $$
+begin raise exception 'company-link receipts are append-only'; end $$;
+create trigger company_link_bound_receipt_immutable_v1
+ before update or delete or truncate on private.company_link_bound_operations
+ for each statement execute function private.company_link_bound_receipt_immutable_v1();
 
 create function private.require_company_link_bound_v1(p_company uuid,p_session uuid)
 returns uuid language plpgsql security definer set search_path='' as $$
@@ -135,7 +141,7 @@ begin
      array['local_role','start_month','target_company_id']::text[] then raise exception 'invalid request keys'; end if;
     target:=(p_payload->>'target_company_id')::uuid; local_role:=p_payload->>'local_role';
     start_month:=(p_payload->>'start_month')::date;
-    if target is null or target=p_company or local_role not in('customer','subcontractor')
+    if target is null or target=p_company or local_role is null or local_role not in('customer','subcontractor')
      or start_month is null or extract(day from start_month)<>1 then raise exception 'invalid request'; end if;
     perform pg_advisory_xact_lock(hashtextextended(least(p_company,target)::text,0));
     perform pg_advisory_xact_lock(hashtextextended(greatest(p_company,target)::text,0));
@@ -200,9 +206,11 @@ returns jsonb language sql security invoker set search_path='' as $$
  select private.company_link_bound_v1(p_company,p_session,p_operation,p_command,p_payload)
 $$;
 alter function private.require_company_link_bound_v1(uuid,uuid) owner to postgres;
+alter function private.company_link_bound_receipt_immutable_v1() owner to postgres;
 alter function private.company_link_bound_v1(uuid,uuid,uuid,text,jsonb) owner to postgres;
 alter function public.company_link_bound_v1(uuid,uuid,uuid,text,jsonb) owner to postgres;
 revoke all on function private.require_company_link_bound_v1(uuid,uuid) from public,anon,authenticated,service_role;
+revoke all on function private.company_link_bound_receipt_immutable_v1() from public,anon,authenticated,service_role;
 revoke all on function private.company_link_bound_v1(uuid,uuid,uuid,text,jsonb),public.company_link_bound_v1(uuid,uuid,uuid,text,jsonb)
  from public,anon,authenticated,service_role;
 grant execute on function private.company_link_bound_v1(uuid,uuid,uuid,text,jsonb),public.company_link_bound_v1(uuid,uuid,uuid,text,jsonb) to authenticated;
@@ -212,16 +220,17 @@ begin
  foreach expected_role in array array['postgres'::regrole::oid,'authenticated'::regrole::oid] loop
   if expected_role is null then raise exception 'required role missing'; end if;
  end loop;
- for f in select p.oid,p.proowner,p.prosecdef,p.proconfig,n.nspname,p.proname
+ for f in select p.oid,p.proowner,p.prosecdef,p.proconfig,p.provolatile,p.proisstrict,p.proleakproof,p.prokind,n.nspname,p.proname
   from pg_proc p join pg_namespace n on n.oid=p.pronamespace
-  where (n.nspname='private' and p.proname in('require_company_link_bound_v1','company_link_bound_v1'))
+  where (n.nspname='private' and p.proname in('require_company_link_bound_v1','company_link_bound_v1','company_link_bound_receipt_immutable_v1'))
    or (n.nspname='public' and p.proname='company_link_bound_v1') loop
   if f.proowner<>'postgres'::regrole::oid
    or f.prosecdef is distinct from (f.nspname='private')
+   or f.provolatile<>'v' or f.proisstrict or f.proleakproof or f.prokind<>'f'
    or f.proconfig is distinct from array['search_path=""']::text[]
    or exists(select 1 from aclexplode(coalesce((select proacl from pg_proc where oid=f.oid),acldefault('f',f.proowner))) a
     where a.grantee not in('postgres'::regrole::oid,'authenticated'::regrole::oid)
-     or (a.grantee='authenticated'::regrole::oid and (a.is_grantable or f.proname='require_company_link_bound_v1')))
+     or (a.grantee='authenticated'::regrole::oid and (a.is_grantable or f.proname<>'company_link_bound_v1')))
   then raise exception 'unexpected company-link function ownership or ACL'; end if;
  end loop;
  if not has_function_privilege('authenticated','public.company_link_bound_v1(uuid,uuid,uuid,text,jsonb)','EXECUTE')
@@ -229,6 +238,13 @@ begin
   or has_function_privilege('authenticated','private.require_company_link_bound_v1(uuid,uuid)','EXECUTE')
   or exists(select 1 from aclexplode(coalesce((select relacl from pg_class where oid='private.company_link_bound_operations'::regclass),acldefault('r','postgres'::regrole::oid))) a
    where a.grantee<>'postgres'::regrole::oid)
+  or exists(select 1 from pg_attribute where attrelid='private.company_link_bound_operations'::regclass and attnum>0 and attacl is not null)
+  or exists(select 1 from pg_policy where polrelid='private.company_link_bound_operations'::regclass)
+  or not exists(select 1 from pg_class where oid='private.company_link_bound_operations'::regclass
+   and relowner='postgres'::regrole::oid and relrowsecurity and relkind='r' and relpersistence='p')
+  or not exists(select 1 from pg_trigger where tgrelid='private.company_link_bound_operations'::regclass
+   and tgname='company_link_bound_receipt_immutable_v1' and tgenabled='O' and tgtype=58
+   and tgfoid='private.company_link_bound_receipt_immutable_v1()'::regprocedure and not tgisinternal)
  then raise exception 'unexpected company-link function or journal access'; end if;
 end $acl_guard$;
 -- Exact legacy body/catalog guards and Native two-connection verification remain

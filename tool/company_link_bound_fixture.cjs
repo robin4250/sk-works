@@ -50,7 +50,44 @@ let db;let nativeClient;
  assert.equal((await db.query(`select count(*)::integer n from public.trade_companies where company_id='${ids(1)}'`)).rows[0].n,0);
  await invoke(ids(2),'set_enabled',{enabled:false},ids(206));
  assert.equal((await invoke(ids(2),'result',{},ids(204))).state,'committed');
+ for(const mutation of [
+  'update private.company_link_bound_operations set command=command',
+  'delete from private.company_link_bound_operations',
+  'truncate private.company_link_bound_operations',
+ ])await assert.rejects(db.exec(mutation),/append-only/);
  await assert.rejects(invoke(ids(2),'request',payload,ids(204)),/disabled/);
+ await invoke(ids(2),'set_enabled',{enabled:true},ids(207));
+ const second=await invoke(ids(2),'request',payload,ids(208));
+ await db.exec(`create function private.fixture_link_failure() returns trigger language plpgsql as $$begin
+  if current_setting('test.fail_attach',true)='1' and new.company_id='${ids(3)}' then raise exception 'synthetic second attachment failure'; end if;
+  if current_setting('test.fail_notice',true)='1' and tg_table_name='app_notifications' then raise exception 'synthetic notification failure'; end if;
+  return new;end$$;
+ create trigger fixture_attach_failure before insert or update on public.trade_companies for each row execute function private.fixture_link_failure();
+ create trigger fixture_notice_failure before insert on public.app_notifications for each row execute function private.fixture_link_failure();`);
+ const snapshot=async()=>({companies:(await db.query('select * from public.trade_companies order by id')).rows,
+  requests:(await db.query('select * from private.trade_company_link_requests order by id')).rows,
+  notices:(await db.query('select * from public.app_notifications order by company_id,recipient_user_id,action_id')).rows,
+  receipts:(await db.query('select * from private.company_link_bound_operations order by operation_id')).rows});
+ let before=await snapshot();await db.exec("set test.fail_attach='1';");
+ await assert.rejects(invoke(ids(3),'respond',{request_id:second.request_id,action:'accept'},ids(209)),/second attachment failure/);
+ assert.deepEqual(await snapshot(),before);await db.exec("set test.fail_attach='0';set test.fail_notice='1';");
+ before=await snapshot();await assert.rejects(invoke(ids(2),'request',{...payload,target_company_id:ids(1)},ids(210)),/notification failure/);
+ assert.deepEqual(await snapshot(),before);await db.exec("set test.fail_notice='0';");
+ if(native){
+  const {Client}=require('pg'),other=new Client();await other.connect();
+  try{
+   const pid=(await other.query('select pg_backend_pid() pid')).rows[0].pid;
+   await db.exec('begin');await invoke(ids(2),'workspace');
+   const waiting=other.query(`update public.company_members set role='viewer' where company_id='${ids(2)}' and user_id='${actor}'`);
+   let observed=false;
+   for(let i=0;i<100&&!observed;i++)observed=(await db.query(`select wait_event_type='Lock' waiting from pg_stat_activity where pid=${pid}`)).rows[0]?.waiting===true;
+   assert(observed,'actual role revoke must wait behind captured membership SHARE lock');
+   await db.exec('commit');await waiting;
+   await assert.rejects(invoke(ids(2),'workspace'),/role unavailable/);
+   await db.exec(`update public.company_members set role='admin' where company_id='${ids(2)}' and user_id='${actor}'`);
+   console.log('NATIVE_COMPANY_LINK_REVOKE_WAIT: 1');
+  }finally{await other.end();}
+ }
  await login(sid2);
  assert.equal((await invoke(ids(2),'result',{},ids(204),sid2)).original_session_id,sid);
  await assert.rejects(invoke(ids(2),'request',payload,ids(204),sid2),/original session/);
