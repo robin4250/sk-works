@@ -21,7 +21,7 @@ class SiteOrderOutgoingRecoveryPage extends StatefulWidget {
 class _SiteOrderOutgoingRecoveryPageState
     extends State<SiteOrderOutgoingRecoveryPage> {
   List<SiteOrderPendingPrepare> _entries = const [];
-  bool _busy = true, _retired = false;
+  bool _busy = true, _retired = false, _readSucceeded = false;
   String? _message;
   @override
   void initState() {
@@ -52,10 +52,14 @@ class _SiteOrderOutgoingRecoveryPageState
 
   Future<void> _load() async {
     if (_retired) return;
+    _readSucceeded = false;
     try {
       final entries = await widget.api.pendingOutgoing(widget.siteId);
       if (!mounted || _retired || widget.api.invalidated) return;
-      setState(() => _entries = entries);
+      setState(() {
+        _entries = entries;
+        _readSucceeded = true;
+      });
     } catch (_) {
       if (mounted && !_retired) {
         setState(() => _message = '保存状態を確認できません。記録は保持しています。');
@@ -144,7 +148,7 @@ class _SiteOrderOutgoingRecoveryPageState
             child: Text(_message!),
           ),
         if (_busy) const LinearProgressIndicator(),
-        if (!_busy && _entries.isEmpty && !_retired)
+        if (!_busy && _readSucceeded && _entries.isEmpty && !_retired)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 16),
             child: Text('確認待ちの準備記録はありません。'),

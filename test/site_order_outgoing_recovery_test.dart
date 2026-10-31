@@ -120,6 +120,7 @@ Future<(SupabaseClient, SiteOrderWorkflowRepository)> _repository(
 
 class _RecoveryApi extends SiteOrderWorkflowApi {
   bool expired = false;
+  bool failRead = false;
   int reads = 0, stops = 0;
   String result = 'not_observed';
   @override
@@ -132,8 +133,11 @@ class _RecoveryApi extends SiteOrderWorkflowApi {
   @override
   Future<void> verify() async => requireCurrent();
   @override
-  Future<List<SiteOrderPendingPrepare>> pendingOutgoing(String siteId) async =>
-      [entry()];
+  Future<List<SiteOrderPendingPrepare>> pendingOutgoing(String siteId) async {
+    if (failRead) throw StateError('synthetic read failure');
+    return [entry()];
+  }
+
   @override
   Future<String> inspectOutgoing(SiteOrderPendingPrepare entry) async {
     reads++;
@@ -323,4 +327,18 @@ void main() {
     expect(find.text('状態を照会'), findsNothing);
     expect(find.textContaining(id(8)), findsNothing);
   });
+  testWidgets(
+    'failed initial journal read remains unknown, never empty-success',
+    (tester) async {
+      final api = _RecoveryApi()..failRead = true;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SiteOrderOutgoingRecoveryPage(api: api, siteId: site),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.textContaining('保存状態を確認できません'), findsOneWidget);
+      expect(find.text('確認待ちの準備記録はありません。'), findsNothing);
+    },
+  );
 }
