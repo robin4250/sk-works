@@ -5,6 +5,7 @@ on:
       - 'lib/features/shared/trade_document_touch_editor_page.dart'
       - 'lib/domain/trade_document_form_draft.dart'
       - 'test/trade_document_touch_editor_test.dart'
+      - 'test/trade_document_input_seal_test.dart'
       - '.github/workflows/trade-document-touch-editor.yml'
 permissions:
   contents: read
@@ -20,6 +21,6 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get --enforce-lockfile
-      - run: flutter analyze lib/features/shared/trade_document_touch_editor_page.dart test/trade_document_touch_editor_test.dart
-      - run: flutter test test/trade_document_touch_editor_test.dart
+      - run: flutter analyze lib/features/shared/trade_document_touch_editor_page.dart test/trade_document_touch_editor_test.dart test/trade_document_input_seal_test.dart
+      - run: flutter test test/trade_document_touch_editor_test.dart test/trade_document_input_seal_test.dart
       - run: git diff --exit-code -- pubspec.yaml pubspec.lock
