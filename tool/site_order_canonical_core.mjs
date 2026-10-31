@@ -1,3 +1,4 @@
+import {outgoingExecutionArgs,resolveOutgoingExecution,isOutgoingOwnedJob,requireOutgoingExecutionSource} from './site_order_outgoing_execution_contract.mjs';
 // Pure DB coordinator. Caller supplies one fixed trusted renderer and a dedicated verified-request connection.
 const uuid=/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/;
 
@@ -20,8 +21,16 @@ export async function registerManagerCanonicalSiteOrderJob(db,jobId,render,verif
  return registerForPurpose(db,jobId,render,true,verifiedClaims);
 }
 
-async function registerForPurpose(db,jobId,render,manager,verifiedClaims) {
- if(!uuid.test(jobId))throw Error('canonical_job_id_required');
+// A fixed purpose export resolves job IDs from the caller's exact immutable
+// consent receipt. HTTP cannot choose a job, renderer or authorization helper.
+export async function registerOutgoingCanonicalSiteOrderJob(db,identity,render,verifiedClaims) {
+ outgoingExecutionArgs(identity);
+ if(!verifiedClaims)throw Error('canonical_registration_rejected');
+ return registerForPurpose(db,null,render,true,verifiedClaims,identity);
+}
+
+async function registerForPurpose(db,jobId,render,manager,verifiedClaims,outgoingIdentity) {
+ if(!outgoingIdentity&&!uuid.test(jobId))throw Error('canonical_job_id_required');
  // No transaction retries here. A COMMIT transport error is UNKNOWN; caller must
  // look up the same request/job, never mint a replacement job or resubmit bytes.
  let committed=false,commitStarted=false;
@@ -30,14 +39,24 @@ async function registerForPurpose(db,jobId,render,manager,verifiedClaims) {
   const role=(await db.query('select session_user as role')).rows[0]?.role;
   if(role!=='postgres')throw Error('canonical_internal_connection_required');
   if(verifiedClaims!==undefined)await db.query("select set_config('request.jwt.claims',$1,true)",[JSON.stringify(verifiedClaims)]);
+  await db.query("select set_config('request.jwt.claim.sub','',true),set_config('request.jwt.claim','',true)");
   await db.query('select trade_document_confirmation_api_private.actor()');
   if(manager)await db.query('select private.require_standalone_trade_document_access()');
   await db.query('select private.require_trade_documents_master_feature()');
+  if(outgoingIdentity)jobId=(await resolveOutgoingExecution(db,outgoingIdentity,{mutation:true})).job_id;
   const j=(await db.query(manager?managerJobLock:`select j.evidence from site_order_artifact_private.render_jobs j
    where j.id=$1 and j.actor_id=auth.uid()
    and j.session_id=(auth.jwt()->>'session_id')::uuid for update of j`,[jobId])).rows[0];
   if(!j)throw Error('canonical_job_unavailable');
   if(manager)await db.query('select site_order_manager_private.require_actor(j.company_id,j.document_id) from site_order_artifact_private.render_jobs j where j.id=$1',[jobId]);
+  if(manager){
+   const owned=await isOutgoingOwnedJob(db,jobId);
+   if(owned&&!outgoingIdentity)throw Error('outgoing_fixed_purpose_required');
+   if(outgoingIdentity){
+    if(!owned)throw Error('outgoing_execution_unavailable');
+    await requireOutgoingExecutionSource(db,outgoingIdentity,jobId);
+   }
+  }
   // This MUST be a separate statement after acquiring the immutable job lock.
   // A joined READ COMMITTED snapshot can miss a first worker's pdf_records
   // insert after waiting, since that worker never updates the locked job row.
@@ -47,6 +66,7 @@ async function registerForPurpose(db,jobId,render,manager,verifiedClaims) {
   const bytes=original??await render(j.evidence);
   const receipt=(await db.query(manager?'select site_order_manager_private.register_canonical_pdf($1,$2) as receipt':'select site_order_artifact_private.register_canonical_pdf($1,$2) as receipt',[jobId,bytes])).rows[0]?.receipt;
   if(!receipt||receipt.job_id!==jobId||receipt.pdf_byte_length!==bytes.length)throw Error('canonical_receipt_mismatch');
+  if(outgoingIdentity)await requireOutgoingExecutionSource(db,outgoingIdentity,jobId);
   commitStarted=true;
   await db.query('commit');committed=true;
   return receipt;

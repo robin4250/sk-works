@@ -1,7 +1,12 @@
+import {outgoingExecutionKeys} from '../../../tool/site_order_outgoing_execution_contract.mjs';
+import {observeOutgoingExecution,registerOutgoingOriginal,shareConfirmedOutgoing} from '../../../tool/site_order_outgoing_delivery_core.mjs';
 // Separate bounded purpose. Legacy workflow requests retain their 4096-byte cap.
 const uuid=/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/;
 const identity=['site_id','document_id','local_id','trade_id','request_id'];
 const commands={
+ original_status:{keys:outgoingExecutionKeys,execution:'status'},
+ register_outgoing_original:{keys:outgoingExecutionKeys,execution:'register'},
+ share_confirmed:{keys:[...outgoingExecutionKeys,'confirmed'],execution:'share'},
  preview_unsigned:{keys:identity,sql:'select site_order_outgoing_private.preview_unsigned($1,$2,$3,$4,$5) as result'},
  confirm_unsigned:{keys:[...identity,'preview_id','decision_id','confirmed'],sql:'select site_order_outgoing_private.confirm_unsigned($1,$2,$3,$4,$5,$6,$7,$8) as result'},
  decision_status:{keys:[...identity,'preview_id','decision_id'],sql:'select site_order_outgoing_private.decision_status($1,$2,$3,$4,$5,$6,$7) as result'},
@@ -42,7 +47,7 @@ async function read(req){
 }
 // The runtime injects its existing pinned project verifier and dedicated TLS
 // connection factory. HTTP cannot select authentication, SQL or connection data.
-export function createOutgoingPrepareHandler({verify,connect}){
+export function createOutgoingPrepareHandler({verify,connect,render}){
  return async req=>{
   if(req.method!=='POST')return response({error:'post_required'},405);
   const authorization=req.headers.get('authorization')??'';
@@ -51,7 +56,18 @@ export function createOutgoingPrepareHandler({verify,connect}){
   let input;try{input=await read(req);}catch{return response({error:'invalid_request'},400);}
   let db,commitStarted=false;
   try{
-   db=await connect();await db.query('begin isolation level read committed');
+   db=await connect();
+   if(input.command.execution){
+    const identity=Object.fromEntries(outgoingExecutionKeys.map(k=>[k,input.value[k]]));
+    let result;
+    if(input.command.execution==='status')result=await observeOutgoingExecution(db,identity,claims);
+    else if(input.command.execution==='register'){
+     if(typeof render!=='function')throw Error('outgoing_renderer_unavailable');
+     result=await registerOutgoingOriginal(db,identity,render,claims);
+    }else result=await shareConfirmedOutgoing(db,identity,input.value.confirmed,claims);
+    return response({result});
+   }
+   await db.query('begin isolation level read committed');
    if((await db.query('select session_user as role')).rows[0]?.role!=='postgres')throw Error('internal_connection_required');
    await db.query("select set_config('request.jwt.claims',$1,true)",[JSON.stringify(claims)]);
    const args=input.command.keys.map(key=>key==='body'?JSON.stringify(input.value[key]):input.value[key]);
@@ -59,9 +75,10 @@ export function createOutgoingPrepareHandler({verify,connect}){
    if(!result||typeof result!=='object'||Array.isArray(result))throw Error('result_required');
    commitStarted=true;await db.query('commit');commitStarted=false;
    return response({result});
-  }catch{
-   if(db&&!commitStarted)await db.query('rollback').catch(()=>{});
-   return response({error:commitStarted?'result_unknown':'operation_rejected',retry_automatically:false},commitStarted?409:403);
+  }catch(error){
+   const unknown=commitStarted||error?.message?.includes('result_unknown');
+   if(db&&!unknown)await db.query('rollback').catch(()=>{});
+   return response({error:unknown?'result_unknown':'operation_rejected',retry_automatically:false},unknown?409:403);
   }finally{if(db)await db.end().catch(()=>{});}
  };
 }

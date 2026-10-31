@@ -28,6 +28,6 @@ export function serveSiteOrderWorkflow(runtime){
  };
  runtime.serve(createSiteOrderRouter({
   workflow:createSiteOrderHandler({verify,connect,render}),
-  outgoing:createOutgoingPrepareHandler({verify,connect}),
+  outgoing:createOutgoingPrepareHandler({verify,connect,render}),
  }));
 }

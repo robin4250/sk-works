@@ -94,7 +94,11 @@ export async function verifyConsent(db,{q,check,sourceContract}){
   await denied(()=>confirm(borrowed,bp),/request_already_used/);
   check(await q('select count(*)::int v from trade_document_consent_private.receipts where request_id=$1',[borrowed.decision]),0);
   for(const role of ['anon','authenticated','service_role']){await db.exec('set role '+role);try{await denied(()=>status(x,p),/permission denied/);}finally{await db.exec('reset role');}}
-  await verifyConsentHttp(db,{q,check,UA,A,sid,sid2,make,prepare,params});
+  const httpReceipt=await verifyConsentHttp(db,{q,check,UA,A,sid,sid2,make,prepare,params});
+  if(process.env.SKO_OUTGOING_EXECUTION_REVIEW_HOOK==='contract-v1'){
+   const {verifyExecution}=await import('../site-order-outgoing-execution/fixture.mjs');
+   await verifyExecution(db,{q,check,UA,A,B,sid,sid2,make,prepare,preview,confirm,params,httpReceipt});
+  }
   let nativeWaits=0;
   if(process.argv[3]==='postgres'){
    const pg=(await import(process.argv[2])).default;
@@ -143,7 +147,7 @@ export async function verifyConsent(db,{q,check,sourceContract}){
    }finally{await db.exec('rollback');await peer.end();}
   }
   check(await catalog(),before);
-  console.log(JSON.stringify({consent_source_only:true,native_real_waits:nativeWaits,exact_eight_c_unchanged:true,actual_public_uid_jwt_bodies:2,consent_and_job_atomic:true,original_registered:false,sent:false,production_changed:false}));
+  console.log(JSON.stringify({consent_source_only:true,native_real_waits:nativeWaits,exact_eight_c_unchanged:true,actual_public_uid_jwt_bodies:2,consent_and_job_atomic:true,consent_operation_registers_or_sends:false,production_changed:false}));
  }finally{
   if(previousFeature===undefined)await db.query("delete from private.master_feature_settings where feature_key='site_order_documents'");else await db.query("update private.master_feature_settings set enabled=$1 where feature_key='site_order_documents'",[previousFeature]);
   await db.query("select set_config('request.jwt.claims',$1,false),set_config('request.jwt.claim.sub',$2,false),set_config('request.jwt.claim',$3,false)",[saved.claims??'',saved.sub??'',saved.claim??'']);

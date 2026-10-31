@@ -43,6 +43,8 @@ export async function verifyConsentHttp(db,{q,check,UA,A,sid,sid2,make,params}){
  const parts=(await jwt()).split('.');parts[2]=b64(new Uint8Array(64));check((await post({action:'decision_status',...decision},sid,parts.join('.'))).status,401);check(connections,before);
  check(closed,connections);check(connections,7);check(prepareMutations,1);
  check(await q('select count(*)::int v from site_order_artifact_private.render_jobs where request_id=$1',[x.decision]),1);
- if(process.env.SKO_CONSENT_RECEIPT_PATH){await fs.mkdir(path.dirname(process.env.SKO_CONSENT_RECEIPT_PATH),{recursive:true});await fs.writeFile(process.env.SKO_CONSENT_RECEIPT_PATH,JSON.stringify({actor:UA,company:A,session:sid,identity,decision_id:x.decision,input_body:x.body,connection_fingerprint:x.context.connection_fingerprint,prepared,preview,result}));}
+ const receipt={actor:UA,company:A,session:sid,identity,decision_id:x.decision,input_body:x.body,connection_fingerprint:x.context.connection_fingerprint,prepared,preview,result};
+ if(process.env.SKO_CONSENT_RECEIPT_PATH){await fs.mkdir(path.dirname(process.env.SKO_CONSENT_RECEIPT_PATH),{recursive:true});await fs.writeFile(process.env.SKO_CONSENT_RECEIPT_PATH,JSON.stringify(receipt));}
  console.log(JSON.stringify({fixed_es256_http_sql:true,ack_lost_after_actual_commit:true,status_without_repeat_mutation:true,prepare_mutations:prepareMutations,confirm_mutations:mutations,connections_closed:closed,synthetic_auth:true,real_GoTrue:false}));
+ return receipt;
 }
