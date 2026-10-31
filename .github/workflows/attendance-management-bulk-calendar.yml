@@ -4,6 +4,7 @@ on:
     paths:
       - 'lib/features/attendance/attendance_management_page.dart'
       - 'test/attendance_management_bulk_calendar_test.dart'
+      - 'test/attendance_management_bulk_calendar_entry_boundary_test.dart'
       - '.github/workflows/attendance-management-bulk-calendar.yml'
 permissions:
   contents: read
@@ -20,5 +21,6 @@ jobs:
           cache: true
       - run: flutter pub get --enforce-lockfile
       - run: git diff --exit-code -- pubspec.lock
-      - run: flutter analyze lib/features/attendance/attendance_management_page.dart test/attendance_management_bulk_calendar_test.dart
+      - run: flutter analyze lib/features/attendance/attendance_management_page.dart test/attendance_management_bulk_calendar_test.dart test/attendance_management_bulk_calendar_entry_boundary_test.dart
       - run: flutter test test/attendance_management_bulk_calendar_test.dart test/attendance_management_report_navigation_test.dart test/attendance_management_error_message_test.dart test/attendance_management_page_contract_test.dart --reporter expanded
+      - run: flutter test test/attendance_management_bulk_calendar_entry_boundary_test.dart --dart-define=SKO_ENTRY_ACCESS_FIXTURE=true --dart-define=SUPABASE_URL=https://entry-access-fixture.invalid --dart-define=SUPABASE_PUBLISHABLE_KEY=public_fixture --reporter expanded

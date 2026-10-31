@@ -8,6 +8,7 @@ import 'attendance_management_company_allowances.dart';
 import 'attendance_management_company_allowance_field.dart';
 import '../daily_reports/daily_report_company_allowance_selection.dart';
 import '../../international/language_controller.dart';
+import '../people/worker_document_change_route_host.dart';
 
 String attendanceManagementActionErrorMessage(Object error) {
   final raw = error.toString();
@@ -448,6 +449,9 @@ class _BulkManagementPanelState extends State<_BulkManagementPanel> with Widgets
   bool _marksReady = false;
   Object? _marksError;
   int _marksGeneration = 0;
+  int _routeEpoch = 0;
+  Object? _deleteConfirmation;
+  bool get _confirmingDelete => _deleteConfirmation != null;
   Map<int, Map<String, int>> _marks = const {};
 
   @override
@@ -464,6 +468,7 @@ class _BulkManagementPanelState extends State<_BulkManagementPanel> with Widgets
     if (!identical(oldWidget.repository, widget.repository) ||
         _workerIds.any((id) => !widget.workers.any((worker) => worker.id == id))) {
       _workerIds.clear();
+      _routeEpoch++;
       _invalidateMarks();
     }
   }
@@ -471,7 +476,7 @@ class _BulkManagementPanelState extends State<_BulkManagementPanel> with Widgets
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.hidden || state == AppLifecycleState.paused) {
-      if (mounted) setState(_invalidateMarks);
+      if (mounted) setState(() { _invalidateMarks(); _routeEpoch++; });
     } else if (state == AppLifecycleState.resumed && !_busy && _workerIds.isNotEmpty) {
       _loadMarks();
     }
@@ -530,12 +535,12 @@ class _BulkManagementPanelState extends State<_BulkManagementPanel> with Widgets
   }
 
   void _selectWorkers(void Function() change) {
-    setState(() { change(); _invalidateMarks(); });
+    setState(() { change(); _invalidateMarks(); if (_confirmingDelete) _routeEpoch++; });
     _loadMarks();
   }
 
   void _moveMonth(int delta) {
-    setState(() { _month = DateTime(_month.year, _month.month + delta); _invalidateMarks(); });
+    setState(() { _month = DateTime(_month.year, _month.month + delta); _invalidateMarks(); if (_confirmingDelete) _routeEpoch++; });
     _loadMarks();
   }
 
@@ -565,8 +570,8 @@ class _BulkManagementPanelState extends State<_BulkManagementPanel> with Widgets
     }
   }
 
-  Future<void> _delete() async {
-    if (_busy) return;
+  Future<void> _delete(BuildContext dialogOwner) async {
+    if (_busy || !dialogOwner.mounted) return;
     if (!_marksReady || _marksLoading) { _show('勤務日の目印を確認してから操作してください'); return; }
     if (_workerIds.isEmpty || _dates.isEmpty) { _show('従業員と日付を1つ以上選択してください'); return; }
     final ids = List<String>.unmodifiable(_workerIds.toList()..sort());
@@ -574,8 +579,13 @@ class _BulkManagementPanelState extends State<_BulkManagementPanel> with Widgets
     final month = _month;
     final generation = _marksGeneration;
     final total = ids.length * dates.length;
-    final ok = await showDialog<bool>(
-      context: context,
+    final confirmation = Object();
+    _deleteConfirmation = confirmation;
+    bool? ok;
+    try {
+      ok = await showDialog<bool>(
+      context: dialogOwner,
+      useRootNavigator: false,
       builder: (dialogContext) => AlertDialog(
         title: Text('$total件を一括削除しますか？'),
         content: SingleChildScrollView(child: Text(
@@ -588,7 +598,10 @@ class _BulkManagementPanelState extends State<_BulkManagementPanel> with Widgets
           FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: Text(SkoLanguageController.tr('一括削除'))),
         ],
       ),
-    );
+      );
+    } finally {
+      if (identical(_deleteConfirmation, confirmation)) _deleteConfirmation = null;
+    }
     if (ok != true || !mounted) return;
     if (generation != _marksGeneration || month != _month || !_sameWorkers(ids) ||
         dates.length != _dates.length || !dates.every(_dates.contains) || !_marksReady) {
@@ -619,7 +632,13 @@ class _BulkManagementPanelState extends State<_BulkManagementPanel> with Widgets
   void _show(String message) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => WorkerDocumentChangeRouteHost(
+    key: ValueKey(_routeEpoch),
+    onClose: () => Navigator.of(context).maybePop(),
+    builder: _buildPanel,
+  );
+
+  Widget _buildPanel(BuildContext context) {
     final days = DateUtils.getDaysInMonth(_month.year, _month.month);
     return ListView(
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
@@ -704,7 +723,7 @@ class _BulkManagementPanelState extends State<_BulkManagementPanel> with Widgets
         const SizedBox(height: 10),
         FilledButton.icon(onPressed: _busy || !_marksReady || _marksLoading ? null : _apply, icon: const Icon(Icons.done_all), label: Text(SkoLanguageController.tr('一括登録・編集を直接反映'))),
         const SizedBox(height: 8),
-        OutlinedButton.icon(onPressed: _busy || !_marksReady || _marksLoading ? null : _delete, icon: const Icon(Icons.delete_sweep_outlined), label: Text(SkoLanguageController.tr('選択範囲を一括削除'))),
+        OutlinedButton.icon(onPressed: _busy || !_marksReady || _marksLoading ? null : () => _delete(context), icon: const Icon(Icons.delete_sweep_outlined), label: Text(SkoLanguageController.tr('選択範囲を一括削除'))),
       ],
     );
   }

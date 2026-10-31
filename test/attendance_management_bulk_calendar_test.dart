@@ -26,14 +26,17 @@ void main() {
   });
   tearDown(() async { await wire.client.dispose(); });
 
-  Future<void> mount(WidgetTester tester,{double width=430,double scale=1}) async {
+  Future<void> mount(WidgetTester tester,{double width=430,double scale=1,ValueNotifier<bool>? scopeVisible}) async {
     tester.view.physicalSize=Size(width,932);
     tester.view.devicePixelRatio=1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     await tester.pumpWidget(MaterialApp(builder:(context,child)=>MediaQuery(
       data:MediaQuery.of(context).copyWith(textScaler:TextScaler.linear(scale)),child:child!),
-      home:AttendanceManagementPage(repository:repository)));
+      home:scopeVisible==null?AttendanceManagementPage(repository:repository):ValueListenableBuilder<bool>(
+        valueListenable:scopeVisible,builder:(_,visible,__)=>visible
+          ? AttendanceManagementPage(repository:repository)
+          : const Scaffold(body:Center(child:Text('親の認証境界'))))));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(Tab,'一括'));
     await tester.pumpAndSettle();
@@ -65,11 +68,12 @@ void main() {
       await mount(tester,width:dimensions.$1,scale:dimensions.$2);
       await selectWorker(tester,'検証社員');
       await tester.pumpAndSettle();
+      final legend=find.text('青● 出勤　橙● 打刻のみ　緑● 承認済み有給');
+      await see(tester,legend);expect(legend,findsOneWidget);
       await see(tester,day(3));
       expect(find.text('●出1/1'),findsOneWidget);
       expect(find.text('●打1/1'),findsOneWidget);
       expect(find.text('●有1/1'),findsOneWidget);
-      expect(find.text('青● 出勤　橙● 打刻のみ　緑● 承認済み有給'),findsOneWidget);
       expect(tester.widget<FilterChip>(day(3)).selected,false);
       await tester.tap(day(3));await tester.pump();
       expect(tester.widget<FilterChip>(day(3)).selected,true);
@@ -100,8 +104,9 @@ void main() {
   testWidgets('empty success differs from partial-batch failure and cannot delete unknown data',(tester) async {
     repository.onMarks=(worker,month) async => {};
     await mount(tester);await selectWorker(tester,'検証社員');await tester.pumpAndSettle();
+    final empty=find.text('選択した従業員のこの月の出勤・打刻・承認済み有給の記録はありません。');
+    await see(tester,empty);expect(empty,findsOneWidget);
     await see(tester,day(3));
-    expect(find.text('選択した従業員のこの月の出勤・打刻・承認済み有給の記録はありません。'),findsOneWidget);
     expect(tester.widget<FilterChip>(day(3)).onSelected,isNotNull);
     repository.onMarks=(worker,month) async {
       if(worker==fixture.actor)throw StateError('synthetic unavailable');
@@ -172,8 +177,9 @@ void main() {
     await see(tester,day(3));await tester.tap(day(3));await tester.pump();
     await see(tester,deleteButton());await tester.tap(deleteButton());await tester.pumpAndSettle();
     change(false);await tester.pump();
-    await tester.tap(find.widgetWithText(FilledButton,'一括削除'));await tester.pumpAndSettle();
-    expect(writes(),isEmpty);expect(find.textContaining('対象が変わりました'),findsOneWidget);
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog),findsNothing);
+    expect(writes(),isEmpty);
     await finish(tester);
   });
 
@@ -183,8 +189,57 @@ void main() {
     await see(tester,deleteButton());await tester.tap(deleteButton());await tester.pumpAndSettle();
     repository.onMarks=(worker,month) async => throw StateError('synthetic failed preflight');
     await tester.tap(find.widgetWithText(FilledButton,'一括削除'));await tester.pumpAndSettle();
-    expect(writes(),isEmpty);expect(tester.widget<OutlinedButton>(deleteButton()).onPressed,isNull);
     expect(find.text('勤務日の目印を確認できないため、一括削除していません。'),findsOneWidget);
+    await see(tester,deleteButton());
+    expect(writes(),isEmpty);expect(tester.widget<OutlinedButton>(deleteButton()).onPressed,isNull);
+    await finish(tester);
+  });
+
+  testWidgets('backgrounding during deletion confirmation invalidates selected dates and prevents write',(tester) async {
+    await mount(tester);await selectWorker(tester,'検証社員');await tester.pumpAndSettle();
+    await see(tester,day(3));await tester.tap(day(3));await tester.pump();
+    await see(tester,deleteButton());await tester.tap(deleteButton());await tester.pumpAndSettle();
+    try {
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog),findsNothing);
+      expect(find.textContaining('出勤印のない人も'),findsNothing);
+      expect(writes(),isEmpty);
+    } finally {
+      await finish(tester);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    }
+  });
+
+  for(final boundary in ['actor','company','permission']) {
+    testWidgets('parent $boundary boundary removes owned deletion modal without writing or popping parent',(tester) async {
+      final visible=ValueNotifier(true);addTearDown(visible.dispose);
+      await mount(tester,scopeVisible:visible);await selectWorker(tester,'検証社員');await tester.pumpAndSettle();
+      await see(tester,day(3));await tester.tap(day(3));await tester.pump();
+      await see(tester,deleteButton());await tester.tap(deleteButton());await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog),findsOneWidget);
+      visible.value=false;await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog),findsNothing);
+      expect(find.textContaining('出勤印のない人も'),findsNothing);
+      expect(find.text('検証社員'),findsNothing);
+      expect(find.text('親の認証境界'),findsOneWidget);
+      expect(writes(),isEmpty);expect(tester.takeException(),isNull);
+      await finish(tester);
+    });
+  }
+
+  testWidgets('OS back cancels owned confirmation before closing the parent page',(tester) async {
+    await mount(tester);await selectWorker(tester,'検証社員');await tester.pumpAndSettle();
+    await see(tester,day(3));await tester.tap(day(3));await tester.pump();
+    await see(tester,deleteButton());await tester.tap(deleteButton());await tester.pumpAndSettle();
+    await tester.binding.handlePopRoute();await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog),findsNothing);
+    expect(find.byType(AttendanceManagementPage),findsOneWidget);
+    expect(writes(),isEmpty);
     await finish(tester);
   });
 }
