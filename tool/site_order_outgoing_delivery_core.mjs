@@ -90,3 +90,28 @@ export async function shareConfirmedOutgoing(db,identity,confirmed,claims){
   return {...result,read_only:false,notifications};
  });
 }
+
+export async function reviewOutgoingOriginal(db,identity,claims,{bytes=false}={}){
+ outgoingExecutionArgs(identity);
+ return run(db,claims,async()=>{
+  const o=await resolveOutgoingExecution(db,identity);
+  const status=await snapshot(db,o);
+  if(!status.original_saved)throw Error('outgoing_original_unavailable');
+  const row=(await db.query(`select r.pdf_bytes,j.evidence,
+   j.session_id=(auth.jwt()->>'session_id')::uuid same_session
+   from site_order_artifact_private.pdf_records r
+   join site_order_artifact_private.render_jobs j on j.id=r.job_id
+   where r.job_id=$1 and r.receipt_id=$2`,[o.job_id,status.original_receipt_id])).rows[0];
+  if(!row||typeof row.same_session!=='boolean'||!row.evidence||typeof row.evidence!=='object')throw Error('outgoing_original_unavailable');
+  const pdf=new Uint8Array(row.pdf_bytes);
+  if(pdf.byteLength!==status.pdf_byte_length||pdf.byteLength>20*1024*1024
+   ||new TextDecoder().decode(pdf.subarray(0,5))!=='%PDF-')throw Error('outgoing_original_bytes_changed');
+  const digest=Buffer.from(await crypto.subtle.digest('SHA-256',pdf)).toString('hex');
+  if(digest!==status.pdf_sha256)throw Error('outgoing_original_bytes_changed');
+  if(bytes)return pdf;
+  // The approved job snapshot is authoritative, even if company fields or rates
+  // have since changed. This read does not render, consent, register or share.
+  return {contract_version:1,purpose:'persisted_original_review',read_only:true,
+   same_session:row.same_session,status,evidence:row.evidence};
+ });
+}

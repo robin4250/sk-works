@@ -19,6 +19,8 @@ class SiteOrderOutgoingConsentPreview {
   static const rendererContract = 'sko-original-form-20261029-v1';
   final Map<String, dynamic> _payload;
   final String previewId, operationId, documentId, bodyHash;
+  String get recipientCompanyId =>
+      _payload['counterparty_company_id'] as String;
 
   factory SiteOrderOutgoingConsentPreview.fromServerEnvelope(
     Map<String, dynamic> envelope,

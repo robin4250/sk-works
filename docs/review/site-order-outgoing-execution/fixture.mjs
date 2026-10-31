@@ -37,16 +37,25 @@ export async function verifyExecution(db,{q,check,UA,A,B,sid,sid2,make,prepare,p
  const old={...httpReceipt.identity,preview_id:httpReceipt.preview.preview_id,decision_id:httpReceipt.decision_id};
  const job=httpReceipt.result.job_id;
  const noOriginal=await post('original_status',old);check(noOriginal.status,200);const absentOriginal=(await noOriginal.json()).result;check(absentOriginal.original_saved,false);
+ check((await post('original_review',old)).status,403);check((await post('original_bytes',old)).status,403);
  check((await post('register_original',{job_id:job},{legacyRoute:true})).status,403);check(renders,0);
  check((await post('send_order',{job_id:job,original_receipt_id:'95000000-0000-4000-8000-000000000001',request_id:'95000000-0000-4000-8000-000000000002'},{legacyRoute:true})).status,403);
  dropAck=true;const unknown=await post('register_outgoing_original',old);check(unknown.status,409);check((await unknown.json()).error,'result_unknown');check(renders,1);
  const saved=await post('original_status',old);check(saved.status,200);const original=(await saved.json()).result;check(original.original_saved,true);check(original.sharing_state,'not_observed');
  const bytes=await q('select pdf_bytes v from site_order_artifact_private.pdf_records where job_id=$1',[job]);check(original.pdf_sha256,createHash('sha256').update(bytes).digest('hex'));
+ const reviewResponse=await post('original_review',old);check(reviewResponse.status,200);
+ const persistedReview=(await reviewResponse.json()).result;check(persistedReview.same_session,true);
+ check(persistedReview.evidence.body.issuer_company_id,A);check(persistedReview.evidence.render_seal_company_id,A);
+ const byteResponse=await post('original_bytes',old);check(byteResponse.status,200);check(byteResponse.headers.get('content-type'),'application/octet-stream');
+ check(Buffer.from(await byteResponse.arrayBuffer()),Buffer.from(bytes));check(renders,1);
+ check((await post('original_review',{...old,decision_id:'95000000-0000-4000-8000-000000000099'})).status,403);
  const again=await post('register_outgoing_original',old);check(again.status,200);check((await again.json()).result.original_receipt.receipt_id,original.original_receipt_id);check(renders,1);
  check(await q('select pdf_bytes v from site_order_artifact_private.pdf_records where job_id=$1',[job]),bytes);
  await db.query("update private.master_feature_settings set enabled=false where feature_key='site_order_documents'");
  check((await post('register_outgoing_original',old)).status,403);check((await post('share_confirmed',old,{extra:{confirmed:true}})).status,403);
  const off=await post('original_status',old,{session:sid2});check(off.status,200);check((await off.json()).result.original_saved,true);
+ const offReview=await post('original_review',old,{session:sid2});check(offReview.status,200);check((await offReview.json()).result.same_session,false);
+ check((await post('original_bytes',old,{session:sid2})).status,200);check(renders,1);
  await db.query("update private.master_feature_settings set enabled=true where feature_key='site_order_documents'");
  check((await post('register_outgoing_original',old,{session:sid2})).status,403);
  check((await post('share_confirmed',old,{session:sid2,extra:{confirmed:true}})).status,403);
@@ -149,6 +158,8 @@ export async function verifyExecution(db,{q,check,UA,A,B,sid,sid2,make,prepare,p
  await q("select site_order_manager_private.prepare_site_document($1,$2,$3,'order',$4,1,$5::jsonb)v",[newPrice.x.context.site_id,newPrice.x.doc,newPrice.x.context.trade_company_id,newPrice.x.context.connection_fingerprint,JSON.stringify(revisedBody)]);
  const rendersBeforeOldRetry=renders;
  check((await post('register_outgoing_original',newPrice.identity)).status,403);check(renders,rendersBeforeOldRetry);
+ const historicalReview=await post('original_review',newPrice.identity);check(historicalReview.status,200);
+ check((await historicalReview.json()).result.evidence.body.total_amount_yen,newPrice.x.body.total_amount_yen);
  check((await post('share_confirmed',newPrice.identity,{extra:{confirmed:true}})).status,403);
  check(await q('select count(*)::int v from site_order_package_private.packages where source_job_id=$1',[newPrice.r.job_id]),0);
  check(await q('select count(*)::int v from trade_document_consent_private.consents where document_id=$1 and revision=2',[newPrice.x.doc]),0);
@@ -158,7 +169,7 @@ export async function verifyExecution(db,{q,check,UA,A,B,sid,sid2,make,prepare,p
   actor:UA,company:A,session:sid,identity:old,body_hash:httpReceipt.preview.body_hash,
   operation_id:httpReceipt.preview.operation_id,job_id:job,recipient_company_id:B,
   no_original:absentOriginal,
-  original,shared,
+  original,shared,persisted_review:persistedReview,synthetic_pdf_base64:Buffer.from(bytes).toString('base64'),
  }));
  check(closed,connections);
  console.log(JSON.stringify({outgoing_execution_source_only:true,native_real_waits:nativeWaits,late_notice_rollback:true,foreign_legacy_package_not_adopted:true,new_price_requires_new_consent:true,actual_canonical_pdf:true,same_original_bytes:true,register_ack_loss_reconciled:true,share_ack_loss_reconciled:true,one_package:true,one_notice_set:true,legacy_owned_routes_rejected:true,connections_closed:closed,renders,real_GoTrue:false,production_changed:false}));
