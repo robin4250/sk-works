@@ -1,0 +1,82 @@
+name: Site-order registered target read purpose
+on:
+  pull_request:
+    paths:
+      - 'docs/review/site-order-outgoing/registered-targets*'
+      - 'supabase/functions/site-order-workflow/outgoing-handler.mjs'
+      - 'lib/features/sites/site_order_workflow_repository.dart'
+      - 'lib/features/sites/site_order_outgoing_entry_page.dart'
+      - 'tool/site_order_registered_targets*'
+      - 'tool/verify_site_order_registered_targets.mjs'
+      - 'test/site_order_registered_targets_repository_test.dart'
+      - 'test/site_order_outgoing_entry_page_test.dart'
+      - '.github/workflows/site-order-registered-targets.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  targets-sql:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      matrix:
+        engine: [pglite, postgres]
+    services:
+      postgres:
+        image: postgres:17.6
+        env:
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_document_consent_fixture
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: dart-lang/setup-dart@v1
+        with: {sdk: '3.13.7'}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22.21.0'}
+      - run: dart pub get --enforce-lockfile --directory=tool/canonical_renderer
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts
+      - run: npm ci --prefix tool/site_order_edge_dependencies --ignore-scripts
+      - run: node --test tool/site_order_registered_targets_http.test.mjs tool/site_order_edge_http.test.mjs
+      - name: Real helper and owner-role HTTP target reads
+        env:
+          SKO_CONFIRMED_TERMS_HOOK: content-v1
+          SKO_MONTHLY_PAYMENT_REVIEW_HOOK: contract-v1
+          SKO_TRADE_DOCUMENT_API_REVIEW_HOOK: contract-v1
+          SKO_SITE_ORDER_ARTIFACT_REGISTRATION_HOOK: contract-v1
+          SKO_CONSENT_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_document_consent_fixture
+        run: |
+          export SKO_CANONICAL_DART="$(command -v dart)"
+          if [ '${{ matrix.engine }}' = 'postgres' ]; then
+            export SKO_TARGET_FIXTURE_RECEIPT_PATH=build/site_order_registered_targets_native.json
+            node tool/verify_site_order_registered_targets.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js" postgres
+          else
+            node tool/verify_site_order_registered_targets.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
+          fi
+      - if: matrix.engine == 'postgres'
+        uses: actions/upload-artifact@v4
+        with:
+          name: registered-target-native-receipts
+          path: build/site_order_registered_targets_native.json
+          if-no-files-found: error
+      - run: git diff --exit-code -- pubspec.yaml pubspec.lock tool/canonical_renderer/pubspec.yaml tool/canonical_renderer/pubspec.lock tool/security/fixture_dependencies/package-lock.json tool/site_order_edge_dependencies/package-lock.json
+  targets-client:
+    needs: targets-sql
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: '3.47.5', channel: stable, cache: true}
+      - uses: actions/download-artifact@v4
+        with:
+          name: registered-target-native-receipts
+          path: build
+      - run: flutter pub get --enforce-lockfile
+      - run: dart analyze lib/features/sites/site_order_workflow_repository.dart lib/features/sites/site_order_outgoing_entry_page.dart test/site_order_registered_targets_repository_test.dart test/site_order_outgoing_entry_page_test.dart
+      - run: test -s build/site_order_registered_targets_native.json
+      - run: flutter test test/site_order_registered_targets_repository_test.dart test/site_order_outgoing_entry_page_test.dart test/site_order_workflow_repository_test.dart --reporter expanded
+        env:
+          SKO_TARGET_FIXTURE_RECEIPT_PATH: build/site_order_registered_targets_native.json
