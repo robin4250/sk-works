@@ -29,7 +29,8 @@ if(process.argv.includes('--environment-faults')) {
 } else {
   validateFixtureEnvironment(process.env);
   const dir=new URL('./',import.meta.url);
-  const baseline=fs.readFileSync(new URL('production-observed-baseline.sql',dir),'utf8');
+  // pg_get_functiondef has no statement delimiter; preserve its bytes on disk.
+  const baseline=fs.readFileSync(new URL('production-observed-baseline.sql',dir),'utf8')+';';
   const repair=fs.readFileSync(new URL('repair.sql.review-only',dir),'utf8');
   let checks=0;
   function sql(query,{failure=false}={}) {
