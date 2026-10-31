@@ -1,0 +1,33 @@
+name: Exemption activation boundaries (synthetic only)
+on:
+  pull_request:
+    paths:
+      - 'tool/worker_document_exemption_activation_fixture/**'
+      - 'docs/candidates/worker_document_exemption_20261027/**'
+      - 'tool/verify_worker_document_exemption.mjs'
+      - '.github/workflows/worker-document-exemption-activation-boundary.yml'
+permissions:
+  contents: read
+jobs:
+  native-boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17.6
+        env: {POSTGRES_USER: postgres, POSTGRES_PASSWORD: fixture-only, POSTGRES_DB: sko_trade_fixture}
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_trade_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '24'}
+      - run: npm ci --prefix tool/security/fixture_dependencies --no-audit --no-fund --ignore-scripts
+      - run: python3 -m unittest discover -s tool/worker_document_exemption_activation_fixture -p test_receipt.py -v
+      - run: node tool/worker_document_exemption_activation_fixture/pglite.mjs "$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
+      - run: node tool/worker_document_exemption_activation_fixture/native.mjs
+        env:
+          SKO_TRADE_FIXTURE_URL: postgres://postgres:fixture-only@127.0.0.1:5432/sko_trade_fixture
