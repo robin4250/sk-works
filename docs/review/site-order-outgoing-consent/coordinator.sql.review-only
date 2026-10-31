@@ -15,6 +15,10 @@ do $$ declare e record;p pg_proc;begin
  )v(signature,body_md5,allow_authenticated) loop
   select * into p from pg_proc where oid=to_regprocedure(e.signature);
   if p.oid is null or md5(p.prosrc) is distinct from e.body_md5
+   or p.prosecdef is distinct from(e.signature not in('site_order_outgoing_private.lock_key(uuid,uuid,uuid)','site_order_outgoing_private.source_hash(jsonb)','trade_document_consent_private.immutable()'))
+   or p.prokind<>'f' or p.proretset or p.proisstrict or p.proleakproof or p.proparallel<>'u'
+   or p.provolatile is distinct from(case when e.signature in('site_order_outgoing_private.lock_key(uuid,uuid,uuid)','site_order_outgoing_private.source_hash(jsonb)') then 'i'::"char" else 'v'::"char" end)
+   or pg_get_function_result(p.oid) is distinct from(case e.signature when 'site_order_outgoing_private.lock_key(uuid,uuid,uuid)' then 'bigint' when 'site_order_outgoing_private.source_hash(jsonb)' then 'text' when 'trade_document_consent_private.immutable()' then 'trigger' else 'jsonb' end)
    or pg_get_userbyid(p.proowner)<>'postgres' or p.proconfig is distinct from array['search_path=""']::text[]
    or exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) x
     where x.privilege_type<>'EXECUTE' or x.is_grantable or x.grantor<>p.proowner
@@ -31,7 +35,7 @@ do $$ declare e record;p pg_proc;begin
  ('render_approved(uuid,integer,uuid,boolean)','trade_document_consent_private.render_approved(uuid,integer,uuid,boolean)','b53668611851ab0bc211660e6f6d1f86')
  )v(signature,original,source_md5) loop
   select * into p from pg_proc where oid=to_regprocedure('site_order_manager_private.'||e.signature);
-  if p.oid is null or not p.prosecdef or pg_get_userbyid(p.proowner)<>'postgres'
+  if p.oid is null or not p.prosecdef or p.prokind<>'f' or p.proretset or p.proisstrict or p.proleakproof or p.proparallel<>'u' or p.provolatile<>'v' or pg_get_function_result(p.oid)<>'jsonb' or pg_get_userbyid(p.proowner)<>'postgres'
    or p.proconfig is distinct from array['search_path=""']::text[]
    or not exists(select 1 from site_order_manager_private.generated_sources g
     where g.signature=e.original and g.source_md5=e.source_md5 and g.generated_md5=md5(p.prosrc))
@@ -233,7 +237,11 @@ do $$ declare p pg_proc;c pg_class;n pg_namespace;begin
   then raise exception 'outgoing_consent_table_acl_changed';end if;
  end loop;
  for p in select * from pg_proc where pronamespace=n.oid and proname in('preview_unsigned','decision_result','confirm_unsigned','decision_status') loop
-  if pg_get_userbyid(p.proowner)<>'postgres' or p.proconfig is distinct from array['search_path=""']::text[]
+  if p.prosecdef is distinct from(p.proname<>'decision_result')
+   or p.prokind<>'f' or p.proretset or p.proisstrict or p.proleakproof or p.proparallel<>'u'
+   or p.provolatile is distinct from(case when p.proname='decision_result' then 's'::"char" else 'v'::"char" end)
+   or pg_get_function_result(p.oid)<>'jsonb'
+   or pg_get_userbyid(p.proowner)<>'postgres' or p.proconfig is distinct from array['search_path=""']::text[]
    or exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) x where x.grantee<>p.proowner or x.grantor<>p.proowner or x.is_grantable)
   then raise exception 'outgoing_consent_function_acl_changed';end if;
  end loop;

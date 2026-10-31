@@ -41,6 +41,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: {node-version: '22.21.0'}
       - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts
+      - run: npm ci --prefix tool/site_order_edge_dependencies --ignore-scripts
       - name: Exact frozen helpers and atomic purpose receipts
         env:
           SKO_CONSENT_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_document_consent_fixture

@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
+import {verifyConsentHttp} from './http.mjs';
 const ownRoot=path.resolve(new URL('../../../',import.meta.url).pathname);
 export async function verifyConsent(db,{q,check,sourceContract}){
  const authRoot=process.env.SKO_ACTUAL_AUTH_SOURCE_ROOT;
@@ -72,9 +73,63 @@ export async function verifyConsent(db,{q,check,sourceContract}){
   const wrong=await make(140);await prepare(wrong);const wp=await preview(wrong);
   await db.query("insert into trade_document_consent_private.receipts(request_id,actor_id,payload,result)values($1,$2,'{}','{}')",[wrong.decision,UA]);
   await denied(()=>confirm(wrong,wp),/request_already_used/);
+  const borrowed=await make(160);await prepare(borrowed);const bp=await preview(borrowed);
+  await db.query(`insert into site_order_artifact_private.render_jobs(id,company_id,counterparty_company_id,counterparty_name,
+   counterparty_trade_company_id,counterparty_connection_fingerprint,site_id,document_id,document_revision,request_id,
+   actor_id,session_id,render_hash,body_hash,evidence,layout_contract)
+   select gen_random_uuid(),company_id,counterparty_company_id,counterparty_name,counterparty_trade_company_id,
+   counterparty_connection_fingerprint,site_id,document_id,document_revision,$1,actor_id,session_id,render_hash,body_hash,evidence,layout_contract
+   from site_order_artifact_private.render_jobs where id=$2`,[borrowed.decision,first.job_id]);
+  await denied(()=>confirm(borrowed,bp),/request_already_used/);
+  check(await q('select count(*)::int v from trade_document_consent_private.receipts where request_id=$1',[borrowed.decision]),0);
   for(const role of ['anon','authenticated','service_role']){await db.exec('set role '+role);try{await denied(()=>status(x,p),/permission denied/);}finally{await db.exec('reset role');}}
+  await verifyConsentHttp(db,{q,check,UA,A,sid,sid2,make,prepare,params});
+  let nativeWaits=0;
+  if(process.argv[3]==='postgres'){
+   const pg=(await import(process.argv[2])).default;
+   const peer=new pg.Client({connectionString:process.env.SKO_CONSENT_FIXTURE_URL,application_name:'sko-consent-peer'});
+   await peer.connect();
+   try{
+    await peer.query("select set_config('request.jwt.claim.sub','',false),set_config('request.jwt.claim','',false),set_config('request.jwt.claims',$1,false)",[claims()]);
+    const blocked=async()=>{for(let n=0;n<100;n++){if(await q("select exists(select 1 from pg_stat_activity where application_name='sko-consent-peer' and wait_event_type='Lock')v")){nativeWaits++;return;}await new Promise(r=>setTimeout(r,10));}throw Error('Native peer did not really wait');};
+    const peerConfirm=(x,p)=>peer.query('select site_order_outgoing_private.confirm_unsigned($1,$2,$3,$4,$5,$6,$7,true)v',[...params(x),p.preview_id,x.decision]);
+    const peerRetire=x=>peer.query('select site_order_outgoing_private.retire_prepare($1,$2,$3,$4,$5,true)v',params(x));
+    const retireFirst=await make(200);await prepare(retireFirst);const rfp=await preview(retireFirst);
+    await db.exec('begin');
+    await q('select site_order_outgoing_private.retire_prepare($1,$2,$3,$4,$5,true)v',params(retireFirst));
+    const waitingConfirm=peerConfirm(retireFirst,rfp).then(()=>({ok:true}),error=>({error}));
+    await blocked();await db.exec('commit');
+    const refused=await waitingConfirm;check(Boolean(refused.error&&/retired/.test(refused.error.message)),true);
+    check(await q('select count(*)::int v from site_order_artifact_private.render_jobs where request_id=$1',[retireFirst.decision]),0);
+    const consentFirst=await make(220);await prepare(consentFirst);const cfp=await preview(consentFirst);
+    await db.exec('begin');await confirm(consentFirst,cfp);
+    const waitingRetire=peerRetire(consentFirst).then(r=>r.rows[0].v);
+    await blocked();await db.exec('commit');
+    const preserved=await waitingRetire;check(preserved.operation_state,'advanced');check(preserved.retired,false);
+    check(await q('select count(*)::int v from site_order_outgoing_private.prepare_retirements where request_id=$1',[consentFirst.request]),0);
+    check(await q('select count(*)::int v from site_order_artifact_private.render_jobs where request_id=$1',[consentFirst.decision]),1);
+    const drifts=[
+     [240,"update private.master_feature_settings set enabled=false where feature_key='site_order_documents'","update private.master_feature_settings set enabled=true where feature_key='site_order_documents'",/master_feature_disabled/],
+     [260,"update public.company_members set role='worker' where user_id='"+UA+"'","update public.company_members set role='manager' where user_id='"+UA+"'",/management_required/],
+     [280,"update public.companies set fax='changed-source' where id='"+A+"'","update public.companies set fax='03-2' where id='"+A+"'",/source_changed/],
+     [340,"update public.companies set company_seal_style='aoyagi_reisho' where id='"+A+"'","update public.companies set company_seal_style='legacy' where id='"+A+"'",/source_changed/],
+    ];
+    for(const [n,change,restore,pattern]of drifts){
+     const drift=await make(n);await prepare(drift);const dp=await preview(drift);
+     await db.exec('begin');await db.exec(change);
+     const pending=peerConfirm(drift,dp).then(()=>({ok:true}),error=>({error}));
+     await blocked();await db.exec('commit');const refused=await pending;
+     check(Boolean(refused.error&&pattern.test(refused.error.message)),true);
+     check(await q('select count(*)::int v from trade_document_consent_private.receipts where request_id=$1',[drift.decision]),0);
+     check(await q('select count(*)::int v from site_order_artifact_private.render_jobs where request_id=$1',[drift.decision]),0);
+     check(await q('select count(*)::int v from site_order_outgoing_private.decision_receipts where request_id=$1',[drift.decision]),0);
+     await db.exec(restore);
+    }
+    check(nativeWaits,6);
+   }finally{await db.exec('rollback');await peer.end();}
+  }
   check(await catalog(),before);
-  console.log(JSON.stringify({consent_source_only:true,exact_eight_c_unchanged:true,actual_public_uid_jwt_bodies:2,consent_and_job_atomic:true,original_registered:false,sent:false,production_changed:false}));
+  console.log(JSON.stringify({consent_source_only:true,native_real_waits:nativeWaits,exact_eight_c_unchanged:true,actual_public_uid_jwt_bodies:2,consent_and_job_atomic:true,original_registered:false,sent:false,production_changed:false}));
  }finally{
   if(previousFeature===undefined)await db.query("delete from private.master_feature_settings where feature_key='site_order_documents'");else await db.query("update private.master_feature_settings set enabled=$1 where feature_key='site_order_documents'",[previousFeature]);
   await db.query("select set_config('request.jwt.claims',$1,false),set_config('request.jwt.claim.sub',$2,false),set_config('request.jwt.claim',$3,false)",[saved.claims??'',saved.sub??'',saved.claim??'']);
