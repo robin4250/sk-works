@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {createProjectVerifier} from '../supabase/functions/site-order-workflow/auth.mjs';
 import {createSiteOrderHandler} from '../supabase/functions/site-order-workflow/handler.mjs';
+import {createOutgoingPrepareHandler} from '../supabase/functions/site-order-workflow/outgoing-handler.mjs';
+import {createSiteOrderRouter} from '../supabase/functions/site-order-workflow/router.mjs';
 const require=createRequire(import.meta.url);
 const {createClient}=require('./site_order_edge_dependencies/node_modules/@supabase/supabase-js');
 const base='https://signed-project.invalid',id='00000000-0000-0000-0000-000000000001',sid='00000000-0000-0000-0000-000000000002';
@@ -72,6 +74,44 @@ test('outgoing source and observation expose only fixed read commands, never pre
   assert.equal(calls.length,count);
  }
  assert.equal(calls.some(x=>/prepare_site_document|bind_local|\.decide\(|prepare_job|send_order/.test(x.sql)),false);
+});
+test('dedicated outgoing prepare route retains legacy request cap and parameterizes only its own purpose',async()=>{
+ const calls=[];const outgoing=createOutgoingPrepareHandler({verify,connect:async()=>({async query(sql,args){calls.push({sql,args});
+  if(sql==='select session_user as role')return {rows:[{role:'postgres'}]};
+  if(sql.includes('site_order_outgoing_private.'))return {rows:[{result:{operation_state:'prepared_review_required',can_send:false}}]};
+  return {rows:[]};},async end(){calls.push({sql:'end'});}})});
+ const legacy=createSiteOrderHandler({verify,connect:()=>{throw Error('legacy must not connect');},render:()=>{throw Error('no rendering');}});
+ const router=createSiteOrderRouter({workflow:legacy,outgoing});
+ const command={action:'prepare',site_id:id,document_id:sid,local_id:id,trade_id:sid,
+  request_id:id,connection_fingerprint:'a'.repeat(64),body:{notes:'合成入力'.repeat(1000)}};
+ const valid=new Request('https://function.invalid/site-order-workflow/outgoing',{method:'POST',headers:{authorization:'Bearer '+await token()},body:JSON.stringify(command)});
+ const result=await router(valid);assert.equal(result.status,200);assert.equal((await result.json()).result.can_send,false);
+ const query=calls.find(c=>c.sql.includes('prepare_order'));
+ assert.equal(query.sql,'select site_order_outgoing_private.prepare_order($1,$2,$3,$4,$5,$6,$7::jsonb) as result');
+ assert.deepEqual(query.args,[id,sid,id,sid,id,command.connection_fingerprint,JSON.stringify(command.body)]);
+ assert.equal(calls.at(-1).sql,'end');
+ assert.equal((await router(request(await token(),command))).status,400);
+ const count=calls.length;
+ for(const extra of [{company_id:id},{action:'sql',sql:'select 1'},{body:{notes:'x'.repeat(33_000)}}]){
+  const invalid=new Request('https://function.invalid/site-order-workflow/outgoing',{method:'POST',headers:{authorization:'Bearer '+await token()},body:JSON.stringify({...command,...extra})});
+  assert.equal((await router(invalid)).status,400);
+ }assert.equal(calls.length,count);
+ assert.equal((await router(new Request('https://function.invalid/not-the-function/outgoing'))).status,404);
+});
+test('outgoing retirement needs explicit confirmation and lost COMMIT acknowledgement stays UNKNOWN',async()=>{
+ const calls=[];let unknown=false;
+ const handler=createOutgoingPrepareHandler({verify,connect:async()=>({async query(sql,args){calls.push({sql,args});
+  if(sql==='select session_user as role')return {rows:[{role:'postgres'}]};
+  if(sql.includes('retire_prepare'))return {rows:[{result:{operation_state:'retired',journal_clearable:true,order_cancelled:false}}]};
+  if(sql==='commit'&&unknown)throw Error('private body must never be echoed');return {rows:[]};},async end(){calls.push({sql:'end'});}})});
+ const command={action:'retire',site_id:id,document_id:sid,local_id:id,trade_id:sid,request_id:id,confirmed:true};
+ assert.equal((await handler(request(await token(),{...command,confirmed:false}))).status,400);assert.equal(calls.length,0);
+ unknown=true;const result=await handler(request(await token(),command));assert.equal(result.status,409);
+ assert.deepEqual(await result.json(),{error:'result_unknown',retry_automatically:false});
+ const query=calls.find(c=>c.sql.includes('retire_prepare'));
+ assert.deepEqual(query.args,[id,sid,id,sid,id,true]);
+ assert.equal(calls.filter(c=>c.sql==='commit').length,1);assert.equal(calls.some(c=>c.sql==='rollback'),false);
+ assert.equal(calls.at(-1).sql,'end');
 });
 test('client cannot supply purpose SQL, company identity, bytes or an extra key',async()=>{
  let connected=0;const handler=createSiteOrderHandler({verify,connect:()=>{connected++;throw Error('no');},render:()=>{throw Error('no');}});
