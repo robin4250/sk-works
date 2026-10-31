@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import '../lib/features/people/company_delivery_inbox_page.dart';
-import '../lib/features/people/company_document_exchange_repository.dart';
+import 'package:sk_works/features/people/company_delivery_inbox_page.dart';
+import 'package:sk_works/features/people/company_document_exchange_repository.dart';
 
 class _Repository implements CompanyDocumentExchangeRepository {
   int saves = 0;

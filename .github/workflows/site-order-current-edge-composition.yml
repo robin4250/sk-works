@@ -1,0 +1,51 @@
+name: Current order Edge fixed Wasm composition
+on:
+  pull_request:
+    paths:
+      - 'tool/site_order_release_capsule/**'
+      - 'docs/review/site-order-release-capsule/**'
+      - '.github/workflows/site-order-current-edge-composition.yml'
+permissions: {contents: read}
+jobs:
+  current-fixed-deno:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/checkout@v4
+        with: {ref: bb3ff2cb5ff19408ca1aa7d49e4b0f5d215e9d5d, path: .renderer-tools, persist-credentials: false}
+      - uses: actions/checkout@v4
+        with: {ref: 65eb8fcec6af422c6a78269c273ec900db1d0d42, path: .wasm-source, persist-credentials: false}
+      - uses: dart-lang/setup-dart@v1
+        with: {sdk: '3.13.7'}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22.21.0'}
+      - name: Locked canonical dependencies and pinned official Deno
+        run: |
+          dart pub get --enforce-lockfile --directory=.wasm-source/tool/canonical_renderer
+          npm install --prefix .renderer-tools/tool/canonical_edge_wasm/build/deno146 --ignore-scripts --save-exact @deno/linux-x64-glibc@1.46.3
+          python3 - <<'PY'
+          import json,pathlib
+          root=pathlib.Path('.renderer-tools/tool/canonical_edge_wasm')
+          pin=json.loads((root/'runtime-pins.json').read_text())['1.46.3']
+          actual=json.loads((root/'build/deno146/package-lock.json').read_text())['packages']['node_modules/@deno/linux-x64-glibc']
+          assert all(actual[k]==pin[k] for k in ('version','resolved','integrity'))
+          exe=root/'build/deno146/node_modules/@deno/linux-x64-glibc/deno'
+          exe.chmod(exe.stat().st_mode|0o100)
+          PY
+      - name: Rebuild unchanged frozen canonical renderer
+        run: python3 .renderer-tools/tool/canonical_edge_wasm/build.py --source-root .wasm-source --dart "$(command -v dart)"
+      - name: Stage exact current closure and reject drift
+        env:
+          SKO_RENDERER_ROOT: .renderer-tools/tool/canonical_edge_wasm
+        run: |
+          python3 tool/site_order_release_capsule/test_stage_edge.py
+          python3 tool/site_order_release_capsule/stage_edge.py --source-root . --renderer-root .renderer-tools/tool/canonical_edge_wasm --output /tmp/sko-current-edge
+      - name: Resolve pinned npm graph without executing server code
+        run: .renderer-tools/tool/canonical_edge_wasm/build/deno146/node_modules/@deno/linux-x64-glibc/deno cache --no-config --frozen --lock=.renderer-tools/tool/canonical_edge_wasm/combined-deno.lock /tmp/sko-current-edge/supabase/functions/site-order-workflow/runtime.mjs
+      - name: Current routes and real fixed Wasm without network or project credentials
+        env: {USER: synthetic-fixture, NODE_ENV: test, WS_NO_BUFFER_UTIL: '1', WS_NO_UTF_8_VALIDATE: '1'}
+        run: .renderer-tools/tool/canonical_edge_wasm/build/deno146/node_modules/@deno/linux-x64-glibc/deno run --no-config --cached-only --frozen --lock=.renderer-tools/tool/canonical_edge_wasm/combined-deno.lock --allow-env=USER,NODE_ENV,WS_NO_BUFFER_UTIL,WS_NO_UTF_8_VALIDATE --allow-read=/tmp/sko-current-edge,.renderer-tools/tool/canonical_edge_wasm tool/site_order_release_capsule/current_deno_test.mjs /tmp/sko-current-edge .renderer-tools/tool/canonical_edge_wasm/synthetic-cases.json
+      - uses: actions/upload-artifact@v4
+        with: {name: current-order-private-composition, path: /tmp/sko-current-edge/private-current-edge-manifest.json}
