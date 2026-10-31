@@ -55,11 +55,17 @@ void main(){
   await tester.pumpWidget(MaterialApp(home:Scaffold(body:CompanyCommonPayrollPublicationPanel(companyId:'company',repository:repository))));await tester.pumpAndSettle();
   await tester.tap(find.text('給与への適用月'));await tester.pumpAndSettle();
   expect(tester.widget<IconButton>(find.byKey(const ValueKey('common-publication-previous'))).onPressed,isNull);
+  // Anchor to the panel's captured month. A later wall-clock read may cross JST midnight.
+  final monthLabel=find.byWidgetPredicate((widget)=>widget is Text&&RegExp(r'^\d{4}/\d{1,2}$').hasMatch(widget.data??''));
+  expect(monthLabel,findsOneWidget);
+  final initialParts=tester.widget<Text>(monthLabel).data!.split('/');
+  final next=DateTime(int.parse(initialParts[0]),int.parse(initialParts[1])+1);
   await tester.tap(find.byKey(const ValueKey('common-publication-next')));await tester.pumpAndSettle();
+  expect(find.text('${next.year}/${next.month}'),findsOneWidget);
   await tester.tap(find.byKey(const ValueKey('common-publication-apply')));await tester.pumpAndSettle();expect(repository.requests,isEmpty);
   expect(find.textContaining('未保存の編集は含みません'),findsOneWidget);
+  expect(find.textContaining('${next.year}年${next.month}月から適用'),findsOneWidget);
   await tester.tap(find.text('適用する'));await tester.pumpAndSettle();expect(repository.requests.length,1);
-  final now=DateTime.now().toUtc().add(const Duration(hours:9));final next=DateTime(now.year,now.month+1);
   expect(repository.requests.single.startsOn,'${next.year}-${next.month.toString().padLeft(2,'0')}-01');
   expect(find.textContaining('給与下書きの再計算：2件'),findsOneWidget);
  });
