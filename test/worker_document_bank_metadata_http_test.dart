@@ -137,7 +137,7 @@ void main() {
         'worker_id,company_id,updated_at',
       );
       expect(read.url.queryParameters['company_id'], 'eq.$company');
-      expect(read.url.queryParameters['worker_id'], 'in.($worker)');
+      expect(read.url.queryParameters['worker_id'], 'in.("$worker")');
       expect(read.headers['Authorization'], 'Bearer $token');
       expect(
         f.requests.every(
