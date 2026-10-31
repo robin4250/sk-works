@@ -120,6 +120,12 @@ void main() {
       }
       await tester.pump();
       expect(repository.reads,greaterThan(initialReads));
+      // The popped route can still paint during its exit animation even after
+      // the parent's refresh dispatches. Wait for that real detail to unmount.
+      for(var frame=0; frame<10 && find.byType(EmployeePersonnelDetailPage).evaluate().isNotEmpty; frame++) {
+        await tester.pump(const Duration(milliseconds:100));
+      }
+      expect(find.byType(EmployeePersonnelDetailPage),findsNothing);
       expect(find.text(workerName),findsNothing);
       if(boundary=='actor') {
         await tester.runAsync(()=>wire.seed(uid:fixture.other));
