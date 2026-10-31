@@ -1,0 +1,42 @@
+-- ISOLATED FIXTURE ONLY. Production rollout remains HOLD / deployable:false.
+-- This validates the minimal body edit, not a safe drain of already-running old calls.
+do $review$
+declare
+  target oid := to_regprocedure('public.ensure_current_user_worker()');
+  before_def text;
+  after_def text;
+  before_acl aclitem[];
+  before_owner oid;
+  before_config text[];
+  old_fragment text := E'        phone = coalesce(nullif(trim(coalesce(v_phone, '''')), ''''), phone),\n        status = ''active''';
+  new_fragment text := E'        phone = coalesce(nullif(trim(coalesce(v_phone, '''')), ''''), phone)';
+begin
+  if current_database() <> 'retirement_fixture' then
+    raise exception 'production HOLD: isolated retirement fixture only';
+  end if;
+  if exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+    where n.nspname='private' and p.proname='ensure_current_user_worker') then
+    raise exception 'unexpected private worker binding';
+  end if;
+  select pg_get_functiondef(p.oid),p.proacl,p.proowner,p.proconfig
+    into before_def,before_acl,before_owner,before_config from pg_proc p where p.oid=target;
+  if target is null or md5(before_def) is distinct from '10565c7d5a53e45f37a4c6be0f58b538'
+    or before_owner <> 'postgres'::regrole
+    or before_config is distinct from array['search_path=public, pg_temp']::text[]
+    or before_acl::text is distinct from '{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}'
+    or not (select p.prosecdef from pg_proc p where p.oid=target) then
+    raise exception 'ensure worker baseline or protection drift';
+  end if;
+  if length(before_def)-length(replace(before_def,old_fragment,'')) <> length(old_fragment) then
+    raise exception 'expected single status assignment not found';
+  end if;
+  after_def := replace(before_def,old_fragment,new_fragment);
+  execute after_def;
+  if to_regprocedure('public.ensure_current_user_worker()')::oid <> target
+    or (select p.proacl is distinct from before_acl or p.proowner<>before_owner
+      or p.proconfig is distinct from before_config or not p.prosecdef
+      or pg_get_functiondef(p.oid) <> after_def from pg_proc p where p.oid=target) then
+    raise exception 'ensure worker protection or source changed unexpectedly';
+  end if;
+end;
+$review$;
