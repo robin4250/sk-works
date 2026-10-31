@@ -274,7 +274,8 @@ void main() {
   testWidgets(
     'new employee page hides credentials immediately after same-user new SID',
     (tester) async {
-      final f = Fixture();
+      final f = (await tester.runAsync(() async => Fixture()))!;
+      debugPrint('invite-ui SDK constructed in real async zone');
       addTearDown(() async {
         await tester.runAsync(f.close);
       });
@@ -308,7 +309,8 @@ void main() {
   testWidgets(
     'existing worker page hides QR/password after same-user new SID',
     (tester) async {
-      final f = Fixture();
+      final f = (await tester.runAsync(() async => Fixture()))!;
+      debugPrint('invite-ui SDK constructed in real async zone');
       addTearDown(() async {
         await tester.runAsync(f.close);
       });
