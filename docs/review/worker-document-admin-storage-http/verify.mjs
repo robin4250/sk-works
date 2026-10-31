@@ -53,7 +53,12 @@ try{
  const unused=`${company}/${worker}/${requirement}/${target}/unretained.png`;
  for(const object of[...paths,unused]){r=await call('/storage/v1/object/'+bucket+'/'+object,{token:service,method:'POST',body:bytes,headers:{'Content-Type':'image/png'}});assert.equal(r.status,200,'generated Storage bytes uploaded');}
  const objectIds=(await db.query('select id,name from storage.objects where bucket_id=$1 order by name',[bucket])).rows;
+ // Arrange a legacy generated row predating audit history. No saved real
+ // history is removed, and the audit trigger is restored before correction.
+ await db.query('alter table public.worker_document_statuses disable trigger audit_worker_document_status_changes');
  await db.query("insert into public.worker_document_statuses(id,company_id,worker_id,requirement_id,status,attachment_path,attachment_paths,updated_by) values($1,$2,$3,$4,'submitted',$5,$6,$7)",[target,company,worker,requirement,paths[0],paths,actor]);
+ await db.query('alter table public.worker_document_statuses enable trigger audit_worker_document_status_changes');
+ assert.equal((await db.query('select count(*)::int n from public.worker_document_status_history where source_status_id=$1',[target])).rows[0].n,0,'unaudited generated legacy baseline');
  await db.query(await fs.readFile('docs/candidates/worker_document_admin_self_correction_20261031.sql.review-only','utf8'));
  await db.query("notify pgrst,'reload schema'");
  const rpc=(action,data)=>call('/rest/v1/rpc/worker_document_admin_self_correction',{token:session.access_token,method:'POST',json:{p_action:action,p_data:data}});
