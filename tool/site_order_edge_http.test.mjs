@@ -39,6 +39,22 @@ test('HTTP fixed status command installs verified claims LOCAL inside same dedic
  const local=db.calls.findIndex(x=>x.sql.includes('set_config'));assert.ok(local>0);assert.ok(db.calls[local].sql.endsWith('$1,true)'));
  assert.equal(JSON.parse(db.calls[local].args[0]).sub,id);assert.equal(db.calls.at(-1).sql,'end');
 });
+test('site history uses a fixed server-scoped query, not client-supplied company or SQL',async()=>{
+ const calls=[],handler=createSiteOrderHandler({verify,connect:async()=>({async query(sql,args){calls.push({sql,args});
+  if(sql==='select session_user as role')return {rows:[{role:'postgres'}]};
+  if(sql.includes('site_history_entries'))return {rows:[{result:[]}]};
+  return {rows:[]};},async end(){calls.push({sql:'end'});}}),render:()=>{throw Error('must not render');}});
+ const command={action:'site_history',site_id:id,before:null,before_id:null,limit:50};
+ const result=await handler(request(await token(),command));assert.equal(result.status,200);
+ assert.deepEqual((await result.json()).result,[]);
+ const query=calls.find(x=>x.sql.includes('site_history_entries'));
+ assert.equal(query.sql,'select site_order_package_private.site_history_entries($1,$2,$3,$4) as result');
+ assert.deepEqual(query.args,[id,null,null,50]);assert.equal(calls.at(-1).sql,'end');
+ const count=calls.length;
+ for(const extra of [{company_id:id},{site_id:'foreign-title'},{limit:51}]) {
+  assert.equal((await handler(request(await token(),{...command,...extra}))).status,400);
+ }assert.equal(calls.length,count);
+});
 test('client cannot supply purpose SQL, company identity, bytes or an extra key',async()=>{
  let connected=0;const handler=createSiteOrderHandler({verify,connect:()=>{connected++;throw Error('no');},render:()=>{throw Error('no');}});
  for(const body of [{action:'sql',sql:'select 1'},{action:'status',package_id:id,company_id:id},{action:'register_original',job_id:id,bytes:'private'}]){

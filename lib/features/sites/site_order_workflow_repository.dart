@@ -32,6 +32,11 @@ abstract class SiteOrderWorkflowApi extends ChangeNotifier {
     String? before,
     String? beforeId,
   });
+  Future<List<Map<String, dynamic>>> historyForSite(
+    String siteId, {
+    String? before,
+    String? beforeId,
+  }) async => throw StateError('現場の注文履歴を確認できません。');
   Future<List<Map<String, dynamic>>> targets(String packageId);
   Future<Map<String, dynamic>> preview(
     String packageId,
@@ -198,6 +203,25 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
       }),
     )['result'];
     if (value is! List) throw StateError('履歴を確認できません。');
+    return value.map(_map).toList(growable: false);
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> historyForSite(
+    String siteId, {
+    String? before,
+    String? beforeId,
+  }) async {
+    final value = _map(
+      await _call({
+        'action': 'site_history',
+        'site_id': siteId,
+        'before': before,
+        'before_id': beforeId,
+        'limit': 50,
+      }),
+    )['result'];
+    if (value is! List) { throw StateError('現場の注文履歴を確認できません。'); }
     return value.map(_map).toList(growable: false);
   }
 

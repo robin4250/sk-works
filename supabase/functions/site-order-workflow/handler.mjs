@@ -3,6 +3,7 @@ const uuid=/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/;
 const commands={
  detail:{keys:['package_id'],sql:'select site_order_package_private.package_decision_detail($1) as result'},
  list:{keys:['before','before_id','limit'],sql:'select site_order_package_private.history_entries($1,$2,$3) as result'},
+ site_history:{keys:['site_id','before','before_id','limit'],sql:'select site_order_package_private.site_history_entries($1,$2,$3,$4) as result'},
  recipient_targets:{keys:['package_id'],sql:'select site_order_package_private.recipient_targets($1) as result'},
  reconcile_approval:{keys:['package_id','preview_id','request_id'],sql:'select site_order_package_private.reconcile_approval($1,$2,$3) as result'},
  reconcile_refusal:{keys:['package_id','request_id'],sql:'select site_order_package_private.reconcile_refusal($1,$2) as result'},
