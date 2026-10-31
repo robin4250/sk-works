@@ -115,7 +115,7 @@ class _ExpenseManagementPageState extends State<ExpenseManagementPage> {
     final revision = _data!.revisions[claim.id]!;
     if (_data!.reviewFlowEnabled && _data!.canSettle && ['approve', 'reject'].contains(action)) {
       final decision = await showDialog<ExpenseReviewDecision>(context: context,
-        builder: (_) => ExpenseReviewFlowDialog(claim: claim, destinations: _data!.destinations));
+        builder: (_) => ExpenseReviewFlowDialog(claim: claim, destinations: _data!.destinations, initialApprove: action != 'reject'));
       if (decision == null || !_current(generation) || actor != _actor || company != _company ||
           _pending != null || _busy || _data?.revisions[claim.id] != revision) {
         return;

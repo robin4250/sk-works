@@ -19,15 +19,16 @@ String expenseBurdenLabel(ExpenseCategory category) => switch (category) {
 };
 
 class ExpenseReviewFlowDialog extends StatefulWidget {
-  const ExpenseReviewFlowDialog({super.key, required this.claim, required this.destinations});
+  const ExpenseReviewFlowDialog({super.key, required this.claim, required this.destinations, this.initialApprove = true});
   final ExpenseClaim claim;
+  final bool initialApprove;
   final List<ExpenseAllocation> destinations;
   @override
   State<ExpenseReviewFlowDialog> createState() => _ExpenseReviewFlowDialogState();
 }
 class _ExpenseReviewFlowDialogState extends State<ExpenseReviewFlowDialog> {
   int _step = 0;
-  bool _approve = true;
+  late bool _approve = widget.initialApprove;
   ExpenseCategory? _category;
   ExpenseAllocation? _destination;
   ExpenseSettlementMethod? _method;
@@ -167,3 +168,4 @@ class _ExpenseReviewFlowDialogState extends State<ExpenseReviewFlowDialog> {
     );
   }
 }
+

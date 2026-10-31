@@ -17,7 +17,7 @@ Map<String, dynamic> parseExpenseNotificationTarget(
       value['correction_required'] is! bool || !['withdrawn_unfinalized','finalized_original_retained'].contains(value['financial_state']) ||
       value['correction_required']!=(value['financial_state']=='finalized_original_retained') ||
       value['description'] is! String || (value['description'] as String).trim().isEmpty || value['amount_yen'] is! int || (value['amount_yen'] as int)<0 ||
-      value['deleted_at'] is! String || DateTime.tryParse(value['deleted_at'])==null) throw const FormatException('Unavailable deletion notice');
+      value['deleted_at'] is! String || DateTime.tryParse(value['deleted_at'])==null) { throw const FormatException('Unavailable deletion notice'); }
     final date=value['incurred_on'];
     if(date is! String || !RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(date) || DateTime.tryParse(date)?.toIso8601String().substring(0,10)!=date) throw const FormatException('Unavailable deletion date');
     return Map<String,dynamic>.unmodifiable({for(final k in ['company_id','claim_id','manager_deleted','description','amount_yen','incurred_on','deleted_at','financial_state','correction_required']) k:value[k]});

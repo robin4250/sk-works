@@ -366,9 +366,9 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
                               !(widget.allowSettlementSetup && claim.settlement == null))
                         ? null
                         : () => _request(generation, () => onApprove(claim)),
-                    child: Text(approved && widget.allowSettlementSetup && claim.settlement == null ? '精算方法を設定' : widget.reviewFlowEnabled ? '承認・却下を選ぶ' : '承認'),
+                    child: Text(approved && widget.allowSettlementSetup && claim.settlement == null ? '精算方法を設定' : '承認'),
                   ),
-                  if (!widget.reviewFlowEnabled) TextButton(
+                  TextButton(
                     style: TextButton.styleFrom(minimumSize: const Size(112, 48),
                       textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),

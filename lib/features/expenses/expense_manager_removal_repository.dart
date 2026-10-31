@@ -8,6 +8,7 @@ bool _uuid(Object? value) => value is String && RegExp(r'^[0-9a-fA-F]{8}-(?:[0-9
 
 class ExpenseRemovalCapability {
   ExpenseRemovalCapability(Map<String, dynamic> data, String? session) {
+    if(data.containsKey('manager_removal_version') && data['manager_removal_version'] is! int) throw const FormatException('Invalid capability version');
     for (final key in ['manager_removal_enabled', 'can_manager_remove']) {
       if (data.containsKey(key) && data[key] is! bool) throw const FormatException('Invalid deletion capability');
     }
@@ -44,12 +45,12 @@ class ExpenseRemovalCommand {
 class ExpenseRemovalResult {
   ExpenseRemovalResult(Map<String,dynamic> value, ExpenseRemovalCommand command) {
     if(value['command_id']!=command.id || value['company_id']!=command.company || value['claim_id']!=command.claim ||
-      value['requested_revision']!=command.revision || value['deleted_by']!=command.actor || value['manager_deleted']!=true ||
+      value['requested_revision'] is! int || value['requested_revision']!=command.revision || value['deleted_by']!=command.actor || value['manager_deleted']!=true ||
       value['notification_state']!='stored' || !_uuid(value['notification_id']) ||
       value['deleted_at'] is! String || DateTime.tryParse(value['deleted_at'])==null ||
       value['correction_required'] is! bool ||
       !['withdrawn_unfinalized','finalized_original_retained'].contains(value['financial_state']) ||
-      value['correction_required']!=(value['financial_state']=='finalized_original_retained')) throw const FormatException('Deletion result unavailable');
+      value['correction_required']!=(value['financial_state']=='finalized_original_retained')) { throw const FormatException('Deletion result unavailable'); }
     correctionRequired = value['correction_required'];
   }
   late final bool correctionRequired;
