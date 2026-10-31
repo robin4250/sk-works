@@ -111,8 +111,9 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
   Future<void> _confirm() async {
     final repository = _repository;
     final workspace = _workspace;
-    if (repository == null || workspace == null || !workspace.canConfirm)
+    if (repository == null || workspace == null || !workspace.canConfirm) {
       return;
+    }
     if (workspace.items.isEmpty) return;
     if (workspace.items.any((item) => !item.reviewChecked)) {
       ScaffoldMessenger.of(context).showSnackBar(

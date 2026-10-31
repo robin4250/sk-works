@@ -179,7 +179,8 @@ Future<DateTime> resolvePayrollNotificationMonth(
   }
   final row = await readVisiblePeriod(id);
   final date = DateTime.tryParse(row?['period_start']?.toString() ?? '');
-  if (date == null)
+  if (date == null) {
     throw StateError('Payroll notification target is unavailable');
+  }
   return DateTime(date.year, date.month);
 }
