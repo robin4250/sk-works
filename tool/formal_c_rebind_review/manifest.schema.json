@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:sko:formal-c:offline-review:v1",
+  "title": "Formal C offline review inputs; never deployment authority",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract",
+    "inputs"
+  ],
+  "properties": {
+    "contract": {
+      "const": "sko.formal_c.offline_review.v1"
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capsule",
+        "builder",
+        "known_before",
+        "after_a_reference",
+        "source_c",
+        "source_terms",
+        "source_v1",
+        "source_v2",
+        "formal_catalog",
+        "hub_catalog",
+        "dependency_snapshot",
+        "b4_catalog",
+        "b4_module",
+        "expected_after",
+        "expected_capture_receipt"
+      ],
+      "properties": {
+        "capsule": {
+          "$ref": "#/$defs/artifactReference"
+        },
+        "builder": {
+          "$ref": "#/$defs/artifactReference"
+        },
+        "known_before": {
+          "$ref": "#/$defs/artifactReference"
+        },
+        "after_a_reference": {
+          "$ref": "#/$defs/artifactReference"
+        },
+        "source_c": {
+          "$ref": "#/$defs/artifactReference"
+        },
+        "source_terms": {
+          "$ref": "#/$defs/artifactReference"
+        },
+        "source_v1": {
+          "$ref": "#/$defs/artifactReference"
+        },
+        "source_v2": {
+          "$ref": "#/$defs/artifactReference"
+        },
+        "formal_catalog": {
+          "$ref": "#/$defs/artifactReference"
+        },
+        "hub_catalog": {
+          "$ref": "#/$defs/artifactReference"
+        },
+        "dependency_snapshot": {
+          "$ref": "#/$defs/artifactReference"
+        },
+        "b4_catalog": {
+          "$ref": "#/$defs/artifactReference"
+        },
+        "b4_module": {
+          "$ref": "#/$defs/artifactReference"
+        },
+        "expected_after": {
+          "$ref": "#/$defs/artifactReference"
+        },
+        "expected_capture_receipt": {
+          "$ref": "#/$defs/artifactReference"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "artifactReference": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Canonical relative POSIX file path inside the private input root; no symlinks or parent traversal."
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        }
+      ]
+    }
+  }
+}
