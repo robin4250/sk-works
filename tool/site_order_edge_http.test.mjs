@@ -55,6 +55,24 @@ test('site history uses a fixed server-scoped query, not client-supplied company
   assert.equal((await handler(request(await token(),{...command,...extra}))).status,400);
  }assert.equal(calls.length,count);
 });
+test('outgoing source and observation expose only fixed read commands, never prepare or consent',async()=>{
+ const calls=[],handler=createSiteOrderHandler({verify,connect:async()=>({async query(sql,args){calls.push({sql,args});
+  if(sql==='select session_user as role')return {rows:[{role:'postgres'}]};
+  if(sql.includes('outgoing_context')||sql.includes('observe_prepare'))return {rows:[{result:{operation_state:'not_observed',journal_clearable:false}}]};
+  return {rows:[]};},async end(){calls.push({sql:'end'});}}),render:()=>{throw Error('must not render');}});
+ for(const [command,sql,args] of [
+  [{action:'outgoing_context',site_id:id,trade_id:sid},'select site_order_manager_private.outgoing_context($1,$2) as result',[id,sid]],
+  [{action:'observe_prepare',site_id:id,document_id:sid,local_id:id,trade_id:sid},'select site_order_manager_private.observe_prepare($1,$2,$3,$4) as result',[id,sid,id,sid]],
+ ]) {
+  const response=await handler(request(await token(),command));assert.equal(response.status,200);
+  assert.equal((await response.json()).result.journal_clearable,false);
+  assert.deepEqual(calls.find(x=>x.sql===sql)?.args,args);
+  const count=calls.length;
+  assert.equal((await handler(request(await token(),{...command,company_id:id}))).status,400);
+  assert.equal(calls.length,count);
+ }
+ assert.equal(calls.some(x=>/prepare_site_document|bind_local|\.decide\(|prepare_job|send_order/.test(x.sql)),false);
+});
 test('client cannot supply purpose SQL, company identity, bytes or an extra key',async()=>{
  let connected=0;const handler=createSiteOrderHandler({verify,connect:()=>{connected++;throw Error('no');},render:()=>{throw Error('no');}});
  for(const body of [{action:'sql',sql:'select 1'},{action:'status',package_id:id,company_id:id},{action:'register_original',job_id:id,bytes:'private'}]){
