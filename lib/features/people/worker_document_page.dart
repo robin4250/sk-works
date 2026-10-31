@@ -11,6 +11,7 @@ import 'worker_document_repository.dart';
 import 'worker_document_exemption.dart';
 import 'worker_document_display_status.dart';
 import 'worker_document_change_flow.dart';
+import 'worker_document_admin_correction_entry.dart';
 import 'worker_document_change_review_page.dart';
 import '../shared/resource_registration_card.dart';
 
@@ -1036,6 +1037,32 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
       try {
         final membership = await repository.membership();
         if (!mounted || !changes.isCurrentActor || actor != repository.actorId || workerId != _selectedWorkerId) return;
+        final snapshot = Map<String, dynamic>.from(current ?? const {});
+        bool currentTarget() => mounted && actor == repository.actorId && workerId == _selectedWorkerId &&
+            snapshot['company_id'] == membership.companyId && snapshot['worker_id'] == workerId &&
+            _workers.any((row) => row['id'] == workerId && row['company_id'] == membership.companyId);
+        final adminCorrection = await repository.createAdminCorrectionRepository(
+          companyId: membership.companyId,
+          targetId: snapshot['id'] as String,
+          isCurrentTarget: currentTarget,
+        );
+        if (!mounted) {
+          adminCorrection.dispose();
+          return;
+        }
+        final handled = await openWorkerDocumentAdminCorrection(
+          context: context,
+          repository: adminCorrection,
+          snapshot: snapshot,
+          documentName: requirement['name']?.toString() ?? '書類',
+          isCurrentTarget: currentTarget,
+        );
+        if (handled) {
+          if (mounted) {
+            _reload();
+          }
+          return;
+        }
         await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => WorkerDocumentChangePage(
           repository: changes, actor: actor, companyId: membership.companyId, row: current!,
           signedUrl: repository.createSignedAttachmentUrl,
@@ -1455,6 +1482,7 @@ class WorkerDocumentEntryChoices extends StatelessWidget {
     ],
   );
 }
+
 
 
 

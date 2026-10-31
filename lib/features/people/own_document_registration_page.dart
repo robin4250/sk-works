@@ -11,6 +11,8 @@ import 'own_bank_account_repository.dart';
 import 'worker_document_exemption.dart';
 import 'worker_document_display_status.dart';
 import 'worker_document_change_flow.dart';
+import 'worker_document_admin_correction_entry.dart';
+import 'worker_document_admin_correction_repository.dart';
 import 'worker_document_change_repository.dart';
 import '../shared/resource_registration_card.dart';
 import '../common/data_date_labels.dart';
@@ -62,8 +64,16 @@ abstract interface class OwnDocumentChangeGateway implements OwnDocumentRegistra
   Future<String> signedUrl(String path);
 }
 
+abstract interface class OwnDocumentAdminCorrectionGateway {
+  Future<WorkerDocumentAdminCorrectionRepository> createAdminCorrectionRepository({
+    required String companyId,
+    required String targetId,
+    required bool Function() isCurrentTarget,
+  });
+}
+
 class _OwnDocumentRepositoryGateway
-    implements OwnDocumentRegistrationGateway, OwnDocumentPhotoGateway, OwnDocumentChangeGateway, OwnDocumentGalleryGateway {
+    implements OwnDocumentRegistrationGateway, OwnDocumentPhotoGateway, OwnDocumentChangeGateway, OwnDocumentGalleryGateway, OwnDocumentAdminCorrectionGateway {
   _OwnDocumentRepositoryGateway(this.repository) : actorId = repository.actorId;
   final WorkerDocumentRepository repository;
   @override
@@ -75,6 +85,16 @@ class _OwnDocumentRepositoryGateway
   Future<String> changeCompanyId() async => (await repository.membership()).companyId;
   @override
   WorkerDocumentChangeRepository createChangeRepository() => repository.createChangeRepository();
+  @override
+  Future<WorkerDocumentAdminCorrectionRepository> createAdminCorrectionRepository({
+    required String companyId,
+    required String targetId,
+    required bool Function() isCurrentTarget,
+  }) => repository.createAdminCorrectionRepository(
+    companyId: companyId,
+    targetId: targetId,
+    isCurrentTarget: isCurrentTarget,
+  );
 
   @override
   Future<bool Function()> captureAttachmentReadScope() => repository.captureAttachmentReadScope();
@@ -289,6 +309,41 @@ class _OwnDocumentRegistrationPageState
     try {
       final companyId = await gateway.changeCompanyId();
       if (!mounted || !changes.isCurrentActor || !gateway.isCurrentActor) return true;
+      if (gateway is OwnDocumentAdminCorrectionGateway) {
+        final snapshot = Map<String, dynamic>.from(row ?? const {});
+        bool currentTarget() => mounted && identical(_repository, gateway) && gateway.isCurrentActor &&
+            snapshot['company_id'] == companyId && _worker?['company_id'] == companyId &&
+            _worker?['id'] == snapshot['worker_id'];
+        final adminCorrection = await gateway.createAdminCorrectionRepository(
+          companyId: companyId,
+          targetId: snapshot['id'] as String,
+          isCurrentTarget: currentTarget,
+        );
+        if (!mounted) {
+          adminCorrection.dispose();
+          return true;
+        }
+        Map<String, dynamic>? requirement;
+        for (final item in _requirements) {
+          if (item['id'] == snapshot['requirement_id']) {
+            requirement = item;
+            break;
+          }
+        }
+        final handled = await openWorkerDocumentAdminCorrection(
+          context: context,
+          repository: adminCorrection,
+          snapshot: snapshot,
+          documentName: requirement?['name']?.toString() ?? '書類',
+          isCurrentTarget: currentTarget,
+        );
+        if (handled) {
+          if (mounted) {
+            await _load();
+          }
+          return true;
+        }
+      }
       await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => WorkerDocumentChangePage(
         repository: changes, actor: actor, companyId: companyId, row: row!,
         signedUrl: gateway.signedUrl,
@@ -874,3 +929,4 @@ Widget _documentRegistrationStep(
     ),
   );
 }
+
