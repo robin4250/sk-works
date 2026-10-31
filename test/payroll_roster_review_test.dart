@@ -188,13 +188,45 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('在籍社員 9名 ／ 当月明細 6件'), findsOneWidget);
+      expect(find.text('在籍社員・当月明細の人数を確認できません'), findsOneWidget);
       expect(
         find.byKey(const ValueKey('payroll-roster-without-statements')),
         findsNothing,
       );
     },
   );
+
+  for (final invalidPart in ['workers', 'statements', 'worker-id']) {
+    testWidgets('incomplete $invalidPart does not claim verified counts', (
+      tester,
+    ) async {
+      final body = payload();
+      if (invalidPart == 'worker-id') {
+        ((body['workers'] as List).first as Map)['id'] = null;
+      } else {
+        body[invalidPart] = 'invalid-list';
+      }
+      final workspace = (await tester.runAsync(() => readRpc(body)))!;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: PayrollReviewPage(repository: _CachedRepository(workspace)),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('在籍社員・当月明細の人数を確認できません'), findsOneWidget);
+      expect(find.textContaining('在籍社員 0名'), findsNothing);
+      expect(find.textContaining('当月明細 0件'), findsNothing);
+      expect(
+        find.byKey(const ValueKey('payroll-roster-without-statements')),
+        findsNothing,
+      );
+      if (invalidPart != 'statements') {
+        expect(workspace.items.length, 6);
+        expect(workspace.items.first.statement.workflowState, 'finalized');
+      }
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   for (final invalid in [
     null,

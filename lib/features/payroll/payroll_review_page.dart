@@ -345,9 +345,13 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
                             Padding(
                               padding: const EdgeInsets.symmetric(vertical: 8),
                               child: Text(
-                                SkoLanguageController.isEnglish
-                                    ? 'Active employees: ${workspace.workers.length} / Monthly payslips: ${items.length}'
-                                    : '在籍社員 ${workspace.workers.length}名 ／ 当月明細 ${items.length}件',
+                                workspace.canCompareRoster
+                                    ? (SkoLanguageController.isEnglish
+                                          ? 'Active employees: ${workspace.workers.length} / Monthly payslips: ${items.length}'
+                                          : '在籍社員 ${workspace.workers.length}名 ／ 当月明細 ${items.length}件')
+                                    : (SkoLanguageController.isEnglish
+                                          ? 'Employee and payslip counts could not be verified.'
+                                          : '在籍社員・当月明細の人数を確認できません'),
                                 key: const ValueKey('payroll-roster-counts'),
                               ),
                             ),
