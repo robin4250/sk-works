@@ -1,0 +1,46 @@
+-- REVIEW ONLY. Exact frozen original payload for user-selected print derivatives.
+-- No live company, stamp, bank, prices, defaults or terms are fetched.
+begin;
+do $$ declare p pg_proc;begin
+ select * into p from pg_proc where oid=to_regprocedure('site_order_package_private.read_actor()');
+ if p.oid is null or md5(p.prosrc)<>'cc3b89f99b06543bcbedde33608b2920' or not p.prosecdef
+ or pg_get_userbyid(p.proowner)<>'postgres' or p.proconfig is distinct from array['search_path=""']::text[]
+ or has_function_privilege('anon',p.oid,'execute') or has_function_privilege('authenticated',p.oid,'execute')
+ or has_function_privilege('service_role',p.oid,'execute') then raise exception 'site_order_archive_actor_changed';end if;
+end $$;
+create function site_order_package_private.archive_payload(p_package uuid,p_kind text)returns jsonb language plpgsql security definer set search_path='' as $$
+declare a jsonb;cid uuid;p site_order_package_private.packages%rowtype;
+ j site_order_artifact_private.render_jobs%rowtype;seal jsonb;
+begin
+ a:=site_order_package_private.read_actor();cid:=(a->>'company_id')::uuid;
+ select * into p from site_order_package_private.packages where id=p_package and cid in(sender_company_id,recipient_company_id) for share;
+ if p.id is null or p_kind is null or p_kind not in('order','acceptance') then raise exception 'site_order_archive_not_found' using errcode='42501';end if;
+ if p_kind='order' then
+ select x.* into j from site_order_artifact_private.render_jobs x join site_order_artifact_private.pdf_records r on r.job_id=x.id
+ where x.id=p.source_job_id and r.receipt_id=p.original_receipt_id;
+ else
+ select x.* into j from site_order_package_private.ready_reply_jobs ready join site_order_artifact_private.render_jobs x on x.id=ready.job_id
+ join site_order_artifact_private.pdf_records r on r.job_id=x.id where ready.package_id=p.id
+ and(cid=p.recipient_company_id or exists(select 1 from site_order_package_private.acceptance_deliveries d
+ where d.package_id=p.id and d.job_id=x.id and d.original_receipt_id=r.receipt_id));
+ end if;
+ if j.id is null or jsonb_typeof(j.evidence->'seals') is distinct from 'array' or jsonb_array_length(j.evidence->'seals')<>1
+ or j.evidence#>>'{seals,0,company_id}' is distinct from j.evidence#>>'{body,issuer_company_id}' then raise exception 'site_order_original_not_registered' using errcode='42501';end if;
+ seal:=j.evidence#>'{seals,0,seal_snapshot}';
+ return(j.evidence->'body')||jsonb_build_object('company_seal_snapshot',seal,'company_seal_enabled',true);
+end $$;
+create function site_order_package_private.history_entries(p_before timestamptz,p_before_id uuid,p_limit integer)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare entries jsonb;result jsonb;
+begin
+ entries:=site_order_package_private.package_list(p_before,p_before_id,p_limit);
+ select coalesce(jsonb_agg(e.value||jsonb_build_object('pdf_sha256',r.pdf_sha256) order by e.ordinality),'[]') into result
+ from jsonb_array_elements(entries) with ordinality e(value,ordinality)
+ join site_order_package_private.packages p on p.id=(e.value->>'package_id')::uuid
+ join site_order_artifact_private.pdf_records r on r.job_id=p.source_job_id and r.receipt_id=p.original_receipt_id;
+ if jsonb_array_length(entries)<>jsonb_array_length(result) then raise exception 'site_order_archive_changed';end if;
+ return result;
+end $$;
+revoke all on function site_order_package_private.archive_payload(uuid,text) from public,anon,authenticated,service_role;
+revoke all on function site_order_package_private.history_entries(timestamptz,uuid,integer) from public,anon,authenticated,service_role;
+commit;

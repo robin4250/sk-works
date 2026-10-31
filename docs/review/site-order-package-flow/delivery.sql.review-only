@@ -1,0 +1,167 @@
+-- REVIEW ONLY. A fixed acceptance original is stored in the original sender's
+-- private recipient compartment. Notification inbox writes have separate receipts.
+begin;
+do $$ declare actual jsonb;begin
+ select jsonb_agg(jsonb_build_array(a.attname,format_type(a.atttypid,a.atttypmod),a.attnotnull) order by a.attnum) into actual
+ from pg_attribute a where a.attrelid=to_regclass('public.app_notifications') and a.attnum>0 and not a.attisdropped;
+ if actual is distinct from '[["id","uuid",true],["company_id","uuid",true],["recipient_user_id","uuid",true],["kind","text",true],["title","text",true],["body","text",false],["action_key","text",false],["action_id","uuid",false],["read_at","timestamp with time zone",false],["created_at","timestamp with time zone",true]]'::jsonb
+ or not coalesce((select relrowsecurity from pg_class where oid=to_regclass('public.app_notifications')),false)
+ then raise exception 'site_order_notification_schema_changed';end if;
+end $$;
+do $$ declare e record;p pg_proc;begin
+ for e in select * from(values
+('private.require_standalone_trade_document_access()','63c57e18a04499e8d6bcfad4ead7837f',true),
+('site_order_manager_private.require_actor(uuid,uuid)','0c841be3d2b20f5cbdbe713a6414f744',true),
+('site_order_manager_private.counterparty_context(uuid,uuid,text)','6e8915f47ec3daa03eafd8ee2960bd24',true),
+('site_order_manager_private.render_approved(uuid,integer,uuid,boolean)','f6fb2629e3660acaae1706879eab1f03',true),
+('site_order_manager_private.require_local(uuid,uuid)','52851fbaeefa4ab6a6c4332036a6603b',true),
+('trade_document_consent_private.immutable()','73660d9947f20d6f99c59d8451078e7e',false)
+ )v(signature,source_md5,definer) loop
+ select * into p from pg_proc where oid=to_regprocedure(e.signature);
+ if p.oid is null or md5(p.prosrc) is distinct from e.source_md5 or p.prosecdef is distinct from e.definer
+ or pg_get_userbyid(p.proowner)<>'postgres' or p.proconfig is distinct from array['search_path=""']::text[]
+ or has_function_privilege('anon',p.oid,'execute') or has_function_privilege('authenticated',p.oid,'execute')
+ or has_function_privilege('service_role',p.oid,'execute') then raise exception 'site_package_dependency_changed: %',e.signature;end if;
+ end loop;
+end $$;
+create table site_order_package_private.acceptance_deliveries(
+ package_id uuid primary key references site_order_package_private.packages(id),
+ issuer_company_id uuid not null,recipient_company_id uuid not null,
+ actor_id uuid not null,session_id uuid not null,request_id uuid not null,
+ job_id uuid not null unique references site_order_artifact_private.render_jobs(id),
+ original_receipt_id uuid not null unique references site_order_artifact_private.pdf_records(receipt_id),
+ created_at timestamptz not null default clock_timestamp(),unique(issuer_company_id,actor_id,request_id)
+);
+create table site_order_package_private.notification_receipts(
+ source_kind text not null check(source_kind in('receive','approval','acceptance')),
+ source_id uuid not null,recipient_user_id uuid not null,notification_id uuid not null,
+ package_id uuid not null references site_order_package_private.packages(id),
+ audience_company_id uuid not null,created_at timestamptz not null default clock_timestamp(),
+ primary key(source_kind,source_id,recipient_user_id)
+);
+alter table site_order_package_private.acceptance_deliveries enable row level security;
+alter table site_order_package_private.notification_receipts enable row level security;
+create trigger immutable_acceptance_delivery before update or delete on site_order_package_private.acceptance_deliveries
+ for each row execute function trade_document_consent_private.immutable();
+create trigger immutable_acceptance_delivery_truncate before truncate on site_order_package_private.acceptance_deliveries
+ for each statement execute function trade_document_consent_private.immutable();
+create trigger immutable_notice_receipt before update or delete on site_order_package_private.notification_receipts
+ for each row execute function trade_document_consent_private.immutable();
+create trigger immutable_notice_receipt_truncate before truncate on site_order_package_private.notification_receipts
+ for each statement execute function trade_document_consent_private.immutable();
+
+create function site_order_package_private.ready_reply(p_package uuid)returns jsonb language plpgsql security definer set search_path='' as $$
+declare a jsonb;cid uuid;sid uuid;r site_order_package_private.ready_reply_jobs%rowtype;
+begin
+ a:=private.require_standalone_trade_document_access();cid:=(a->>'company_id')::uuid;sid:=(a->>'session_id')::uuid;
+ select j.* into r from site_order_package_private.ready_reply_jobs j join site_order_package_private.packages p on p.id=j.package_id
+ where p.id=p_package and p.recipient_company_id=cid and j.actor_id=auth.uid() and j.session_id=sid for share of j,p;
+ if r.package_id is null then raise exception 'site_order_exact_own_reply_job_required' using errcode='42501';end if;
+ return jsonb_build_object('job_id',r.job_id,'request_id',r.request_id);
+end $$;
+
+create function site_order_package_private.deliver_acceptance(p_package uuid,p_receipt uuid,p_request uuid)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare a jsonb;cid uuid;sid uuid;p site_order_package_private.packages%rowtype;
+ ready site_order_package_private.ready_reply_jobs%rowtype;j site_order_artifact_private.render_jobs%rowtype;
+ old site_order_package_private.acceptance_deliveries%rowtype;current_evidence jsonb;
+begin
+ a:=private.require_standalone_trade_document_access();cid:=(a->>'company_id')::uuid;sid:=(a->>'session_id')::uuid;
+ select * into p from site_order_package_private.packages where id=p_package and recipient_company_id=cid for share;
+ if p.id is null then raise exception 'site_order_received_package_not_found' using errcode='42501';end if;
+ if p_request is null then raise exception 'site_order_request_required' using errcode='22023';end if;
+ perform pg_advisory_xact_lock(hashtextextended('site-order-delivery:'||p.id::text,0));
+ select * into old from site_order_package_private.acceptance_deliveries where package_id=p.id for share;
+ if old.package_id is not null then
+ if(old.actor_id,old.session_id,old.request_id,old.original_receipt_id) is distinct from(auth.uid(),sid,p_request,p_receipt)
+ then raise exception 'site_order_delivery_request_changed' using errcode='40001';end if;
+ return jsonb_build_object('package_id',p.id,'original_receipt_id',old.original_receipt_id,'status','recipient_stored');
+ end if;
+ select * into ready from site_order_package_private.ready_reply_jobs where package_id=p.id for share;
+ select * into j from site_order_artifact_private.render_jobs where id=ready.job_id for share;
+ if j.id is null or(j.company_id,j.counterparty_company_id,j.actor_id,j.session_id)
+ is distinct from(cid,p.sender_company_id,auth.uid(),sid) or j.evidence#>>'{body,kind}' is distinct from 'acceptance'
+ then raise exception 'site_order_exact_own_reply_job_required' using errcode='42501';end if;
+ perform site_order_manager_private.require_actor(cid,j.document_id);
+ if not exists(select 1 from site_order_manager_private.document_scopes where document_id=j.document_id
+ and company_id=cid and site_id=j.site_id and trade_company_id=j.counterparty_trade_company_id
+ and connection_fingerprint=j.counterparty_connection_fingerprint) then raise exception 'site_order_exact_reserved_target_required';end if;
+ if not exists(select 1 from site_order_artifact_private.pdf_records where job_id=j.id and receipt_id=p_receipt)
+ then raise exception 'site_order_registered_original_required' using errcode='42501';end if;
+ current_evidence:=site_order_manager_private.render_approved(j.document_id,j.document_revision,cid,false);
+ if current_evidence is distinct from j.evidence then raise exception 'site_order_reply_body_changed' using errcode='40001';end if;
+ insert into site_order_package_private.acceptance_deliveries(package_id,issuer_company_id,recipient_company_id,actor_id,
+ session_id,request_id,job_id,original_receipt_id)
+ values(p.id,cid,p.sender_company_id,auth.uid(),sid,p_request,j.id,p_receipt);
+ update public.app_notifications n set read_at=coalesce(n.read_at,clock_timestamp())
+ from site_order_package_private.notification_receipts r join site_order_package_private.approval_notice_intents i
+ on r.source_kind='approval' and r.source_id=i.id
+ where r.package_id=p.id and r.notification_id=n.id and i.kind='acceptance_reply_pending';
+ perform site_order_manager_private.require_actor(cid,j.document_id);
+ return jsonb_build_object('package_id',p.id,'original_receipt_id',p_receipt,'status','recipient_stored');
+end $$;
+
+create function site_order_package_private.dispatch_notifications(p_package uuid) returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare a jsonb;cid uuid;p site_order_package_private.packages%rowtype;e record;m record;
+ notification uuid;added integer:=0;
+begin
+ a:=private.require_standalone_trade_document_access();cid:=(a->>'company_id')::uuid;
+ select * into p from site_order_package_private.packages where id=p_package and cid in(sender_company_id,recipient_company_id) for share;
+ if p.id is null then raise exception 'site_order_archive_not_found' using errcode='42501';end if;
+ perform trade_document_consent_private.lock_pair(p.sender_company_id,p.recipient_company_id);
+ perform pg_advisory_xact_lock(hashtextextended('site-order-notify:'||p.id::text,0));
+ for e in
+ select 'receive'::text source_kind,id source_id,audience_company_id,kind from site_order_package_private.notice_intents where package_id=p.id and kind='approval_required'
+ union all select 'approval',id,audience_company_id,kind from site_order_package_private.approval_notice_intents where package_id=p.id and(kind<>'acceptance_reply_pending' or not exists(select 1 from site_order_package_private.acceptance_deliveries where package_id=p.id))
+ union all select 'acceptance',package_id,recipient_company_id,'acceptance_received' from site_order_package_private.acceptance_deliveries where package_id=p.id
+ loop
+ if e.audience_company_id not in(p.sender_company_id,p.recipient_company_id) then raise exception 'site_order_notice_scope_changed';end if;
+ for m in select distinct user_id from public.company_members where company_id=e.audience_company_id and role::text in('owner','admin','manager') loop
+ if exists(select 1 from site_order_package_private.notification_receipts where source_kind=e.source_kind and source_id=e.source_id and recipient_user_id=m.user_id) then continue;end if;
+ notification:=gen_random_uuid();
+ insert into public.app_notifications(id,company_id,recipient_user_id,kind,title,body,action_key,action_id,created_at)
+ values(notification,e.audience_company_id,m.user_id,case when e.kind='approval_required' then 'approval' else 'info' end,
+ case e.kind when 'approval_required' then '注文内容の確認が必要です' when 'order_approved' then '注文が承認されました'
+ when 'acceptance_received' then '請書が届きました' when 'acceptance_reply_pending' then '請書の送信処理を確認してください' else '注文書が届きました' end,
+ '対象の注文・請書を開いて内容をご確認ください。','site_order_package',p.id,clock_timestamp());
+ insert into site_order_package_private.notification_receipts(source_kind,source_id,recipient_user_id,notification_id,package_id,audience_company_id)
+ values(e.source_kind,e.source_id,m.user_id,notification,p.id,e.audience_company_id);added:=added+1;
+ end loop;
+ end loop;
+ return jsonb_build_object('package_id',p.id,'app_inbox_inserted',added,'device_push_confirmed',false);
+end $$;
+
+create function site_order_package_private.delivery_status(p_package uuid)returns jsonb language plpgsql security definer set search_path='' as $$
+declare a jsonb;cid uuid;p site_order_package_private.packages%rowtype;d site_order_package_private.acceptance_deliveries%rowtype;
+begin
+ a:=site_order_package_private.read_actor();cid:=(a->>'company_id')::uuid;
+ select * into p from site_order_package_private.packages where id=p_package and cid in(sender_company_id,recipient_company_id) for share;
+ if p.id is null then raise exception 'site_order_archive_not_found' using errcode='42501';end if;
+ select * into d from site_order_package_private.acceptance_deliveries where package_id=p.id for share;
+ return jsonb_build_object('package_id',p.id,'reply_recipient_stored',d.package_id is not null,
+ 'reply_original_receipt_id',d.original_receipt_id,'app_inbox_receipts',(select count(*) from site_order_package_private.notification_receipts where package_id=p.id),'device_push_confirmed',false);
+end $$;
+do $patch$ declare p pg_proc;src text;attrs jsonb;begin
+ select * into p from pg_proc where oid='site_order_package_private.package_status(uuid)'::regprocedure;
+ if md5(p.prosrc)<>'6bd52d76c59bf08bd177b6df23287321' or not p.prosecdef
+ or pg_get_userbyid(p.proowner)<>'postgres' or p.proconfig is distinct from array['search_path=""']::text[] then raise exception 'site_order_archive_source_changed';end if;
+ attrs:=to_jsonb(p)-'prosrc';
+ if array_length(string_to_array(p.prosrc,'''reply_delivered'',false'),1)<>2 then raise exception 'site_order_archive_anchor_changed';end if;
+ src:=replace(p.prosrc,'''reply_delivered'',false','''reply_recipient_stored'',exists(select 1 from site_order_package_private.acceptance_deliveries where package_id=p.id)');execute replace(pg_get_functiondef(p.oid),p.prosrc,src);
+ if(select to_jsonb(x)-'prosrc' from pg_proc x where x.oid=p.oid) is distinct from attrs then raise exception 'site_order_archive_attributes_changed';end if;
+end $patch$;
+
+do $patch$ declare p pg_proc;src text;attrs jsonb;begin
+ select * into p from pg_proc where oid='site_order_package_private.archive_original(uuid,text)'::regprocedure;
+ if md5(p.prosrc)<>'7c931f2b84f4382dbbe033b0f08b4b05' or not p.prosecdef
+ or pg_get_userbyid(p.proowner)<>'postgres' or p.proconfig is distinct from array['search_path=""']::text[] then raise exception 'site_order_archive_source_changed';end if;
+ attrs:=to_jsonb(p)-'prosrc';
+ if array_length(string_to_array(p.prosrc,'where j.package_id=p.id;'),1)<>2 then raise exception 'site_order_archive_anchor_changed';end if;
+ src:=replace(p.prosrc,'where j.package_id=p.id;','where j.package_id=p.id and(cid=p.recipient_company_id or exists(select 1 from site_order_package_private.acceptance_deliveries d where d.package_id=p.id and d.job_id=j.job_id and d.original_receipt_id=r.receipt_id));');execute replace(pg_get_functiondef(p.oid),p.prosrc,src);
+ if(select to_jsonb(x)-'prosrc' from pg_proc x where x.oid=p.oid) is distinct from attrs then raise exception 'site_order_archive_attributes_changed';end if;
+end $patch$;
+
+revoke all on all tables in schema site_order_package_private from public,anon,authenticated,service_role;
+revoke all on all functions in schema site_order_package_private from public,anon,authenticated,service_role;
+commit;

@@ -1,0 +1,137 @@
+import {outgoingExecutionArgs,resolveOutgoingExecution,isOutgoingOwnedJob,requireOutgoingExecutionSource} from './site_order_outgoing_execution_contract.mjs';
+// Pure DB coordinator. Caller supplies one fixed trusted renderer and a dedicated verified-request connection.
+const uuid=/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/;
+
+const managerJobLock=`select j.evidence from site_order_artifact_private.render_jobs j
+ join site_order_manager_private.document_scopes s on s.document_id=j.document_id
+  and s.company_id=j.company_id and s.site_id=j.site_id
+  and s.trade_company_id=j.counterparty_trade_company_id
+  and s.connection_fingerprint=j.counterparty_connection_fingerprint
+ where j.id=$1 and j.actor_id=auth.uid() and j.session_id=(auth.jwt()->>'session_id')::uuid
+ and exists(select 1 from public.company_members m where m.user_id=auth.uid()
+  and m.company_id=j.company_id and m.role::text in('owner','admin','manager')) for update of j`;
+
+export async function registerCanonicalSiteOrderJob(db,jobId,render) {
+ return registerForPurpose(db,jobId,render,false);
+}
+
+// Internal route must select this fixed export only for the saved site registry.
+// No public request may choose SQL, an authorizer or a registration function.
+export async function registerManagerCanonicalSiteOrderJob(db,jobId,render,verifiedClaims) {
+ return registerForPurpose(db,jobId,render,true,verifiedClaims);
+}
+
+// A fixed purpose export resolves job IDs from the caller's exact immutable
+// consent receipt. HTTP cannot choose a job, renderer or authorization helper.
+export async function registerOutgoingCanonicalSiteOrderJob(db,identity,render,verifiedClaims) {
+ outgoingExecutionArgs(identity);
+ if(!verifiedClaims)throw Error('canonical_registration_rejected');
+ return registerForPurpose(db,null,render,true,verifiedClaims,identity);
+}
+
+async function registerForPurpose(db,jobId,render,manager,verifiedClaims,outgoingIdentity) {
+ if(!outgoingIdentity&&!uuid.test(jobId))throw Error('canonical_job_id_required');
+ // No transaction retries here. A COMMIT transport error is UNKNOWN; caller must
+ // look up the same request/job, never mint a replacement job or resubmit bytes.
+ let committed=false,commitStarted=false;
+ await db.query('begin isolation level read committed');
+ try {
+  const role=(await db.query('select session_user as role')).rows[0]?.role;
+  if(role!=='postgres')throw Error('canonical_internal_connection_required');
+  if(verifiedClaims!==undefined)await db.query("select set_config('request.jwt.claims',$1,true)",[JSON.stringify(verifiedClaims)]);
+  await db.query("select set_config('request.jwt.claim.sub','',true),set_config('request.jwt.claim','',true)");
+  await db.query('select trade_document_confirmation_api_private.actor()');
+  if(manager)await db.query('select private.require_standalone_trade_document_access()');
+  await db.query('select private.require_trade_documents_master_feature()');
+  if(outgoingIdentity)jobId=(await resolveOutgoingExecution(db,outgoingIdentity,{mutation:true})).job_id;
+  const j=(await db.query(manager?managerJobLock:`select j.evidence from site_order_artifact_private.render_jobs j
+   where j.id=$1 and j.actor_id=auth.uid()
+   and j.session_id=(auth.jwt()->>'session_id')::uuid for update of j`,[jobId])).rows[0];
+  if(!j)throw Error('canonical_job_unavailable');
+  if(manager)await db.query('select site_order_manager_private.require_actor(j.company_id,j.document_id) from site_order_artifact_private.render_jobs j where j.id=$1',[jobId]);
+  if(manager){
+   const owned=await isOutgoingOwnedJob(db,jobId);
+   if(owned&&!outgoingIdentity)throw Error('outgoing_fixed_purpose_required');
+   if(outgoingIdentity){
+    if(!owned)throw Error('outgoing_execution_unavailable');
+    await requireOutgoingExecutionSource(db,outgoingIdentity,jobId);
+   }
+  }
+  // This MUST be a separate statement after acquiring the immutable job lock.
+  // A joined READ COMMITTED snapshot can miss a first worker's pdf_records
+  // insert after waiting, since that worker never updates the locked job row.
+  const original=(await db.query('select pdf_bytes from site_order_artifact_private.pdf_records where job_id=$1',[jobId])).rows[0]?.pdf_bytes;
+  // Replays reuse immutable original bytes. A fresh PDF timestamp must never
+  // replace an already registered original or cause an avoidable retry failure.
+  const bytes=original??await render(j.evidence);
+  const receipt=(await db.query(manager?'select site_order_manager_private.register_canonical_pdf($1,$2) as receipt':'select site_order_artifact_private.register_canonical_pdf($1,$2) as receipt',[jobId,bytes])).rows[0]?.receipt;
+  if(!receipt||receipt.job_id!==jobId||receipt.pdf_byte_length!==bytes.length)throw Error('canonical_receipt_mismatch');
+  if(outgoingIdentity)await requireOutgoingExecutionSource(db,outgoingIdentity,jobId);
+  commitStarted=true;
+  await db.query('commit');committed=true;
+  return receipt;
+ } catch {
+  if(!commitStarted)await db.query('rollback').catch(()=>{});
+  // Retain only the fixed classification, never a raw SQL/render cause.
+  throw Error(commitStarted&&!committed?'canonical_commit_result_unknown':'canonical_registration_rejected');
+ }
+}
+
+// Fixed ready-reply worker: job, original receipt and recipient are DB-derived.
+// No client-supplied PDF bytes, authorizer or recipient is accepted.
+async function replyTransaction(db,claims,sql,args){
+ let commitStarted=false;
+ await db.query('begin isolation level read committed');
+ try{
+  if((await db.query('select session_user as role')).rows[0]?.role!=='postgres')throw Error('internal');
+  await db.query("select set_config('request.jwt.claims',$1,true)",[JSON.stringify(claims)]);
+  const result=(await db.query(sql,args)).rows[0]?.result;if(!result)throw Error('missing');
+  commitStarted=true;await db.query('commit');return result;
+ }catch{
+  if(!commitStarted)await db.query('rollback').catch(()=>{});
+  throw Error(commitStarted?'site_order_commit_result_unknown':'site_order_reply_rejected');
+ }
+}
+export async function processCanonicalSiteOrderReply(db,packageId,render,verifiedClaims){
+ if(!uuid.test(packageId)||!verifiedClaims)throw Error('site_order_reply_rejected');
+ const ready=await replyTransaction(db,verifiedClaims,'select site_order_package_private.ready_reply($1) as result',[packageId]);
+ const original=await registerManagerCanonicalSiteOrderJob(db,ready.job_id,render,verifiedClaims);
+ return replyTransaction(db,verifiedClaims,`with stored as materialized(select site_order_package_private.deliver_acceptance($1,$2,$3) as result)
+ select result||jsonb_build_object('notifications',site_order_package_private.dispatch_notifications($1)) as result from stored`,
+ [packageId,original.receipt_id,ready.request_id]);
+}
+
+// Separate fixed lease route. It never changes the original job's SID or installs
+// old claims. Current verified claims and the server's explicit recovery lease
+// are independently rechecked inside every transaction.
+async function registerRecoveredOriginal(db,jobId,leaseId,render,claims){
+ let commitStarted=false;
+ await db.query('begin isolation level read committed');
+ try{
+  if((await db.query('select session_user as role')).rows[0]?.role!=='postgres')throw Error('internal');
+  await db.query("select set_config('request.jwt.claims',$1,true)",[JSON.stringify(claims)]);
+  await db.query('select private.require_standalone_trade_document_access()');
+  const job=(await db.query('select evidence from site_order_artifact_private.render_jobs where id=$1 for update',[jobId])).rows[0];
+  if(!job)throw Error('missing');
+  await db.query('select site_order_package_private.require_reply_recovery_lease($1,$2)',[leaseId,jobId]);
+  // A fresh statement after the lock observes a worker which committed while
+  // this request waited. Existing original bytes are never rendered again.
+  const saved=(await db.query('select pdf_bytes from site_order_artifact_private.pdf_records where job_id=$1',[jobId])).rows[0]?.pdf_bytes;
+  const bytes=saved??await render(job.evidence);
+  const receipt=(await db.query('select site_order_package_private.register_recovered_pdf($1,$2,$3) as receipt',[jobId,bytes,leaseId])).rows[0]?.receipt;
+  if(!receipt||receipt.job_id!==jobId||receipt.pdf_byte_length!==bytes.length)throw Error('receipt');
+  commitStarted=true;await db.query('commit');return receipt;
+ }catch{
+  if(!commitStarted)await db.query('rollback').catch(()=>{});
+  throw Error(commitStarted?'site_order_commit_result_unknown':'site_order_reply_rejected');
+ }
+}
+export async function processRecoveredSiteOrderReply(db,packageId,leaseId,render,verifiedClaims){
+ if(!uuid.test(packageId)||!uuid.test(leaseId)||!verifiedClaims)throw Error('site_order_reply_rejected');
+ const ready=await replyTransaction(db,verifiedClaims,'select site_order_package_private.ready_recovered_reply($1,$2) as result',[packageId,leaseId]);
+ if(ready.reply_recipient_stored===true)return {package_id:packageId,original_receipt_id:ready.original_receipt_id,status:'recipient_stored'};
+ const original=await registerRecoveredOriginal(db,ready.job_id,leaseId,render,verifiedClaims);
+ return replyTransaction(db,verifiedClaims,`with stored as materialized(select site_order_package_private.deliver_recovered_acceptance($1,$2,$3,$4) as result)
+ select result||jsonb_build_object('notifications',site_order_package_private.dispatch_notifications($1)) as result from stored`,
+ [packageId,original.receipt_id,ready.request_id,leaseId]);
+}

@@ -1,0 +1,142 @@
+-- REVIEW ONLY. Explicit recipient refusal, exact-request recovery and deduped
+-- app notifications. Never release the legacy response guard for new packages.
+begin;
+do $$declare e record;p pg_proc;begin
+ if to_regclass('site_order_package_private.refusals') is not null or to_regclass('site_order_package_private.refusal_operations') is not null
+ or to_regclass('site_order_package_private.refusal_notice_receipts') is not null then raise exception 'site_order_refusal_already_installed';end if;
+ for e in select * from(values
+ ('site_order_package_private.read_actor()','cc3b89f99b06543bcbedde33608b2920',true),
+ ('site_order_package_private.package_detail(uuid)','2669073337256618e9487bcafda33fd8',true),
+ ('trade_document_consent_private.lock_pair(uuid,uuid)','a37ce3e8230a7efd5534fa879ad1b5b0',true),
+ ('trade_document_consent_private.immutable()','73660d9947f20d6f99c59d8451078e7e',false),
+ ('private.require_standalone_trade_document_access()','63c57e18a04499e8d6bcfad4ead7837f',true)
+ )v(signature,body_md5,definer)loop
+ select * into p from pg_proc where oid=to_regprocedure(e.signature);
+ if p.oid is null or md5(p.prosrc) is distinct from e.body_md5 or p.prosecdef is distinct from e.definer
+ or pg_get_userbyid(p.proowner)<>'postgres' or p.proconfig is distinct from array['search_path=""']::text[]
+ or has_function_privilege('anon',p.oid,'execute') or has_function_privilege('authenticated',p.oid,'execute')
+ or has_function_privilege('service_role',p.oid,'execute') then raise exception 'site_order_refusal_dependency_changed';end if;
+ end loop;
+end $$;
+create table site_order_package_private.refusals(
+ package_id uuid primary key references site_order_package_private.packages(id),
+ company_id uuid not null,actor_id uuid not null,session_id uuid not null,request_id uuid not null,
+ created_at timestamptz not null default clock_timestamp(),unique(company_id,actor_id,request_id)
+);
+create table site_order_package_private.refusal_operations(
+ package_id uuid not null references site_order_package_private.packages(id),
+ company_id uuid not null,actor_id uuid not null,request_id uuid not null,
+ operation_state text not null check(operation_state in('accepted','cancelled')),
+ created_at timestamptz not null default clock_timestamp(),primary key(company_id,actor_id,request_id)
+);
+create table site_order_package_private.refusal_notice_receipts(
+ package_id uuid not null references site_order_package_private.refusals(package_id),
+ recipient_user_id uuid not null,notification_id uuid not null unique,
+ created_at timestamptz not null default clock_timestamp(),primary key(package_id,recipient_user_id)
+);
+alter table site_order_package_private.refusals enable row level security;
+alter table site_order_package_private.refusal_operations enable row level security;
+alter table site_order_package_private.refusal_notice_receipts enable row level security;
+do $$declare t text;begin
+ foreach t in array array['refusals','refusal_operations','refusal_notice_receipts']loop
+ execute format('create trigger %I before update or delete on site_order_package_private.%I for each row execute function trade_document_consent_private.immutable()','immutable_'||t,t);
+ execute format('create trigger %I before truncate on site_order_package_private.%I for each statement execute function trade_document_consent_private.immutable()','immutable_'||t||'_truncate',t);
+ end loop;
+end $$;
+create function site_order_package_private.refuse_order(p_package uuid,p_request uuid,p_confirmed boolean)returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare a jsonb;cid uuid;sid uuid;p site_order_package_private.packages%rowtype;
+ old site_order_package_private.refusals%rowtype;o site_order_package_private.refusal_operations%rowtype;
+ i private.site_share_inbox%rowtype;
+begin
+ a:=private.require_standalone_trade_document_access();cid:=(a->>'company_id')::uuid;sid:=(a->>'session_id')::uuid;
+ if p_confirmed is distinct from true then raise exception 'site_order_explicit_refusal_confirmation_required' using errcode='42501';end if;
+ select * into p from site_order_package_private.packages where id=p_package and recipient_company_id=cid for share;
+ if p.id is null or p_request is null then raise exception 'site_order_received_package_not_found' using errcode='42501';end if;
+ -- Exactly the existing approval lock, before inspecting/changing the inbox.
+ perform pg_advisory_xact_lock(hashtextextended('site-order-approval:'||p.id::text,0));
+ select * into o from site_order_package_private.refusal_operations where company_id=cid and actor_id=auth.uid() and request_id=p_request;
+ if o.request_id is not null and(o.package_id<>p.id or o.operation_state='cancelled') then
+ raise exception 'site_order_refusal_operation_cancelled_or_changed' using errcode='40001';end if;
+ select * into old from site_order_package_private.refusals where package_id=p.id;
+ if old.package_id is not null then
+ if(old.company_id,old.actor_id,old.session_id,old.request_id) is distinct from(cid,auth.uid(),sid,p_request)
+ then raise exception 'site_order_refusal_request_changed' using errcode='40001';end if;
+ return jsonb_build_object('package_id',p.id,'request_id',p_request,'status','rejected');
+ end if;
+ if exists(select 1 from site_order_package_private.approvals where package_id=p.id)
+ then raise exception 'site_order_approved_order_cannot_be_refused' using errcode='40001';end if;
+ select * into i from private.site_share_inbox where data_item_id=p.data_item_id and recipient_company_id=cid for update;
+ if i.data_item_id is null or i.status<>'pending' then raise exception 'site_order_pending_inbox_required' using errcode='40001';end if;
+ insert into site_order_package_private.refusals(package_id,company_id,actor_id,session_id,request_id)
+ values(p.id,cid,auth.uid(),sid,p_request);
+ insert into site_order_package_private.refusal_operations(package_id,company_id,actor_id,request_id,operation_state)
+ values(p.id,cid,auth.uid(),p_request,'accepted');
+ update private.site_share_inbox set status='rejected',responded_by=auth.uid(),responded_at=clock_timestamp()
+ where data_item_id=i.data_item_id and recipient_company_id=cid and status='pending';
+ if not found then raise exception 'site_order_pending_inbox_changed' using errcode='40001';end if;
+ return jsonb_build_object('package_id',p.id,'request_id',p_request,'status','rejected');
+end $$;
+create function site_order_package_private.reconcile_refusal(p_package uuid,p_request uuid)returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare a jsonb;cid uuid;p site_order_package_private.packages%rowtype;
+ o site_order_package_private.refusal_operations%rowtype;r site_order_package_private.refusals%rowtype;
+begin
+ a:=site_order_package_private.read_actor();cid:=(a->>'company_id')::uuid;
+ select * into p from site_order_package_private.packages where id=p_package and recipient_company_id=cid for share;
+ if p.id is null or p_request is null then raise exception 'site_order_received_package_not_found' using errcode='42501';end if;
+ perform pg_advisory_xact_lock(hashtextextended('site-order-approval:'||p.id::text,0));
+ select * into o from site_order_package_private.refusal_operations where company_id=cid and actor_id=auth.uid() and request_id=p_request;
+ if o.request_id is null then
+ select * into r from site_order_package_private.refusals where package_id=p.id and company_id=cid and actor_id=auth.uid() and request_id=p_request;
+ insert into site_order_package_private.refusal_operations(package_id,company_id,actor_id,request_id,operation_state)
+ values(p.id,cid,auth.uid(),p_request,case when r.package_id is null then 'cancelled' else 'accepted' end) returning * into o;
+ end if;
+ if o.package_id<>p.id then raise exception 'site_order_refusal_request_changed' using errcode='40001';end if;
+ return jsonb_build_object('package_id',p.id,'request_id',p_request,'operation_state',o.operation_state);
+end $$;
+create function site_order_package_private.dispatch_refusal_notifications(p_package uuid)returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare a jsonb;cid uuid;p site_order_package_private.packages%rowtype;m record;notification uuid;added integer:=0;
+begin
+ a:=private.require_standalone_trade_document_access();cid:=(a->>'company_id')::uuid;
+ select p0.* into p from site_order_package_private.packages p0 join site_order_package_private.refusals r on r.package_id=p0.id
+ where p0.id=p_package and p0.recipient_company_id=cid for share of p0,r;
+ if p.id is null then raise exception 'site_order_refusal_not_found' using errcode='42501';end if;
+ perform trade_document_consent_private.lock_pair(p.sender_company_id,p.recipient_company_id);
+ perform pg_advisory_xact_lock(hashtextextended('site-order-notify:'||p.id::text,0));
+ for m in select distinct user_id from public.company_members where company_id=p.sender_company_id and role::text in('owner','admin','manager')loop
+ if exists(select 1 from site_order_package_private.refusal_notice_receipts where package_id=p.id and recipient_user_id=m.user_id)then continue;end if;
+ notification:=gen_random_uuid();
+ insert into public.app_notifications(id,company_id,recipient_user_id,kind,title,body,action_key,action_id,created_at)
+ values(notification,p.sender_company_id,m.user_id,'info','注文が辞退されました','対象の注文・請書を開いて内容をご確認ください。','site_order_package',p.id,clock_timestamp());
+ insert into site_order_package_private.refusal_notice_receipts(package_id,recipient_user_id,notification_id) values(p.id,m.user_id,notification);added:=added+1;
+ end loop;
+ if not exists(select 1 from site_order_package_private.refusal_notice_receipts where package_id=p.id) then
+ raise exception 'site_order_refusal_notification_recipient_missing' using errcode='40001';end if;
+ -- Retire the original recipient approval prompt only after terminal refusal.
+ update public.app_notifications n set read_at=coalesce(n.read_at,clock_timestamp())
+ from site_order_package_private.notification_receipts r join site_order_package_private.notice_intents i on i.id=r.source_id
+ where r.source_kind='receive' and r.package_id=p.id and r.notification_id=n.id and i.kind='approval_required' and n.company_id=cid;
+ return jsonb_build_object('package_id',p.id,'app_inbox_inserted',added,'device_push_confirmed',false);
+end $$;
+create function site_order_package_private.package_decision_detail(p_package uuid)returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare detail jsonb;
+begin
+ detail:=site_order_package_private.package_detail(p_package);
+ return detail||jsonb_build_object('rejected',exists(select 1 from site_order_package_private.refusals where package_id=p_package));
+end $$;
+revoke all on site_order_package_private.refusals,site_order_package_private.refusal_operations,site_order_package_private.refusal_notice_receipts from public,anon,authenticated,service_role;
+revoke all on function site_order_package_private.refuse_order(uuid,uuid,boolean),site_order_package_private.reconcile_refusal(uuid,uuid),
+ site_order_package_private.dispatch_refusal_notifications(uuid),site_order_package_private.package_decision_detail(uuid) from public,anon,authenticated,service_role;
+do $$begin
+ if exists(select 1 from pg_class t cross join lateral aclexplode(coalesce(t.relacl,acldefault('r',t.relowner)))a
+ where t.oid in('site_order_package_private.refusals'::regclass,'site_order_package_private.refusal_operations'::regclass,'site_order_package_private.refusal_notice_receipts'::regclass)
+ and (a.grantee<>t.relowner or not t.relrowsecurity or pg_get_userbyid(t.relowner)<>'postgres')) then raise exception 'site_order_refusal_unexpected_table_acl';end if;
+ if exists(select 1 from pg_proc p cross join lateral aclexplode(coalesce(p.proacl,acldefault('f',p.proowner)))a
+ where p.oid in('site_order_package_private.refuse_order(uuid,uuid,boolean)'::regprocedure,'site_order_package_private.reconcile_refusal(uuid,uuid)'::regprocedure,
+ 'site_order_package_private.dispatch_refusal_notifications(uuid)'::regprocedure,'site_order_package_private.package_decision_detail(uuid)'::regprocedure)
+ and a.grantee<>p.proowner) then raise exception 'site_order_refusal_unexpected_acl';end if;
+end $$;
+commit;

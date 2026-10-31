@@ -1,0 +1,193 @@
+-- REVIEW ONLY. Private, purpose-scoped generated adapters; no public grants.
+-- Existing owner/admin consent helpers and all their original definitions stay unchanged.
+begin;
+do $$ declare e record;p pg_proc; begin
+ if to_regnamespace('site_order_manager_private') is not null then raise exception 'site_manager_namespace_exists';end if;
+ for e in select * from(values
+ ('trade_document_consent_private.bind_local(uuid,uuid,uuid)','b7a963d4b6b8427510f77ed09875bd3c',true,'void','v','doc uuid, cid uuid, local_id uuid'),
+ ('trade_document_consent_private.decide(uuid,integer,uuid,integer,text,text,text,boolean,uuid)','15b5a7a4a961cfee60da6be237c180ec',true,'jsonb','v','doc uuid, rev integer, cid uuid, expected_epoch integer, expected_body_hash text, action text, expected_seal_hash text, confirmed boolean, rid uuid'),
+ ('trade_document_consent_private.prepare_document(uuid,uuid,uuid,integer,jsonb,text,uuid,text,integer)','a609aebf840b34a6e576a5fe2428e439',true,'jsonb','v','doc uuid, own_company uuid, peer_company uuid, expected_revision integer, body jsonb, parent_kind text, parent_id uuid, expected_parent_revision text, expected_attachment_version integer'),
+ ('trade_document_consent_private.preview_own(uuid,integer,uuid)','479151769943b00bf76ebd4e31ed69b4',true,'jsonb','v','doc uuid, rev integer, cid uuid'),
+ ('trade_document_consent_private.render_approved(uuid,integer,uuid,boolean)','b53668611851ab0bc211660e6f6d1f86',true,'jsonb','v','doc uuid, rev integer, cid uuid, archive boolean'),
+ ('trade_document_consent_private.require_local(uuid,uuid)','658221ecb8ca37c41b7fb3d38f9da321',true,'void','s','doc uuid, cid uuid'),
+ ('site_order_artifact_private.prepare_job(uuid,uuid,uuid,integer,uuid,uuid)','0a641b5cefd8734a62a7f75e52b39084',true,'jsonb','v','p_company uuid, p_site uuid, p_document uuid, p_revision integer, p_request uuid, p_trade uuid'),
+ ('site_order_artifact_private.register_canonical_pdf(uuid,bytea)','4d8b771e28f9d50ff3412fb336dd27ee',true,'jsonb','v','p_job uuid, p_pdf bytea'),
+ ('private.require_standalone_trade_document_access()','63c57e18a04499e8d6bcfad4ead7837f',true,'jsonb','v',''),
+ ('trade_document_consent_private.require_actor(uuid)','672a165b2b721befce37aa706626be7c',true,'void','s','cid uuid'),
+ ('trade_document_consent_private.immutable()','73660d9947f20d6f99c59d8451078e7e',false,'trigger','v','')
+ ) v(signature,source_md5,definer,result_type,volatility,arguments) loop
+  select * into p from pg_proc where oid=to_regprocedure(e.signature);
+  if p.oid is null or md5(p.prosrc) is distinct from e.source_md5
+   or p.prokind<>'f' or p.proretset or p.proleakproof
+   or pg_get_function_result(p.oid)<>e.result_type or p.provolatile::text<>e.volatility
+   or pg_get_function_identity_arguments(p.oid)<>e.arguments
+   or p.prosecdef is distinct from e.definer or pg_get_userbyid(p.proowner)<>'postgres'
+   or p.proconfig is distinct from array['search_path=""']::text[]
+   or has_function_privilege('anon',p.oid,'EXECUTE')
+   or has_function_privilege('authenticated',p.oid,'EXECUTE')
+   or has_function_privilege('service_role',p.oid,'EXECUTE') then
+   raise exception 'site_manager_source_changed: %',e.signature;
+  end if;
+ end loop;
+end $$;
+create schema site_order_manager_private;
+revoke all on schema site_order_manager_private from public,anon,authenticated,service_role;
+create table site_order_manager_private.document_scopes(
+ document_id uuid primary key,
+ company_id uuid not null references public.companies(id),
+ site_id uuid not null references public.sites(id),
+ counterparty_company_id uuid not null references public.companies(id),
+ trade_company_id uuid not null references public.trade_companies(id),
+ connection_fingerprint text not null check(connection_fingerprint~'^[a-f0-9]{64}$'),
+ kind text not null check(kind in('order','acceptance')),
+ created_by uuid not null,
+ created_at timestamptz not null default clock_timestamp(),
+ check(company_id<>counterparty_company_id),
+ foreign key(document_id) references trade_document_consent_private.documents(id) deferrable initially deferred
+);
+alter table site_order_manager_private.document_scopes enable row level security;
+create trigger immutable_scope before update or delete on site_order_manager_private.document_scopes
+ for each row execute function trade_document_consent_private.immutable();
+create trigger immutable_scope_truncate before truncate on site_order_manager_private.document_scopes
+ for each statement execute function trade_document_consent_private.immutable();
+create table site_order_manager_private.generated_sources(
+ signature text primary key,source_md5 text not null,generated_md5 text not null
+);
+alter table site_order_manager_private.generated_sources enable row level security;
+create trigger immutable_generated_source before update or delete on site_order_manager_private.generated_sources
+ for each row execute function trade_document_consent_private.immutable();
+create trigger immutable_generated_source_truncate before truncate on site_order_manager_private.generated_sources
+ for each statement execute function trade_document_consent_private.immutable();
+
+-- This is an actor base only. It does not grant access to unrelated financial data.
+create function site_order_manager_private.counterparty_context(cid uuid,trade uuid,kind text)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare a jsonb;t public.trade_companies%rowtype;cc private.company_connections%rowtype;n text;binding jsonb;
+begin
+ a:=private.require_standalone_trade_document_access();
+ if a->>'company_id' is distinct from cid::text or kind is null or kind not in('order','acceptance') then
+  raise exception 'site_manager_exact_company_kind_required' using errcode='42501';end if;
+ select * into t from public.trade_companies where id=trade for share;
+ if t.id is null or t.company_id<>cid or t.linked_company_id is null or t.linked_company_id=cid
+ or t.link_status is distinct from 'linked' or
+ (case kind when 'order' then coalesce(t.trade_role,'') not in('subcontractor','both')
+ else coalesce(t.trade_role,'') not in('customer','both') end) then
+  raise exception 'site_manager_registered_direction_required' using errcode='42501';end if;
+ perform trade_document_consent_private.lock_pair(cid,t.linked_company_id);
+ select name into n from public.companies where id=t.linked_company_id for share;
+ select * into cc from private.company_connections where status='accepted' and
+ ((parent_company_id=cid and child_company_id=t.linked_company_id)
+ or(parent_company_id=t.linked_company_id and child_company_id=cid)) for share;
+ binding:=jsonb_build_object('connection',to_jsonb(cc),'trade_company_id',t.id,
+ 'linked_company_id',t.linked_company_id,'trade_role',t.trade_role,'link_status',t.link_status,'counterparty_name',n);
+ return jsonb_build_object('company_id',t.linked_company_id,'name',n,'connection_fingerprint',
+ encode(sha256(convert_to(binding::text,'UTF8')),'hex'));
+end $$;
+create function site_order_manager_private.require_actor(cid uuid,doc uuid) returns void
+language plpgsql security definer set search_path='' as $$
+declare a jsonb;s site_order_manager_private.document_scopes%rowtype;peer jsonb;d trade_document_consent_private.documents%rowtype;
+begin
+ a:=private.require_standalone_trade_document_access();
+ select * into s from site_order_manager_private.document_scopes where document_id=doc for share;
+ if a->>'company_id' is distinct from cid::text or s.document_id is null or s.company_id<>cid
+ or not exists(select 1 from public.sites where id=s.site_id and company_id=cid) then
+  raise exception 'site_manager_registered_site_document_required' using errcode='42501';end if;
+ perform 1 from public.sites where id=s.site_id and company_id=cid for share;
+ if not found then raise exception 'site_manager_registered_site_document_required' using errcode='42501';end if;
+ peer:=site_order_manager_private.counterparty_context(cid,s.trade_company_id,s.kind);
+ if peer->>'company_id' is distinct from s.counterparty_company_id::text
+ or peer->>'connection_fingerprint' is distinct from s.connection_fingerprint then
+  raise exception 'site_manager_counterparty_changed' using errcode='40001';end if;
+ select * into d from trade_document_consent_private.documents where id=doc for share;
+ -- A reserved site document cannot lend authority to any financial revision,
+ -- including a historical binding after an owner returns its current body to standalone.
+ if exists(select 1 from trade_document_consent_private.revisions where document_id=doc and binding is not null) then
+  raise exception 'site_manager_document_repurposed' using errcode='42501';end if;
+
+ if d.id is not null and (d.issuer_company_id,d.counterparty_company_id,d.document_kind)
+ is distinct from(cid,s.counterparty_company_id,s.kind) then
+  raise exception 'site_manager_directional_document_changed' using errcode='42501';end if;
+end $$;
+-- The generator permits only named, mechanical authorization substitutions.
+-- All canonical tables, body/seal checks, CAS, receipts and history stay verbatim.
+do $generate$ declare e record;p pg_proc;src text;def text;new_oid oid;args text;result_type text;vol text;
+begin
+ for e in select * from(values
+ ('trade_document_consent_private','prepare_document','trade_document_consent_private.prepare_document(uuid,uuid,uuid,integer,jsonb,text,uuid,text,integer)'),
+ ('trade_document_consent_private','bind_local','trade_document_consent_private.bind_local(uuid,uuid,uuid)'),
+ ('trade_document_consent_private','require_local','trade_document_consent_private.require_local(uuid,uuid)'),
+ ('trade_document_consent_private','preview_own','trade_document_consent_private.preview_own(uuid,integer,uuid)'),
+ ('trade_document_consent_private','decide','trade_document_consent_private.decide(uuid,integer,uuid,integer,text,text,text,boolean,uuid)'),
+ ('trade_document_consent_private','render_approved','trade_document_consent_private.render_approved(uuid,integer,uuid,boolean)'),
+ ('site_order_artifact_private','prepare_job','site_order_artifact_private.prepare_job(uuid,uuid,uuid,integer,uuid,uuid)'),
+ ('site_order_artifact_private','register_canonical_pdf','site_order_artifact_private.register_canonical_pdf(uuid,bytea)')
+ )v(schema_name,name,signature) loop
+  select p0.* into p from pg_proc p0 where p0.oid=to_regprocedure(e.signature);
+  if p.oid is null then raise exception 'site_manager_generator_source_missing';end if;
+  src:=p.prosrc;
+  src:=replace(src,'trade_document_consent_private.require_actor(own_company)',
+    'site_order_manager_private.require_actor(own_company,doc)');
+  src:=replace(src,'trade_document_consent_private.require_actor(cid)',
+    'site_order_manager_private.require_actor(cid,doc)');
+  src:=replace(src,'trade_document_consent_private.require_actor(p_company)',
+    'site_order_manager_private.require_actor(p_company,p_document)');
+  src:=replace(src,'trade_document_consent_private.require_actor(j.company_id)',
+    'site_order_manager_private.require_actor(j.company_id,j.document_id)');
+  src:=replace(src,'trade_document_consent_private.require_local(',
+    'site_order_manager_private.require_local(');
+  src:=replace(src,'trade_document_consent_private.render_approved(',
+    'site_order_manager_private.render_approved(');
+  if src like '%trade_document_consent_private.require_actor(%' then
+   raise exception 'site_manager_unmapped_actor_reference';end if;
+  if e.name='prepare_document' then
+   src:=replace(src,E'begin\n',E'begin\n if parent_kind is not null or parent_id is not null or expected_parent_revision is not null or expected_attachment_version is not null then raise exception ''site_manager_no_financial_parent'' using errcode=''42501'';end if;\n if peer_company is distinct from(select counterparty_company_id from site_order_manager_private.document_scopes where document_id=doc) or body->>''kind'' is distinct from(select kind from site_order_manager_private.document_scopes where document_id=doc) then raise exception ''site_manager_exact_reserved_direction_required'' using errcode=''42501'';end if;\n');
+  elsif e.name='prepare_job' then
+   src:=replace(src,E'begin\n',E'begin\n if not exists(select 1 from site_order_manager_private.document_scopes where document_id=p_document and company_id=p_company and site_id=p_site and trade_company_id=p_trade) then raise exception ''site_manager_exact_reserved_site_or_trade_required'' using errcode=''42501'';end if;\n');
+  elsif e.name='register_canonical_pdf' then
+   src:=replace(src,'perform site_order_manager_private.require_actor(j.company_id,j.document_id);',
+    'perform site_order_manager_private.require_actor(j.company_id,j.document_id); if not exists(select 1 from site_order_manager_private.document_scopes where document_id=j.document_id and company_id=j.company_id and site_id=j.site_id and trade_company_id=j.counterparty_trade_company_id and connection_fingerprint=j.counterparty_connection_fingerprint) then raise exception ''site_manager_exact_reserved_site_or_trade_required'' using errcode=''42501'';end if;');
+  end if;
+  args:=pg_get_function_arguments(p.oid);result_type:=pg_get_function_result(p.oid);
+  vol:=case p.provolatile when 's' then 'stable' when 'i' then 'immutable' else 'volatile' end;
+  def:=format('create function site_order_manager_private.%I(%s) returns %s language plpgsql %s security definer set search_path=%L as %L',e.name,args,result_type,vol,'',src);
+  execute def;
+  select q.oid into new_oid from pg_proc q join pg_namespace n on n.oid=q.pronamespace
+   where n.nspname='site_order_manager_private' and q.proname=e.name;
+  insert into site_order_manager_private.generated_sources values(p.oid::regprocedure::text,md5(p.prosrc),md5(src));
+ end loop;
+end $generate$;
+
+create function site_order_manager_private.prepare_site_document(p_site uuid,p_doc uuid,p_trade uuid,
+ p_kind text,p_connection_fingerprint text,p_expected_revision integer,p_body jsonb) returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare a jsonb;cid uuid;peer jsonb;s site_order_manager_private.document_scopes%rowtype;result jsonb;
+begin
+ a:=private.require_standalone_trade_document_access();cid:=(a->>'company_id')::uuid;
+ if p_doc is null or p_expected_revision is null or p_expected_revision<0 or not exists(
+  select 1 from public.sites where id=p_site and company_id=cid) then
+  raise exception 'site_manager_existing_own_site_required' using errcode='42501';end if;
+ peer:=site_order_manager_private.counterparty_context(cid,p_trade,p_kind);
+ if p_connection_fingerprint is distinct from peer->>'connection_fingerprint' then
+  raise exception 'site_manager_connection_changed' using errcode='40001';end if;
+ perform pg_advisory_xact_lock(hashtextextended('site-manager-scope:'||p_doc::text,0));
+ select * into s from site_order_manager_private.document_scopes where document_id=p_doc for update;
+ if s.document_id is null then
+  if p_expected_revision<>0 or exists(select 1 from trade_document_consent_private.documents where id=p_doc) then
+   raise exception 'site_manager_new_document_reservation_required' using errcode='40001';end if;
+  insert into site_order_manager_private.document_scopes(document_id,company_id,site_id,counterparty_company_id,
+   trade_company_id,connection_fingerprint,kind,created_by)
+  values(p_doc,cid,p_site,(peer->>'company_id')::uuid,p_trade,p_connection_fingerprint,p_kind,auth.uid());
+ elsif(s.company_id,s.site_id,s.counterparty_company_id,s.trade_company_id,s.connection_fingerprint,s.kind)
+ is distinct from(cid,p_site,(peer->>'company_id')::uuid,p_trade,p_connection_fingerprint,p_kind) then
+  raise exception 'site_manager_reserved_document_changed' using errcode='40001';
+ end if;
+ result:=site_order_manager_private.prepare_document(p_doc,cid,(peer->>'company_id')::uuid,
+  p_expected_revision,p_body,null,null,null,null);
+ perform site_order_manager_private.require_actor(cid,p_doc);
+ return result||jsonb_build_object('site_id',p_site,'company_id',cid,
+  'trade_company_id',p_trade,'connection_fingerprint',p_connection_fingerprint);
+end $$;
+revoke all on all tables in schema site_order_manager_private from public,anon,authenticated,service_role;
+revoke all on all functions in schema site_order_manager_private from public,anon,authenticated,service_role;
+-- No public API, account role change, master enablement or deployment.
+commit;

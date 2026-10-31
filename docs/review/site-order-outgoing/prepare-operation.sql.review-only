@@ -1,0 +1,317 @@
+-- REVIEW ONLY. New private purpose only. No production migration or activation.
+-- Financial bodies remain solely in existing canonical revisions, never here.
+begin;
+do $$ declare e record;p pg_proc;begin
+ if to_regnamespace('site_order_outgoing_private') is not null then
+  raise exception 'outgoing_operation_namespace_exists' using errcode='55000';end if;
+ for e in select * from(values
+  ('private.require_standalone_trade_document_access()','63c57e18a04499e8d6bcfad4ead7837f',true,true),
+  ('site_order_package_private.read_actor()','cc3b89f99b06543bcbedde33608b2920',true,false),
+  ('site_order_manager_private.outgoing_context(uuid,uuid)','6098d5ffa0b46778fff630be3d345fae',true,false),
+  ('site_order_manager_private.observe_prepare(uuid,uuid,uuid,uuid)','01b6bacd8a9ea8503d7335fbb3418312',true,false),
+  ('site_order_manager_private.prepare_site_document(uuid,uuid,uuid,text,text,integer,jsonb)','8be1d561da69f306823b3a51558370e6',true,false),
+  ('site_order_manager_private.bind_local(uuid,uuid,uuid)','a5b0c67ce9839e1c5a3326361b572011',true,false),
+  ('trade_document_consent_private.immutable()','73660d9947f20d6f99c59d8451078e7e',false,false)
+ )v(signature,body_md5,definer,allow_authenticated) loop
+  select * into p from pg_proc where oid=to_regprocedure(e.signature);
+  if p.oid is null or md5(p.prosrc) is distinct from e.body_md5
+   or p.prosecdef is distinct from e.definer or pg_get_userbyid(p.proowner)<>'postgres'
+   or p.proconfig is distinct from array['search_path=""']::text[]
+   or exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) x
+    where x.privilege_type<>'EXECUTE' or x.is_grantable or x.grantor<>p.proowner
+     or (x.grantee<>p.proowner and not(e.allow_authenticated and x.grantee='authenticated'::regrole)))
+   or (e.allow_authenticated and not exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) x
+    where x.grantee='authenticated'::regrole and x.privilege_type='EXECUTE'))
+  then raise exception 'outgoing_operation_dependency_changed: %',e.signature using errcode='55000';end if;
+ end loop;
+end $$;
+create schema site_order_outgoing_private;
+revoke all on schema site_order_outgoing_private from public,anon,authenticated,service_role;
+create table site_order_outgoing_private.prepared_operations(
+ id uuid primary key,company_id uuid not null,actor_id uuid not null,session_id uuid not null,
+ request_id uuid not null,site_id uuid not null,document_id uuid not null unique,
+ local_document_id uuid not null check(local_document_id<>document_id),trade_company_id uuid not null,
+ counterparty_company_id uuid not null check(counterparty_company_id<>company_id),
+ connection_fingerprint text not null check(connection_fingerprint~'^[0-9a-f]{64}$'),
+ body_sha256 text not null check(body_sha256~'^[0-9a-f]{64}$'),
+ source_sha256 text not null check(source_sha256~'^[0-9a-f]{64}$'),
+ seal_sha256 text not null check(seal_sha256~'^[0-9a-f]{64}$'),
+ prepared_at timestamptz not null default clock_timestamp(),
+ unique(company_id,actor_id,request_id),unique(id,company_id,actor_id,request_id)
+);
+create table site_order_outgoing_private.prepare_retirements(
+ id uuid primary key,company_id uuid not null,actor_id uuid not null,session_id uuid not null,
+ request_id uuid not null,site_id uuid not null,document_id uuid not null,
+ local_document_id uuid not null check(local_document_id<>document_id),trade_company_id uuid not null,
+ operation_id uuid,retired_at timestamptz not null default clock_timestamp(),
+ unique(company_id,actor_id,request_id),unique(operation_id),
+ foreign key(operation_id,company_id,actor_id,request_id)
+  references site_order_outgoing_private.prepared_operations(id,company_id,actor_id,request_id)
+);
+alter table site_order_outgoing_private.prepared_operations enable row level security;
+alter table site_order_outgoing_private.prepare_retirements enable row level security;
+create trigger immutable_prepared_operation before update or delete on site_order_outgoing_private.prepared_operations
+ for each row execute function trade_document_consent_private.immutable();
+create trigger immutable_prepared_operation_truncate before truncate on site_order_outgoing_private.prepared_operations
+ for each statement execute function trade_document_consent_private.immutable();
+create trigger immutable_prepare_retirement before update or delete on site_order_outgoing_private.prepare_retirements
+ for each row execute function trade_document_consent_private.immutable();
+create trigger immutable_prepare_retirement_truncate before truncate on site_order_outgoing_private.prepare_retirements
+ for each statement execute function trade_document_consent_private.immutable();
+
+create function site_order_outgoing_private.lock_key(cid uuid,actor uuid,request uuid)
+returns bigint language sql immutable security invoker set search_path='' as $$
+ select hashtextextended('site-order-outgoing-prepare:'||cid::text||':'||actor::text||':'||request::text,0)
+$$;
+create function site_order_outgoing_private.source_hash(context jsonb)
+returns text language sql immutable security invoker set search_path='' as $$
+ select encode(sha256(convert_to((context-array['actor_id','session_id','creates_document','records_consent','can_send'])::text,'UTF8')),'hex')
+$$;
+create function site_order_outgoing_private.prepared_receipt(o site_order_outgoing_private.prepared_operations,state text)
+returns jsonb language sql stable security invoker set search_path='' as $$
+ select jsonb_build_object('contract_version',1,'operation_state',state,'operation_id',o.id,
+  'company_id',o.company_id,'request_id',o.request_id,'site_id',o.site_id,'document_id',o.document_id,
+  'local_document_id',o.local_document_id,'trade_company_id',o.trade_company_id,'body_hash',o.body_sha256,
+  'source_hash',o.source_sha256,'seal_hash',o.seal_sha256,'prepared_at',o.prepared_at,
+  'retired',false,'journal_clearable',false,'retry_automatically',false,'may_prepare_again',false,'can_send',false)
+$$;
+create function site_order_outgoing_private.retired_receipt(t site_order_outgoing_private.prepare_retirements)
+returns jsonb language sql stable security invoker set search_path='' as $$
+ select jsonb_build_object('contract_version',1,'operation_state','retired','retirement_id',t.id,
+  'company_id',t.company_id,'request_id',t.request_id,'site_id',t.site_id,'document_id',t.document_id,
+  'local_document_id',t.local_document_id,'trade_company_id',t.trade_company_id,'retired_at',t.retired_at,
+  'operation_id',t.operation_id,'verified_prepared_operation',t.operation_id is not null,
+  'retired',true,'order_cancelled',false,'journal_clearable',true,
+  'retry_automatically',false,'may_prepare_again',false,'can_send',false)
+$$;
+create function site_order_outgoing_private.phase(o site_order_outgoing_private.prepared_operations)
+returns text language plpgsql security invoker set search_path='' as $$
+declare d trade_document_consent_private.documents%rowtype;r trade_document_consent_private.revisions%rowtype;
+begin
+ select * into d from trade_document_consent_private.documents where id=o.document_id for share;
+ select * into r from trade_document_consent_private.revisions where document_id=o.document_id and revision=1 for share;
+ if d.id is null or r.document_id is null then return 'changed';end if;
+ if d.current_revision<>1 or r.state<>'open' or r.epoch<>0
+  or exists(select 1 from trade_document_consent_private.consents where document_id=o.document_id)
+  or exists(select 1 from trade_document_consent_private.events where document_id=o.document_id)
+  or exists(select 1 from trade_document_consent_private.receipts where payload->>'document_id'=o.document_id::text)
+  or exists(select 1 from site_order_artifact_private.render_jobs where document_id=o.document_id)
+ then return 'advanced';end if;
+ if (d.issuer_company_id,d.counterparty_company_id,d.transaction_id,d.document_kind)
+   is distinct from(o.company_id,o.counterparty_company_id,o.document_id,'order'::text)
+  or r.created_by<>o.actor_id or r.binding is not null or r.body_hash<>o.body_sha256
+  or r.body_hash is distinct from encode(sha256(convert_to(r.body::text,'UTF8')),'hex')
+  or not exists(select 1 from trade_document_consent_private.local_links
+   where company_id=o.company_id and local_document_id=o.local_document_id and document_id=o.document_id)
+ then return 'changed';end if;
+ return 'unsigned';
+end $$;
+
+-- Intended for a future explicit-consent wrapper in the SAME transaction.
+-- It does not record consent, create/render a job, or authorize sending.
+create function site_order_outgoing_private.require_unsigned_prepare(p_site uuid,p_doc uuid,p_local uuid,p_trade uuid,p_request uuid)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare a jsonb;cid uuid;context jsonb;o site_order_outgoing_private.prepared_operations%rowtype;observed jsonb;
+begin
+ a:=private.require_standalone_trade_document_access();cid:=(a->>'company_id')::uuid;
+ if p_site is null or p_doc is null or p_local is null or p_trade is null or p_request is null
+ then raise exception 'outgoing_prepare_identity_required' using errcode='22023';end if;
+ context:=site_order_manager_private.outgoing_context(p_site,p_trade);
+ perform pg_advisory_xact_lock(site_order_outgoing_private.lock_key(cid,auth.uid(),p_request));
+ if exists(select 1 from site_order_outgoing_private.prepare_retirements
+  where company_id=cid and actor_id=auth.uid() and request_id=p_request)
+ then raise exception 'outgoing_prepare_retired' using errcode='55000';end if;
+ select * into o from site_order_outgoing_private.prepared_operations
+  where company_id=cid and actor_id=auth.uid() and request_id=p_request for share;
+ if o.id is null or (o.site_id,o.document_id,o.local_document_id,o.trade_company_id)
+   is distinct from(p_site,p_doc,p_local,p_trade)
+ then raise exception 'outgoing_prepare_operation_unavailable' using errcode='42501';end if;
+ if o.session_id::text is distinct from a->>'session_id'
+ then raise exception 'outgoing_prepare_new_session_review_required' using errcode='42501';end if;
+ if o.connection_fingerprint is distinct from context->>'connection_fingerprint'
+  or o.source_sha256 is distinct from site_order_outgoing_private.source_hash(context)
+  or o.seal_sha256 is distinct from context#>>'{own_seal,seal_hash}'
+ then raise exception 'outgoing_prepare_source_changed' using errcode='40001';end if;
+ observed:=site_order_manager_private.observe_prepare(p_site,p_doc,p_local,p_trade);
+ if observed->>'operation_state' is distinct from 'prepared_review_required'
+  or observed->>'body_hash' is distinct from o.body_sha256
+ then raise exception 'outgoing_prepare_not_unsigned' using errcode='40001';end if;
+ context:=site_order_manager_private.outgoing_context(p_site,p_trade);
+ if o.source_sha256 is distinct from site_order_outgoing_private.source_hash(context)
+  or o.seal_sha256 is distinct from context#>>'{own_seal,seal_hash}'
+ then raise exception 'outgoing_prepare_source_changed' using errcode='40001';end if;
+ if private.require_standalone_trade_document_access() is distinct from a
+ then raise exception 'outgoing_prepare_actor_changed' using errcode='40001';end if;
+ return site_order_outgoing_private.prepared_receipt(o,'prepared_review_required')||jsonb_build_object('guard_verified',true);
+end $$;
+
+create function site_order_outgoing_private.prepare_order(p_site uuid,p_doc uuid,p_local uuid,p_trade uuid,
+ p_request uuid,p_fingerprint text,p_body jsonb)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare a jsonb;cid uuid;context jsonb;fresh_context jsonb;o site_order_outgoing_private.prepared_operations%rowtype;
+ t site_order_outgoing_private.prepare_retirements%rowtype;digest text;prepared jsonb;observed jsonb;state text;
+begin
+ a:=private.require_standalone_trade_document_access();cid:=(a->>'company_id')::uuid;
+ if p_site is null or p_doc is null or p_local is null or p_trade is null or p_request is null
+  or p_doc=p_local or p_request in(p_doc,p_local)
+  or jsonb_typeof(p_body) is distinct from 'object' or octet_length(p_body::text)>32768
+ then raise exception 'outgoing_prepare_identity_or_body_invalid' using errcode='22023';end if;
+ context:=site_order_manager_private.outgoing_context(p_site,p_trade);
+ if p_fingerprint is distinct from context->>'connection_fingerprint'
+  or p_body->>'issuer_company_id' is distinct from cid::text
+  or p_body->>'counterparty_company_id' is distinct from context->>'counterparty_company_id'
+  or p_body->>'transaction_id' is distinct from p_doc::text or p_body->>'kind' is distinct from 'order'
+  or p_body->'issuer' is distinct from context->'issuer' or p_body->'counterparty' is distinct from context->'counterparty'
+ then raise exception 'outgoing_prepare_source_changed' using errcode='40001';end if;
+ digest:=encode(sha256(convert_to(p_body::text,'UTF8')),'hex');
+ perform pg_advisory_xact_lock(site_order_outgoing_private.lock_key(cid,auth.uid(),p_request));
+ select * into t from site_order_outgoing_private.prepare_retirements
+  where company_id=cid and actor_id=auth.uid() and request_id=p_request for share;
+ if t.id is not null then raise exception 'outgoing_prepare_retired' using errcode='55000';end if;
+ select * into o from site_order_outgoing_private.prepared_operations
+  where company_id=cid and actor_id=auth.uid() and request_id=p_request for share;
+ if o.id is not null then
+  if (o.site_id,o.document_id,o.local_document_id,o.trade_company_id,o.connection_fingerprint,o.body_sha256,o.source_sha256,o.seal_sha256)
+   is distinct from(p_site,p_doc,p_local,p_trade,p_fingerprint,digest,
+    site_order_outgoing_private.source_hash(context),context#>>'{own_seal,seal_hash}')
+  then raise exception 'outgoing_prepare_request_changed' using errcode='40001';end if;
+  if o.session_id::text is distinct from a->>'session_id'
+  then raise exception 'outgoing_prepare_new_session_review_required' using errcode='42501';end if;
+  perform pg_advisory_xact_lock(hashtextextended('site-manager-scope:'||p_doc::text,0));
+  perform pg_advisory_xact_lock(hashtextextended('trade-document-consent:'||p_doc::text,0));
+  state:=site_order_outgoing_private.phase(o);
+  if state<>'unsigned' then
+   if private.require_standalone_trade_document_access() is distinct from a
+   then raise exception 'outgoing_prepare_actor_changed' using errcode='40001';end if;
+   return site_order_outgoing_private.prepared_receipt(o,state);
+  end if;
+  perform site_order_outgoing_private.require_unsigned_prepare(p_site,p_doc,p_local,p_trade,p_request);
+  return site_order_outgoing_private.prepared_receipt(o,'prepared_review_required');
+ end if;
+ prepared:=site_order_manager_private.prepare_site_document(p_site,p_doc,p_trade,'order',p_fingerprint,0,p_body);
+ perform site_order_manager_private.bind_local(p_doc,cid,p_local);
+ observed:=site_order_manager_private.observe_prepare(p_site,p_doc,p_local,p_trade);
+ if prepared->>'revision' is distinct from '1' or observed->>'operation_state' is distinct from 'prepared_review_required'
+  or observed->>'body_hash' is distinct from digest
+ then raise exception 'outgoing_prepare_atomic_state_changed' using errcode='40001';end if;
+ fresh_context:=site_order_manager_private.outgoing_context(p_site,p_trade);
+ if site_order_outgoing_private.source_hash(context) is distinct from site_order_outgoing_private.source_hash(fresh_context)
+ then raise exception 'outgoing_prepare_source_changed' using errcode='40001';end if;
+ insert into site_order_outgoing_private.prepared_operations(id,company_id,actor_id,session_id,request_id,
+  site_id,document_id,local_document_id,trade_company_id,counterparty_company_id,
+  connection_fingerprint,body_sha256,source_sha256,seal_sha256)
+ values(gen_random_uuid(),cid,auth.uid(),(a->>'session_id')::uuid,p_request,p_site,p_doc,p_local,p_trade,
+  (context->>'counterparty_company_id')::uuid,p_fingerprint,digest,
+  site_order_outgoing_private.source_hash(context),context#>>'{own_seal,seal_hash}') returning * into o;
+ if private.require_standalone_trade_document_access() is distinct from a
+ then raise exception 'outgoing_prepare_actor_changed' using errcode='40001';end if;
+ return site_order_outgoing_private.prepared_receipt(o,'prepared_review_required');
+end $$;
+
+create function site_order_outgoing_private.operation_status(p_site uuid,p_doc uuid,p_local uuid,p_trade uuid,p_request uuid)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare a jsonb;cid uuid;o site_order_outgoing_private.prepared_operations%rowtype;
+ t site_order_outgoing_private.prepare_retirements%rowtype;state text;
+begin
+ a:=site_order_package_private.read_actor();cid:=(a->>'company_id')::uuid;
+ if p_site is null or p_doc is null or p_local is null or p_trade is null or p_request is null or p_doc=p_local
+ then raise exception 'outgoing_prepare_identity_required' using errcode='22023';end if;
+ perform pg_advisory_xact_lock(site_order_outgoing_private.lock_key(cid,auth.uid(),p_request));
+ if site_order_package_private.read_actor() is distinct from a
+ then raise exception 'outgoing_prepare_actor_changed' using errcode='40001';end if;
+ select * into t from site_order_outgoing_private.prepare_retirements
+  where company_id=cid and actor_id=auth.uid() and request_id=p_request for share;
+ if t.id is not null then
+  if (t.site_id,t.document_id,t.local_document_id,t.trade_company_id) is distinct from(p_site,p_doc,p_local,p_trade)
+  then raise exception 'outgoing_prepare_request_changed' using errcode='40001';end if;
+  return site_order_outgoing_private.retired_receipt(t);
+ end if;
+ select * into o from site_order_outgoing_private.prepared_operations
+  where company_id=cid and actor_id=auth.uid() and request_id=p_request for share;
+ if o.id is null then return jsonb_build_object('contract_version',1,'operation_state','not_observed',
+  'company_id',cid,'request_id',p_request,'site_id',p_site,'document_id',p_doc,
+  'local_document_id',p_local,'trade_company_id',p_trade,'retired',false,'journal_clearable',false,
+  'retry_automatically',false,'may_prepare_again',false,'can_send',false);end if;
+ if (o.site_id,o.document_id,o.local_document_id,o.trade_company_id) is distinct from(p_site,p_doc,p_local,p_trade)
+ then raise exception 'outgoing_prepare_request_changed' using errcode='40001';end if;
+ perform pg_advisory_xact_lock(hashtextextended('site-manager-scope:'||p_doc::text,0));
+ perform pg_advisory_xact_lock(hashtextextended('trade-document-consent:'||p_doc::text,0));
+ state:=site_order_outgoing_private.phase(o);
+ if site_order_package_private.read_actor() is distinct from a
+ then raise exception 'outgoing_prepare_actor_changed' using errcode='40001';end if;
+ return site_order_outgoing_private.prepared_receipt(o,case state when 'unsigned' then 'prepared_review_required' else state end)
+  ||jsonb_build_object('same_session',o.session_id::text=a->>'session_id','requires_fresh_review',true);
+end $$;
+
+-- Retires only this caller's proposed unsigned PREPARE request, not an order.
+-- OFF does not weaken live-SID/company/current-management authentication.
+create function site_order_outgoing_private.retire_prepare(p_site uuid,p_doc uuid,p_local uuid,p_trade uuid,p_request uuid,p_confirmed boolean)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare a jsonb;cid uuid;peer uuid;o site_order_outgoing_private.prepared_operations%rowtype;
+ t site_order_outgoing_private.prepare_retirements%rowtype;state text;
+begin
+ a:=site_order_package_private.read_actor();cid:=(a->>'company_id')::uuid;
+ if p_site is null or p_doc is null or p_local is null or p_trade is null or p_request is null
+  or p_doc=p_local or p_request in(p_doc,p_local) or p_confirmed is distinct from true
+ then raise exception 'outgoing_prepare_identity_required' using errcode='22023';end if;
+ -- Resolve and lock business identities BEFORE taking the operation lock.
+ -- Missing/unlinked registrations cannot revive a writer; retirement never
+ -- reads or modifies their business content. Unknown targets are caller intent.
+ select * into o from site_order_outgoing_private.prepared_operations
+  where company_id=cid and actor_id=auth.uid() and request_id=p_request;
+ select linked_company_id into peer from public.trade_companies where id=p_trade and company_id=cid for share;
+ perform 1 from public.companies where id in(cid,peer,o.counterparty_company_id) order by id for share;
+ perform pg_advisory_xact_lock(site_order_outgoing_private.lock_key(cid,auth.uid(),p_request));
+ if site_order_package_private.read_actor() is distinct from a
+ then raise exception 'outgoing_prepare_actor_changed' using errcode='40001';end if;
+ select * into t from site_order_outgoing_private.prepare_retirements
+  where company_id=cid and actor_id=auth.uid() and request_id=p_request for share;
+ if t.id is not null then
+  if (t.site_id,t.document_id,t.local_document_id,t.trade_company_id) is distinct from(p_site,p_doc,p_local,p_trade)
+  then raise exception 'outgoing_prepare_request_changed' using errcode='40001';end if;
+  return site_order_outgoing_private.retired_receipt(t);
+ end if;
+ select * into o from site_order_outgoing_private.prepared_operations
+  where company_id=cid and actor_id=auth.uid() and request_id=p_request for share;
+ if o.id is not null then
+  if (o.site_id,o.document_id,o.local_document_id,o.trade_company_id) is distinct from(p_site,p_doc,p_local,p_trade)
+  then raise exception 'outgoing_prepare_request_changed' using errcode='40001';end if;
+  perform pg_advisory_xact_lock(hashtextextended('site-manager-scope:'||p_doc::text,0));
+  perform pg_advisory_xact_lock(hashtextextended('trade-document-consent:'||p_doc::text,0));
+  state:=site_order_outgoing_private.phase(o);
+  if state<>'unsigned' then
+   if site_order_package_private.read_actor() is distinct from a
+   then raise exception 'outgoing_prepare_actor_changed' using errcode='40001';end if;
+   return site_order_outgoing_private.prepared_receipt(o,state)||jsonb_build_object('order_cancelled',false);
+  end if;
+ end if;
+ insert into site_order_outgoing_private.prepare_retirements(id,company_id,actor_id,session_id,request_id,
+  site_id,document_id,local_document_id,trade_company_id,operation_id)
+ values(gen_random_uuid(),cid,auth.uid(),(a->>'session_id')::uuid,p_request,p_site,p_doc,p_local,p_trade,o.id) returning * into t;
+ if site_order_package_private.read_actor() is distinct from a
+ then raise exception 'outgoing_prepare_actor_changed' using errcode='40001';end if;
+ return site_order_outgoing_private.retired_receipt(t);
+end $$;
+
+revoke all on all tables in schema site_order_outgoing_private from public,anon,authenticated,service_role;
+revoke all on all functions in schema site_order_outgoing_private from public,anon,authenticated,service_role;
+do $$ declare n pg_namespace;p pg_proc;c pg_class;begin
+ select * into n from pg_namespace where nspname='site_order_outgoing_private';
+ if pg_get_userbyid(n.nspowner)<>'postgres' or exists(
+  select 1 from aclexplode(coalesce(n.nspacl,acldefault('n',n.nspowner))) x
+  where x.grantee<>n.nspowner or x.grantor<>n.nspowner or x.is_grantable)
+ then raise exception 'outgoing_operation_namespace_acl_changed' using errcode='55000';end if;
+ for c in select * from pg_class where relnamespace=n.oid and relkind='r' loop
+  if pg_get_userbyid(c.relowner)<>'postgres' or not c.relrowsecurity or c.relforcerowsecurity
+   or exists(select 1 from aclexplode(coalesce(c.relacl,acldefault('r',c.relowner))) x
+    where x.grantee<>c.relowner or x.grantor<>c.relowner or x.is_grantable)
+  then raise exception 'outgoing_operation_table_acl_changed' using errcode='55000';end if;
+ end loop;
+ for p in select * from pg_proc where pronamespace=n.oid loop
+  if pg_get_userbyid(p.proowner)<>'postgres' or p.proconfig is distinct from array['search_path=""']::text[]
+   or exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) x
+    where x.grantee<>p.proowner or x.grantor<>p.proowner or x.privilege_type<>'EXECUTE' or x.is_grantable)
+  then raise exception 'outgoing_operation_function_acl_changed' using errcode='55000';end if;
+ end loop;
+end $$;
+commit;

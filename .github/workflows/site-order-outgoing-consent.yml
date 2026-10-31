@@ -1,0 +1,89 @@
+name: Unsigned order review and explicit consent source
+on:
+  pull_request:
+    paths:
+      - 'docs/review/site-order-outgoing-consent/**'
+      - 'lib/features/sites/site_order_outgoing_consent*.dart'
+      - 'tool/render_site_order_unsigned_preview.dart'
+      - 'test/site_order_outgoing_consent*.dart'
+      - 'supabase/functions/site-order-workflow/outgoing-handler.mjs'
+      - '.github/workflows/site-order-outgoing-consent.yml'
+permissions:
+  contents: read
+jobs:
+  exact-eight-consent:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      matrix:
+        engine: [pglite, postgres]
+    services:
+      postgres:
+        image: postgres:17.6
+        env:
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_document_consent_fixture
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/checkout@v4
+        with: {ref: 14cf77f4b166bcb86d0f5fef68080841ac89a27a, path: .actual-source, persist-credentials: false}
+      - uses: actions/checkout@v4
+        with: {ref: 6a24114471a9c264fad1aeec5dd2222915ddbedf, path: .c-source, persist-credentials: false}
+      - uses: actions/checkout@v4
+        with: {ref: de4d4bb018e8c8ca56b0c85bde09fadebca312a4, path: .reply-source, persist-credentials: false}
+      - uses: actions/checkout@v4
+        with: {ref: f4c6da47e8c6bd894c920ab1d85399a4dc5da7bb, path: .history-source, persist-credentials: false}
+      - uses: actions/checkout@v4
+        with: {ref: 8bd475b31f5b05788ea437f33e8825651ef54de0, path: .auth-source, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22.21.0'}
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts
+      - run: npm ci --prefix tool/site_order_edge_dependencies --ignore-scripts
+      - name: Exact frozen helpers and atomic purpose receipts
+        env:
+          SKO_CONSENT_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_document_consent_fixture
+        run: |
+          test "$(id -u)" -ne 0
+          export SKO_CONSENT_RECEIPT_PATH="$GITHUB_WORKSPACE/consent-receipt.json"
+          export SKO_EXACT_EIGHT_SOURCE_ROOT="$GITHUB_WORKSPACE/.actual-source"
+          export SKO_TRADE_C_SOURCE_ROOT="$GITHUB_WORKSPACE/.c-source"
+          export SKO_SITE_REPLY_RECOVERY_SOURCE_ROOT="$GITHUB_WORKSPACE/.reply-source"
+          export SKO_SITE_HISTORY_SOURCE_ROOT="$GITHUB_WORKSPACE/.history-source"
+          export SKO_ACTUAL_AUTH_SOURCE_ROOT="$GITHUB_WORKSPACE/.auth-source"
+          if [ '${{ matrix.engine }}' = postgres ]; then
+            node docs/review/site-order-outgoing-consent/verify.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js" postgres
+          else
+            node docs/review/site-order-outgoing-consent/verify.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
+          fi
+      - name: Hash Native HTTP receipt
+        if: matrix.engine == 'postgres'
+        run: sha256sum consent-receipt.json > consent-receipt.sha256
+      - uses: actions/upload-artifact@v4
+        if: matrix.engine == 'postgres'
+        with:
+          name: order-consent-native-${{ github.sha }}
+          path: |
+            consent-receipt.json
+            consent-receipt.sha256
+          if-no-files-found: error
+  preview-sdk:
+    needs: exact-eight-consent
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: subosito/flutter-action@v2
+        with: {channel: stable, flutter-version: '3.47.5', cache: true}
+      - run: flutter pub get --enforce-lockfile
+      - uses: actions/download-artifact@v4
+        with: {name: 'order-consent-native-${{ github.sha }}'}
+      - run: sha256sum --check consent-receipt.sha256
+      - name: Actual SDK repository, persistent ID journal and Native receipt
+        env:
+          SKO_CONSENT_RECEIPT_PATH: ${{ github.workspace }}/consent-receipt.json
+        run: flutter test test/site_order_outgoing_consent_preview_test.dart test/site_order_outgoing_consent_repository_test.dart
+      - run: flutter analyze lib/features/sites/site_order_outgoing_consent.dart lib/features/sites/site_order_outgoing_consent_preview.dart lib/features/sites/site_order_workflow_repository.dart test/site_order_outgoing_consent_preview_test.dart test/site_order_outgoing_consent_repository_test.dart

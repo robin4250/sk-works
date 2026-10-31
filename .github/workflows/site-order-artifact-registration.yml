@@ -1,0 +1,55 @@
+name: Site order artifact registration contract
+on:
+  pull_request:
+    paths:
+      - 'docs/review/site-order-artifact-registration/**'
+      - 'tool/site_order_artifact_registration_fixture.mjs'
+      - 'tool/fixtures/site_order_master_gate.fixture.sql'
+      - 'tool/verify_site_order_artifact_registration.mjs'
+      - '.github/workflows/site-order-artifact-registration.yml'
+permissions:
+  contents: read
+jobs:
+  registration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      matrix:
+        engine: [pglite, postgres]
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_document_consent_fixture
+        ports:
+          - 5432:5432
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.21.0'
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts
+      - run: node --check tool/site_order_artifact_registration_fixture.mjs
+      - run: node --check tool/verify_site_order_artifact_registration.mjs
+      - name: Reuse actual consent candidates and verify private registration
+        env:
+          SKO_CONFIRMED_TERMS_HOOK: content-v1
+          SKO_MONTHLY_PAYMENT_REVIEW_HOOK: contract-v1
+          SKO_TRADE_DOCUMENT_API_REVIEW_HOOK: contract-v1
+          SKO_SITE_ORDER_ARTIFACT_REGISTRATION_HOOK: contract-v1
+          SKO_CONSENT_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_document_consent_fixture
+        run: |
+          if [ '${{ matrix.engine }}' = 'postgres' ]; then
+            node tool/verify_site_order_artifact_registration.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js" postgres
+          else
+            node tool/verify_site_order_artifact_registration.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
+          fi
+      - run: git diff --exit-code -- tool/security/fixture_dependencies/package.json tool/security/fixture_dependencies/package-lock.json
+      - name: Preserve canonical inputs and leave no temporary fixture module
+        run: |
+          git diff --exit-code -- tool/verify_trade_document_bound_seal_consent.mjs tool/fixtures/trade_reciprocal_gate/source_manifest.json
+          node -e "if(require('node:fs').readdirSync('tool').some(n=>n.startsWith('.site-order-artifact-fixture-')))throw Error('Temporary artifact fixture module remains')"

@@ -1,0 +1,56 @@
+-- REVIEW ONLY. Management-only private list/detail; never a footer-site projection.
+begin;
+do $$ declare e record;p pg_proc;begin
+ for e in select * from(values
+('site_order_package_private.read_actor()','cc3b89f99b06543bcbedde33608b2920'),
+('site_order_package_private.delivery_status(uuid)','0074093bda9db2634042be61dfb801af')
+ )v(signature,body_md5)loop
+ select * into p from pg_proc where oid=to_regprocedure(e.signature);
+ if p.oid is null or md5(p.prosrc) is distinct from e.body_md5 or not p.prosecdef
+ or pg_get_userbyid(p.proowner)<>'postgres' or p.proconfig is distinct from array['search_path=""']::text[]
+ or has_function_privilege('anon',p.oid,'execute') or has_function_privilege('authenticated',p.oid,'execute')
+ or has_function_privilege('service_role',p.oid,'execute') then raise exception 'site_order_read_dependency_changed';end if;
+ end loop;
+end $$;
+create function site_order_package_private.package_detail(p_package uuid)returns jsonb language plpgsql security definer set search_path='' as $$
+declare a jsonb;cid uuid;p site_order_package_private.packages%rowtype;body jsonb;flag boolean;
+begin
+ a:=site_order_package_private.read_actor();cid:=(a->>'company_id')::uuid;
+ select * into p from site_order_package_private.packages where id=p_package and cid in(sender_company_id,recipient_company_id) for share;
+ if p.id is null then raise exception 'site_order_archive_not_found' using errcode='42501';end if;
+ select evidence->'body' into body from site_order_artifact_private.render_jobs where id=p.source_job_id;
+ select enabled into flag from private.master_feature_settings where feature_key='site_order_documents';
+ return site_order_package_private.package_status(p.id)||site_order_package_private.delivery_status(p.id)
+ ||jsonb_build_object('body',body,'site_projection',p.site_projection,'is_sender',cid=p.sender_company_id,'is_recipient',cid=p.recipient_company_id,
+ 'can_write',coalesce(flag,false),'created_at',p.created_at);
+end $$;
+create function site_order_package_private.package_list(p_before timestamptz,p_before_id uuid,p_limit integer)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare a jsonb;cid uuid;result jsonb;
+begin
+ a:=site_order_package_private.read_actor();cid:=(a->>'company_id')::uuid;
+ if p_limit is null or p_limit<1 or p_limit>50 or(p_before is null)<>(p_before_id is null) then raise exception 'site_order_list_cursor_invalid';end if;
+ select coalesce(jsonb_agg(x.value order by x.created_at desc,x.id desc),'[]') into result from(
+ select p.id,p.created_at,jsonb_build_object('package_id',p.id,'created_at',p.created_at,
+ 'work_name',j.evidence#>>'{body,work_name}','period_start',j.evidence#>>'{body,period_start}',
+ 'period_end',j.evidence#>>'{body,period_end}','is_recipient',p.recipient_company_id=cid) value
+ from site_order_package_private.packages p join site_order_artifact_private.render_jobs j on j.id=p.source_job_id
+ where cid in(p.sender_company_id,p.recipient_company_id) and(p_before is null or(p.created_at,p.id)<(p_before,p_before_id))
+ order by p.created_at desc,p.id desc limit p_limit)x;
+ return result;
+end $$;
+create function site_order_package_private.recipient_targets(p_package uuid)returns jsonb language plpgsql security definer set search_path='' as $$
+declare a jsonb;cid uuid;p site_order_package_private.packages%rowtype;t record;peer jsonb;result jsonb:='[]';
+begin
+ a:=private.require_standalone_trade_document_access();cid:=(a->>'company_id')::uuid;
+ select * into p from site_order_package_private.packages where id=p_package and recipient_company_id=cid for share;
+ if p.id is null then raise exception 'site_order_received_package_not_found' using errcode='42501';end if;
+ for t in select id from public.trade_companies where company_id=cid and linked_company_id=p.sender_company_id
+ and link_status='linked' and trade_role in('customer','both') order by id loop
+ peer:=site_order_manager_private.counterparty_context(cid,t.id,'acceptance');
+ result:=result||jsonb_build_array(jsonb_build_object('trade_id',t.id,'name',peer->>'name','connection_fingerprint',peer->>'connection_fingerprint'));
+ end loop;
+ return result;
+end $$;
+revoke all on all functions in schema site_order_package_private from public,anon,authenticated,service_role;
+commit;

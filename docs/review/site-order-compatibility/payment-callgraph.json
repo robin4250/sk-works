@@ -1,0 +1,93 @@
+{
+  "source_only": true,
+  "captured_at": "2026-10-31T14:08:05Z",
+  "consumers": [
+    {
+      "signature": "private.approve_sealed_site_contract(uuid,uuid,integer,text)",
+      "body_md5": "18147f863f6c5a0a468942b0504a0bfd",
+      "definition_sha256": "c865eeb69bb402712cebd25dc7f8ce790f1fb5c20fb1331914071508fafaeae3",
+      "pair_call_present": true,
+      "native_entry_tested": false,
+      "pglite_private_entry_tested": true
+    },
+    {
+      "signature": "private.confirm_site_payment_terms(uuid,uuid)",
+      "body_md5": "3337f5ac1da930af1a80e3494fc2858f",
+      "definition_sha256": "e71a607139fb01d266dee85b6e7e8a44c42143ec32e0170ec39ed823cf064654",
+      "pair_call_present": true,
+      "native_entry_tested": false,
+      "pglite_private_entry_tested": true
+    },
+    {
+      "signature": "private.deliver_site_contract_notification()",
+      "body_md5": "96fac20bc6c4278284792d2d30a930fe",
+      "definition_sha256": "79b868fff534ba5f058fe5d6db6003a139202a178bd314253bc8ce9ab01f3ce1",
+      "pair_call_present": true,
+      "native_entry_tested": false,
+      "pglite_private_entry_tested": true
+    },
+    {
+      "signature": "private.preview_site_contract_seal(uuid,uuid,uuid)",
+      "body_md5": "434420618acdfa95d3f0d8a6e209169d",
+      "definition_sha256": "f706ec8f207c667403a6ae20e0e02808e8ad4e54924a06226f8b0e7f377475d0",
+      "pair_call_present": true,
+      "native_entry_tested": false,
+      "pglite_private_entry_tested": true
+    },
+    {
+      "signature": "private.propose_site_payment_terms(uuid,uuid,integer,jsonb)",
+      "body_md5": "6c87dd989d6b0b0fff5d3db23f083489",
+      "definition_sha256": "728103ca8d1b4b93c4091847ac2b158ebff3db4ad9da9da83302597c5fa1c746",
+      "pair_call_present": true,
+      "native_entry_tested": false,
+      "pglite_private_entry_tested": true
+    },
+    {
+      "signature": "private.saved_site_payment_document(uuid,uuid)",
+      "body_md5": "c86f75d7779ff5b48430cf07114da49f",
+      "definition_sha256": "0913f4340c9af2261f77f69ca52f673e3258320de12653e3d997a61d7cf43916",
+      "pair_call_present": true,
+      "native_entry_tested": false,
+      "pglite_private_entry_tested": true
+    },
+    {
+      "signature": "private.send_sealed_site_contract(uuid,uuid,integer,jsonb,text)",
+      "body_md5": "2a6c22bb63245d8d1ed5f143da9bf74c",
+      "definition_sha256": "e666f12ef4b3399ee384181822a0f220c4c9c7bb2354b7c8e8089baa88e57675",
+      "pair_call_present": true,
+      "native_entry_tested": false,
+      "pglite_private_entry_tested": true
+    },
+    {
+      "signature": "private.site_contract_workspace(uuid,uuid)",
+      "body_md5": "c568098cc3f6298a5a3727b97c7cb4f8",
+      "definition_sha256": "3efaea0f6929a6a84f8b8cc2aa3b40513b2ddf3e042725bf1390bdd3ea38427d",
+      "pair_call_present": true,
+      "native_entry_tested": false,
+      "pglite_private_entry_tested": true
+    },
+    {
+      "signature": "private.get_site_contract_notification_target(uuid)",
+      "body_md5": "8307511acf2aedf2d5b1f34543d19131",
+      "definition_sha256": "c405b80ba4753bf4131414db18b870e65d9ac2d7873bebb8a22c938fd3b32199",
+      "pair_call_present": true,
+      "native_entry_tested": false,
+      "pair_before_result_or_mutation": true,
+      "catch_bypass": false,
+      "pglite_private_entry_tested": true
+    },
+    {
+      "signature": "private.site_payment_agreement_workspace(uuid,uuid)",
+      "body_md5": "847c334c6eb2e8fb2030e9ae4344d6fd",
+      "definition_sha256": "fb126989e78971efc2f858586fe0395e1c34cda67e267a8e71290d6d1d312954",
+      "pair_call_present": true,
+      "native_entry_tested": false,
+      "pair_before_result_or_mutation": true,
+      "catch_bypass": false,
+      "pglite_private_entry_tested": true
+    }
+  ],
+  "direct_views_or_unknown_callers_exhaustively_proven": false,
+  "known_direct_pair_callers": 10,
+  "all_ten_native_entries_proven": false
+}

@@ -1,0 +1,39 @@
+-- REVIEW ONLY. The approved installer must supply fresh captured full attributes
+-- in pg_temp.site_order_legacy_expected(signature text primary key, attrs jsonb).
+-- Existing OIDs/ACL/public wrappers and ordinary legacy behavior are preserved.
+begin;
+do $$ declare sig text;p pg_proc;e jsonb;begin
+ if to_regclass('site_order_package_private.packages') is null
+ or to_regclass('pg_temp.site_order_legacy_expected') is null then
+  raise exception 'site_order_legacy_full_attributes_required';end if;
+ foreach sig in array array['private.respond_site_share(uuid,boolean)','public.respond_site_share(uuid,boolean)'] loop
+  select * into p from pg_proc where oid=to_regprocedure(sig);
+  execute 'select attrs from pg_temp.site_order_legacy_expected where signature=$1' into e using sig;
+  if p.oid is null or e is null or to_jsonb(p)-'prosrc' is distinct from e
+  or md5(p.prosrc) is distinct from(case sig when 'private.respond_site_share(uuid,boolean)'
+   then 'adf5eb7363546e9c05d34c8e780a4ce2' else '40d48b399537a5d95cead6dcc61dc264' end) then
+   raise exception 'site_order_legacy_source_or_attributes_changed';end if;
+ end loop;
+end $$;
+create temporary table site_order_legacy_guard_before on commit drop as
+ select p.oid,to_jsonb(p)-'prosrc' attrs,md5(p.prosrc) source_md5 from pg_proc p
+ where p.oid in('private.respond_site_share(uuid,boolean)'::regprocedure,'public.respond_site_share(uuid,boolean)'::regprocedure);
+do $guard$ declare p pg_proc;src text;definition text;anchor text;prefix text;begin
+ select * into p from pg_proc where oid='private.respond_site_share(uuid,boolean)'::regprocedure;
+ src:=p.prosrc;anchor:='  if item.status<>''pending'' then';
+ if array_length(string_to_array(src,anchor),1)<>2 then raise exception 'site_order_legacy_anchor_changed';end if;
+ -- The existing recipient lookup/not-found check runs BEFORE this guard.
+ -- A foreign ID still gets exactly the legacy not-found result; no package oracle.
+ prefix:=E'  if exists(select 1 from site_order_package_private.packages p where p.data_item_id=p_data_item_id and p.recipient_company_id=c) then\n    raise exception ''site_order_package_response_required'' using errcode=''0A000'';\n  end if;\n';
+ definition:=pg_get_functiondef(p.oid);
+ if strpos(definition,src)=0 then raise exception 'site_order_legacy_definition_changed';end if;
+ execute replace(definition,src,replace(src,anchor,prefix||anchor));
+end $guard$;
+do $$ begin
+ if exists(select 1 from site_order_legacy_guard_before b join pg_proc p on p.oid=b.oid
+  where to_jsonb(p)-'prosrc' is distinct from b.attrs
+  or(p.oid='public.respond_site_share(uuid,boolean)'::regprocedure and md5(p.prosrc)<>b.source_md5)) then
+  raise exception 'site_order_legacy_attributes_not_preserved';end if;
+end $$;
+-- No function rename. Already prepared public calls resolve the same private OID.
+commit;

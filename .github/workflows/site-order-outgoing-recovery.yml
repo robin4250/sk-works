@@ -1,0 +1,22 @@
+name: Site-order outgoing recovery client
+on:
+  pull_request:
+    paths:
+      - 'lib/features/sites/site_order_outgoing_*.dart'
+      - 'lib/features/sites/site_order_workflow_*.dart'
+      - 'test/site_order_outgoing_recovery_test.dart'
+      - '.github/workflows/site-order-outgoing-recovery.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  outgoing-recovery:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: '3.47.5', channel: stable, cache: true}
+      - run: flutter pub get --enforce-lockfile
+      - run: dart analyze lib/features/sites/site_order_outgoing_journal.dart lib/features/sites/site_order_outgoing_recovery_page.dart lib/features/sites/site_order_workflow_repository.dart lib/features/sites/site_order_workflow_page.dart test/site_order_outgoing_recovery_test.dart
+      - run: flutter test test/site_order_outgoing_recovery_test.dart test/site_order_workflow_repository_test.dart test/site_order_workflow_page_test.dart test/site_order_approval_journal_test.dart --reporter expanded

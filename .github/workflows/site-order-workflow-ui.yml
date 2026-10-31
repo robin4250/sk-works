@@ -1,0 +1,29 @@
+name: Protected site-order workflow UI
+on:
+  pull_request:
+    paths:
+      - 'lib/features/sites/site_order_workflow_*.dart'
+      - 'lib/features/sites/site_order_saved_preview_pager.dart'
+      - 'lib/features/sites/site_order_approval_journal.dart'
+      - 'test/site_order_approval_journal_test.dart'
+      - 'lib/features/notifications/notifications_page.dart'
+      - 'lib/features/notifications/notification_target_policy.dart'
+      - 'lib/features/notifications/notification_explanation_page.dart'
+      - 'test/site_order_workflow_*_test.dart'
+      - 'test/site_order_saved_preview_pager_test.dart'
+      - '.github/workflows/site-order-workflow-ui.yml'
+permissions:
+  contents: read
+jobs:
+  protected-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: '3.47.5', channel: stable, cache: true}
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/sites/site_order_approval_journal.dart test/site_order_approval_journal_test.dart lib/features/sites/site_order_workflow_repository.dart lib/features/sites/site_order_workflow_page.dart lib/features/sites/site_order_workflow_pdf_page.dart lib/features/sites/site_order_saved_preview_pager.dart test/site_order_workflow_page_test.dart test/site_order_workflow_repository_test.dart test/site_order_saved_preview_pager_test.dart
+      - run: timeout 180s flutter test --reporter expanded --timeout 45s test/site_order_approval_journal_test.dart test/site_order_workflow_page_test.dart test/site_order_workflow_repository_test.dart test/site_order_saved_preview_pager_test.dart
+      - run: git diff --exit-code -- pubspec.yaml pubspec.lock

@@ -1,0 +1,117 @@
+# Site-purpose manager adapters — private review candidate
+
+This is a separate candidate on canonical-renderer PR1632/head65eb8fce. It does
+not modify that candidate's original owner/admin authorization, deploy SQL,
+enable the master flag, or connect an unfinished app route.
+
+## Implemented
+
+The exact C actor-base helper from PR1633/headbbe04e55, body MD5
+`63c57e18a04499e8d6bcfad4ead7837f`, supplies live SID, exactly one company
+membership and owner/admin/manager role plus the shared purpose flag. Its
+standalone capability is **not** treated as access to arbitrary site documents.
+A private immutable registry additionally fixes the exact own site/document,
+issuer/counterparty direction, registered trade ID/kind and server-generated
+opaque connection fingerprint. The actor helper takes both company and document
+IDs; it cannot lend a company's authority to another document.
+
+The new prepare wrapper requires an existing own site. It atomically reserves
+that document, validates the selected registered counterparty/direction/link and
+prepares the immutable canonical body. A document from another route cannot be
+adopted into this registry. No fabricated financial parent or site is created.
+The registry's deferred document FK is satisfied by the same successful prepare
+statement. Failed preparation rolls back its reservation.
+
+Eight exact existing pg_proc bodies are mechanically generated into the new
+private namespace: prepare/bind/local-check/preview/decide/approved-render and
+canonical-job prepare/register. Only named authorization/delegate substitutions
+and explicit site/direction/no-financial-parent guards are permitted. Original
+canonical tables, seal snapshots, CAS, append-only receipts/history, immutable
+original registration and stale-current-revision protection are reused. The
+source contract pins exact function signatures, body hashes, argument names,
+return types, volatility, owner, definer/invoker, search path and client ACL.
+Generated-source hashes are retained privately. Existing original pg_proc
+bodies/attributes and financial rows remain unchanged in the fixture.
+
+New tables have RLS, no client/service grants and UPDATE/DELETE/TRUNCATE refusal.
+Every internal operation repeats live actor/company/role/master, site ownership
+and current registered link checks. There is no manager-to-admin impersonation,
+company membership mutation, client-writable authorization GUC or public upload.
+
+## Verification
+
+Disposable PGlite: 49 checks passed, including both manager order and acceptance
+prepare → registered own seal consent → job → actual Dart PDF → original receipt.
+The original global helper still rejects manager. Foreign site/company/document,
+wrong registered direction, changed fingerprint, no registry, financial-parent
+borrowing, role loss, second membership, SID deletion, master OFF, disabled link,
+site reassignment and client/service EXEC are refused. Original pg_proc and
+financial rows are preserved. Modified C actor source stops installation before
+new schema creation; rollback restores that fixture dependency.
+
+The fixture uses C's exact helper body and the existing consent/API synthetic
+session environment. It is not real JWT/native-device proof. Dedicated CI runs
+new contract tests on PGlite and native PostgreSQL17 with the fixed pure Dart
+runtime; the prior successful renderer tests are not manually repeated.
+
+## Next atomic receive/approval contract — not implemented here
+
+The recipient's site must be created by the actual approval transaction, then
+its acceptance body/own seal approval and durable render intent are committed
+with the order approval. Only an after-commit worker generates/registers the PDF
+and records reply delivery. No placeholder site, fake PDF, or success callback
+that sends an arbitrary second message is allowed. Role/session/master loss
+holds that exact intent; unknown outcomes use the same receipt/job, not a new
+request. The core runtime requires a dedicated verified request connection and
+must not be nested into an existing approval transaction or commit its caller's
+transaction. Approval records mean queued until the real reply is recorded.
+
+The old structural `site_order_private.acceptance_outbox` requires an already
+rendered artifact by FK. It cannot represent this after-commit sequence by
+inserting a dummy artifact. A guarded new intent/receipt contract must replace
+that assumption, preserving the old candidate and immutable originals.
+
+There is no direction-specific registered company-rate revision in the current
+body/job contract. No worker payroll rate or customer billing revenue rate is
+copied into an outgoing supplier purchase order. Received order conditions are
+preserved; missing prices remain null, without zero/total-division guessing.
+
+Still pending: receive/approve/site/intent atomic coordinator, actual internal runner/authenticated route,
+reply recovery/history/notifications, production prerequisites/installer and
+phone verification. The existing invoice/financial approval rights are not
+expanded. Production HOLD, new feature OFF and document exemption OFF remain.
+
+## Independent-review boundary corrections
+
+A real owner can legitimately re-associate a document with a financial parent
+through the unchanged original function. This previously left the manager site
+helper usable (RED reproduced). Site operations now lock the canonical document
+before inspecting all revision bindings and refuse a document with any financial
+revision, including a later return to standalone. Existing original owner/admin
+financial/archive routes are unchanged. A native two-connection test observes
+the manager's document lock blocking a parallel owner's canonical update.
+
+Job preparation also fixes the registered trade ID to the site reservation.
+Registration fixes site, registered trade ID and fingerprint together. A second
+registration linked to the same peer is not interchangeable: both manager job
+preparation and borrowing an owner-created alternate-registration job are
+rejected. The fixture keeps the duplicate directory row but removes its test-only
+second financial-parent mapping, so the separate legitimate-owner financial
+re-association regression can use the existing unique financial-link contract.
+
+## Fixed internal Node purpose dispatch
+
+`registerManagerCanonicalSiteOrderJob` is an explicit internal export. It shares
+one private RC/job-lock/fresh-original/unknown-COMMIT coordinator with the legacy
+owner export, using fixed SQL constants only. It calls C's exact actor base,
+locks only an original job joined to its complete saved site/trade/fingerprint
+reservation and actor/SID/current company membership, repeats the scoped actor
+check, and registers through the generated manager primitive. No SQL, purpose
+or authorizer is accepted as request data. The old owner export retains its
+original policy and still rejects manager at the original private registration.
+
+Six new Node contract tests and the six existing owner coordinator boundaries
+pass. The real SQL fixture also calls the manager export, checks canonical DB
+evidence reaches the renderer, stores the actual PDF and retries without any
+new render. This closes internal purpose dispatch, not authenticated endpoint,
+background approval/reply delivery or production deployment.

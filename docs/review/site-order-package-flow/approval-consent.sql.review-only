@@ -1,0 +1,148 @@
+-- REVIEW ONLY. Pre-approval review fixes document UUID/body and own seal,
+-- without creating a fake site or canonical document. No public grant/rollout.
+begin;
+do $$ declare e record;p pg_proc;begin
+ for e in select * from(values
+('private.require_standalone_trade_document_access()','63c57e18a04499e8d6bcfad4ead7837f',true),
+('site_order_manager_private.require_actor(uuid,uuid)','0c841be3d2b20f5cbdbe713a6414f744',true),
+('site_order_manager_private.counterparty_context(uuid,uuid,text)','6e8915f47ec3daa03eafd8ee2960bd24',true),
+('site_order_manager_private.render_approved(uuid,integer,uuid,boolean)','f6fb2629e3660acaae1706879eab1f03',true),
+('site_order_manager_private.require_local(uuid,uuid)','52851fbaeefa4ab6a6c4332036a6603b',true),
+('trade_document_consent_private.immutable()','73660d9947f20d6f99c59d8451078e7e',false)
+ )v(signature,source_md5,definer) loop
+ select * into p from pg_proc where oid=to_regprocedure(e.signature);
+ if p.oid is null or md5(p.prosrc) is distinct from e.source_md5 or p.prosecdef is distinct from e.definer
+ or pg_get_userbyid(p.proowner)<>'postgres' or p.proconfig is distinct from array['search_path=""']::text[]
+ or has_function_privilege('anon',p.oid,'execute') or has_function_privilege('authenticated',p.oid,'execute')
+ or has_function_privilege('service_role',p.oid,'execute') then raise exception 'site_package_dependency_changed: %',e.signature;end if;
+ end loop;
+end $$;
+do $$ declare e record;p pg_proc;signature text;begin
+ for e in select * from site_order_manager_private.generated_sources loop
+ signature:=replace(replace(e.signature,'trade_document_consent_private.','site_order_manager_private.'),'site_order_artifact_private.','site_order_manager_private.');
+ select * into p from pg_proc where oid=to_regprocedure(signature);
+ if p.oid is null or md5(p.prosrc) is distinct from e.generated_md5 or not p.prosecdef
+ or pg_get_userbyid(p.proowner)<>'postgres' or p.proconfig is distinct from array['search_path=""']::text[]
+ or has_function_privilege('anon',p.oid,'execute') or has_function_privilege('authenticated',p.oid,'execute')
+ or has_function_privilege('service_role',p.oid,'execute') then raise exception 'site_order_generated_dependency_changed';end if;
+ end loop;
+end $$;
+do $$ declare p pg_proc;begin
+ select * into p from pg_proc where oid=to_regprocedure('site_order_package_private.approve_order(uuid,uuid,text,uuid)');
+ if p.oid is null or md5(p.prosrc)<>'018cce31f774dc03d41f7a1806b889e1' or not p.prosecdef
+ or pg_get_userbyid(p.proowner)<>'postgres' or p.proconfig is distinct from array['search_path=""']::text[]
+ then raise exception 'site_order_approval_source_changed';end if;
+ select * into p from pg_proc where oid=to_regprocedure('trade_document_consent_private.own_seal(uuid)');
+ if p.oid is null or md5(p.prosrc)<>'fc0ca4038ae151980216657a46ddc58d' or not p.prosecdef
+ or pg_get_userbyid(p.proowner)<>'postgres' or p.proconfig is distinct from array['search_path=""']::text[]
+ then raise exception 'site_order_seal_source_changed';end if;
+end $$;
+create table site_order_package_private.approval_previews(
+ id uuid primary key,package_id uuid not null references site_order_package_private.packages(id),
+ company_id uuid not null,actor_id uuid not null,session_id uuid not null,request_id uuid not null,
+ trade_company_id uuid not null,connection_fingerprint text not null,document_id uuid not null unique,
+ body jsonb not null,body_sha256 text not null,own_seal jsonb not null,
+ expires_at timestamptz not null,unique(company_id,actor_id,request_id)
+);
+create table site_order_package_private.ready_reply_jobs(
+ package_id uuid primary key references site_order_package_private.packages(id),
+ preview_id uuid not null unique references site_order_package_private.approval_previews(id),
+ reply_intent_id uuid not null unique references site_order_package_private.reply_intents(id),
+ job_id uuid not null unique references site_order_artifact_private.render_jobs(id),
+ actor_id uuid not null,session_id uuid not null,request_id uuid not null,
+ created_at timestamptz not null default clock_timestamp()
+);
+alter table site_order_package_private.approval_previews enable row level security;
+alter table site_order_package_private.ready_reply_jobs enable row level security;
+create trigger immutable_approval_preview before update or delete on site_order_package_private.approval_previews
+ for each row execute function trade_document_consent_private.immutable();
+create trigger immutable_approval_preview_truncate before truncate on site_order_package_private.approval_previews
+ for each statement execute function trade_document_consent_private.immutable();
+create trigger immutable_ready_reply before update or delete on site_order_package_private.ready_reply_jobs
+ for each row execute function trade_document_consent_private.immutable();
+create trigger immutable_ready_reply_truncate before truncate on site_order_package_private.ready_reply_jobs
+ for each statement execute function trade_document_consent_private.immutable();
+-- Reuse the exact approval transaction, substituting ONLY its reviewed UUID.
+do $$ declare src text;begin
+ select prosrc into src from pg_proc where oid='site_order_package_private.approve_order(uuid,uuid,text,uuid)'::regprocedure;
+ if array_length(string_to_array(src,'doc:=gen_random_uuid();'),1)<>2 then raise exception 'site_order_approval_anchor_changed';end if;
+ src:=replace(src,'doc:=gen_random_uuid();','doc:=p_reviewed_document;');
+ execute format('create function site_order_package_private.approve_reviewed_order(p_package uuid,p_trade uuid,p_fingerprint text,p_request uuid,p_reviewed_document uuid) returns jsonb language plpgsql security definer set search_path=%L as %L','',src);
+end $$;
+create function site_order_package_private.preview_approval(p_package uuid,p_trade uuid,p_fingerprint text,p_request uuid)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare a jsonb;cid uuid;sid uuid;p site_order_package_private.packages%rowtype;
+ v site_order_package_private.approval_previews%rowtype;peer jsonb;source_body jsonb;body jsonb;doc uuid;seal jsonb;
+begin
+ a:=private.require_standalone_trade_document_access();cid:=(a->>'company_id')::uuid;sid:=(a->>'session_id')::uuid;
+ select * into p from site_order_package_private.packages where id=p_package and recipient_company_id=cid for share;
+ if p.id is null then raise exception 'site_order_received_package_not_found' using errcode='42501';end if;
+ if p_request is null then raise exception 'site_order_request_required' using errcode='22023';end if;
+ peer:=site_order_manager_private.counterparty_context(cid,p_trade,'acceptance');
+ if peer->>'company_id' is distinct from p.sender_company_id::text or peer->>'connection_fingerprint' is distinct from p_fingerprint then
+ raise exception 'site_order_exact_sender_connection_required' using errcode='42501';end if;
+ perform pg_advisory_xact_lock(hashtextextended('site-order-preview:'||cid::text||':'||auth.uid()::text||':'||p_request::text,0));
+ select * into v from site_order_package_private.approval_previews where company_id=cid and actor_id=auth.uid() and request_id=p_request for share;
+ if v.id is not null then
+ if(v.package_id,v.session_id,v.trade_company_id,v.connection_fingerprint) is distinct from(p.id,sid,p_trade,p_fingerprint)
+ then raise exception 'site_order_preview_request_changed' using errcode='40001';end if;
+ else
+ select j.evidence->'body' into source_body from site_order_artifact_private.render_jobs j
+ join site_order_artifact_private.pdf_records r on r.job_id=j.id
+ where j.id=p.source_job_id and r.receipt_id=p.original_receipt_id and j.company_id=p.sender_company_id
+ and j.counterparty_company_id=cid for share of j,r;
+ if source_body is null then raise exception 'site_order_bound_original_required' using errcode='42501';end if;
+ doc:=gen_random_uuid();body:=source_body||jsonb_build_object('kind','acceptance','transaction_id',doc,
+ 'issuer_company_id',cid,'counterparty_company_id',p.sender_company_id,'issuer',source_body->'counterparty','counterparty',source_body->'issuer');
+ seal:=trade_document_consent_private.own_seal(cid);
+ insert into site_order_package_private.approval_previews values(gen_random_uuid(),p.id,cid,auth.uid(),sid,p_request,
+ p_trade,p_fingerprint,doc,body,encode(sha256(convert_to(body::text,'UTF8')),'hex'),seal,clock_timestamp()+interval '15 minutes') returning * into v;
+ end if;
+ if v.expires_at<=clock_timestamp() or v.own_seal is distinct from trade_document_consent_private.own_seal(cid)
+ then raise exception 'site_order_preview_expired_or_seal_changed' using errcode='40001';end if;
+ return jsonb_build_object('preview_id',v.id,'body',v.body,'body_hash',v.body_sha256,'own_seal',v.own_seal,
+ 'package_id',v.package_id,'expires_at',v.expires_at,'creates_site',false,'consent_recorded',false);
+end $$;
+
+create function site_order_package_private.approve_with_consent(p_preview uuid,p_body_hash text,p_seal_hash text,
+ p_confirmed boolean,p_request uuid)returns jsonb language plpgsql security definer set search_path='' as $$
+declare a jsonb;cid uuid;sid uuid;v site_order_package_private.approval_previews%rowtype;
+ old site_order_package_private.ready_reply_jobs%rowtype;approved jsonb;i site_order_package_private.reply_intents%rowtype;
+ ready jsonb;own_preview jsonb;result jsonb;consent_request uuid;job_request uuid;local_id uuid;
+begin
+ a:=private.require_standalone_trade_document_access();cid:=(a->>'company_id')::uuid;sid:=(a->>'session_id')::uuid;
+ select * into v from site_order_package_private.approval_previews where id=p_preview and company_id=cid
+ and actor_id=auth.uid() and session_id=sid for share;
+ if v.id is null then raise exception 'site_order_own_preview_required' using errcode='42501';end if;
+ if p_confirmed is distinct from true or p_request is null or p_body_hash is distinct from v.body_sha256
+ or p_seal_hash is distinct from v.own_seal->>'seal_hash' then
+ raise exception 'site_order_explicit_reviewed_consent_required' using errcode='42501';end if;
+ perform pg_advisory_xact_lock(hashtextextended('site-order-approval:'||v.package_id::text,0));
+ select * into old from site_order_package_private.ready_reply_jobs where package_id=v.package_id for share;
+ if old.package_id is not null then
+ if(old.preview_id,old.actor_id,old.session_id,old.request_id) is distinct from(v.id,auth.uid(),sid,p_request)
+ then raise exception 'site_order_reply_request_changed' using errcode='40001';end if;
+ return jsonb_build_object('package_id',old.package_id,'job_id',old.job_id,'status','approved_reply_queued');
+ end if;
+ if v.expires_at<=clock_timestamp() or v.own_seal is distinct from trade_document_consent_private.own_seal(cid)
+ then raise exception 'site_order_preview_expired_or_seal_changed' using errcode='40001';end if;
+ approved:=site_order_package_private.approve_reviewed_order(v.package_id,v.trade_company_id,v.connection_fingerprint,p_request,v.document_id);
+ select * into i from site_order_package_private.reply_intents where id=(approved->>'reply_intent_id')::uuid for share;
+ if i.body is distinct from v.body or i.body_sha256 is distinct from v.body_sha256 then
+ raise exception 'site_order_reviewed_acceptance_changed' using errcode='40001';end if;
+ perform site_order_manager_private.prepare_site_document(i.site_id,i.document_id,i.trade_company_id,'acceptance',i.connection_fingerprint,0,i.body);
+ local_id:=gen_random_uuid();perform site_order_manager_private.bind_local(i.document_id,cid,local_id);
+ own_preview:=site_order_manager_private.preview_own(i.document_id,1,cid);
+ if own_preview->>'body_hash' is distinct from p_body_hash or own_preview->'own_seal' is distinct from v.own_seal then
+ raise exception 'site_order_canonical_review_changed' using errcode='40001';end if;
+ consent_request:=gen_random_uuid();
+ result:=site_order_manager_private.decide(i.document_id,1,cid,(own_preview->>'epoch')::integer,
+ p_body_hash,'approve',p_seal_hash,p_confirmed,consent_request);
+ job_request:=gen_random_uuid();ready:=site_order_manager_private.prepare_job(cid,i.site_id,i.document_id,1,job_request,i.trade_company_id);
+ insert into site_order_package_private.ready_reply_jobs(package_id,preview_id,reply_intent_id,job_id,actor_id,session_id,request_id)
+ values(v.package_id,v.id,i.id,(ready->>'job_id')::uuid,auth.uid(),sid,p_request);
+ return jsonb_build_object('package_id',v.package_id,'job_id',ready->'job_id','status','approved_reply_queued');
+end $$;
+revoke all on all tables in schema site_order_package_private from public,anon,authenticated,service_role;
+revoke all on all functions in schema site_order_package_private from public,anon,authenticated,service_role;
+commit;

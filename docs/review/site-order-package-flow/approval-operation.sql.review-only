@@ -1,0 +1,91 @@
+-- REVIEW ONLY. Serialized approval admission/readback; no production migration.
+-- One immutable terminal record per preview. A readback barrier can permanently
+-- cancel an unaccepted exact request, so a late HTTP arrival cannot approve it.
+begin;
+do $$declare p pg_proc;begin
+ select * into p from pg_proc where oid=to_regprocedure('site_order_package_private.read_actor()');
+ if p.oid is null or md5(p.prosrc)<>'cc3b89f99b06543bcbedde33608b2920' or not p.prosecdef
+ or pg_get_userbyid(p.proowner)<>'postgres' or p.proconfig is distinct from array['search_path=""']::text[]
+ or has_function_privilege('anon',p.oid,'execute') or has_function_privilege('authenticated',p.oid,'execute')
+ or has_function_privilege('service_role',p.oid,'execute') then raise exception 'site_order_operation_actor_changed';end if;
+ select * into p from pg_proc where oid=to_regprocedure('site_order_package_private.approve_with_consent(uuid,text,text,boolean,uuid)');
+ if p.oid is null or md5(p.prosrc)<>'e08f49c0219ee506ad497af89ccebf23' or not p.prosecdef
+ or pg_get_userbyid(p.proowner)<>'postgres' or p.proconfig is distinct from array['search_path=""']::text[]
+ or has_function_privilege('anon',p.oid,'execute') or has_function_privilege('authenticated',p.oid,'execute')
+ or has_function_privilege('service_role',p.oid,'execute') then raise exception 'site_order_operation_consent_changed';end if;
+end $$;
+create table site_order_package_private.approval_operations(
+ preview_id uuid primary key references site_order_package_private.approval_previews(id),
+ package_id uuid not null references site_order_package_private.packages(id),
+ company_id uuid not null,actor_id uuid not null,request_id uuid not null,
+ operation_state text not null check(operation_state in('accepted','cancelled')),
+ result jsonb,created_at timestamptz not null default clock_timestamp(),
+ unique(company_id,actor_id,request_id),
+ check((operation_state='accepted' and result is not null and jsonb_typeof(result)='object')or(operation_state='cancelled' and result is null))
+);
+alter table site_order_package_private.approval_operations enable row level security;
+create trigger immutable_approval_operation before update or delete on site_order_package_private.approval_operations
+ for each row execute function trade_document_consent_private.immutable();
+create trigger immutable_approval_operation_truncate before truncate on site_order_package_private.approval_operations
+ for each statement execute function trade_document_consent_private.immutable();
+create function site_order_package_private.approve_operation(p_preview uuid,p_body_hash text,p_seal_hash text,
+ p_confirmed boolean,p_request uuid)returns jsonb language plpgsql security definer set search_path='' as $$
+declare a jsonb;cid uuid;v site_order_package_private.approval_previews%rowtype;
+ o site_order_package_private.approval_operations%rowtype;outcome jsonb;
+begin
+ a:=private.require_standalone_trade_document_access();cid:=(a->>'company_id')::uuid;
+ select v0.* into v from site_order_package_private.approval_previews v0
+ join site_order_package_private.packages p on p.id=v0.package_id and p.recipient_company_id=cid
+ where v0.id=p_preview and v0.company_id=cid and v0.actor_id=auth.uid() for share of v0,p;
+ if v.id is null or p_request is null then raise exception 'site_order_own_preview_required' using errcode='42501';end if;
+ perform pg_advisory_xact_lock(hashtextextended('site-order-operation:'||v.package_id::text||':'||cid::text||':'||auth.uid()::text||':'||v.id::text,0));
+ select * into o from site_order_package_private.approval_operations where preview_id=v.id;
+ if o.preview_id is not null then
+ if(o.package_id,o.company_id,o.actor_id,o.request_id) is distinct from(v.package_id,cid,auth.uid(),p_request)
+ then raise exception 'site_order_operation_request_changed' using errcode='40001';end if;
+ if o.operation_state='cancelled' then raise exception 'site_order_operation_cancelled' using errcode='40001';end if;
+ -- Existing acknowledgement still passes the original session/body/seal checks.
+ return site_order_package_private.approve_with_consent(p_preview,p_body_hash,p_seal_hash,p_confirmed,p_request);
+ end if;
+ outcome:=site_order_package_private.approve_with_consent(p_preview,p_body_hash,p_seal_hash,p_confirmed,p_request);
+ insert into site_order_package_private.approval_operations(preview_id,package_id,company_id,actor_id,request_id,operation_state,result)
+ values(v.id,v.package_id,cid,auth.uid(),p_request,'accepted',outcome);
+ return outcome;
+end $$;
+create function site_order_package_private.reconcile_approval(p_package uuid,p_preview uuid,p_request uuid)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare a jsonb;cid uuid;v site_order_package_private.approval_previews%rowtype;
+ o site_order_package_private.approval_operations%rowtype;j site_order_package_private.ready_reply_jobs%rowtype;
+begin
+ -- Status/cancel barriers remain available with the master OFF. They cannot
+ -- approve or render and require the same live actor and exact company role.
+ a:=site_order_package_private.read_actor();cid:=(a->>'company_id')::uuid;
+ select v0.* into v from site_order_package_private.approval_previews v0
+ join site_order_package_private.packages p on p.id=v0.package_id and p.recipient_company_id=cid
+ where v0.id=p_preview and v0.package_id=p_package and v0.company_id=cid and v0.actor_id=auth.uid() for share of v0,p;
+ if v.id is null or p_request is null then raise exception 'site_order_own_preview_required' using errcode='42501';end if;
+ perform pg_advisory_xact_lock(hashtextextended('site-order-operation:'||v.package_id::text||':'||cid::text||':'||auth.uid()::text||':'||v.id::text,0));
+ select * into o from site_order_package_private.approval_operations where preview_id=v.id;
+ if o.preview_id is null then
+ select * into j from site_order_package_private.ready_reply_jobs where preview_id=v.id for share;
+ if j.job_id is not null and (j.package_id,j.actor_id,j.request_id) is distinct from(v.package_id,auth.uid(),p_request)
+ then raise exception 'site_order_operation_request_changed' using errcode='40001';end if;
+ insert into site_order_package_private.approval_operations(preview_id,package_id,company_id,actor_id,request_id,operation_state,result)
+ values(v.id,v.package_id,cid,auth.uid(),p_request,case when j.job_id is null then 'cancelled' else 'accepted' end,
+ case when j.job_id is not null then jsonb_build_object('package_id',v.package_id,'job_id',j.job_id,'status','approved_reply_queued') end)
+ returning * into o;
+ end if;
+ if(o.package_id,o.company_id,o.actor_id,o.request_id) is distinct from(v.package_id,cid,auth.uid(),p_request)
+ then raise exception 'site_order_operation_request_changed' using errcode='40001';end if;
+ return jsonb_build_object('package_id',o.package_id,'preview_id',o.preview_id,'request_id',o.request_id,'operation_state',o.operation_state);
+end $$;
+revoke all on site_order_package_private.approval_operations from public,anon,authenticated,service_role;
+revoke all on function site_order_package_private.approve_operation(uuid,text,text,boolean,uuid),
+ site_order_package_private.reconcile_approval(uuid,uuid,uuid) from public,anon,authenticated,service_role;
+do $$begin
+ if exists(select 1 from pg_proc p cross join lateral aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a
+ where p.oid in('site_order_package_private.approve_operation(uuid,text,text,boolean,uuid)'::regprocedure,
+ 'site_order_package_private.reconcile_approval(uuid,uuid,uuid)'::regprocedure) and a.grantee<>p.proowner)
+ then raise exception 'site_order_operation_unexpected_acl';end if;
+end $$;
+commit;

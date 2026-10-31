@@ -1,0 +1,72 @@
+-- REVIEW ONLY. Adds one owner-only read purpose. No directory synchronization,
+-- financial RPC installation, business DML, public grants or feature activation.
+begin;
+do $$ declare p pg_proc;n pg_namespace;begin
+ if to_regprocedure('site_order_outgoing_private.registered_targets(uuid,uuid,integer)') is not null then
+  raise exception 'registered_targets_already_installed' using errcode='55000';end if;
+ select * into n from pg_namespace where nspname='site_order_outgoing_private';
+ if n.oid is null or pg_get_userbyid(n.nspowner)<>'postgres' or exists(
+  select 1 from aclexplode(coalesce(n.nspacl,acldefault('n',n.nspowner))) x where x.grantee<>n.nspowner or x.is_grantable)
+ then raise exception 'registered_targets_namespace_changed' using errcode='55000';end if;
+ select * into p from pg_proc where oid=to_regprocedure('private.require_standalone_trade_document_access()');
+ if p.oid is null or md5(p.prosrc)<>'63c57e18a04499e8d6bcfad4ead7837f' or not p.prosecdef
+  or pg_get_userbyid(p.proowner)<>'postgres' or p.proconfig is distinct from array['search_path=""']::text[]
+  or exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) x
+   where x.privilege_type<>'EXECUTE' or x.is_grantable or x.grantor<>p.proowner
+    or x.grantee not in(p.proowner,'authenticated'::regrole))
+  or not exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) x
+   where x.grantee='authenticated'::regrole and x.privilege_type='EXECUTE')
+ then raise exception 'registered_targets_actor_changed' using errcode='55000';end if;
+end $$;
+create function site_order_outgoing_private.registered_targets(p_site uuid,p_before uuid default null,p_limit integer default 50)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare a jsonb;cid uuid;r record;items jsonb:='[]'::jsonb;n integer:=0;more boolean:=false;last_id uuid;
+begin
+ a:=private.require_standalone_trade_document_access();cid:=(a->>'company_id')::uuid;
+ if p_site is null or p_limit is null or p_limit not between 1 and 50
+  or not exists(select 1 from public.sites where id=p_site and company_id=cid)
+ then raise exception 'registered_targets_own_site_required' using errcode='42501';end if;
+ if exists(select 1 from public.trade_companies t where t.company_id=cid
+  and t.linked_company_id<>cid and t.link_status='linked' and t.trade_role in('subcontractor','both')
+  and (select count(*) from private.company_connections cc where cc.status='accepted'
+   and ((cc.parent_company_id=cid and cc.child_company_id=t.linked_company_id)
+     or(cc.child_company_id=cid and cc.parent_company_id=t.linked_company_id)))>1)
+ then raise exception 'registered_targets_connection_ambiguous' using errcode='42501';end if;
+ if exists(select 1 from public.trade_companies t join public.companies c on c.id=t.linked_company_id
+  where t.company_id=cid and t.linked_company_id<>cid and t.link_status='linked'
+   and t.trade_role in('subcontractor','both') and t.name is distinct from c.name
+   and exists(select 1 from private.company_connections cc where cc.status='accepted'
+    and ((cc.parent_company_id=cid and cc.child_company_id=t.linked_company_id)
+      or(cc.child_company_id=cid and cc.parent_company_id=t.linked_company_id))))
+ then raise exception 'registered_targets_source_changed' using errcode='40001';end if;
+ for r in select t.id,c.name from public.trade_companies t
+  join public.companies c on c.id=t.linked_company_id
+  where t.company_id=cid and t.linked_company_id<>cid and t.link_status='linked'
+   and t.trade_role in('subcontractor','both') and t.name=c.name and (p_before is null or t.id>p_before)
+   and (select count(*) from private.company_connections cc where cc.status='accepted'
+    and ((cc.parent_company_id=cid and cc.child_company_id=t.linked_company_id)
+      or(cc.child_company_id=cid and cc.parent_company_id=t.linked_company_id)))=1
+  order by t.id limit p_limit+1
+ loop
+  if r.name is null or char_length(r.name)>240 or btrim(r.name)='' then
+   raise exception 'registered_targets_name_invalid' using errcode='22023';end if;
+  n:=n+1;
+  if n>p_limit then more:=true;exit;end if;
+  items:=items||jsonb_build_array(jsonb_build_object('id',r.id,'name',r.name));last_id:=r.id;
+ end loop;
+ if private.require_standalone_trade_document_access() is distinct from a then
+  raise exception 'registered_targets_actor_changed' using errcode='40001';end if;
+ return jsonb_build_object('contract_version',1,'actor_id',auth.uid(),'session_id',a->'session_id',
+  'company_id',cid,'site_id',p_site,'entries',items,'has_more',more,
+  'next_cursor',case when more then last_id else null end,'read_only',true,'can_send',false);
+end $$;
+revoke all on function site_order_outgoing_private.registered_targets(uuid,uuid,integer) from public,anon,authenticated,service_role;
+do $$ declare p pg_proc;begin
+ select * into p from pg_proc where oid='site_order_outgoing_private.registered_targets(uuid,uuid,integer)'::regprocedure;
+ if pg_get_userbyid(p.proowner)<>'postgres' or not p.prosecdef
+  or p.proconfig is distinct from array['search_path=""']::text[]
+  or exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) x
+   where x.grantee<>p.proowner or x.grantor<>p.proowner or x.privilege_type<>'EXECUTE' or x.is_grantable)
+ then raise exception 'registered_targets_acl_changed' using errcode='55000';end if;
+end $$;
+commit;

@@ -1,0 +1,253 @@
+-- REVIEW ONLY. New-session recovery never edits the original consent, job or PDF.
+-- Only this fixed internal worker may use an explicitly re-reviewed lease.
+begin;
+create table site_order_package_private.reply_recovery_previews(
+ id uuid primary key,package_id uuid not null references site_order_package_private.packages(id),
+ job_id uuid not null references site_order_artifact_private.render_jobs(id),
+ company_id uuid not null,actor_id uuid not null,session_id uuid not null,request_id uuid not null,
+ body_hash text not null,render_hash text not null,seal_hash text not null,
+ evidence jsonb not null,expires_at timestamptz not null,
+ unique(company_id,actor_id,request_id)
+);
+create table site_order_package_private.reply_recovery_leases(
+ id uuid primary key,preview_id uuid not null unique references site_order_package_private.reply_recovery_previews(id),
+ package_id uuid not null references site_order_package_private.packages(id),
+ job_id uuid not null references site_order_artifact_private.render_jobs(id),
+ company_id uuid not null,actor_id uuid not null,session_id uuid not null,request_id uuid not null,
+ created_at timestamptz not null default clock_timestamp(),
+ unique(company_id,actor_id,request_id)
+);
+create table site_order_package_private.reply_recovery_operations(
+ preview_id uuid primary key references site_order_package_private.reply_recovery_previews(id),
+ company_id uuid not null,actor_id uuid not null,package_id uuid not null,request_id uuid not null,
+ state text not null check(state in('confirmed','cancelled'))
+);
+create table site_order_package_private.reply_recovery_cancellations(
+ lease_id uuid primary key references site_order_package_private.reply_recovery_leases(id),
+ cancelled_by uuid not null,created_at timestamptz not null default clock_timestamp()
+);
+alter table site_order_package_private.reply_recovery_previews enable row level security;
+alter table site_order_package_private.reply_recovery_leases enable row level security;
+alter table site_order_package_private.reply_recovery_operations enable row level security;
+alter table site_order_package_private.reply_recovery_cancellations enable row level security;
+do $$ declare t text;begin
+ foreach t in array array['reply_recovery_previews','reply_recovery_leases','reply_recovery_operations','reply_recovery_cancellations'] loop
+ execute format('create trigger %I before update or delete on site_order_package_private.%I for each row execute function trade_document_consent_private.immutable()','immutable_'||t,t);
+ execute format('create trigger %I before truncate on site_order_package_private.%I for each statement execute function trade_document_consent_private.immutable()','immutable_'||t||'_truncate',t);
+ end loop;
+end $$;
+
+-- Rechecks current membership, master, site purpose, recipient registration,
+-- approved current revision and current registered seal. A new lease cannot
+-- revive a job invalidated by any of those changes.
+create function site_order_package_private.reply_recovery_target(p_package uuid) returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare a jsonb;cid uuid;p site_order_package_private.packages%rowtype;
+ r site_order_package_private.ready_reply_jobs%rowtype;j site_order_artifact_private.render_jobs%rowtype;
+ peer jsonb;e jsonb;seal jsonb;
+begin
+ a:=private.require_standalone_trade_document_access();cid:=(a->>'company_id')::uuid;
+ select * into p from site_order_package_private.packages where id=p_package and recipient_company_id=cid for share;
+ select * into r from site_order_package_private.ready_reply_jobs where package_id=p.id and actor_id=auth.uid() for share;
+ select * into j from site_order_artifact_private.render_jobs where id=r.job_id for share;
+ if p.id is null or r.package_id is null or j.id is null
+ or(j.company_id,j.counterparty_company_id,j.actor_id) is distinct from(cid,p.sender_company_id,auth.uid())
+ or j.evidence#>>'{body,kind}' is distinct from 'acceptance' then
+ raise exception 'site_order_own_recovery_target_required' using errcode='42501';end if;
+ perform site_order_manager_private.require_actor(cid,j.document_id);
+ peer:=site_order_manager_private.counterparty_context(cid,j.counterparty_trade_company_id,'acceptance');
+ if (j.counterparty_company_id,j.counterparty_name,j.counterparty_connection_fingerprint)
+ is distinct from((peer->>'company_id')::uuid,peer->>'name',peer->>'connection_fingerprint') then
+ raise exception 'site_order_recovery_counterparty_changed' using errcode='40001';end if;
+ if not exists(select 1 from site_order_manager_private.document_scopes s where s.document_id=j.document_id
+ and s.company_id=cid and s.site_id=j.site_id and s.trade_company_id=j.counterparty_trade_company_id
+ and s.connection_fingerprint=j.counterparty_connection_fingerprint) then
+ raise exception 'site_order_recovery_scope_changed' using errcode='42501';end if;
+ e:=site_order_manager_private.render_approved(j.document_id,j.document_revision,cid,false);
+ if e is distinct from j.evidence or e->>'body_hash' is distinct from j.body_hash
+ or e->>'render_hash' is distinct from j.render_hash then
+ raise exception 'site_order_recovery_original_changed' using errcode='40001';end if;
+ seal:=trade_document_consent_private.own_seal(cid);
+ if jsonb_array_length(e->'seals') is distinct from 1
+ or(e#>>'{seals,0,seal_hash}',e#>>'{seals,0,version_key}')
+ is distinct from(seal->>'seal_hash',seal->>'version_key') then
+ raise exception 'site_order_recovery_seal_changed' using errcode='40001';end if;
+ return jsonb_build_object('package_id',p.id,'company_id',cid,'actor_id',auth.uid(),
+ 'session_id',a->'session_id','job_id',j.id,'evidence',e,'body_hash',j.body_hash,
+ 'render_hash',j.render_hash,'seal_hash',seal->>'seal_hash');
+end $$;
+
+create function site_order_package_private.preview_reply_recovery(p_package uuid,p_request uuid) returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare t jsonb;v site_order_package_private.reply_recovery_previews%rowtype;
+begin
+ if p_request is null then raise exception 'site_order_recovery_request_required';end if;
+ t:=site_order_package_private.reply_recovery_target(p_package);
+ perform pg_advisory_xact_lock(hashtextextended('site-order-reply-recovery:'||(t->>'company_id')||':'||auth.uid()::text||':'||p_request::text,0));
+ select * into v from site_order_package_private.reply_recovery_previews
+ where company_id=(t->>'company_id')::uuid and actor_id=auth.uid() and request_id=p_request for share;
+ if v.id is not null then
+ if(v.package_id,v.job_id,v.session_id,v.evidence) is distinct from(p_package,(t->>'job_id')::uuid,(t->>'session_id')::uuid,t->'evidence') then
+ raise exception 'site_order_recovery_request_changed' using errcode='40001';end if;
+ else
+ insert into site_order_package_private.reply_recovery_previews values(gen_random_uuid(),p_package,(t->>'job_id')::uuid,
+ (t->>'company_id')::uuid,auth.uid(),(t->>'session_id')::uuid,p_request,t->>'body_hash',t->>'render_hash',t->>'seal_hash',t->'evidence',clock_timestamp()+interval '15 minutes') returning * into v;
+ end if;
+ if v.expires_at<=clock_timestamp() then raise exception 'site_order_recovery_preview_expired' using errcode='40001';end if;
+ return jsonb_build_object('preview_id',v.id,'package_id',v.package_id,'body',v.evidence->'body',
+ 'evidence',v.evidence,'body_hash',v.body_hash,'render_hash',v.render_hash,'seal_hash',v.seal_hash,
+ 'expires_at',v.expires_at,'originals_changed',false,'consent_changed',false);
+end $$;
+
+create function site_order_package_private.confirm_reply_recovery(p_preview uuid,p_body_hash text,p_render_hash text,
+ p_seal_hash text,p_confirmed boolean,p_request uuid) returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare a jsonb;v site_order_package_private.reply_recovery_previews%rowtype;o site_order_package_private.reply_recovery_operations%rowtype;
+ l site_order_package_private.reply_recovery_leases%rowtype;t jsonb;
+begin
+ a:=private.require_standalone_trade_document_access();
+ select * into v from site_order_package_private.reply_recovery_previews where id=p_preview
+ and company_id=(a->>'company_id')::uuid and actor_id=auth.uid() and session_id=(a->>'session_id')::uuid for share;
+ if v.id is null or p_request is null or p_confirmed is distinct from true
+ or(p_body_hash,p_render_hash,p_seal_hash) is distinct from(v.body_hash,v.render_hash,v.seal_hash) then
+ raise exception 'site_order_explicit_recovery_review_required' using errcode='42501';end if;
+ perform pg_advisory_xact_lock(hashtextextended('site-order-reply-recovery-operation:'||v.company_id::text||':'||v.actor_id::text||':'||v.id::text,0));
+ select * into o from site_order_package_private.reply_recovery_operations where preview_id=v.id for share;
+ if o.preview_id is not null and(o.request_id,o.state) is distinct from(p_request,'confirmed'::text) then
+ raise exception 'site_order_recovery_operation_retired' using errcode='40001';end if;
+ t:=site_order_package_private.reply_recovery_target(v.package_id);
+ if t->'evidence' is distinct from v.evidence or v.expires_at<=clock_timestamp() then
+ raise exception 'site_order_recovery_preview_changed' using errcode='40001';end if;
+ select * into l from site_order_package_private.reply_recovery_leases
+ where company_id=v.company_id and actor_id=auth.uid() and request_id=p_request for share;
+ if l.id is null then
+ if o.preview_id is null then insert into site_order_package_private.reply_recovery_operations values(v.id,v.company_id,v.actor_id,v.package_id,p_request,'confirmed');end if;
+ insert into site_order_package_private.reply_recovery_leases values(gen_random_uuid(),v.id,v.package_id,v.job_id,
+ v.company_id,v.actor_id,v.session_id,p_request) returning * into l;
+ elsif(l.preview_id,l.session_id) is distinct from(v.id,v.session_id) then
+ raise exception 'site_order_recovery_request_changed' using errcode='40001';end if;
+ if exists(select 1 from site_order_package_private.reply_recovery_cancellations where lease_id=l.id) then
+ raise exception 'site_order_recovery_operation_retired' using errcode='40001';end if;
+ return jsonb_build_object('package_id',l.package_id,'lease_id',l.id,'status','reply_recovery_confirmed');
+end $$;
+
+create function site_order_package_private.require_reply_recovery_lease(p_lease uuid,p_job uuid) returns boolean
+language plpgsql security definer set search_path='' as $$
+declare a jsonb;l site_order_package_private.reply_recovery_leases%rowtype;
+ v site_order_package_private.reply_recovery_previews%rowtype;t jsonb;
+begin
+ a:=private.require_standalone_trade_document_access();
+ select * into l from site_order_package_private.reply_recovery_leases where id=p_lease and job_id=p_job
+ and company_id=(a->>'company_id')::uuid and actor_id=auth.uid() and session_id=(a->>'session_id')::uuid for share;
+ select * into v from site_order_package_private.reply_recovery_previews where id=l.preview_id for share;
+ if l.id is null or v.expires_at<=clock_timestamp()
+ or exists(select 1 from site_order_package_private.reply_recovery_cancellations where lease_id=l.id) then
+ raise exception 'site_order_current_recovery_lease_required' using errcode='42501';end if;
+ t:=site_order_package_private.reply_recovery_target(l.package_id);
+ if t->'evidence' is distinct from v.evidence then raise exception 'site_order_recovery_original_changed' using errcode='40001';end if;
+ return true;
+end $$;
+
+-- The same canonical preview lock waits for confirmation. The same delivery
+-- lock waits for actual storage. Cancellation is append-only and rejects a
+-- later original-worker arrival; a negative snapshot alone is never sufficient.
+create function site_order_package_private.reconcile_reply_recovery(p_package uuid,p_preview uuid,p_request uuid) returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare a jsonb;v site_order_package_private.reply_recovery_previews%rowtype;
+ o site_order_package_private.reply_recovery_operations%rowtype;l site_order_package_private.reply_recovery_leases%rowtype;stored boolean;
+begin
+ a:=site_order_package_private.read_actor();
+ select * into v from site_order_package_private.reply_recovery_previews where id=p_preview and package_id=p_package
+ and company_id=(a->>'company_id')::uuid and actor_id=auth.uid() for share;
+ if v.id is null or p_request is null then raise exception 'site_order_own_recovery_target_required' using errcode='42501';end if;
+ perform pg_advisory_xact_lock(hashtextextended('site-order-reply-recovery-operation:'||v.company_id::text||':'||v.actor_id::text||':'||v.id::text,0));
+ select * into o from site_order_package_private.reply_recovery_operations where preview_id=v.id for share;
+ if o.preview_id is not null and o.request_id<>p_request then raise exception 'site_order_recovery_request_changed' using errcode='40001';end if;
+ perform pg_advisory_xact_lock(hashtextextended('site-order-delivery:'||p_package::text,0));
+ stored:=exists(select 1 from site_order_package_private.acceptance_deliveries where package_id=p_package);
+ if not stored then
+ if o.preview_id is null then insert into site_order_package_private.reply_recovery_operations values(v.id,v.company_id,v.actor_id,v.package_id,p_request,'cancelled');end if;
+ select * into l from site_order_package_private.reply_recovery_leases where preview_id=v.id for share;
+ if l.id is not null then insert into site_order_package_private.reply_recovery_cancellations values(l.id,auth.uid(),clock_timestamp()) on conflict do nothing;end if;
+ end if;
+ return jsonb_build_object('package_id',p_package,'preview_id',p_preview,'request_id',p_request,
+ 'operation_state',case when stored then 'accepted' else 'cancelled' end,'reply_recipient_stored',stored);
+end $$;
+
+-- Only generated private copies accept the additional lease. Original functions,
+-- their OIDs/ACLs/attributes/body and all existing callers remain untouched.
+do $clone$ declare p pg_proc;src text;expected text;begin
+ select * into p from pg_proc where oid='site_order_manager_private.register_canonical_pdf(uuid,bytea)'::regprocedure;
+ select generated_md5 into expected from site_order_manager_private.generated_sources where signature='site_order_artifact_private.register_canonical_pdf(uuid,bytea)';
+ if expected is null or md5(p.prosrc) is distinct from expected or not p.prosecdef
+ or pg_get_userbyid(p.proowner)<>'postgres' or p.proconfig is distinct from array['search_path=""']::text[] then
+ raise exception 'site_order_recovery_register_source_changed';end if;
+ src:=p.prosrc;
+ if array_length(string_to_array(src,'if j.id is null or j.actor_id<>uid or j.session_id<>sid then'),1)<>2 then
+ raise exception 'site_order_recovery_register_anchor_changed';end if;
+ src:=replace(src,'if j.id is null or j.actor_id<>uid or j.session_id<>sid then',
+ 'if j.id is null or j.actor_id<>uid or not site_order_package_private.require_reply_recovery_lease(p_lease,j.id) then');
+ -- Recheck the lease after bytes registration, before returning any receipt.
+ if array_length(string_to_array(src,'return jsonb_build_object('),1)<>2 then raise exception 'site_order_recovery_receipt_anchor_changed';end if;
+ src:=replace(src,'return jsonb_build_object(',
+ 'perform site_order_package_private.require_reply_recovery_lease(p_lease,j.id); return jsonb_build_object(');
+ execute format('create function site_order_package_private.register_recovered_pdf(p_job uuid,p_pdf bytea,p_lease uuid) returns jsonb language plpgsql security definer set search_path=%L as %L','',src);
+end $clone$;
+
+do $clone$ declare p pg_proc;src text;begin
+ select * into p from pg_proc where oid='site_order_package_private.deliver_acceptance(uuid,uuid,uuid)'::regprocedure;
+ if md5(p.prosrc)<>'2b79f8794e39976c7ff00189e24471d1' or not p.prosecdef
+ or pg_get_userbyid(p.proowner)<>'postgres' or p.proconfig is distinct from array['search_path=""']::text[] then
+ raise exception 'site_order_recovery_delivery_source_changed';end if;
+ src:=p.prosrc;
+ if array_length(string_to_array(src,'begin'||chr(10)||' a:='),1)<>2
+ or array_length(string_to_array(src,'if j.id is null or(j.company_id,j.counterparty_company_id,j.actor_id,j.session_id)'||chr(10)||' is distinct from(cid,p.sender_company_id,auth.uid(),sid)'),1)<>2
+ or array_length(string_to_array(src,'perform site_order_manager_private.require_actor(cid,j.document_id);'),1)<>3 then
+ raise exception 'site_order_recovery_delivery_anchor_changed';end if;
+ src:=replace(src,'begin'||chr(10)||' a:=','begin'||chr(10)||
+ ' perform site_order_package_private.require_reply_recovery_lease(p_lease,(select job_id from site_order_package_private.ready_reply_jobs where package_id=p_package));'||chr(10)||' a:=');
+ src:=replace(src,'if j.id is null or(j.company_id,j.counterparty_company_id,j.actor_id,j.session_id)'||chr(10)||' is distinct from(cid,p.sender_company_id,auth.uid(),sid)',
+ 'if j.id is null or(j.company_id,j.counterparty_company_id,j.actor_id)'||chr(10)||' is distinct from(cid,p.sender_company_id,auth.uid())');
+ src:=replace(src,'perform site_order_manager_private.require_actor(cid,j.document_id);',
+ 'perform site_order_manager_private.require_actor(cid,j.document_id); perform site_order_package_private.require_reply_recovery_lease(p_lease,j.id);');
+ execute format('create function site_order_package_private.deliver_recovered_acceptance(p_package uuid,p_receipt uuid,p_request uuid,p_lease uuid) returns jsonb language plpgsql security definer set search_path=%L as %L','',src);
+end $clone$;
+
+create function site_order_package_private.ready_recovered_reply(p_package uuid,p_lease uuid) returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare l site_order_package_private.reply_recovery_leases%rowtype;d site_order_package_private.acceptance_deliveries%rowtype;
+begin
+ select * into l from site_order_package_private.reply_recovery_leases where id=p_lease and package_id=p_package for share;
+ perform site_order_package_private.require_reply_recovery_lease(l.id,l.job_id);
+ select * into d from site_order_package_private.acceptance_deliveries where package_id=p_package for share;
+ return jsonb_build_object('package_id',p_package,'job_id',l.job_id,'request_id',l.request_id,
+ 'lease_id',l.id,'reply_recipient_stored',d.package_id is not null,'original_receipt_id',d.original_receipt_id);
+end $$;
+
+-- Read-only result lookup is intentionally independent from the feature switch
+-- and current SID; it reveals only this current actor/company's exact request.
+create function site_order_package_private.reply_recovery_status(p_package uuid,p_request uuid) returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare a jsonb;l site_order_package_private.reply_recovery_leases%rowtype;
+begin
+ a:=site_order_package_private.read_actor();
+ if not exists(select 1 from site_order_package_private.packages p where p.id=p_package
+ and p.recipient_company_id=(a->>'company_id')::uuid) then raise exception 'site_order_archive_not_found' using errcode='42501';end if;
+ select * into l from site_order_package_private.reply_recovery_leases where package_id=p_package
+ and request_id=p_request and company_id=(a->>'company_id')::uuid and actor_id=auth.uid() for share;
+ return jsonb_build_object('package_id',p_package,'request_id',p_request,'confirmed',l.id is not null,
+ 'lease_id',l.id,'same_session',l.session_id=(a->>'session_id')::uuid,
+ 'reply_recipient_stored',exists(select 1 from site_order_package_private.acceptance_deliveries where package_id=p_package));
+end $$;
+
+revoke all on all tables in schema site_order_package_private from public,anon,authenticated,service_role;
+revoke all on all functions in schema site_order_package_private from public,anon,authenticated,service_role;
+do $$ declare p pg_proc;begin
+ for p in select * from pg_proc where pronamespace='site_order_package_private'::regnamespace
+ and proname in('reply_recovery_target','preview_reply_recovery','confirm_reply_recovery','require_reply_recovery_lease',
+ 'register_recovered_pdf','deliver_recovered_acceptance','ready_recovered_reply','reply_recovery_status','reconcile_reply_recovery') loop
+ if exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner)))a where a.grantee<>p.proowner) then
+ raise exception 'site_order_recovery_unexpected_execute';end if;
+ end loop;
+end $$;
+commit;

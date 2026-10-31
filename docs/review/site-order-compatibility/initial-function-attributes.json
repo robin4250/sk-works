@@ -1,0 +1,316 @@
+[
+  {
+    "signature": "private.company_document_exchange(text,jsonb)",
+    "metadata": {
+      "acl": [
+        [
+          "postgres",
+          "postgres",
+          "EXECUTE",
+          false
+        ],
+        [
+          "authenticated",
+          "postgres",
+          "EXECUTE",
+          false
+        ]
+      ],
+      "owner": "postgres",
+      "probin": null,
+      "procost": 100,
+      "prokind": "f",
+      "proname": "company_document_exchange",
+      "prorows": 0,
+      "support": "-",
+      "language": "plpgsql",
+      "pronargs": 2,
+      "namespace": "private",
+      "proconfig": [
+        "search_path=\"\""
+      ],
+      "proretset": false,
+      "prosecdef": true,
+      "prosqlbody": null,
+      "proargmodes": null,
+      "proargnames": [
+        "p_action",
+        "p_data"
+      ],
+      "proisstrict": false,
+      "proparallel": "u",
+      "protrftypes": null,
+      "provolatile": "v",
+      "result_type": "jsonb",
+      "proleakproof": false,
+      "variadic_type": null,
+      "argument_types": [
+        "text",
+        "jsonb"
+      ],
+      "proargdefaults": "({CONST :consttype 3802 :consttypmod -1 :constcollid 0 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 8 [ 32 0 0 0 0 0 0 32 ]})",
+      "pronargdefaults": 1,
+      "all_argument_types": null
+    },
+    "source_md5": "3b5d4b6f7f83870bb548cdb3f950f43e"
+  },
+  {
+    "signature": "private.save_company_delivery_items(text[])",
+    "metadata": {
+      "acl": [
+        [
+          "PUBLIC",
+          "postgres",
+          "EXECUTE",
+          false
+        ],
+        [
+          "postgres",
+          "postgres",
+          "EXECUTE",
+          false
+        ]
+      ],
+      "owner": "postgres",
+      "probin": null,
+      "procost": 100,
+      "prokind": "f",
+      "proname": "save_company_delivery_items",
+      "prorows": 0,
+      "support": "-",
+      "language": "plpgsql",
+      "pronargs": 1,
+      "namespace": "private",
+      "proconfig": [
+        "search_path=\"\""
+      ],
+      "proretset": false,
+      "prosecdef": true,
+      "prosqlbody": null,
+      "proargmodes": null,
+      "proargnames": [
+        "p_item_keys"
+      ],
+      "proisstrict": false,
+      "proparallel": "u",
+      "protrftypes": null,
+      "provolatile": "v",
+      "result_type": "void",
+      "proleakproof": false,
+      "variadic_type": null,
+      "argument_types": [
+        "text[]"
+      ],
+      "proargdefaults": null,
+      "pronargdefaults": 0,
+      "all_argument_types": null
+    },
+    "source_md5": "e3ac57f00f6c4bf6e18f00e87c482b71"
+  },
+  {
+    "signature": "private.send_site_share(uuid,uuid[])",
+    "metadata": {
+      "acl": [
+        [
+          "PUBLIC",
+          "postgres",
+          "EXECUTE",
+          false
+        ],
+        [
+          "postgres",
+          "postgres",
+          "EXECUTE",
+          false
+        ]
+      ],
+      "owner": "postgres",
+      "probin": null,
+      "procost": 100,
+      "prokind": "f",
+      "proname": "send_site_share",
+      "prorows": 0,
+      "support": "-",
+      "language": "plpgsql",
+      "pronargs": 2,
+      "namespace": "private",
+      "proconfig": [
+        "search_path=\"\""
+      ],
+      "proretset": false,
+      "prosecdef": true,
+      "prosqlbody": null,
+      "proargmodes": null,
+      "proargnames": [
+        "p_site_id",
+        "p_target_company_ids"
+      ],
+      "proisstrict": false,
+      "proparallel": "u",
+      "protrftypes": null,
+      "provolatile": "v",
+      "result_type": "integer",
+      "proleakproof": false,
+      "variadic_type": null,
+      "argument_types": [
+        "uuid",
+        "uuid[]"
+      ],
+      "proargdefaults": null,
+      "pronargdefaults": 0,
+      "all_argument_types": null
+    },
+    "source_md5": "43e5cc748daadeca5011498d4e7019af"
+  },
+  {
+    "signature": "private.site_payment_agreement_targets(uuid)",
+    "metadata": {
+      "acl": [
+        [
+          "postgres",
+          "postgres",
+          "EXECUTE",
+          false
+        ],
+        [
+          "authenticated",
+          "postgres",
+          "EXECUTE",
+          false
+        ]
+      ],
+      "owner": "postgres",
+      "probin": null,
+      "procost": 100,
+      "prokind": "f",
+      "proname": "site_payment_agreement_targets",
+      "prorows": 0,
+      "support": "-",
+      "language": "plpgsql",
+      "pronargs": 1,
+      "namespace": "private",
+      "proconfig": [
+        "search_path=\"\""
+      ],
+      "proretset": false,
+      "prosecdef": true,
+      "prosqlbody": null,
+      "proargmodes": null,
+      "proargnames": [
+        "p_company"
+      ],
+      "proisstrict": false,
+      "proparallel": "u",
+      "protrftypes": null,
+      "provolatile": "s",
+      "result_type": "jsonb",
+      "proleakproof": false,
+      "variadic_type": null,
+      "argument_types": [
+        "uuid"
+      ],
+      "proargdefaults": null,
+      "pronargdefaults": 0,
+      "all_argument_types": null
+    },
+    "source_md5": "6fb428bb819041b1388aff0cb94ffb04"
+  },
+  {
+    "signature": "private.site_payment_pair(uuid,uuid)",
+    "metadata": {
+      "acl": [
+        [
+          "postgres",
+          "postgres",
+          "EXECUTE",
+          false
+        ]
+      ],
+      "owner": "postgres",
+      "probin": null,
+      "procost": 100,
+      "prokind": "f",
+      "proname": "site_payment_pair",
+      "prorows": 0,
+      "support": "-",
+      "language": "plpgsql",
+      "pronargs": 2,
+      "namespace": "private",
+      "proconfig": [
+        "search_path=\"\""
+      ],
+      "proretset": false,
+      "prosecdef": true,
+      "prosqlbody": null,
+      "proargmodes": null,
+      "proargnames": [
+        "p_item",
+        "p_company"
+      ],
+      "proisstrict": false,
+      "proparallel": "u",
+      "protrftypes": null,
+      "provolatile": "v",
+      "result_type": "jsonb",
+      "proleakproof": false,
+      "variadic_type": null,
+      "argument_types": [
+        "uuid",
+        "uuid"
+      ],
+      "proargdefaults": null,
+      "pronargdefaults": 0,
+      "all_argument_types": null
+    },
+    "source_md5": "232f462a369a6ab76609bc82a8f5b146"
+  },
+  {
+    "signature": "private.site_share_inbox()",
+    "metadata": {
+      "acl": [
+        [
+          "PUBLIC",
+          "postgres",
+          "EXECUTE",
+          false
+        ],
+        [
+          "postgres",
+          "postgres",
+          "EXECUTE",
+          false
+        ]
+      ],
+      "owner": "postgres",
+      "probin": null,
+      "procost": 100,
+      "prokind": "f",
+      "proname": "site_share_inbox",
+      "prorows": 0,
+      "support": "-",
+      "language": "plpgsql",
+      "pronargs": 0,
+      "namespace": "private",
+      "proconfig": [
+        "search_path=\"\""
+      ],
+      "proretset": false,
+      "prosecdef": true,
+      "prosqlbody": null,
+      "proargmodes": null,
+      "proargnames": null,
+      "proisstrict": false,
+      "proparallel": "u",
+      "protrftypes": null,
+      "provolatile": "s",
+      "result_type": "jsonb",
+      "proleakproof": false,
+      "variadic_type": null,
+      "argument_types": null,
+      "proargdefaults": null,
+      "pronargdefaults": 0,
+      "all_argument_types": null
+    },
+    "source_md5": "092efa3b4009c7fc70d9d88424c4562d"
+  }
+]
