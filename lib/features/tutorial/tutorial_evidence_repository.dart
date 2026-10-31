@@ -222,7 +222,7 @@ class TutorialEvidenceRepository {
         }
         List<Map<String, dynamic>>? rows;
         try {
-          rows = await source
+          rows = await (source as TutorialSetupEvidenceSource)
               .setupRows(entry.key, companyId);
         } catch (_) {
           // RLS rejection and unavailable data must not become missing data.
@@ -253,7 +253,7 @@ class TutorialEvidenceRepository {
         }
         Map<String, dynamic>? evidence;
         try {
-          evidence = await source
+          evidence = await (source as TutorialOperationalEvidenceSource)
               .operationalEvidence(entry.key, companyId);
         } catch (_) {
           // Missing grants or network data are unknown, never saved evidence.
