@@ -119,4 +119,27 @@ void main() {
       true,
     );
   });
+  test(
+    'bank evidence is independent of an absent or stale document status row',
+    () {
+      for (final row in [
+        null,
+        {'status': 'missing'},
+        {'status': 'expired'},
+      ]) {
+        expect(
+          workerDocumentDisplayStatus(
+            {'name': '銀行口座情報'},
+            row,
+            bankRegistered: true,
+          ).complete,
+          true,
+        );
+        expect(
+          workerDocumentDisplayStatus({'name': '銀行口座情報'}, row).label,
+          '口座情報を確認',
+        );
+      }
+    },
+  );
 }

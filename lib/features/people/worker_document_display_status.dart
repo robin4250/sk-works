@@ -15,6 +15,14 @@ WorkerDocumentDisplayStatus workerDocumentDisplayStatus(
   bool? bankRegistered,
   DateTime? today,
 }) {
+  // Bank information has its own private-record completion check. Do not
+  // require an identity-document upload in place of that separate evidence.
+  final bank = requirement['name'] == '銀行口座情報';
+  if (bank) {
+    return bankRegistered == true
+        ? const WorkerDocumentDisplayStatus('登録済み', true)
+        : const WorkerDocumentDisplayStatus('口座情報を確認', false);
+  }
   final status = effectiveStatus ?? row?['status']?.toString();
   if (row == null || status == 'not_submitted' || status == 'missing') {
     return const WorkerDocumentDisplayStatus('未登録', false);
@@ -24,14 +32,6 @@ WorkerDocumentDisplayStatus workerDocumentDisplayStatus(
   }
   if (status != 'submitted' && status != 'verified') {
     return const WorkerDocumentDisplayStatus('状態を確認', false);
-  }
-  // Bank information has its own private-record completion check. Do not
-  // require an identity-document upload in place of that separate evidence.
-  final bank = requirement['name'] == '銀行口座情報';
-  if (bank) {
-    return bankRegistered == true
-        ? const WorkerDocumentDisplayStatus('登録済み', true)
-        : const WorkerDocumentDisplayStatus('口座情報を確認', false);
   }
   List<String> paths;
   try {
