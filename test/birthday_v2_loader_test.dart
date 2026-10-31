@@ -131,9 +131,19 @@ void main() {
     await t.tap(find.descendant(of: find.byType(AlertDialog), matching: find.widgetWithText(FilledButton, '保存する')));
     await t.pumpAndSettle();
     debugPrint('DOB_LOADER save-dispatch-await');
-    await t.runAsync(() => dispatched.future.timeout(const Duration(seconds: 5)));
+    // UI started the SDK work in the fake zone: drive both fake timers and
+    // real SDK events rather than freezing fake time while awaiting its Future.
+    Future<void> driveUntil(bool Function() done, String stage) async {
+      for (var step = 0; step < 100 && !done(); step++) {
+        await t.pump(const Duration(milliseconds: 20));
+        await t.runAsync(() => Future<void>.delayed(Duration.zero));
+      }
+      expect(done(), isTrue, reason: stage);
+    }
+    await driveUntil(() => dispatched.isCompleted, 'actual SDK POST must arrive');
     debugPrint('DOB_LOADER save-dispatched');
-    final savedResult = await t.runAsync(() => editReturned.future.timeout(const Duration(seconds: 5)));
+    await driveUntil(() => editReturned.isCompleted, 'editor save result must return');
+    final savedResult = await editReturned.future;
     debugPrint('DOB_LOADER editor-result-returned');
     await t.pumpAndSettle();
     expect(savedResult, isTrue);
