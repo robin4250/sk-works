@@ -12,7 +12,7 @@ class ExpenseReviewDetailPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final approved = claim.approval == ExpenseApproval.approved;
     final rejected = claim.approval == ExpenseApproval.rejected;
-    final status = approved ? '承認済み' : rejected ? '却下済み' : '承認待ち';
+    final status = claim.managerDeleted ? '管理者削除（原本保持）' : approved ? '承認済み' : rejected ? '却下済み' : '承認待ち';
     final time = claim.reviewedAt?.toUtc().add(const Duration(hours: 9));
     final colors = Theme.of(context).colorScheme;
     final statusColor = approved ? Colors.green.shade800 : rejected ? Colors.red.shade800 : colors.primary;
@@ -92,12 +92,12 @@ class ExpenseReviewDetailPage extends StatelessWidget {
             claim.reviewMemo == null || claim.reviewMemo!.isEmpty ? 'なし' : claim.reviewMemo!),
         ])),
       const SizedBox(height: 24),
-      OutlinedButton.icon(onPressed: onEdit, icon: const Icon(Icons.edit_outlined),
+      OutlinedButton.icon(onPressed: claim.managerDeleted ? null : onEdit, icon: const Icon(Icons.edit_outlined),
         style: OutlinedButton.styleFrom(minimumSize: const Size(double.infinity, 48),
           textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
         label: const Text('内容を修正する')),
-      if (onDelete != null) ...[
+      if (onDelete != null && !claim.managerDeleted) ...[
         const SizedBox(height: 8),
         OutlinedButton.icon(onPressed: onDelete, icon: const Icon(Icons.delete_outline),
           style: OutlinedButton.styleFrom(minimumSize: const Size(double.infinity, 48), foregroundColor: colors.error,
@@ -120,3 +120,4 @@ class ExpenseReviewDetailPage extends StatelessWidget {
     ]));
   }
 }
+

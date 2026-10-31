@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'expense_claim.dart';
 import 'expense_receipt_preview.dart';
 
-enum _ReviewFilter { all, pending, approved, rejected, withdrawn }
+enum _ReviewFilter { all, pending, approved, rejected, withdrawn, managerDeleted }
 
 /// The host supplies authoritative claims and authorized update callbacks.
 /// This page never optimistically approves or reallocates a claim.
@@ -15,6 +15,7 @@ class ExpenseClaimsPage extends StatefulWidget {
     this.canDecide,
     this.onApprove,
     this.onReject,
+    this.onDelete,
     this.onAllocate,
     this.destinations = const [],
     this.allowSettlementSetup = false,
@@ -27,6 +28,7 @@ class ExpenseClaimsPage extends StatefulWidget {
   final bool Function(ExpenseClaim)? canDecide;
   final Future<void> Function(ExpenseClaim claim)? onApprove;
   final Future<void> Function(ExpenseClaim claim)? onReject;
+  final Future<void> Function(ExpenseClaim claim)? onDelete;
   final Future<void> Function(
     ExpenseClaim claim,
     ExpenseAllocation destination,
@@ -104,18 +106,20 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
     _ReviewFilter.pending => '承認待ち',
     _ReviewFilter.approved => '承認済み',
     _ReviewFilter.rejected => '却下',
-    _ReviewFilter.withdrawn => '取り下げ',
+    _ReviewFilter.withdrawn => '本人取り下げ',
+    _ReviewFilter.managerDeleted => '管理者削除',
   };
 
   bool _matches(ExpenseClaim c) => switch (_filter) {
     _ReviewFilter.all => true,
-    _ReviewFilter.withdrawn => c.withdrawn,
+    _ReviewFilter.withdrawn => c.withdrawn && !c.managerDeleted,
+    _ReviewFilter.managerDeleted => c.managerDeleted,
     _ReviewFilter.pending =>
-      !c.withdrawn && c.approval == ExpenseApproval.pending,
+      !c.withdrawn && !c.managerDeleted && c.approval == ExpenseApproval.pending,
     _ReviewFilter.approved =>
-      !c.withdrawn && c.approval == ExpenseApproval.approved,
+      !c.withdrawn && !c.managerDeleted && c.approval == ExpenseApproval.approved,
     _ReviewFilter.rejected =>
-      !c.withdrawn && c.approval == ExpenseApproval.rejected,
+      !c.withdrawn && !c.managerDeleted && c.approval == ExpenseApproval.rejected,
   };
 
   void _help() => showDialog<void>(
@@ -148,7 +152,7 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
     final action = widget.onAllocate;
     if (_busy ||
         action == null ||
-        claim.withdrawn ||
+        claim.withdrawn || claim.managerDeleted ||
         claim.approval != ExpenseApproval.approved) {
       return;
     }
@@ -273,9 +277,9 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
     final onApprove = widget.onApprove;
     final onReject = widget.onReject;
     final approved =
-        claim.approval == ExpenseApproval.approved && !claim.withdrawn;
+        claim.approval == ExpenseApproval.approved && !claim.withdrawn && !claim.managerDeleted;
     final canDecide =
-        !_busy && !claim.withdrawn && widget.canDecide?.call(claim) != false;
+        !_busy && !claim.withdrawn && !claim.managerDeleted && widget.canDecide?.call(claim) != false;
     return Card(
       key: ValueKey(claim.id),
       color: Colors.white, elevation: 1,
@@ -376,6 +380,9 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
                         : () => _request(generation, () => onReject(claim)),
                     child: const Text('却下'),
                   ),
+                  if (widget.onDelete != null && !claim.managerDeleted && !claim.withdrawn) OutlinedButton.icon(
+                    onPressed: canDecide ? () => _request(generation, () => widget.onDelete!(claim)) : null,
+                    icon: const Icon(Icons.delete_outline), label: const Text('削除')),
                   if (widget.onOpenDetail != null) OutlinedButton(style: OutlinedButton.styleFrom(
                     minimumSize: const Size(112, 48),
                     textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
@@ -419,7 +426,7 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
         return latest != 0 ? latest : a.id.compareTo(b.id);
       });
     final approved = entries
-        .where((c) => !c.withdrawn && c.approval == ExpenseApproval.approved)
+        .where((c) => !c.withdrawn && !c.managerDeleted && c.approval == ExpenseApproval.approved)
         .toList();
     final amount = approved.fold<int>(0, (sum, c) => sum + c.amountYen);
     return Scaffold(
@@ -509,3 +516,4 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
     );
   }
 }
+

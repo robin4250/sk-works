@@ -14,7 +14,8 @@ abstract interface class ExpenseNoticeSource {
 }
 
 class SupabaseExpenseNoticeSource implements ExpenseNoticeSource {
-  SupabaseExpenseNoticeSource(this.client);
+  SupabaseExpenseNoticeSource(this.client, {this.actionKey});
+  final String? actionKey;
   final SupabaseClient client;
   @override
   String? get actor => client.auth.currentUser?.id;
@@ -24,8 +25,8 @@ class SupabaseExpenseNoticeSource implements ExpenseNoticeSource {
   @override
   Future<Map<String, dynamic>?> load(String notificationId) async {
     final raw = await client.rpc(
-      'expense_notification_target',
-      params: {'p_notification_id': notificationId},
+      actionKey=='expense_manager_deleted' ? 'expense_manager_removal_notice' : 'expense_notification_target',
+      params: {actionKey=='expense_manager_deleted' ? 'p_notification' : 'p_notification_id': notificationId},
     );
     return raw is Map ? Map<String, dynamic>.from(raw) : null;
   }
@@ -68,7 +69,7 @@ class _ExpenseNotificationPageState extends State<ExpenseNotificationPage>
     _source =
         widget.source ??
         (SupabaseBackend.isInitialized
-            ? SupabaseExpenseNoticeSource(SupabaseBackend.client)
+            ? SupabaseExpenseNoticeSource(SupabaseBackend.client,actionKey:widget.actionKey)
             : null);
     _actor = _source?.actor;
     _subscription = _source?.actorChanges.listen((actor) {
@@ -138,6 +139,7 @@ class _ExpenseNotificationPageState extends State<ExpenseNotificationPage>
           ![
             'expense_review_request',
             'expense_review_completed',
+            'expense_manager_deleted',
           ].contains(widget.actionKey)) {
         throw const FormatException('Invalid target');
       }
@@ -200,7 +202,7 @@ class _ExpenseNotificationPageState extends State<ExpenseNotificationPage>
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          _completed
+          widget.actionKey=='expense_manager_deleted' ? _text('経費の削除履歴','Expense removal history') : _completed
               ? _text('振り分け完了', 'Allocation completed')
               : _text('経費申請', 'Expense application'),
         ),
@@ -217,7 +219,12 @@ class _ExpenseNotificationPageState extends State<ExpenseNotificationPage>
                       'This expense is unavailable. Open it again from notifications.',
                     ),
                   )
-                else ...[
+                else if(widget.actionKey=='expense_manager_deleted') ...[
+                  const Text('管理者による削除記録です。この画面は閲覧専用です。'),
+                  Text('${claim['amount_yen']}円'),Text(claim['description'] as String),
+                  Text('利用日：${claim['incurred_on']}'),Text('削除日時：${claim['deleted_at']}'),
+                  Text(claim['correction_required']==true ? '確定済み帳票の原本は保持されています。金額の訂正は別途必要です。' : '一覧で削除扱いになっています。原本・写真・変更履歴は保持されています。'),
+                ] else ...[
                   Text(
                     _completed
                         ? _text(
@@ -266,3 +273,4 @@ class _ExpenseNotificationPageState extends State<ExpenseNotificationPage>
     );
   }
 }
+

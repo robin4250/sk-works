@@ -5,6 +5,7 @@ import 'notification_business_status.dart';
 import 'source_notification_target.dart';
 import 'checkout_report_notification_repository.dart';
 import '../payroll/resident_tax_reminder_repository.dart';
+import '../expenses/expense_notification_target.dart';
 
 class AppNotificationRecord {
   const AppNotificationRecord({
@@ -32,7 +33,7 @@ class AppNotificationRecord {
   bool get hasBusinessTarget => (kind == 'resident_tax_reminder' && actionKey == 'payroll_settings') || const {
     'payroll_review', 'invoice_approval', 'daily_report_edit_request',
     'paid_leave_request', 'worker_personnel_change', 'attendance_correction_request',
-    'expense_review_request', 'checkout_report_registration',
+    'expense_review_request', 'expense_manager_deleted', 'checkout_report_registration',
   }.contains(actionKey);
 
   AppNotificationRecord withBusinessStatus(NotificationBusinessStatus status) =>
@@ -135,6 +136,17 @@ class AppNotificationRepository {
           targetDate: target.items.isEmpty ? null : target.items.first.workDate,
         );
       } catch (_) { return const NotificationBusinessStatus(); }
+    }
+    if (item.actionKey == 'expense_manager_deleted') {
+      final actor=_client.auth.currentUser?.id;
+      if(actor==null)return const NotificationBusinessStatus();
+      try{
+        final raw=await _client.rpc('expense_manager_removal_notice',params:{'p_notification':item.id});
+        if(_client.auth.currentUser?.id!=actor)return const NotificationBusinessStatus();
+        final target=parseExpenseNotificationTarget(raw is Map?Map<String,dynamic>.from(raw):null,
+          notificationId:item.id,actionKey:item.actionKey!,actionId:item.actionId!);
+        return NotificationBusinessStatus(state:NotificationBusinessState.completed,targetName:'経費の削除記録',targetDate:DateTime.parse(target['incurred_on'] as String));
+      }catch(_){return const NotificationBusinessStatus();}
     }
     if (item.actionKey == 'expense_review_request') {
       final actor = _client.auth.currentUser?.id;
@@ -265,3 +277,4 @@ class AppNotificationRepository {
     }
   }
 }
+

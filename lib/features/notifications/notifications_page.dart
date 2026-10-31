@@ -623,7 +623,7 @@ Widget? notificationDestination(
       child: SecurityIncidentPage(incidentId: item.actionId),
     ),
   ),
-  'expense_review_request' || 'expense_review_completed' => ExpenseNotificationPage(
+  'expense_review_request' || 'expense_review_completed' || 'expense_manager_deleted' => ExpenseNotificationPage(
     notificationId: item.id, actionKey: item.actionKey!, actionId: item.actionId!,
   ),
   'settings' => const SettingsPage(),
@@ -686,3 +686,4 @@ Widget residentTaxReminderDestination(AppNotificationRecord item, ResidentTaxRem
     reminderPanel: ResidentTaxReminderPanel(companyId: target.companyId),
   ));
 }
+

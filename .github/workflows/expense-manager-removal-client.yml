@@ -1,0 +1,22 @@
+name: Expense manager removal client isolated review
+on:
+  pull_request:
+    paths:
+      - 'lib/features/expenses/**'
+      - 'test/expense_manager_removal_client_test.dart'
+      - '.github/workflows/expense-manager-removal-client.yml'
+permissions:
+  contents: read
+jobs:
+  client:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze lib/features/expenses test/expense_manager_removal_client_test.dart
+      - run: flutter test test/expense_manager_removal_client_test.dart test/expense_claim_test.dart test/expense_claims_page_test.dart test/expense_management_test.dart test/expense_notification_target_test.dart
