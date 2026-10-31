@@ -20,6 +20,7 @@ import 'payroll_confirmation_repository.dart';
 import 'payroll_confirmation_settings_page.dart';
 import 'paid_leave_pay.dart';
 import 'payroll_draft_keep_alive.dart';
+import 'payroll_keyboard_access.dart';
 import 'resident_tax_section.dart';
 import 'resident_tax_capability.dart';
 import 'company_common_allowance_entry_page.dart';
@@ -554,7 +555,7 @@ class _IndividualPayrollSettingsPageState
         ? _settingValues['company_id'] as String
         : workspace?.companyId;
     final monthly = (_showDeductions ? _deductionUnit : _earningUnit) == PayrollItemUnit.month;
-    return Scaffold(
+    return PayrollKeyboardDismissArea(child: Scaffold(
       appBar: AppBar(
         title: Text(
           SkoLanguageController.tr('個別給与設定'),
@@ -587,7 +588,7 @@ class _IndividualPayrollSettingsPageState
       bottomNavigationBar:
           _loading || _error != null || workspace?.canView != true
           ? null
-          : SafeArea(
+          : PayrollKeyboardFooter(child: SafeArea(
               key: const ValueKey('individual-payroll-fixed-footer'),
               top: false,
               child: Padding(
@@ -628,7 +629,7 @@ class _IndividualPayrollSettingsPageState
                   ],
                 ),
               ),
-            ),
+            )),
       body: SafeArea(
         child: _loading
             ? Center(child: CircularProgressIndicator())
@@ -664,6 +665,7 @@ class _IndividualPayrollSettingsPageState
               )
             : SingleChildScrollView(
                 controller: _scrollController,
+                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                 padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1021,7 +1023,7 @@ class _IndividualPayrollSettingsPageState
                 ),
               ),
       ),
-    );
+    ));
   }
 
   PaidLeavePay _currentPaidLeavePay() {

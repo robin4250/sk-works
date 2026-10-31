@@ -121,6 +121,63 @@ void main() {
       });
     }
   }
+  testWidgets('keyboard completion retains draft and keeps register above keyboard', (tester) async {
+    final repository = _Repository(client);
+    await open(tester, repository, PayrollItemSection.earning, PayrollItemUnit.day);
+    await tester.tap(action('追加')); await tester.pumpAndSettle();
+    final name = find.byKey(const ValueKey('new-unit-item-0-name'));
+    final rate = find.byKey(const ValueKey('new-unit-item-0-rate'));
+    await tester.enterText(name, '入力を保持');
+    await tester.enterText(rate, '1234');
+    tester.view.viewInsets = const FakeViewPadding(bottom: 260);
+    addTearDown(tester.view.resetViewInsets);
+    await tester.pumpAndSettle();
+    final done = find.byKey(const ValueKey('payroll-keyboard-done'));
+    expect(done.hitTestable(), findsOneWidget);
+    expect(action('登録').hitTestable(), findsOneWidget);
+    final logicalKeyboardTop = tester.view.physicalSize.height / tester.view.devicePixelRatio - 260 / tester.view.devicePixelRatio;
+    expect(tester.getRect(action('登録')).bottom, lessThanOrEqualTo(logicalKeyboardTop));
+    await tester.tap(done); await tester.pumpAndSettle();
+    expect(tester.testTextInput.isVisible, isFalse);
+    expect(repository.units.saved, isEmpty, reason: 'completion never submits');
+    expect(tester.widget<TextField>(rate).controller!.text, '1234');
+    tester.view.resetViewInsets(); await tester.pumpAndSettle();
+    await tester.tap(action('登録')); await tester.pumpAndSettle();
+    expect(repository.units.saved.single.last.name, '入力を保持');
+    expect(repository.units.saved.single.last.rate, '1234');
+    expect(repository.legacySaves, 0);
+    expect(tester.takeException(), isNull);
+  });
+  for (final section in PayrollItemSection.values) {
+    testWidgets('monthly ${section.name} keyboard completion preserves input and submits once', (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final repository = _Repository(client);
+      await open(tester, repository, section, PayrollItemUnit.month);
+      final label = section == PayrollItemSection.earning ? '支給1 金額' : '控除1 金額';
+      final field = find.widgetWithText(TextFormField, label);
+      await tester.ensureVisible(field);
+      await tester.enterText(field, '789');
+      tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+      addTearDown(tester.view.resetViewInsets);
+      await tester.pumpAndSettle();
+      expect(action('追加').hitTestable(), findsOneWidget);
+      expect(action('登録').hitTestable(), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('payroll-keyboard-done')));
+      await tester.pumpAndSettle();
+      expect(tester.testTextInput.isVisible, false);
+      expect(tester.widget<TextFormField>(field).controller!.text, '789');
+      expect(repository.legacySaves, 0);
+      tester.view.resetViewInsets(); await tester.pumpAndSettle();
+      await tester.tap(action('登録')); await tester.pumpAndSettle();
+      await tester.tap(find.text('確定して保存')); await tester.pumpAndSettle();
+      expect(repository.legacySaves, 1);
+      expect(repository.units.saved, isEmpty);
+      expect(tester.takeException(), isNull);
+    });
+  }
   testWidgets('read-only unit footer stays disabled', (tester) async {
     await open(tester, _Repository(client, edit: false), PayrollItemSection.deduction, PayrollItemUnit.day);
     expect(tester.widget<OutlinedButton>(find.descendant(of: footer, matching: find.byType(OutlinedButton))).onPressed, isNull);
