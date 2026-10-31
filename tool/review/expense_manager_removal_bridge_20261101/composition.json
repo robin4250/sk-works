@@ -1,0 +1,64 @@
+{
+  "schema": "expense_manager_removal_bridge_composition_v1",
+  "parent_commit": "4b34d5b9f352c2cfbbdb14c51d15b8cee42a4d4b",
+  "expected_product_overlay_tree": "c7b0d8d2fbe861bd470106700dded50445530e69",
+  "dependencies": [
+    {
+      "path": "lib/features/expenses/expense_manager_removal_repository.dart",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "2df08948816a79d2ef59302eb79b00acea77a8a1",
+      "source_head": "cd2d193d7a559b65f530bcd88fb71e0d1a008007"
+    },
+    {
+      "path": "test/expense_manager_removal_client_test.dart",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "94a455316f2ea3effa9b6a91b588a03ea3c3e700",
+      "source_head": "cd2d193d7a559b65f530bcd88fb71e0d1a008007"
+    },
+    {
+      "path": "lib/features/expenses/expense_claims_page.dart",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "6207c24bb253acf5aef41bd96079c2225d35539e",
+      "source_head": "baaf44e70a85983dd7f410fe4c3a8d65f549816e"
+    }
+  ],
+  "frozen_sql": {
+    "source_head": "77dc84436b09ba6fcb17f6bf9018ffed652de9c3",
+    "blob": "3c0c5518c5a1add7e2f98d7858e0dbc655db19e6",
+    "sha256": "b2584677c81e50fa44cfbbc544de9fb6a4377e089875b5db09701f26953252e2"
+  },
+  "verified_before_composition": {
+    "tracking": {
+      "job": 124687465538,
+      "tests": 71,
+      "independent_limited_clear": true
+    },
+    "action_identity": {
+      "job": 124689288419,
+      "tests": 2,
+      "independent_limited_clear": true
+    }
+  },
+  "expected_diff_from_parent": [
+    "lib/features/expenses/expense_manager_removal_repository.dart",
+    "test/expense_manager_removal_client_test.dart",
+    "lib/features/expenses/expense_claims_page.dart",
+    "tool/review/expense_manager_removal_bridge_20261101/composition.json"
+  ],
+  "preserved_heads": {
+    "backend": "77dc84436b09ba6fcb17f6bf9018ffed652de9c3",
+    "manager_ui": "2f3fab1276a7788e79cd1af6f1389873f6a8c965",
+    "personal": "c55932a3d44c77f6792049357501600605cec359",
+    "tracking": "cd2d193d7a559b65f530bcd88fb71e0d1a008007",
+    "action_identity": "baaf44e70a85983dd7f410fe4c3a8d65f549816e"
+  },
+  "execution_scope": "one new real-SDK/UI round trip through a synthetic-identity loopback gateway to disposable PostgreSQL; production PostgREST/GoTrue/Storage/push/device excluded",
+  "deployable": false,
+  "shared_financial_reader_connected": false,
+  "legacy_rollout_qualified": false,
+  "shipping": false,
+  "production_changed": false
+}
