@@ -1,0 +1,75 @@
+name: Formal C actual expected13 capture only
+on:
+  pull_request:
+    paths:
+      - 'tool/formal_c_rebind_review/verify_expected_capture.py'
+      - '.github/workflows/formal-c-expected13-capture.yml'
+permissions:
+  contents: read
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      database:
+        image: postgres:17.6
+        env: {POSTGRES_USER: postgres, POSTGRES_PASSWORD: fixture-only, POSTGRES_DB: partner_bank_fixture}
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      PARTNER_BANK_TEST_DATABASE_URL: postgres://postgres:fixture-only@127.0.0.1:5432/partner_bank_fixture
+      CANDIDATE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: 74b7107392e3144d37612ec311636f602088f18b
+          path: frozen-producer
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with: {node-version: '22.14.0'}
+      - name: Verify frozen producer and all source hashes before execution
+        run: python3 -B tool/formal_c_rebind_review/verify_expected_capture.py --source-root frozen-producer
+      - run: npm ci --prefix frozen-producer/tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
+      - name: Run only missing actual Native expected13 capture
+        working-directory: frozen-producer
+        run: |
+          set -euo pipefail
+          umask 077
+          python3 -B tool/prepare_trade_document_atomic_review_fixture.py --root "$PWD" --output "$RUNNER_TEMP/expected13"
+          node tool/reset_trade_document_atomic_fixture.mjs initialize
+          node "$RUNNER_TEMP/expected13/capture-ordered-fixture.mjs" "$PWD/docs/review/partner-company-bank-order/native-db.mjs"
+      - name: Retain actual server and default ACL context without rewriting capture
+        working-directory: frozen-producer
+        run: |
+          node --input-type=module <<'JS'
+          import {createRequire} from 'node:module';
+          import {writeFile} from 'node:fs/promises';
+          const require=createRequire(process.cwd()+'/tool/security/fixture_dependencies/package.json');
+          const {Client}=require('pg');
+          const uri=new URL(process.env.PARTNER_BANK_TEST_DATABASE_URL);
+          if(uri.hostname!=='127.0.0.1'||uri.pathname!=='/partner_bank_fixture')throw Error('loopback fixture only');
+          const db=new Client({connectionString:uri.href,connectionTimeoutMillis:3000,query_timeout:8000});
+          try {
+            await db.connect();
+            const result=await db.query("select current_setting('server_version_num') server_version_num,coalesce((select jsonb_agg(jsonb_build_object('attributes',to_jsonb(d),'namespace',coalesce(n.nspname,''),'role',pg_get_userbyid(d.defaclrole)) order by d.oid) from pg_default_acl d left join pg_namespace n on n.oid=d.defaclnamespace),'[]'::jsonb) default_acls");
+            await writeFile(process.env.RUNNER_TEMP+'/expected13/raw-context.json',JSON.stringify(result.rows[0],null,2),{flag:'wx',mode:0o600});
+          } finally {await db.end();}
+          JS
+      - name: Bind immutable bytes to candidate and actual test checkout
+        run: |
+          python3 -B tool/formal_c_rebind_review/verify_expected_capture.py \
+            --source-root frozen-producer \
+            --capture "$RUNNER_TEMP/expected13/expected-after-fixture.json" \
+            --context "$RUNNER_TEMP/expected13/raw-context.json" \
+            --output "$RUNNER_TEMP/expected13/capture-evidence.json" \
+            --run-id "$GITHUB_RUN_ID" --job-key "$GITHUB_JOB" \
+            --candidate-head "$CANDIDATE_HEAD" --test-checkout "$(git rev-parse HEAD)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: formal-c-expected13-untrusted-native
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/expected13/expected-after-fixture.json
+            ${{ runner.temp }}/expected13/raw-context.json
+            ${{ runner.temp }}/expected13/capture-evidence.json
