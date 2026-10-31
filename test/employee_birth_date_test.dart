@@ -57,8 +57,8 @@ void main(){
   w.respond=(r)async{
    if(r.url.path.endsWith('/company_members'))return fixture.Wire.json([{'company_id':company,'role':'admin'}]);
    if(r.url.path.endsWith('/rpc/employee_personnel_view')) {
-    return fixture.Wire.json({'company_id':company,
-     'records':[{'id':worker,'active':true,if(supported)'birthDateContractVersion':2}]});
+    return fixture.Wire.json({'company_id':company,if(supported)'birth_date_contract_version':2,
+     'records':[{'id':worker,'active':true,if(supported)'birthDateContractVersion':2,if(supported)'personnelCasDigest':'0123456789abcdef0123456789abcdef'}]});
    }
    if(r.url.path.endsWith('/rpc/save_worker_personnel_profile')){
     saved=jsonDecode(r.body) as Map<String,dynamic>;

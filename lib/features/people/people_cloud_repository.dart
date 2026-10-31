@@ -204,7 +204,16 @@ class PeopleCloudRepository {
     }
     final birthSupported = raw['birth_date_contract_version'] == 2;
     final active=(raw['records'] as List).whereType<Map>().where((row)=>row['active']==true)
-      .map((row)=>Map<String,dynamic>.from(row)).toList(growable:false);
+      .map((row) {
+        final value = Map<String, dynamic>.from(row);
+        final digest = value['personnelCasDigest'];
+        if (!birthSupported || value['birthDateContractVersion'] != 2 ||
+            digest is! String || !RegExp(r'^[0-9a-f]{32}$').hasMatch(digest)) {
+          value['birthDateContractVersion'] = 0;
+          value['personnelCasDigest'] = '';
+        }
+        return value;
+      }).toList(growable:false);
     var records=active;
     if(includeInactive&&manage){
       final basic=(await loadAll(expectedCompany:member.companyId))

@@ -11,6 +11,32 @@ const worker = '60000000-0000-0000-0000-000000000020';
 const digest = '0123456789abcdef0123456789abcdef';
 
 void main() {
+  for (final invalid in [
+    {'root': 1, 'row': 2, 'digest': digest},
+    {'root': 2, 'row': 1, 'digest': digest},
+    {'root': 2, 'row': 2, 'digest': 'malformed'},
+  ]) {
+    test('mismatched capability cannot survive the SDK reader: $invalid', () async {
+      final wire = fixture.Wire();
+      await wire.seed();
+      addTearDown(wire.client.dispose);
+      wire.respond = (request) async {
+        if (request.url.path.endsWith('/company_members')) return fixture.Wire.json([{'company_id': company, 'role': 'admin'}]);
+        if (request.url.path.endsWith('/rpc/employee_personnel_view')) return fixture.Wire.json({
+          'company_id': company, 'birth_date_contract_version': invalid['root'],
+          'records': [{'id': worker, 'name': 'Synthetic employee', 'active': true,
+            'birthDate': '1980-02-29', 'birthDateContractVersion': invalid['row'],
+            'personnelCasDigest': invalid['digest']}],
+        });
+        throw StateError('Unexpected synthetic SDK endpoint');
+      };
+      final snapshot = await PeopleCloudRepository.forClient(wire.client).readPersonnel(expectedCompany: company);
+      final record = PersonRecord.fromJson(snapshot.records.single);
+      expect(record.birthDate, '1980-02-29');
+      expect(record.birthDateContractVersion, 0);
+      expect(record.personnelCasDigest, isEmpty);
+    });
+  }
   testWidgets('actual SDK loader mapping keeps initial CAS through DTO, editor and narrow save', (t) async {
     final wire = fixture.Wire();
     await wire.seed();
