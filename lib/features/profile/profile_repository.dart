@@ -41,6 +41,8 @@ class ProfileBirthdayEvidence extends ChangeNotifier {
     required this.companyId,
     required this.supported,
     required this.birthDate,
+    required this.initialPayload,
+    required this.personnelDigest,
   }) : _client = client, _lease = lease, _session = session {
     _lease.addListener(_changed);
   }
@@ -52,6 +54,8 @@ class ProfileBirthdayEvidence extends ChangeNotifier {
   final String companyId;
   final bool supported;
   final String? birthDate;
+  final Map<String, dynamic> initialPayload;
+  final String? personnelDigest;
   bool _disposed = false;
 
   bool get canEdit => !_disposed && supported && _lease.isCurrent;
@@ -201,11 +205,13 @@ class ProfileRepository {
       throw StateError('本人の生年月日を照合できません。');
     }
     final contract = raw['birth_date_contract_version'];
-    if (contract == null) return {'supported': false, 'birth_date': null};
-    if (contract is! int || contract != 1 || !raw.containsKey('birth_date')) {
+    if (contract == null || contract == 1) return {'supported': false, 'birth_date': raw['birth_date']};
+    if (contract is! int || contract != 2 || !raw.containsKey('birth_date') || raw['personnel_cas_digest'] is! String ||
+        !RegExp(r'^[0-9a-f]{32}$').hasMatch(raw['personnel_cas_digest'] as String)) {
       throw StateError('生年月日の保存形式を確認できません。');
     }
-    return {'supported': true, 'birth_date': _birthday(raw['birth_date'])};
+    return {'supported': true, 'birth_date': _birthday(raw['birth_date']),
+      'personnel_digest': raw['personnel_cas_digest'], 'initial_payload': Map<String, dynamic>.from(raw)};
   }
 
   Future<ProfileBirthdayEvidence> loadOwnBirthday({
@@ -224,7 +230,9 @@ class ProfileRepository {
       lease.requireScope();
       return ProfileBirthdayEvidence._(client: _client, lease: lease,
         session: session, workerId: workerId, companyId: companyId,
-        supported: raw['supported'] == true, birthDate: raw['birth_date'] as String?);
+        supported: raw['supported'] == true, birthDate: _birthday(raw['birth_date']),
+        initialPayload: Map<String, dynamic>.unmodifiable(raw['initial_payload'] is Map ? Map<String, dynamic>.from(raw['initial_payload'] as Map) : const {}),
+        personnelDigest: raw['personnel_digest'] as String?);
     } catch (_) {
       lease.dispose();
       rethrow;
@@ -235,6 +243,7 @@ class ProfileRepository {
     required String workerId,
     required Map<String, dynamic> payload,
     ProfileBirthdayEvidence? birthdayEvidence,
+    bool birthdayOnly = false,
   }) async {
     if (payload.containsKey('birth_date')) {
       final evidence = birthdayEvidence;
@@ -247,13 +256,20 @@ class ProfileRepository {
         final current = await _readBirthday(lease: evidence._lease,
           session: evidence._session, workerId: workerId,
           companyId: evidence.companyId);
-        if (current['supported'] != true || current['birth_date'] != evidence.birthDate) {
+        if (current['supported'] != true || current['birth_date'] != evidence.birthDate ||
+            (!birthdayOnly && current['personnel_digest'] != evidence.personnelDigest)) {
           throw StateError('保存済みの生年月日が変わりました。再読み込みして確認してください。');
         }
         evidence._lease.requireScope();
         final raw = await evidence._lease.rpc('save_worker_personnel_profile', {
           'p_worker_id': workerId,
-          'p_payload': {...payload, 'birth_date': date},
+          'p_payload': {
+            if (!birthdayOnly) ...payload, 'birth_date': date,
+            '_birth_date_mode': birthdayOnly ? 'only' : 'combined',
+            '_birth_date_cas': {'version': 2, 'worker_id': workerId,
+              'company_id': evidence.companyId, 'expected_birth_date': evidence.birthDate,
+              'expected_personnel_digest': evidence.personnelDigest},
+          },
         });
         if (raw is! Map || !const ['saved', 'unchanged', 'pending'].contains(raw['status']) ||
             raw['requires_approval'] != (raw['status'] == 'pending') ||

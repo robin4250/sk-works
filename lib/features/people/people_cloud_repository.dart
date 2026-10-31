@@ -202,7 +202,7 @@ class PeopleCloudRepository {
     if (raw is! Map || raw['company_id'] != member.companyId || raw['records'] is! List) {
       throw StateError('社員情報の取得結果を確認できません');
     }
-    final birthSupported = raw['birth_date_contract_version'] == 1;
+    final birthSupported = raw['birth_date_contract_version'] == 2;
     final active=(raw['records'] as List).whereType<Map>().where((row)=>row['active']==true)
       .map((row)=>Map<String,dynamic>.from(row)).toList(growable:false);
     var records=active;
@@ -241,7 +241,7 @@ class PeopleCloudRepository {
 
   static Map<String,dynamic> _inactivePrivateFields(List<Map<String,dynamic>> profiles, {bool birthSupported = false}){
     final p=profiles.isEmpty?const <String,dynamic>{}:profiles.single;
-    return {'birthDate':p['birth_date'] ?? '', 'birthDateContractVersion':birthSupported ? 1 : 0,
+    return {'birthDate':p['birth_date'] ?? '', 'birthDateContractVersion':0,
       'bloodType':p['blood_type']??'','address':p['address']??'',
       'emergencyName':p['emergency_name']??'','emergencyRelation':p['emergency_relation']??'',
       'emergencyPhone':p['emergency_phone']??'','emergencyAddress':p['emergency_address']??'',
@@ -528,15 +528,11 @@ class PeopleCloudRepository {
       checkBirthSession();
       final targets = current.records.where((row) => row['id'] == id).toList();
       if (targets.length != 1 || (targets.single['birthDateContractVersion'] ??
-          targets.single['birth_date_contract_version']) != 1) {
+          targets.single['birth_date_contract_version']) != 2) {
         throw StateError('生年月日の登録は準備中です。保存は行いません。');
       }
     }
-    final request = _client.rpc(
-      'save_worker_personnel_profile',
-      params: {
-        'p_worker_id': id,
-        'p_payload': {
+    final payload = <String, dynamic>{
           'name': record['name']?.toString() ?? '',
           'kind': record['kind']?.toString() ?? 'employee',
           if (birthSubmitted) 'birth_date': record['birthDate']?.toString().trim().isEmpty != false ? null : record['birthDate'].toString().trim(),
@@ -557,7 +553,26 @@ class PeopleCloudRepository {
           'family_members': record['familyMembers'] is List
               ? record['familyMembers']
               : const <dynamic>[],
-        },
+        };
+    if (birthSubmitted) {
+      final digest = record['personnelCasDigest'];
+      if (digest is! String || !RegExp(r'^[0-9a-f]{32}$').hasMatch(digest) ||
+          record['birthDateContractVersion'] != 2 || !record.containsKey('birthDateExpected')) {
+        throw StateError('生年月日を再読み込みしてから変更してください。');
+      }
+      if (record['birthDateOnly'] == true) {
+        payload.removeWhere((key, value) => key != 'birth_date');
+      }
+      payload['_birth_date_mode'] = record['birthDateOnly'] == true ? 'only' : 'combined';
+      payload['_birth_date_cas'] = {'version': 2, 'worker_id': id,
+        'company_id': expectedCompany, 'expected_birth_date': record['birthDateExpected'],
+        'expected_personnel_digest': digest};
+    }
+    final request = _client.rpc(
+      'save_worker_personnel_profile',
+      params: {
+        'p_worker_id': id,
+        'p_payload': payload,
       },
     );
     final raw = birthSubmitted ? await request.setHeader('Authorization', 'Bearer $token') : await request;
@@ -655,5 +670,6 @@ class PeopleCloudRepository {
     return text.isEmpty ? null : text;
   }
 }
+
 
 

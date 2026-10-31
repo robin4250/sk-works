@@ -29,7 +29,8 @@ Map<String, dynamic> payload() => {
 
 class Wire {
   String sid = sidA;
-  Object? contract = 1;
+  Object? contract = 2;
+  String digest = '0123456789abcdef0123456789abcdef';
   Object? birthday = '1980-01-15';
   String returnedWorker = worker;
   List<Map<String, dynamic>> members = [{'company_id': company, 'role': 'owner'}];
@@ -73,7 +74,8 @@ class Wire {
       case '/rest/v1/rpc/current_worker_personnel_profile':
         value = {...payload(), 'worker_id': returnedWorker,
           if (contract != null) 'birth_date_contract_version': contract,
-          if (contract != null) 'birth_date': birthday};
+          if (contract != null) 'birth_date': birthday,
+          if (contract == 2) 'personnel_cas_digest': digest};
         if (holdProfile) {
           entered?.complete();
           await release!.future;
@@ -153,6 +155,8 @@ void main() {
     expect(w.writes.single['p_worker_id'], worker);
     expect((w.writes.single['p_payload'] as Map)['family_members'], family);
     expect((w.writes.single['p_payload'] as Map)['birth_date'], '1981-03-04');
+    expect(((w.writes.single['p_payload'] as Map)['_birth_date_cas'] as Map)['expected_birth_date'], '1980-01-15');
+    expect((w.writes.single['p_payload'] as Map)['_birth_date_mode'], 'combined');
     expect(w.requests.last.headers['Authorization'], 'Bearer ${w.token(sidA)}');
     expect(evidence.canEdit, isFalse);
   });
@@ -176,7 +180,7 @@ void main() {
       (w) => w.members = [...w.members, {'company_id': foreign, 'role': 'owner'}],
       (w) => w.workers = [{'id': foreign}],
       (w) => w.returnedWorker = foreign,
-      (w) => w.contract = 1.0,
+      (w) => w.contract = 2.0,
       (w) => w.birthday = '1980-02-30',
     ]) {
       final w = Wire(); addTearDown(w.client.dispose); await w.login(sidA); change(w);
@@ -251,7 +255,8 @@ void main() {
     await tester.tap(clear); await tester.pumpAndSettle();
     await saveProfile(tester);
     expect((w.writes.single['p_payload'] as Map)['birth_date'], isNull);
-    expect(((w.writes.single['p_payload'] as Map)['family_members'] as List).single['birth_date'], '2020-02-02');
+    expect((w.writes.single['p_payload'] as Map).containsKey('family_members'), isFalse);
+    expect((w.writes.single['p_payload'] as Map)['_birth_date_mode'], 'only');
   }, timeout: const Timeout(Duration(seconds: 45)));
   testWidgets('date picker selection is explicitly saved and read back as the own birthday', (tester) async {
     final w = Wire(); disposeWidgetClient(tester, w);

@@ -1,5 +1,7 @@
 // ignore_for_file: prefer_interpolation_to_compose_strings
 
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -40,6 +42,7 @@ class _ProfilePageState extends State<ProfilePage> {
   ProfileBirthdayEvidence? _birthdayEvidence;
   String? _birthdayError;
   bool _birthDateDirty = false;
+  String? _initialBirthdayFields;
   int _birthdayLoadGeneration = 0;
   final _personnelRole = TextEditingController();
   final _personnelPhone = TextEditingController();
@@ -113,7 +116,7 @@ class _ProfilePageState extends State<ProfilePage> {
         repository.loadPersonnelProfile(),
       ]);
       final data = values[0] as ProfileData;
-      final personnel = values[1] as Map<String, dynamic>?;
+      var personnel = values[1] as Map<String, dynamic>?;
       ProfileBirthdayEvidence? birthday;
       String? birthdayError;
       final ownWorker = personnel?['worker_id'];
@@ -129,6 +132,7 @@ class _ProfilePageState extends State<ProfilePage> {
         birthday?.dispose();
         return;
       }
+      if (birthday?.canEdit == true) personnel = birthday!.initialPayload;
       _birthdayEvidence = birthday;
       birthday?.addListener(_birthdayChanged);
       _birthdayError = birthdayError;
@@ -171,6 +175,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
             ]
           : <EditableFamilyMember>[];
+      _initialBirthdayFields = jsonEncode(_personnelPayload(includeBirth: false));
       setState(() {
         _data = data;
         _loading = false;
@@ -317,6 +322,25 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
+  Map<String, dynamic> _personnelPayload({bool includeBirth = true}) => {
+          'name': _personnelName.text.trim(),
+          if (includeBirth && _birthDateDirty)
+            'birth_date': _personnelBirth.text.isEmpty ? null : _personnelBirth.text,
+          'kind': 'employee',
+          'blood_type': _bloodType,
+          'role': _personnelRole.text.trim(),
+          'phone': _personnelPhone.text.trim(),
+          'address': _personnelAddress.text.trim(),
+          'emergency_name': _emergencyName.text.trim(),
+          'emergency_relation': _emergencyRelation.text.trim(),
+          'emergency_phone': _emergencyPhone.text.trim(),
+          'emergency_address': _emergencyAddress.text.trim(),
+          'family_composition': _familyComposition.text.trim(),
+          'family_members': [
+            for (final member in _familyMembers) member.toValue().toJson(),
+          ],
+        };
+
   Future<void> _savePersonnel() async {
     final repository = _repository;
     final workerId = _workerId;
@@ -365,24 +389,9 @@ class _ProfilePageState extends State<ProfilePage> {
       final result = await repository.savePersonnelProfile(
         workerId: workerId,
         birthdayEvidence: _birthdayEvidence,
-        payload: {
-          'name': _personnelName.text.trim(),
-          if (_birthDateDirty)
-            'birth_date': _personnelBirth.text.isEmpty ? null : _personnelBirth.text,
-          'kind': 'employee',
-          'blood_type': _bloodType,
-          'role': _personnelRole.text.trim(),
-          'phone': _personnelPhone.text.trim(),
-          'address': _personnelAddress.text.trim(),
-          'emergency_name': _emergencyName.text.trim(),
-          'emergency_relation': _emergencyRelation.text.trim(),
-          'emergency_phone': _emergencyPhone.text.trim(),
-          'emergency_address': _emergencyAddress.text.trim(),
-          'family_composition': _familyComposition.text.trim(),
-          'family_members': [
-            for (final member in _familyMembers) member.toValue().toJson(),
-          ],
-        },
+        birthdayOnly: _initialBirthdayFields != null &&
+            jsonEncode(_personnelPayload(includeBirth: false)) == _initialBirthdayFields,
+        payload: _personnelPayload(),
       );
       if (!mounted) return;
       final pending = result['requires_approval'] == true;

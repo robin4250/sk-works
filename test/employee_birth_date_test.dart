@@ -11,9 +11,9 @@ const company='60000000-0000-0000-0000-000000000010';
 const worker='60000000-0000-0000-0000-000000000020';
 void main(){
  test('birthday model serializes worker date independently of family dates',(){
-  final record=PersonRecord.fromJson({'id':worker,'birth_date':'1980-02-29','birth_date_contract_version':1,
+  final record=PersonRecord.fromJson({'id':worker,'birth_date':'1980-02-29','birth_date_contract_version':2,
    'familyMembers':[{'name':'Child','relation':'子','birth_date':'2020-01-01'}]});
-  expect(record.birthDate,'1980-02-29');expect(record.birthDateContractVersion,1);
+  expect(record.birthDate,'1980-02-29');expect(record.birthDateContractVersion,2);
   expect(PersonRecord.fromJson(Map<String,dynamic>.from(record.toJson())).birthDate,'1980-02-29');
   expect(record.familyMembers.single.birthDate?.year,2020);
  });
@@ -43,7 +43,7 @@ void main(){
  testWidgets('approval review labels worker birthday and hides contract marker',(t)async{
   await t.pumpWidget(MaterialApp(home:WorkerPersonnelChangeApprovalsPage(loadRequests:()async=>[
    {'id':'request-fixture','worker_name':'Fixture','proposed':{'name':'Fixture',
-    'birth_date':'1980-02-29','birth_date_contract_version':1}}
+    'birth_date':'1980-02-29','birth_date_contract_version':2}}
   ])));
   await t.pumpAndSettle();
   await t.tap(find.byType(ExpansionTile));await t.pumpAndSettle();
@@ -58,7 +58,7 @@ void main(){
    if(r.url.path.endsWith('/company_members'))return fixture.Wire.json([{'company_id':company,'role':'admin'}]);
    if(r.url.path.endsWith('/rpc/employee_personnel_view')) {
     return fixture.Wire.json({'company_id':company,
-     'records':[{'id':worker,'active':true,if(supported)'birthDateContractVersion':1}]});
+     'records':[{'id':worker,'active':true,if(supported)'birthDateContractVersion':2}]});
    }
    if(r.url.path.endsWith('/rpc/save_worker_personnel_profile')){
     saved=jsonDecode(r.body) as Map<String,dynamic>;
@@ -67,10 +67,14 @@ void main(){
    throw StateError('Unexpected fixture endpoint');
   };
   final future=PeopleCloudRepository.forClient(w.client).savePersonnelProfile({
-   'id':worker,'name':'Fixture','birthDateSubmitted':true,'birthDate':'1980-02-29'},expectedCompany:company);
+   'id':worker,'name':'Fixture','birthDateSubmitted':true,'birthDate':'1980-02-29',
+   'birthDateContractVersion':2,'birthDateExpected':null,'personnelCasDigest':'0123456789abcdef0123456789abcdef','birthDateOnly':true},expectedCompany:company);
   if(!supported){await expectLater(future,throwsStateError);expect(saved,isNull);}
   else{final result=await future;expect(result['requires_approval'],true);
    expect((saved!['p_payload'] as Map)['birth_date'],'1980-02-29');
+   expect((saved!['p_payload'] as Map).containsKey('family_members'),false);
+   expect(((saved!['p_payload'] as Map)['_birth_date_cas'] as Map)['expected_birth_date'],null);
+   expect(((saved!['p_payload'] as Map)['_birth_date_cas'] as Map)['version'],2);
    expect(w.calls.last.headers['Authorization'],'Bearer ${w.client.auth.currentSession!.accessToken}');}
  }); }
  test('legacy omitted date does not add or clear birthday in canonical payload',()async{
@@ -80,3 +84,4 @@ void main(){
   expect((saved!['p_payload'] as Map).containsKey('birth_date'),false);
  });
 }
+

@@ -1,5 +1,7 @@
 // ignore_for_file: prefer_interpolation_to_compose_strings
 
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 import 'people_cloud_repository.dart';
@@ -28,6 +30,9 @@ class _EmployeePersonnelEditPageState extends State<EmployeePersonnelEditPage> {
   DateTime? _hireDate;
   DateTime? _birthDate;
   bool _birthDateDirty = false;
+  late final String _initialBirthdayFields;
+  bool get _canEditBirthday => widget.record.birthDateContractVersion == 2 &&
+      RegExp(r'^[0-9a-f]{32}$').hasMatch(widget.record.personnelCasDigest);
   late final TextEditingController _phone;
   late final TextEditingController _address;
   late final TextEditingController _emergencyName;
@@ -69,6 +74,7 @@ class _EmployeePersonnelEditPageState extends State<EmployeePersonnelEditPage> {
         .map(EditableFamilyMember.fromValue)
         .toList();
     _bloodType = record.bloodType;
+    _initialBirthdayFields = jsonEncode(_saveRecord(includeBirthday: false));
     _loadSaveMode();
   }
 
@@ -126,6 +132,37 @@ class _EmployeePersonnelEditPageState extends State<EmployeePersonnelEditPage> {
     super.dispose();
   }
 
+  Map<String, dynamic> _saveRecord({bool includeBirthday = true}) {
+    final result = <String, dynamic>{
+        ...widget.record.toJson(),
+        'name': _name.text.trim(),
+        'bloodType': _bloodType,
+        'role': _role.text.trim(),
+        'employeeCategorySubmitted': _categoryReady && _categoryDirty,
+        'employeeCategoryId': _categoryId,
+        'employeeNumber': _employeeNumber.text.trim(),
+        'department': _department.text.trim(),
+        'birthDateSubmitted': _birthDateDirty,
+        'birthDateExpected': widget.record.birthDate.isEmpty ? null : widget.record.birthDate,
+        'birthDate': _birthDate?.toIso8601String().substring(0, 10) ?? '',
+        'hireDate': _hireDate == null
+            ? ''
+            : _hireDate!.toIso8601String().substring(0, 10),
+        'phone': _phone.text.trim(),
+        'address': _address.text.trim(),
+        'emergencyName': _emergencyName.text.trim(),
+        'emergencyRelation': _emergencyRelation.text.trim(),
+        'emergencyPhone': _emergencyPhone.text.trim(),
+        'emergencyAddress': _emergencyAddress.text.trim(),
+        'familyComposition': _familyComposition.text.trim(),
+        'familyMembers': [
+          for (final member in _familyMembers) member.toValue().toJson(),
+        ],
+      };
+    if (!includeBirthday) { result.remove('birthDate'); result.remove('birthDateSubmitted'); }
+    return result;
+  }
+
   Future<void> _save() async {
     final repository = _repository;
     if (repository == null || _saving) return;
@@ -179,30 +216,8 @@ class _EmployeePersonnelEditPageState extends State<EmployeePersonnelEditPage> {
         if(!mounted)return;
         session.verify(session.epoch);
       }
-      final result = await repository.savePersonnelProfile({
-        ...widget.record.toJson(),
-        'name': _name.text.trim(),
-        'bloodType': _bloodType,
-        'role': _role.text.trim(),
-        'employeeCategorySubmitted': _categoryReady && _categoryDirty,
-        'employeeCategoryId': _categoryId,
-        'employeeNumber': _employeeNumber.text.trim(),
-        'department': _department.text.trim(),
-        'birthDateSubmitted': _birthDateDirty,
-        'birthDate': _birthDate?.toIso8601String().substring(0, 10) ?? '',
-        'hireDate': _hireDate == null
-            ? ''
-            : _hireDate!.toIso8601String().substring(0, 10),
-        'phone': _phone.text.trim(),
-        'address': _address.text.trim(),
-        'emergencyName': _emergencyName.text.trim(),
-        'emergencyRelation': _emergencyRelation.text.trim(),
-        'emergencyPhone': _emergencyPhone.text.trim(),
-        'emergencyAddress': _emergencyAddress.text.trim(),
-        'familyComposition': _familyComposition.text.trim(),
-        'familyMembers': [
-          for (final member in _familyMembers) member.toValue().toJson(),
-        ],
+      final result = await repository.savePersonnelProfile({..._saveRecord(),
+        'birthDateOnly': jsonEncode(_saveRecord(includeBirthday: false)) == _initialBirthdayFields,
       }, expectedCompany: widget.privacySession?.company ?? _categoryCompany);
       if (!mounted) return;
       final pending = result['requires_approval'] == true;
@@ -297,15 +312,15 @@ class _EmployeePersonnelEditPageState extends State<EmployeePersonnelEditPage> {
           ListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text('生年月日'),
-            subtitle: Text(widget.record.birthDateContractVersion != 1
+            subtitle: Text(!_canEditBirthday
                 ? '生年月日の登録は準備中です'
                 : _birthDate?.toIso8601String().substring(0, 10).replaceAll('-', '/') ?? '未登録'),
             trailing: _birthDate == null ? null : IconButton(
               tooltip: '生年月日を未登録に戻す',
-              onPressed: _saving || widget.record.birthDateContractVersion != 1 ? null
+              onPressed: _saving || !_canEditBirthday ? null
                   : () => setState(() { _birthDate = null; _birthDateDirty = true; }),
               icon: const Icon(Icons.clear)),
-            onTap: _saving || widget.record.birthDateContractVersion != 1 ? null : () async {
+            onTap: _saving || !_canEditBirthday ? null : () async {
               final now = DateTime.now();
               final selected = await showDatePicker(context: context,
                 initialDate: _birthDate ?? DateTime(now.year - 30),
@@ -524,4 +539,5 @@ class _EmployeePersonnelEditPageState extends State<EmployeePersonnelEditPage> {
     ),
   );
 }
+
 

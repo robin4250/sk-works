@@ -8,7 +8,7 @@ save, decide and private apply share a transaction-scoped worker advisory gate b
 
 New synthetic PGlite nine logical cases pass: read version, narrow save, non-DOB/family-ID preservation, stale conflict, legacy explicit denial, direct authenticated apply denial, legacy omitted-DOB preservation, pending, and approval-time conflict with decision-row rollback. This is not Native concurrency, real authentication, Storage, SDK/UI or device evidence.
 
-A dedicated CI suite now prepares PostgreSQL17.6 two-connection wait/phantom/revocation schedules; success is not yet confirmed. Outstanding before review completion: verified Native results; both Profile and Employee version2 transports and original-snapshot UI evidence; full source review and latest CI. The frozen predecessor client still understands version1, so no version2 rollout is permitted. Production approval must be separate from the guide/document correction package.
+A dedicated CI suite now prepares PostgreSQL17.6 two-connection wait/phantom/revocation schedules; success is not yet confirmed. Outstanding before review completion: verified Native results; both Profile and Employee version2 transports now have source candidates; their analysis/SDK/widget evidence remains pending; full source review and latest CI. Both source writers now preserve original date/digest and choose narrow DOB-only versus combined intent. This new client source remains unverified; no version2 rollout is permitted. Production approval must be separate from the guide/document correction package.
 
 Run only in a disposable synthetic fixture:
 `node tool/security/personnel_birthday_cas_v2/verify.mjs tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js`
