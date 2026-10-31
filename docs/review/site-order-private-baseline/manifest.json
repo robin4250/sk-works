@@ -1,0 +1,99 @@
+{
+  "status": "review-only-not-install-ready",
+  "source_parent": "98cdc5606730b80a33ef7a835c77ffd6be9a13c5",
+  "sources": {
+    "docs/candidates/trade_document_bound_seal_consent_20261021.sql.review-only": "dce7ca9653988c642d49325ff331d0548448206ae3e8c2e2dc24202d36a04e01",
+    "docs/candidates/trade_document_confirmation_api_20261022.sql.review-only": "18d738705b4f55a82e67faec31f115473df38c5a51bcb31da6e621c10646db83"
+  },
+  "actor_statement_sha256": "0da8df5dd78bdd44daa9757da346a48e4e7cbb63bada0b65f849cc060d2e3b15",
+  "actor_body_md5": "42329b7b0775eec0aad5ac018233011d",
+  "existing_function_contracts": [
+    {
+      "signature": "auth.jwt()",
+      "source_md5": "2db09c3fc855ba90e71d3ae28cfadae3",
+      "security_definer": false,
+      "volatility": "s",
+      "config": null
+    },
+    {
+      "signature": "auth.uid()",
+      "source_md5": "cdef18c69c4f4cbbced2eaf81e628b49",
+      "security_definer": false,
+      "volatility": "s",
+      "config": null
+    },
+    {
+      "signature": "private.account_access_allowed()",
+      "source_md5": "aeca25db212c043c472334026bd98724",
+      "security_definer": true,
+      "volatility": "s",
+      "config": [
+        "search_path=\"\""
+      ]
+    },
+    {
+      "signature": "private.document_company_seal_snapshot(jsonb,uuid,boolean)",
+      "source_md5": "823cc52d0c652e7f04ff816a8a8eaf64",
+      "security_definer": true,
+      "volatility": "v",
+      "config": [
+        "search_path=\"\""
+      ]
+    },
+    {
+      "signature": "private.require_reauthentication_session()",
+      "source_md5": "b5c8e2f259a99b3c69694ad0640080e5",
+      "security_definer": true,
+      "volatility": "v",
+      "config": [
+        "search_path=\"\""
+      ]
+    },
+    {
+      "signature": "private.account_deletion_barrier_key(uuid)",
+      "source_md5": "84db8dfee728dd9187f3c05b29e29e1a",
+      "security_definer": false,
+      "volatility": "i",
+      "config": [
+        "search_path=\"\""
+      ]
+    },
+    {
+      "signature": "private.aoyagi_reisho_name_supported(text)",
+      "source_md5": "ca6eecc48cfcbb24faac27c82bc3ed30",
+      "security_definer": false,
+      "volatility": "i",
+      "config": [
+        "search_path=\"\""
+      ]
+    },
+    {
+      "signature": "private.uploaded_company_seal_snapshot(uuid)",
+      "source_md5": "8d941e41fa11beadff7f36b95fd71035",
+      "security_definer": false,
+      "volatility": "v",
+      "config": [
+        "search_path=\"\""
+      ]
+    }
+  ],
+  "new_namespaces": [
+    "trade_document_consent_private",
+    "trade_document_confirmation_api_private"
+  ],
+  "forbidden_financial_exports": [
+    "scope",
+    "resolve",
+    "parent_links",
+    "receipts",
+    "preview_confirmation",
+    "confirm_monthly_review"
+  ],
+  "remaining_gate": [
+    "complete relation/default/index/trigger/policy capture and exact contract review",
+    "committed current helper source equality receipt",
+    "native actual-helper minimal site composition",
+    "independent review",
+    "explicit production approval"
+  ]
+}
