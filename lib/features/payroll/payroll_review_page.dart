@@ -351,9 +351,7 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
                                 key: const ValueKey('payroll-roster-counts'),
                               ),
                             ),
-                            if (items.every(
-                                  (item) => item.workerId.isNotEmpty,
-                                ) &&
+                            if (workspace.canCompareRoster &&
                                 workspace.workers.any(
                                   (worker) => !items.any(
                                     (item) => item.workerId == worker.workerId,

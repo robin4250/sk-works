@@ -9,6 +9,9 @@ import 'package:sk_works/features/payroll/payroll_review_page.dart';
 import 'package:sk_works/features/payroll/payroll_review_repository.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+String workerId(int i) =>
+    '00000000-0000-4000-8000-${i.toString().padLeft(12, '0')}';
+
 Map<String, dynamic> payload({String role = 'owner', bool missingId = false}) =>
     {
       'role': role,
@@ -19,7 +22,7 @@ Map<String, dynamic> payload({String role = 'owner', bool missingId = false}) =>
       'workers': [
         for (var i = 0; i < 9; i++)
           {
-            'id': 'worker-$i',
+            'id': workerId(i),
             'name': i == 8 ? 'Same name' : 'Employee $i',
             'visible_to_manager': false,
           },
@@ -28,7 +31,7 @@ Map<String, dynamic> payload({String role = 'owner', bool missingId = false}) =>
         for (var i = 0; i < 6; i++)
           {
             'id': 'statement-$i',
-            if (!missingId || i != 0) 'worker_id': 'worker-$i',
+            if (!missingId || i != 0) 'worker_id': workerId(i),
             // A matching name must never substitute for worker identity.
             'worker_name': i == 0 ? 'Same name' : 'Employee $i',
             'period_start': '2026-10-01', 'period_end': '2026-10-31',
@@ -54,6 +57,16 @@ class _CachedRepository implements PayrollReviewRepository {
       throw StateError('Unexpected payroll write');
 }
 
+class _DelayedRepository implements PayrollReviewRepository {
+  final requests = <DateTime, Completer<PayrollReviewWorkspace>>{};
+  @override
+  Future<PayrollReviewWorkspace> loadWorkspace(DateTime month) =>
+      (requests[month] = Completer<PayrollReviewWorkspace>()).future;
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      throw StateError('Unexpected payroll write');
+}
+
 Future<PayrollReviewWorkspace> readRpc(Map<String, dynamic> body) async {
   final client = SupabaseClient(
     'https://synthetic.invalid',
@@ -66,6 +79,7 @@ Future<PayrollReviewWorkspace> readRpc(Map<String, dynamic> body) async {
         jsonEncode(body),
         200,
         headers: {'content-type': 'application/json'},
+        request: request,
       );
     }),
   );
@@ -84,7 +98,7 @@ void main() {
       final workspace = (await tester.runAsync(() => readRpc(payload())))!;
       expect(
         workspace.items.map((item) => item.workerId),
-        List.generate(6, (i) => 'worker-$i'),
+        List.generate(6, (i) => workerId(i)),
       );
       expect(workspace.items.length, 6);
       // Existing finalized and zero-value records are preserved.
@@ -143,7 +157,7 @@ void main() {
       final body = payload();
       (body['statements'] as List).add({
         'id': 'historical-statement',
-        'worker_id': 'former-worker',
+        'worker_id': workerId(99),
         'worker_name': 'Former employee',
         'period_start': '2026-10-01',
         'period_end': '2026-10-31',
@@ -157,7 +171,7 @@ void main() {
       final workspace = await readRpc(body);
       expect(workspace.workers.length, 9);
       expect(workspace.items.length, 7);
-      expect(workspace.items.last.workerId, 'former-worker');
+      expect(workspace.items.last.workerId, workerId(99));
       expect(workspace.items.last.statement.netPay, 1200);
     },
   );
@@ -179,6 +193,76 @@ void main() {
         find.byKey(const ValueKey('payroll-roster-without-statements')),
         findsNothing,
       );
+    },
+  );
+
+  for (final invalid in [
+    null,
+    42,
+    ' ',
+    'malformed',
+    '00000000-0000-4000-8000-000000000000 ',
+  ]) {
+    test(
+      'invalid roster identity disables absence inference: $invalid',
+      () async {
+        final body = payload();
+        ((body['workers'] as List).last as Map)['id'] = invalid;
+        expect((await readRpc(body)).canCompareRoster, isFalse);
+      },
+    );
+  }
+
+  test(
+    'duplicate roster or statement identity disables absence inference',
+    () async {
+      final body = payload();
+      ((body['workers'] as List).last as Map)['id'] = workerId(0);
+      expect((await readRpc(body)).canCompareRoster, isFalse);
+      final statements = payload();
+      ((statements['statements'] as List).last as Map)['worker_id'] = workerId(
+        0,
+      );
+      expect((await readRpc(statements)).canCompareRoster, isFalse);
+    },
+  );
+
+  testWidgets(
+    'late response from an earlier month cannot replace the selected month',
+    (tester) async {
+      final workspace = (await tester.runAsync(() => readRpc(payload())))!;
+      final repository = _DelayedRepository();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: PayrollReviewPage(
+            initialMonth: DateTime(2026, 10),
+            repository: repository,
+          ),
+        ),
+      );
+      repository.requests[DateTime(2026, 10)]!.complete(workspace);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.chevron_right));
+      await tester.tap(find.byIcon(Icons.chevron_right));
+      repository.requests[DateTime(2026, 12)]!.complete(
+        PayrollReviewWorkspace(
+          role: 'owner',
+          companyName: 'Synthetic company',
+          isAdmin: true,
+          canConfirm: false,
+          periodStart: DateTime(2026, 12),
+          items: const [],
+          workers: workspace.workers,
+          rosterIdentitiesComplete: true,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('在籍社員 9名 ／ 当月明細 0件'), findsOneWidget);
+      repository.requests[DateTime(2026, 11)]!.complete(workspace);
+      await tester.pumpAndSettle();
+      expect(find.text('2026年12月'), findsOneWidget);
+      expect(find.text('在籍社員 9名 ／ 当月明細 0件'), findsOneWidget);
+      expect(find.text('在籍社員 9名 ／ 当月明細 6件'), findsNothing);
     },
   );
 

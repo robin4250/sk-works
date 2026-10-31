@@ -43,7 +43,15 @@ class PayrollReviewWorkspace {
     required this.periodStart,
     required this.items,
     required this.workers,
+    this.rosterIdentitiesComplete = false,
   });
+
+  final bool rosterIdentitiesComplete;
+
+  bool get canCompareRoster =>
+      rosterIdentitiesComplete &&
+      items.every((item) => _payrollWorkerId(item.workerId).isNotEmpty) &&
+      items.map((item) => item.workerId).toSet().length == items.length;
 
   final String role;
   final String companyName;
@@ -98,6 +106,16 @@ class PayrollReviewRepository {
         : const <dynamic>[];
 
     return PayrollReviewWorkspace(
+      rosterIdentitiesComplete:
+          workers.every(
+            (worker) =>
+                worker is Map && _payrollWorkerId(worker['id']).isNotEmpty,
+          ) &&
+          workers
+                  .map((worker) => _payrollWorkerId((worker as Map)['id']))
+                  .toSet()
+                  .length ==
+              workers.length,
       role: value['role']?.toString() ?? '',
       companyName: value['company_name']?.toString() ?? '',
       isAdmin: value['is_admin'] == true,
@@ -113,7 +131,7 @@ class PayrollReviewRepository {
         for (final rawWorker in workers)
           if (rawWorker is Map)
             PayrollReviewWorkerVisibility(
-              workerId: rawWorker['id']?.toString() ?? '',
+              workerId: _payrollWorkerId(rawWorker['id']),
               workerName: rawWorker['name']?.toString() ?? '',
               visibleToManager: rawWorker['visible_to_manager'] == true,
             ),
@@ -158,7 +176,7 @@ class PayrollReviewRepository {
 
   PayrollReviewItem _item(Map<String, dynamic> row) {
     return PayrollReviewItem(
-      workerId: row['worker_id']?.toString() ?? '',
+      workerId: _payrollWorkerId(row['worker_id']),
       statement: payrollStatementFromRow(row, null),
       revision: (row['revision'] as num?)?.toInt() ?? 1,
       reviewChecked: row['review_checked'] == true,
@@ -183,4 +201,13 @@ Future<DateTime> resolvePayrollNotificationMonth(
     throw StateError('Payroll notification target is unavailable');
   }
   return DateTime(date.year, date.month);
+}
+
+String _payrollWorkerId(dynamic value) {
+  if (value is! String ||
+      !RegExp(r'^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$')
+          .hasMatch(value)) {
+    return '';
+  }
+  return value.toLowerCase();
 }
