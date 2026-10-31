@@ -49,7 +49,7 @@ class Fixture {
         } else if (request.url.path == '/rest/v1/rpc/company_link_bound_v1') {
           final body = jsonDecode(request.body) as Map;
           final command = body['p_command'];
-          if (command == 'set_enabled') {
+          if (['set_enabled', 'request', 'respond'].contains(command)) {
             mutations++;
             saved = Map<String, dynamic>.from(body);
             if (!arrived.isCompleted) arrived.complete();
@@ -60,6 +60,15 @@ class Fixture {
           }
           final result = command == 'workspace'
               ? {'enabled': true, 'requests': workspaceRows}
+              : command == 'search'
+              ? [
+                  {
+                    'company_id': sid2,
+                    'company_name': 'Synthetic Request Partner',
+                    'address': 'Synthetic Address',
+                    'corporate_number': '000',
+                  },
+                ]
               : command == 'result'
               ? {
                   'state': 'committed',
@@ -72,6 +81,12 @@ class Fixture {
           value = envelope(body, result);
           if (command == 'workspace' && !workspaceLoaded.isCompleted) {
             workspaceLoaded.complete();
+          }
+          if (command == 'workspace' && workspaceReply != null) {
+            return workspaceReply!.future;
+          }
+          if (command == 'search' && !searched.isCompleted) {
+            searched.complete();
           }
           if (badEnvelope) (value as Map)['company_id'] = sid2;
         } else {
@@ -100,6 +115,8 @@ class Fixture {
   Completer<http.Response>? pending;
   final arrived = Completer<void>();
   final workspaceLoaded = Completer<void>();
+  final searched = Completer<void>();
+  Completer<http.Response>? workspaceReply;
   List<Map<String, dynamic>> workspaceRows = [];
   Map<String, dynamic> envelope(Map body, Object value) => {
     'version': 1,
@@ -291,6 +308,111 @@ void main() {
       await tester.tap(find.text('閉じる'));
       await tester.pumpAndSettle();
       expect(find.text('承認'), findsNothing);
+      if (change == 'background') {
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        );
+      }
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
+  testWidgets(
+    'late workspace after SID change cannot restore old company rows',
+    (tester) async {
+      final f = (await tester.runAsync(() async {
+        final v = Fixture();
+        await v.login();
+        return v;
+      }))!;
+      addTearDown(f.client.dispose);
+      f.workspaceReply = Completer<http.Response>();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CompanyLinkPage(
+            repository: f.repository,
+            mode: TradeCompanyPageMode.customer,
+          ),
+        ),
+      );
+      await tester.runAsync(() => f.workspaceLoaded.future);
+      final request = f.requests.firstWhere(
+        (r) => r.url.path.endsWith('company_link_bound_v1'),
+      );
+      final body = jsonDecode(request.body) as Map;
+      f.session = sid2;
+      await tester.runAsync(f.login);
+      await tester.pumpAndSettle();
+      f.workspaceReply!.complete(
+        http.Response(
+          jsonEncode(
+            f.envelope(body, {
+              'enabled': true,
+              'requests': [
+                {
+                  'company_name': 'Late Synthetic Partner',
+                  'id': company,
+                  'status': 'pending',
+                },
+              ],
+            }),
+          ),
+          200,
+          headers: {'content-type': 'application/json'},
+          request: request,
+        ),
+      );
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Late Synthetic Partner'), findsNothing);
+      expect(find.text('表示条件が変わりました。画面を開き直してください'), findsOneWidget);
+      expect(f.mutations, 0);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+  for (final change in ['sid', 'background']) {
+    testWidgets('request confirmation masks recipient on $change', (
+      tester,
+    ) async {
+      final f = (await tester.runAsync(() async {
+        final v = Fixture();
+        await v.login();
+        return v;
+      }))!;
+      addTearDown(f.client.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CompanyLinkPage(
+            repository: f.repository,
+            mode: TradeCompanyPageMode.customer,
+          ),
+        ),
+      );
+      await tester.runAsync(() => f.workspaceLoaded.future);
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'Synthetic');
+      await tester.tap(find.text('検索'));
+      await tester.runAsync(() => f.searched.future);
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('連携申請'));
+      await tester.tap(find.text('連携申請'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Synthetic Request Partner'), findsWidgets);
+      if (change == 'sid') {
+        f.session = sid2;
+        await tester.runAsync(f.login);
+      } else {
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.inactive,
+        );
+      }
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Synthetic Request Partner'), findsNothing);
+      expect(find.text('申請'), findsNothing);
+      expect(f.mutations, 0);
+      await tester.tap(find.text('閉じる'));
+      await tester.pumpAndSettle();
       if (change == 'background') {
         tester.binding.handleAppLifecycleStateChanged(
           AppLifecycleState.resumed,

@@ -85,7 +85,7 @@ class _CompanyLinkPageState extends State<CompanyLinkPage>
                 content: const Text('内容を非表示にしました。画面を開き直してください'),
                 actions: [
                   TextButton(
-                    onPressed: () => Navigator.pop(context, false),
+                    onPressed: () => Navigator.pop(context),
                     child: const Text('閉じる'),
                   ),
                 ],
@@ -135,6 +135,8 @@ class _CompanyLinkPageState extends State<CompanyLinkPage>
     final now = DateTime.now();
     final selected = await showDatePicker(
       context: context,
+      builder: (context, child) =>
+          _guardedDialog(bound, child ?? const SizedBox.shrink()),
       helpText: '連携開始月を選択（日は1日に揃えます）',
       initialDate: DateTime(now.year, now.month),
       firstDate: DateTime(2000),
