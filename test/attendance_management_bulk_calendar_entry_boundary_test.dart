@@ -76,6 +76,8 @@ void main() {
           access.invalidate();
         } else {
           tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+          await tester.pumpAndSettle();
+          expect(find.byType(AlertDialog),findsNothing);
           tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
           tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
         }

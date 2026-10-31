@@ -101,6 +101,21 @@ void main() {
     await finish(tester);
   });
 
+  testWidgets('owned calendar rebuilds counts and preserves entered form text across normal month reads',(tester) async {
+    await mount(tester);await selectWorker(tester,'検証社員');await tester.pumpAndSettle();
+    final note=find.widgetWithText(TextField,'勤怠メモ');
+    await see(tester,note);await tester.enterText(note,'保持する入力');
+    FocusManager.instance.primaryFocus?.unfocus();await tester.pumpAndSettle();
+    final next=find.byTooltip('一括カレンダーの次の月');
+    await see(tester,next,up:true);await tester.tap(next);await tester.pumpAndSettle();
+    await see(tester,day(3));expect(find.text('●出1/1'),findsOneWidget);
+    await tester.tap(day(3));await tester.pump();
+    expect(tester.widget<FilterChip>(day(3)).selected,true);
+    await see(tester,note);
+    expect(tester.widget<TextField>(note).controller!.text,'保持する入力');
+    expect(writes(),isEmpty);await finish(tester);
+  });
+
   testWidgets('empty success differs from partial-batch failure and cannot delete unknown data',(tester) async {
     repository.onMarks=(worker,month) async => {};
     await mount(tester);await selectWorker(tester,'検証社員');await tester.pumpAndSettle();
@@ -201,6 +216,8 @@ void main() {
     await see(tester,deleteButton());await tester.tap(deleteButton());await tester.pumpAndSettle();
     try {
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog),findsNothing);
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
       await tester.pumpAndSettle();

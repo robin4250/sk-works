@@ -439,8 +439,13 @@ class _BulkManagementPanel extends StatefulWidget {
 
 class _BulkManagementPanelState extends State<_BulkManagementPanel> with WidgetsBindingObserver {
   @override
-  void dispose() { _marksGeneration++; WidgetsBinding.instance.removeObserver(this); _form.dispose(); super.dispose(); }
+  void dispose() { _marksGeneration++; WidgetsBinding.instance.removeObserver(this); _form.dispose(); _changes.dispose(); super.dispose(); }
   final _form = _ManagementFormState();
+  final _changes = ValueNotifier<int>(0);
+  void _update(VoidCallback change) {
+    setState(change);
+    _changes.value++;
+  }
   final Set<String> _workerIds = {};
   final Set<DateTime> _dates = {};
   late DateTime _month;
@@ -475,8 +480,8 @@ class _BulkManagementPanelState extends State<_BulkManagementPanel> with Widgets
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.hidden || state == AppLifecycleState.paused) {
-      if (mounted) setState(() { _invalidateMarks(); _routeEpoch++; });
+    if (state == AppLifecycleState.inactive || state == AppLifecycleState.hidden || state == AppLifecycleState.paused) {
+      if (mounted) _update(() { _invalidateMarks(); _routeEpoch++; });
     } else if (state == AppLifecycleState.resumed && !_busy && _workerIds.isNotEmpty) {
       _loadMarks();
     }
@@ -498,7 +503,7 @@ class _BulkManagementPanelState extends State<_BulkManagementPanel> with Widgets
     final generation = ++_marksGeneration;
     final ids = _workerIds.toList()..sort();
     final month = _month;
-    setState(() {
+    _update(() {
       if (clearDates) _dates.clear();
       _marks = const {};
       _marksReady = false;
@@ -524,23 +529,23 @@ class _BulkManagementPanelState extends State<_BulkManagementPanel> with Widgets
           }
         }
       }
-      setState(() { _marks = merged; _marksReady = true; _marksLoading = false; });
+      _update(() { _marks = merged; _marksReady = true; _marksLoading = false; });
       return true;
     } catch (error) {
       if (mounted && generation == _marksGeneration && month == _month && _sameWorkers(ids)) {
-        setState(() { _marks = const {}; _marksReady = false; _marksLoading = false; _marksError = error; });
+        _update(() { _marks = const {}; _marksReady = false; _marksLoading = false; _marksError = error; });
       }
       return false;
     }
   }
 
   void _selectWorkers(void Function() change) {
-    setState(() { change(); _invalidateMarks(); if (_confirmingDelete) _routeEpoch++; });
+    _update(() { change(); _invalidateMarks(); if (_confirmingDelete) _routeEpoch++; });
     _loadMarks();
   }
 
   void _moveMonth(int delta) {
-    setState(() { _month = DateTime(_month.year, _month.month + delta); _invalidateMarks(); if (_confirmingDelete) _routeEpoch++; });
+    _update(() { _month = DateTime(_month.year, _month.month + delta); _invalidateMarks(); if (_confirmingDelete) _routeEpoch++; });
     _loadMarks();
   }
 
@@ -550,7 +555,7 @@ class _BulkManagementPanelState extends State<_BulkManagementPanel> with Widgets
     if (_workerIds.isEmpty || _dates.isEmpty) { _show('従業員と日付を1つ以上選択してください'); return; }
     final values = _form.values(context, widget.sites);
     if (values == null) return;
-    setState(() => _busy = true);
+    _update(() => _busy = true);
     try {
       final count = await widget.repository.apply(
         
@@ -566,7 +571,7 @@ class _BulkManagementPanelState extends State<_BulkManagementPanel> with Widgets
     } catch (error) {
       if (mounted) _show(attendanceManagementActionErrorMessage(error));
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) _update(() => _busy = false);
     }
   }
 
@@ -608,7 +613,7 @@ class _BulkManagementPanelState extends State<_BulkManagementPanel> with Widgets
       _show('対象が変わりました。従業員と日付を選び直してください');
       return;
     }
-    setState(() => _busy = true);
+    _update(() => _busy = true);
     try {
       final ready = await _loadMarks(clearDates: false);
       if (!mounted) return;
@@ -625,7 +630,7 @@ class _BulkManagementPanelState extends State<_BulkManagementPanel> with Widgets
     } catch (error) {
       if (mounted) _show(attendanceManagementActionErrorMessage(error));
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) _update(() => _busy = false);
     }
   }
 
@@ -635,7 +640,10 @@ class _BulkManagementPanelState extends State<_BulkManagementPanel> with Widgets
   Widget build(BuildContext context) => WorkerDocumentChangeRouteHost(
     key: ValueKey(_routeEpoch),
     onClose: () => Navigator.of(context).maybePop(),
-    builder: _buildPanel,
+    builder: (context) => ValueListenableBuilder<int>(
+      valueListenable: _changes,
+      builder: (context, version, child) => _buildPanel(context),
+    ),
   );
 
   Widget _buildPanel(BuildContext context) {
@@ -709,7 +717,7 @@ class _BulkManagementPanelState extends State<_BulkManagementPanel> with Widgets
                               Text('●${kind == 'work' ? '出' : kind == 'punch' ? '打' : '有'}${counts[kind]}/${_workerIds.length}',
                                 style: TextStyle(color: colors[kind], fontSize: 12)),
                         ]), selected: _dates.contains(date),
-                        onSelected: _busy || !_marksReady || _marksLoading ? null : (value) => setState(() { if (value) { _dates.add(date); } else { _dates.remove(date); } }),
+                        onSelected: _busy || !_marksReady || _marksLoading ? null : (value) => _update(() { if (value) { _dates.add(date); } else { _dates.remove(date); } }),
                       ));
                   }),
               ],
