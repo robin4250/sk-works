@@ -1,0 +1,23 @@
+name: Payroll keyboard access
+on:
+  pull_request:
+    paths:
+      - 'lib/features/payroll/individual_payroll_settings_page.dart'
+      - 'lib/features/payroll/payroll_keyboard_access.dart'
+      - 'test/individual_payroll_fixed_footer_test.dart'
+      - 'test/payroll_keyboard_access_test.dart'
+      - '.github/workflows/payroll-keyboard-access.yml'
+  workflow_dispatch:
+jobs:
+  keyboard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: dart analyze lib/features/payroll/payroll_keyboard_access.dart test/payroll_keyboard_access_test.dart test/individual_payroll_fixed_footer_test.dart
+      - run: flutter test test/payroll_keyboard_access_test.dart test/individual_payroll_fixed_footer_test.dart test/individual_payroll_ui_tabs_test.dart --reporter expanded
