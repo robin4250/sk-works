@@ -22,8 +22,11 @@ class PayrollReviewItem {
     required this.reviewChecked,
     required this.reviewConfirmed,
     required this.reviewerConfirmed,
+    this.workerId = '',
   });
 
+  /// Identity supplied by the workspace RPC; never infer it from the name.
+  final String workerId;
   final PayrollStatementRecord statement;
   final int revision;
   final bool reviewChecked;
@@ -54,6 +57,8 @@ class PayrollReviewWorkspace {
 class PayrollReviewRepository {
   PayrollReviewRepository._(this._client);
 
+  PayrollReviewRepository.forTesting(this._client);
+
   final SupabaseClient _client;
 
   static PayrollReviewRepository? maybeCreate() {
@@ -67,8 +72,11 @@ class PayrollReviewRepository {
   /// No wage fields, service credentials or alternate access paths are used.
   Future<DateTime> notificationMonth(String statementId) =>
       resolvePayrollNotificationMonth(statementId, (id) async {
-        return await _client.from('payroll_statements')
-            .select('period_start').eq('id', id).maybeSingle();
+        return await _client
+            .from('payroll_statements')
+            .select('period_start')
+            .eq('id', id)
+            .maybeSingle();
       });
 
   Future<PayrollReviewWorkspace> loadWorkspace(DateTime month) async {
@@ -96,7 +104,7 @@ class PayrollReviewRepository {
       canConfirm: value['can_confirm'] == true,
       periodStart:
           DateTime.tryParse(value['period_start']?.toString() ?? '') ??
-              DateTime(month.year, month.month),
+          DateTime(month.year, month.month),
       items: [
         for (final rawItem in statements)
           if (rawItem is Map) _item(Map<String, dynamic>.from(rawItem)),
@@ -119,10 +127,7 @@ class PayrollReviewRepository {
   }) async {
     await _client.rpc(
       'set_payroll_manager_worker_visibility',
-      params: {
-        'p_worker_id': workerId,
-        'p_visible': visible,
-      },
+      params: {'p_worker_id': workerId, 'p_visible': visible},
     );
   }
 
@@ -153,6 +158,7 @@ class PayrollReviewRepository {
 
   PayrollReviewItem _item(Map<String, dynamic> row) {
     return PayrollReviewItem(
+      workerId: row['worker_id']?.toString() ?? '',
       statement: payrollStatementFromRow(row, null),
       revision: (row['revision'] as num?)?.toInt() ?? 1,
       reviewChecked: row['review_checked'] == true,
@@ -167,11 +173,13 @@ Future<DateTime> resolvePayrollNotificationMonth(
   Future<Map<String, dynamic>?> Function(String id) readVisiblePeriod,
 ) async {
   final id = statementId.trim();
-  if (!RegExp(r'^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$').hasMatch(id)) {
+  if (!RegExp(r'^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$')
+      .hasMatch(id)) {
     throw StateError('Invalid payroll notification target');
   }
   final row = await readVisiblePeriod(id);
   final date = DateTime.tryParse(row?['period_start']?.toString() ?? '');
-  if (date == null) throw StateError('Payroll notification target is unavailable');
+  if (date == null)
+    throw StateError('Payroll notification target is unavailable');
   return DateTime(date.year, date.month);
 }
