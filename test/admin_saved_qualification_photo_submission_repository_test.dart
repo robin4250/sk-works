@@ -39,10 +39,10 @@ class Port implements AdminSavedQualificationPort {
   @override
   Future<Object?> call(String action,Map<String,dynamic> data) async {
     await check();calls.add(action);
-    if(action=='admin_saved_photo_capability')return {
+    if(action=='admin_saved_photo_capability'){return {
       'version':legacyCapability?1:2,if(!legacyCapability)'expected_photo_paths_required':true,'contract':'qualification_admin_saved_photos','company_id':company,
       'actor_id':actor,'photo_submission_available':enabled,'photo_upload_allowed':false,
-      'max_photos':20,'self_approval_allowed':false};
+      'max_photos':20,'self_approval_allowed':false};}
     if(action=='prepare_admin_saved_photos'){
       request=jsonDecode(journal.values.single) as Map<String,dynamic>;
       expect(request!['stage'],'prepare_started');

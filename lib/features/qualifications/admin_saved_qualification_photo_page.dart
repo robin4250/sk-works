@@ -95,9 +95,9 @@ class _AdminSavedQualificationPhotoPageState extends State<AdminSavedQualificati
     setState(()=>_busy=true);
     try {
       final result=await repo.submit(selected.selectedPaths);
-      if(mounted && !_retired)setState(()=>_message=result.status=='approved'
+      if(mounted && !_retired){setState(()=>_message=result.status=='approved'
         ? '写真変更の承認結果を確認しました。元の画面を再読み込みしてください。'
-        : '申請受付を確認しました。「承認待ち」→「資格写真の承認待ち」で別担当者が確認します。');
+        : '申請受付を確認しました。「承認待ち」→「資格写真の承認待ち」で別担当者が確認します。');}
     } catch (_) {
       if(mounted && !_retired)setState(()=>_message='申請結果を確認できません。再送せず「同じ申請を再確認」で状態を確認してください。');
     } finally {
@@ -113,12 +113,12 @@ class _AdminSavedQualificationPhotoPageState extends State<AdminSavedQualificati
       if(acknowledge){await repo.acknowledgeFinal(); if(mounted)Navigator.pop(context);return;}
       else {
         final result=await repo.reconcile();
-        if(mounted && !_retired)setState(()=>_message=switch(result?.status){
+        if(mounted && !_retired){setState(()=>_message=switch(result?.status){
           'draft'=>'下書きの保存を確認しました。送信完了ではありません。再送せず管理者へ確認してください。',
           'pending'=>'承認待ちです。再送せず承認結果をお待ちください。',
           'approved'=>'承認済みです。元の画面を再読み込みしてください。',
           'rejected'=>'却下・取消の結果を確認しました。',
-          _=>'同じ申請の結果を確認できません。再送しないでください。'});
+          _=>'同じ申請の結果を確認できません。再送しないでください。'});}
       }
       await _refreshJournal();
     } catch (_) {
