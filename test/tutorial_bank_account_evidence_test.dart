@@ -84,6 +84,7 @@ class _WireFixture {
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   test('bank evidence uses exact scoped saved metadata, never document photo/status', () {
     final saved = _bankCheckpoint(_documents());
     expect(saved.state, TutorialEvidenceState.saved);

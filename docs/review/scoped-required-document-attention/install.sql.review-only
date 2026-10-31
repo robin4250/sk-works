@@ -84,6 +84,9 @@ begin
           or statuses.item->>'status' is null then 'unknown'
         when photo.valid is null then 'unknown'
         when not photo.valid then 'missing'
+        when nullif(statuses.item->>'expires_at','') is not null and (
+          statuses.item->>'expires_at' !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+          or left(statuses.item->>'expires_at',4)='0000') then 'unknown'
         when dr.expiry_required is true and nullif(statuses.item->>'expires_at','') is null then 'missing'
         when (statuses.item->>'expires_at')::date < (current_timestamp at time zone 'Asia/Tokyo')::date then 'missing'
         else 'saved'

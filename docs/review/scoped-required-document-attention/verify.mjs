@@ -10,7 +10,12 @@ const legacy = await readFile(new URL('../required-document-attention-evidence/b
 const source = await readFile(new URL('scoped-function.sql.review-only',root),'utf8');
 const preceding = await readFile(new URL('../required-document-attention-evidence/after.sql.review-only',root),'utf8');
 const evidenceQuery=s=>s.slice(s.indexOf('  with evidence as'),s.indexOf('  from evidence;')+'  from evidence;'.length);
-assert.equal(evidenceQuery(source),evidenceQuery(preceding),'scoped endpoint reuses the reviewed evidence query exactly');
+const finiteDateGuard = `        when nullif(statuses.item->>'expires_at','') is not null and (
+          statuses.item->>'expires_at' !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+          or left(statuses.item->>'expires_at',4)='0000') then 'unknown'
+`;
+assert.equal(evidenceQuery(source).replace(finiteDateGuard,''),evidenceQuery(preceding),
+  'scoped endpoint reuses the reviewed evidence query plus the explicit finite-date guard');
 
 let db;
 const fixtureUrl=process.env.SKO_SCOPED_ATTENTION_FIXTURE_URL;
@@ -86,6 +91,11 @@ await db.exec(`delete from auth.sessions where id='${sid}'`);data=await read();a
 await db.exec(`update auth.users set banned_until=now()+interval '1 hour' where id='${actor}'`);await denied('banned account');await db.exec('update auth.users set banned_until=null');
 await db.exec(`insert into private.account_deletion_access_restrictions values('${actor}')`);await denied('restricted account');await db.exec('delete from private.account_deletion_access_restrictions');
 await db.exec("update worker_document_statuses set attachment_paths='{}',attachment_path=null");assert.equal((await read()).missing_count,1);checks++;
+await db.exec("update worker_document_statuses set attachment_paths=array['synthetic/a'],expires_at='infinity'");
+assert.equal((await read()).unknown_count,1,'non-finite SQL date cannot be saved evidence');checks++;
+await db.exec("update worker_document_statuses set expires_at='0001-01-01 BC'");
+assert.equal((await read()).unknown_count,1,'BC SQL date is outside the app date contract');checks++;
+await db.exec("update worker_document_statuses set expires_at=null,attachment_paths='{}'");
 await db.exec(`insert into private.worker_document_exemptions values('${other}','${worker}','${req}',true)`);assert.equal((await read()).missing_count,1);checks++;
 await db.exec(`insert into private.worker_document_exemptions values('${company}','${worker}','${req}',true)`);assert.equal((await read()).missing_count,0);checks++;
 await db.exec('update private.worker_document_exemptions set active=false');assert.equal((await read()).missing_count,1);checks++;
