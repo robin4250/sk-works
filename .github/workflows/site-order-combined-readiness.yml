@@ -1,0 +1,64 @@
+name: Captured target schema and order compatibility composition
+on:
+  pull_request:
+    paths:
+      - 'tool/site_order_combined_readiness/**'
+      - 'docs/review/site-order-combined-readiness/**'
+      - '.github/workflows/site-order-combined-readiness.yml'
+permissions: {contents: read}
+jobs:
+  actual-combined-readiness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      matrix: {engine: [pglite, postgres]}
+    services:
+      postgres:
+        image: postgres:17.6
+        env: {POSTGRES_PASSWORD: fixture-only, POSTGRES_DB: sko_document_consent_fixture}
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/checkout@v4
+        with: {ref: 14cf77f4b166bcb86d0f5fef68080841ac89a27a, path: .actual-source, persist-credentials: false}
+      - uses: actions/checkout@v4
+        with: {ref: 6a24114471a9c264fad1aeec5dd2222915ddbedf, path: .c-source, persist-credentials: false}
+      - uses: actions/checkout@v4
+        with: {ref: de4d4bb018e8c8ca56b0c85bde09fadebca312a4, path: .reply-source, persist-credentials: false}
+      - uses: actions/checkout@v4
+        with: {ref: f4c6da47e8c6bd894c920ab1d85399a4dc5da7bb, path: .history-source, persist-credentials: false}
+      - uses: actions/checkout@v4
+        with: {ref: 8bd475b31f5b05788ea437f33e8825651ef54de0, path: .auth-source, persist-credentials: false}
+      - uses: dart-lang/setup-dart@v1
+        with: {sdk: '3.13.7'}
+      - run: dart pub get --enforce-lockfile --directory=tool/canonical_renderer
+      - uses: actions/setup-node@v4
+        with: {node-version: '22.21.0'}
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts
+      - run: npm ci --prefix tool/site_order_edge_dependencies --ignore-scripts
+      - run: node --test tool/site_order_combined_readiness/completion.test.mjs
+      - name: Captured table plus compatibility, actual targets and order chain
+        env:
+          SKO_CONSENT_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_document_consent_fixture
+        run: |
+          export SKO_COMBINED_CATALOG_DIRECTORY="$RUNNER_TEMP/sko-combined-catalog"
+          export SKO_CANONICAL_DART="$(command -v dart)"
+          export SKO_OUTGOING_EXECUTION_REVIEW_HOOK=contract-v1
+          export SKO_EXACT_EIGHT_SOURCE_ROOT="$GITHUB_WORKSPACE/.actual-source"
+          export SKO_TRADE_C_SOURCE_ROOT="$GITHUB_WORKSPACE/.c-source"
+          export SKO_SITE_REPLY_RECOVERY_SOURCE_ROOT="$GITHUB_WORKSPACE/.reply-source"
+          export SKO_SITE_HISTORY_SOURCE_ROOT="$GITHUB_WORKSPACE/.history-source"
+          export SKO_ACTUAL_AUTH_SOURCE_ROOT="$GITHUB_WORKSPACE/.auth-source"
+          if [ '${{ matrix.engine }}' = postgres ]; then
+            node tool/site_order_combined_readiness/verify.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js" postgres
+          else
+            node tool/site_order_combined_readiness/verify.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: combined-target-catalog-${{ matrix.engine }}
+          path: ${{ runner.temp }}/sko-combined-catalog
+          if-no-files-found: error

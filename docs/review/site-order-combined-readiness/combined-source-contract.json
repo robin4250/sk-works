@@ -1,0 +1,424 @@
+{
+  "status": "source-only-combined-readiness-not-an-apply-payload",
+  "frozen_1700": "1bcc8150cc4614f1f91ec2484495d3e3f0d89c7b",
+  "frozen_1702": "57050d6cd54b833f0f15cbfbfa6c7469e42ef62f",
+  "superseding_1703": "241a393077cc29b00c8e44b3518ab7a7fc050a91",
+  "original_inventory_sha256": "fb14c63dcd29e781cf0a30d28449da2b4377b494a0af056d0183e246c7e0cba6",
+  "sql_sources": [
+    {
+      "path": "docs/review/trade-documents-hub/master-and-standalone-context.sql.review-only",
+      "commit": "6a24114471a9c264fad1aeec5dd2222915ddbedf",
+      "sha256": "7796c2e7bcc7a9eca78f1b79ce8cfc87fcd978c1dc4a4ddb7a5a8ced17b597e5",
+      "bytes": 19302,
+      "kind": "master-gate-C",
+      "declared_schemas": [],
+      "declared_tables": [],
+      "declared_functions": [
+        "public.current_master_feature_flags",
+        "public.set_master_feature_enabled_with_proof",
+        "private.require_trade_documents_master_feature",
+        "private.require_standalone_trade_document_access",
+        "public.standalone_trade_document_access",
+        "private.standalone_trade_document_registration_context",
+        "public.standalone_trade_document_registration_context"
+      ]
+    },
+    {
+      "path": "docs/candidates/trade_document_bound_seal_consent_20261021.sql.review-only",
+      "commit": "14cf77f4b166bcb86d0f5fef68080841ac89a27a",
+      "sha256": "dce7ca9653988c642d49325ff331d0548448206ae3e8c2e2dc24202d36a04e01",
+      "bytes": 23740,
+      "kind": "private-site-baseline",
+      "declared_schemas": [
+        "trade_document_consent_private"
+      ],
+      "declared_tables": [
+        "trade_document_consent_private.documents",
+        "trade_document_consent_private.local_links",
+        "trade_document_consent_private.revisions",
+        "trade_document_consent_private.consents",
+        "trade_document_consent_private.events",
+        "trade_document_consent_private.receipts"
+      ],
+      "declared_functions": [
+        "trade_document_consent_private.immutable",
+        "trade_document_consent_private.protect_content",
+        "trade_document_consent_private.require_actor",
+        "trade_document_consent_private.lock_pair",
+        "trade_document_consent_private.parent_binding",
+        "trade_document_consent_private.linked_view_allowed",
+        "trade_document_consent_private.prepare_document",
+        "trade_document_consent_private.bind_local",
+        "trade_document_consent_private.require_local",
+        "trade_document_consent_private.own_seal",
+        "trade_document_consent_private.preview_own",
+        "trade_document_consent_private.decide",
+        "trade_document_consent_private.confirm_local_document",
+        "trade_document_consent_private.binding_matches_approval",
+        "trade_document_consent_private.render_approved"
+      ],
+      "same_in_current_app_tree": true
+    },
+    {
+      "path": "docs/review/site-order-artifact-registration/private-register.sql.review-only",
+      "commit": "14cf77f4b166bcb86d0f5fef68080841ac89a27a",
+      "sha256": "330ce27c0bbed24fbcfa60ae3f34201ee704d0b4fddd69fc76cd049c4c5119db",
+      "bytes": 15205,
+      "kind": "private-site-baseline",
+      "declared_schemas": [
+        "site_order_artifact_private"
+      ],
+      "declared_tables": [
+        "site_order_artifact_private.render_jobs",
+        "site_order_artifact_private.pdf_records"
+      ],
+      "declared_functions": [
+        "site_order_artifact_private.counterparty_context",
+        "site_order_artifact_private.prepare_job",
+        "site_order_artifact_private.register_canonical_pdf"
+      ],
+      "same_in_current_app_tree": true
+    },
+    {
+      "path": "docs/review/site-order-manager-purpose/adapter.sql.review-only",
+      "commit": "14cf77f4b166bcb86d0f5fef68080841ac89a27a",
+      "sha256": "b46c730079f47477e8c73e89b192867b34c833ea263ddc7f9d348d65add36960",
+      "bytes": 16801,
+      "kind": "private-site-baseline",
+      "declared_schemas": [
+        "site_order_manager_private"
+      ],
+      "declared_tables": [
+        "site_order_manager_private.document_scopes",
+        "site_order_manager_private.generated_sources"
+      ],
+      "declared_functions": [
+        "site_order_manager_private.counterparty_context",
+        "site_order_manager_private.require_actor",
+        "site_order_manager_private.prepare_site_document"
+      ],
+      "same_in_current_app_tree": false
+    },
+    {
+      "path": "docs/review/site-order-package-flow/foundation.sql.review-only",
+      "commit": "14cf77f4b166bcb86d0f5fef68080841ac89a27a",
+      "sha256": "3c0bc1489767e879c39d3dbf44b94b201d4296f0711233363e9c54de8849ab67",
+      "bytes": 9794,
+      "kind": "private-site-baseline",
+      "declared_schemas": [
+        "site_order_package_private"
+      ],
+      "declared_tables": [
+        "site_order_package_private.packages",
+        "site_order_package_private.notice_intents"
+      ],
+      "declared_functions": [
+        "site_order_package_private.send_order"
+      ],
+      "same_in_current_app_tree": false
+    },
+    {
+      "path": "docs/review/site-order-package-flow/legacy-response-guard.sql.review-only",
+      "commit": "14cf77f4b166bcb86d0f5fef68080841ac89a27a",
+      "sha256": "6cba3f988e2494261f404ad2cf4bc0c3816ccf88fb34bcfbcf9ea62cdae1bbae",
+      "bytes": 2838,
+      "kind": "private-site-baseline",
+      "declared_schemas": [],
+      "declared_tables": [],
+      "declared_functions": [],
+      "same_in_current_app_tree": true
+    },
+    {
+      "path": "docs/review/site-order-package-flow/approval.sql.review-only",
+      "commit": "14cf77f4b166bcb86d0f5fef68080841ac89a27a",
+      "sha256": "5e538255e740c4449512ffb83c04e682a5f5d4e7efe9ff15c56c8a098e912005",
+      "bytes": 10859,
+      "kind": "private-site-baseline",
+      "declared_schemas": [],
+      "declared_tables": [
+        "site_order_package_private.approvals",
+        "site_order_package_private.reply_intents",
+        "site_order_package_private.approval_notice_intents"
+      ],
+      "declared_functions": [
+        "site_order_package_private.approve_order"
+      ],
+      "same_in_current_app_tree": false
+    },
+    {
+      "path": "docs/review/site-order-package-flow/approval-consent.sql.review-only",
+      "commit": "14cf77f4b166bcb86d0f5fef68080841ac89a27a",
+      "sha256": "eb41d5f8dd426e11b40cbc5c3affa4a02ace009dd1bae756b97b155770fe31de",
+      "bytes": 13124,
+      "kind": "private-site-baseline",
+      "declared_schemas": [],
+      "declared_tables": [
+        "site_order_package_private.approval_previews",
+        "site_order_package_private.ready_reply_jobs"
+      ],
+      "declared_functions": [
+        "site_order_package_private.preview_approval",
+        "site_order_package_private.approve_with_consent"
+      ],
+      "same_in_current_app_tree": false
+    },
+    {
+      "path": "docs/review/site-order-package-flow/archive-read.sql.review-only",
+      "commit": "14cf77f4b166bcb86d0f5fef68080841ac89a27a",
+      "sha256": "6d2047dead2eb2c85efdf7a9bd49513b482ff373309807fca2dc23b786848e9f",
+      "bytes": 3850,
+      "kind": "private-site-baseline",
+      "declared_schemas": [],
+      "declared_tables": [],
+      "declared_functions": [
+        "site_order_package_private.read_actor",
+        "site_order_package_private.package_status",
+        "site_order_package_private.archive_original"
+      ],
+      "same_in_current_app_tree": true
+    },
+    {
+      "path": "docs/review/site-order-package-flow/delivery.sql.review-only",
+      "commit": "14cf77f4b166bcb86d0f5fef68080841ac89a27a",
+      "sha256": "7f5c1e708c3144693547038e7e581c492f81dc16c18a9cb6c176007018a8e295",
+      "bytes": 15430,
+      "kind": "private-site-baseline",
+      "declared_schemas": [],
+      "declared_tables": [
+        "site_order_package_private.acceptance_deliveries",
+        "site_order_package_private.notification_receipts"
+      ],
+      "declared_functions": [
+        "site_order_package_private.ready_reply",
+        "site_order_package_private.deliver_acceptance",
+        "site_order_package_private.dispatch_notifications",
+        "site_order_package_private.delivery_status"
+      ],
+      "same_in_current_app_tree": false
+    },
+    {
+      "path": "docs/review/site-order-package-flow/read-surfaces.sql.review-only",
+      "commit": "14cf77f4b166bcb86d0f5fef68080841ac89a27a",
+      "sha256": "d411e79f8aa7379f0c0aefa1a6667994731b7adbe4c5d1da5e91bcdb752d975f",
+      "bytes": 4275,
+      "kind": "private-site-baseline",
+      "declared_schemas": [],
+      "declared_tables": [],
+      "declared_functions": [
+        "site_order_package_private.package_detail",
+        "site_order_package_private.package_list",
+        "site_order_package_private.recipient_targets"
+      ],
+      "same_in_current_app_tree": true
+    },
+    {
+      "path": "docs/review/site-order-package-flow/archive-payload.sql.review-only",
+      "commit": "14cf77f4b166bcb86d0f5fef68080841ac89a27a",
+      "sha256": "596ec400fe26aeee592ecd168474974d05a3ff5c23c97011e6f8e6e0c8e4262f",
+      "bytes": 3649,
+      "kind": "private-site-baseline",
+      "declared_schemas": [],
+      "declared_tables": [],
+      "declared_functions": [
+        "site_order_package_private.archive_payload",
+        "site_order_package_private.history_entries"
+      ],
+      "same_in_current_app_tree": true
+    },
+    {
+      "path": "docs/review/site-order-package-flow/approval-operation.sql.review-only",
+      "commit": "14cf77f4b166bcb86d0f5fef68080841ac89a27a",
+      "sha256": "1a1552dd162c8081612609d7dc8b52c0829a243581e805dc623fd652d4bd4352",
+      "bytes": 7639,
+      "kind": "private-site-baseline",
+      "declared_schemas": [],
+      "declared_tables": [
+        "site_order_package_private.approval_operations"
+      ],
+      "declared_functions": [
+        "site_order_package_private.approve_operation",
+        "site_order_package_private.reconcile_approval"
+      ],
+      "same_in_current_app_tree": true
+    },
+    {
+      "path": "docs/review/site-order-package-flow/refusal.sql.review-only",
+      "commit": "14cf77f4b166bcb86d0f5fef68080841ac89a27a",
+      "sha256": "bb1d84441475ee8d5a87eb84e7fd1401489ab44258ba30d354d47693c20414be",
+      "bytes": 12722,
+      "kind": "private-site-baseline",
+      "declared_schemas": [],
+      "declared_tables": [
+        "site_order_package_private.refusals",
+        "site_order_package_private.refusal_operations",
+        "site_order_package_private.refusal_notice_receipts"
+      ],
+      "declared_functions": [
+        "site_order_package_private.refuse_order",
+        "site_order_package_private.reconcile_refusal",
+        "site_order_package_private.dispatch_refusal_notifications",
+        "site_order_package_private.package_decision_detail"
+      ],
+      "same_in_current_app_tree": false
+    },
+    {
+      "path": "docs/candidates/trade_document_confirmation_api_20261022.sql.review-only",
+      "commit": "14cf77f4b166bcb86d0f5fef68080841ac89a27a",
+      "kind": "extract-one-private-actor-only",
+      "source_sha256": "18d738705b4f55a82e67faec31f115473df38c5a51bcb31da6e621c10646db83",
+      "statement_sha256": "0da8df5dd78bdd44daa9757da346a48e4e7cbb63bada0b65f849cc060d2e3b15",
+      "declared_functions": [
+        "trade_document_confirmation_api_private.actor"
+      ],
+      "financial_public_rpc_installation": false
+    },
+    {
+      "path": "docs/review/site-order-package-flow/reply-recovery.sql.review-only",
+      "commit": "de4d4bb018e8c8ca56b0c85bde09fadebca312a4",
+      "sha256": "991281df5f789e1e6a3d469dd854609a065d2a6d56db33b85a08d3cf57fd9979",
+      "bytes": 20229,
+      "kind": "private-site-extension",
+      "declared_schemas": [],
+      "declared_tables": [
+        "site_order_package_private.reply_recovery_previews",
+        "site_order_package_private.reply_recovery_leases",
+        "site_order_package_private.reply_recovery_operations",
+        "site_order_package_private.reply_recovery_cancellations"
+      ],
+      "declared_functions": [
+        "site_order_package_private.reply_recovery_target",
+        "site_order_package_private.preview_reply_recovery",
+        "site_order_package_private.confirm_reply_recovery",
+        "site_order_package_private.require_reply_recovery_lease",
+        "site_order_package_private.reconcile_reply_recovery",
+        "site_order_package_private.ready_recovered_reply",
+        "site_order_package_private.reply_recovery_status"
+      ]
+    },
+    {
+      "path": "docs/review/site-order-package-flow/site-history.sql.review-only",
+      "commit": "f4c6da47e8c6bd894c920ab1d85399a4dc5da7bb",
+      "sha256": "0f9cc2f094e8146089a8cdf89f10fb0244ce5d80da239497b76d5c602285e577",
+      "bytes": 2842,
+      "kind": "private-site-extension",
+      "declared_schemas": [],
+      "declared_tables": [],
+      "declared_functions": [
+        "site_order_package_private.site_history_entries"
+      ]
+    },
+    {
+      "path": "docs/review/site-order-outgoing/source-and-prepare-observation.sql.review-only",
+      "commit": "05af8016f4b5d5df94604eac48fae85c1a25cd9b",
+      "sha256": "91c6e846a2aec0923ab443820d714524f31cf315008fc83aaa9c5fe18d06ca2f",
+      "bytes": 10907,
+      "kind": "outgoing-private-purpose",
+      "declared_schemas": [],
+      "declared_tables": [],
+      "declared_functions": [
+        "site_order_manager_private.outgoing_context",
+        "site_order_manager_private.observe_prepare"
+      ]
+    },
+    {
+      "path": "docs/review/site-order-outgoing/prepare-operation.sql.review-only",
+      "commit": "05af8016f4b5d5df94604eac48fae85c1a25cd9b",
+      "sha256": "d710f89b8e14900329a78e417cc2dfe0484f4b62ec45627adc7951b3ef4553b7",
+      "bytes": 24066,
+      "kind": "outgoing-private-purpose",
+      "declared_schemas": [
+        "site_order_outgoing_private"
+      ],
+      "declared_tables": [
+        "site_order_outgoing_private.prepared_operations",
+        "site_order_outgoing_private.prepare_retirements"
+      ],
+      "declared_functions": [
+        "site_order_outgoing_private.lock_key",
+        "site_order_outgoing_private.source_hash",
+        "site_order_outgoing_private.prepared_receipt",
+        "site_order_outgoing_private.retired_receipt",
+        "site_order_outgoing_private.phase",
+        "site_order_outgoing_private.require_unsigned_prepare",
+        "site_order_outgoing_private.prepare_order",
+        "site_order_outgoing_private.operation_status",
+        "site_order_outgoing_private.retire_prepare"
+      ]
+    },
+    {
+      "path": "docs/review/site-order-outgoing/registered-targets.sql.review-only",
+      "commit": "05af8016f4b5d5df94604eac48fae85c1a25cd9b",
+      "sha256": "2ffdbde112c9a83c5327321d7a8ffdbbc9d95733ee35823522d94b5f43e61883",
+      "bytes": 5374,
+      "kind": "outgoing-private-purpose",
+      "declared_schemas": [],
+      "declared_tables": [],
+      "declared_functions": [
+        "site_order_outgoing_private.registered_targets"
+      ]
+    },
+    {
+      "path": "docs/review/site-order-outgoing-consent/coordinator.sql.review-only",
+      "commit": "05af8016f4b5d5df94604eac48fae85c1a25cd9b",
+      "sha256": "80d68722b289d5fc1b359dd7aa43b77329c648411f004410417e4ed2d6132ae9",
+      "bytes": 20809,
+      "kind": "outgoing-private-purpose",
+      "declared_schemas": [],
+      "declared_tables": [
+        "site_order_outgoing_private.preview_receipts",
+        "site_order_outgoing_private.decision_receipts"
+      ],
+      "declared_functions": [
+        "site_order_outgoing_private.preview_unsigned",
+        "site_order_outgoing_private.decision_result",
+        "site_order_outgoing_private.confirm_unsigned",
+        "site_order_outgoing_private.decision_status"
+      ]
+    },
+    {
+      "path": "docs/review/site-order-compatibility/consumer-boundary.sql.review-only",
+      "commit": "241a393077cc29b00c8e44b3518ab7a7fc050a91",
+      "sha256": "81a4458d6106e3a128badaab8659165b10c37b6d8e63f16f4e95508db398d836",
+      "kind": "superseding-existing-consumer-compatibility"
+    }
+  ],
+  "phase_order": [
+    "C and retained fourteen-module baseline including exact legacy response guard; remain OFF",
+    "1703 compatibility transaction: six existing function bodies + one payload-kind CHECK",
+    "outgoing observation/prepare/registered_targets/coordinator; remain OFF",
+    "separately reviewed fixed14fileEdge/Wasm staging; no deployment authority",
+    "separate production approval and real actor/gateway/hosted verification before any ON or partner operation"
+  ],
+  "comparison_scope": {
+    "captured_target": "private.company_data_delivery_items",
+    "captured_catalog_sha256": "d50df63fc34cf96db243276006fbf13076416c0e6f474720e584d5bc93f648d6",
+    "excluded_new_triggers": "exact2 immutable-package FK reference triggers, checked explicitly",
+    "pglite_abi_projection": "created_at timestamptz attlen8 attbyval false\u2192true only; raw retained; ABI interpretation inference",
+    "native_abi_projection": false,
+    "all15_production_relations_proven": false
+  },
+  "fixture_only_sources": {
+    "supabase/migrations/20260930054000_add_structured_company_qualification_exchange.sql": "1d7fe33b6f527a552a60c6ba0ce08a45cfd456f0e8374297aa37ae3f1a539bf3",
+    "supabase/migrations/20261002104447_add_site_share_approval_flow.sql": "1d4a29c80894648e9098fc960c213cc1a4ca438d5e2a8a85bb10883ac0e6f052",
+    "supabase/migrations/20261001214248_add_company_delivery_save_state.sql": "69fcaeda74bc8805d3a10d47746ea4f90f48990455d44b2208f8431dce74e8fd",
+    "docs/review/site-order-compatibility/pinned-consumers.json": "b514d67f2c848c04e94ce84df8671c26f3842b5a67719a980190ed86c2ba45a7",
+    "tool/site_order_target_composition/verify.mjs": "261db874def20e16c729a9443c68ab989c7a3638b26d7ea1a916db5d937f080d"
+  },
+  "prohibited": {
+    "production_write": true,
+    "feature_ON": true,
+    "real_partner_send": true,
+    "frozen_branch_changes": true,
+    "financial_RPC_bundle_installation": true,
+    "old_and_superseding_compatibility_sequential_apply": true,
+    "used_schema_or_original_deletion_as_rollback": true
+  },
+  "unproved": [
+    "complete production installer/full15relation contracts",
+    "realGoTrue/gateway/liveuser",
+    "hosted runtime/complete CLI bundle quotas",
+    "actualsender concurrency",
+    "recipientapproval/reply/push on real users",
+    "iPhone install and real behavior"
+  ]
+}
