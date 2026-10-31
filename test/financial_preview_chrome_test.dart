@@ -156,4 +156,32 @@ void main() {
     expect(approves, 1);
     expect(tester.takeException(), isNull);
   });
+  testWidgets(
+    'invoice history remains available while loading and after generation failure',
+    (tester) async {
+      var history = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: InvoicePdfPreviewPage(
+            invoices: const [],
+            additionalActions: [
+              TextButton(
+                onPressed: () {
+                  history++;
+                },
+                child: const Text('承認履歴・印影設定'),
+              ),
+            ],
+          ),
+        ),
+      );
+      expect(find.text('承認履歴・印影設定'), findsOneWidget);
+      await tester.tap(find.text('承認履歴・印影設定'));
+      await tester.pumpAndSettle();
+      expect(find.text('請求書プレビューを生成できませんでした'), findsOneWidget);
+      await tester.tap(find.text('承認履歴・印影設定'));
+      expect(history, 2);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }

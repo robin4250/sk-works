@@ -1310,6 +1310,11 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
     }
   }
 
+  Widget _withoutPdf(Widget child) => FinancialPreviewChrome(
+    actions: widget.additionalActions, status: const [],
+    preview: child, footer: const SizedBox.shrink(),
+  );
+
   @override
   Widget build(BuildContext context) {
     return TradeDocumentActorBoundary(child: Scaffold(
@@ -1320,10 +1325,10 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
         future: _previewData,
         builder: (context, snapshot) {
           if (snapshot.connectionState != ConnectionState.done) {
-            return const Center(child: CircularProgressIndicator());
+            return _withoutPdf(const Center(child: CircularProgressIndicator()));
           }
           if (snapshot.hasError || snapshot.data == null) {
-            return InvoicePreviewFailure(
+            return _withoutPdf(InvoicePreviewFailure(
               title: '請求書プレビューを生成できませんでした',
               message: snapshot.error?.toString() ?? SkoLanguageController.tr('PDFデータが空です。'),
               onRetry: () => setState(() {
@@ -1333,7 +1338,7 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                   onTimeout: () => throw StateError(SkoLanguageController.tr('請求書の読み込みに時間がかかっています。通信を確認して再試行してください。')),
                 );
               }),
-            );
+            ));
           }
           final previewData = snapshot.data!;
           final pdfBytes = previewData.pdfBytes;
