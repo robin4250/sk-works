@@ -5,6 +5,7 @@ on:
       - 'docs/review/site-order-outgoing/**'
       - 'supabase/functions/site-order-workflow/*.mjs'
       - 'tool/site_order_prepare_operation_fixture.mjs'
+      - 'tool/site_order_prepare_http_jwt_fixture.mjs'
       - 'tool/verify_site_order_prepare_operation.mjs'
       - 'tool/site_order_edge_http.test.mjs'
       - '.github/workflows/site-order-prepare-operation.yml'

@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import assert from 'node:assert/strict';
+import {verifyPrepareHttpJwt} from './site_order_prepare_http_jwt_fixture.mjs';
 
 export async function verifyPrepareOperations(db,{id,A,B,UA,UB,actor,q,openNativePeer}){
  let checks=0,waits=0;
@@ -171,6 +172,7 @@ export async function verifyPrepareOperations(db,{id,A,B,UA,UB,actor,q,openNativ
   }finally{await peer.end();}
   check(waits,4);
  }
+ await verifyPrepareHttpJwt(db,{UA,UB,q,check,make,site,trade,openNativePeer});
  check(await originalFunctions(),original);
  for(const [kind,rows] of Object.entries(originals)){
   if(!rows)continue;

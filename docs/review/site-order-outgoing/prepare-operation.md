@@ -49,7 +49,15 @@ the existing project verifier and dedicated transaction connection are reused.
 No client SQL/company/actor identity is accepted. COMMIT-ack loss returns UNKNOWN
 without a rollback/retry. New module imports introduce no dependency versions.
 
-Remaining: combined real-JWT-to-real-SQL transport evidence, the production
+The combined transport fixture uses actual ES256 verification with the pinned
+SDK, real SQL transactions and synthetic Auth. It deliberately drops the
+acknowledgement after real prepare and retire commits, then reconciles by
+status without replay. Foreign actors see no operation, worker role cannot
+retire even with forged owner metadata, and invalid signatures/extra company
+keys fail before opening a connection. All connections close and LOCAL claims
+reset. This remains isolated evidence, not hosted GoTrue.
+
+Remaining: the production
 dependency/catalog composition, durable client ID journal and RAM editor wiring,
 dedicated guarded consent, actual storage/PDF/send integration, independent
 review, deployment approval, Release installation and iPhone verification.
