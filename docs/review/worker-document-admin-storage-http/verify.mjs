@@ -79,7 +79,7 @@ try{
  r=await call('/storage/v1/object/'+bucket,{token:session.access_token,method:'DELETE',json:{prefixes:[unused]}});assert.equal(r.status,200,'positive control unretained object removal');const removed=await r.json();assert.equal(removed.length,1);assert.equal((await db.query('select count(*)::int n from storage.objects where bucket_id=$1 and name=$2',[bucket,unused])).rows[0].n,0);checks++;
  await db.query('update private.worker_document_admin_correction_state set enabled=false');
  r=await rpc('get',{...identity,request_id:request});assert.equal(r.status,200);assert.equal((await r.json()).status,'applied');
- r=await rpc('correct',{...identity,request_id:randomUUID(),expected_snapshot:snapshot,fields:{attachment_paths:[],expires_at:null,notes:null},reason:'stopped fixture'});assert.equal(r.status,400);await r.arrayBuffer();checks++;
+ r=await rpc('correct',{...identity,request_id:randomUUID(),expected_snapshot:snapshot,fields:{attachment_paths:[],expires_at:null,notes:null},reason:'stopped fixture'});assert.ok([400,409,500].includes(r.status),'SQL55000 OFF response must not succeed');const stoppedError=await r.json();assert.equal(stoppedError.code,'55000');assert.equal(stoppedError.message,'administrator correction stopped');checks++;
  const createdSid=(await db.query('select session_id from private.worker_document_admin_corrections where request_id=$1',[request])).rows[0].session_id;assert.equal(createdSid,oldSid);
  const oldToken=session.access_token;r=await call('/auth/v1/logout?scope=local',{token:oldToken,method:'POST'});assert.ok([200,204].includes(r.status));await r.arrayBuffer();
  assert.equal((await db.query('select count(*)::int n from auth.sessions where id=$1',[oldSid])).rows[0].n,0);
