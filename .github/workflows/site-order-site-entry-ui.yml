@@ -1,0 +1,28 @@
+name: Site order site entry UI
+on:
+  pull_request:
+    paths:
+      - 'lib/features/sites/site_order_*.dart'
+      - 'lib/features/sites/admin_site_financial_page.dart'
+      - 'test/site_order*_test.dart'
+      - '.github/workflows/site-order-site-entry-ui.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    # Source review must explicitly clear this staged UI before execution.
+    if: ${{ false }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Analyze owned UI and retained typed contracts
+        run: flutter analyze lib/features/sites/site_order_*.dart lib/features/sites/admin_site_financial_page.dart test/site_order*_test.dart
+      - name: Verify site order typed contracts and UI
+        run: flutter test test/site_order*_test.dart --reporter expanded
