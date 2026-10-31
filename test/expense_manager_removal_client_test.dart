@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart';
 import 'package:sk_works/features/expenses/expense_claim.dart';
@@ -14,6 +15,12 @@ Map<String,dynamic> saved(ExpenseRemovalCommand c,{bool finalDocument=false})=>{
   'deleted_by':c.actor,'manager_deleted':true,'deleted_at':'2026-11-01T00:00:00Z',
   'financial_state':finalDocument?'finalized_original_retained':'withdrawn_unfinalized',
   'correction_required':finalDocument,'notification_id':id(8),'notification_state':'stored'};
+class Journal implements ExpenseRemovalJournal {
+  final values=<String,String>{};bool loseWrite=false;void Function()? erased;
+  @override Future<String?> read(String key)async=>values[key];
+  @override Future<void> write(String key,String value)async{if(!loseWrite)values[key]=value;}
+  @override Future<void> erase(String key,String expected)async{if(values[key]!=expected)throw StateError('mismatch');values.remove(key);erased?.call();}
+}
 void main(){
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(()=>SharedPreferences.setMockInitialValues({}));
@@ -88,6 +95,33 @@ void main(){
     expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton,'削除を確定')).onPressed,null);
     await tester.enterText(find.byType(TextField),' テスト申請の訂正 ');await tester.pump();
     expect(reason,null);await tester.tap(find.text('削除を確定'));await tester.pumpAndSettle();expect(reason,'テスト申請の訂正');
+  });
+
+  test('Auth A to B to A event permanently retires the in-flight adoption',()async{
+    final events=StreamController<void>.broadcast(sync:true);addTearDown(events.close);
+    final c=ExpenseRemovalCommand.create(id(1),id(2),id(3),1,id(4),'訂正');
+    final repo=ExpenseManagerRemovalRepository(actor:()=>id(1),session:()=>id(4),invalidations:events.stream,rpc:(n,p)async{events.add(null);events.add(null);return saved(c);});
+    addTearDown(repo.dispose);
+    await expectLater(repo.submit(c,ExpenseRemovalCapability(capability(id(4)),id(4))),throwsStateError);
+    expect((await repo.pending(id(2)))!.encoded,c.encoded);
+  });
+  test('journal readback failure makes zero mutation RPC calls',()async{
+    final journal=Journal()..loseWrite=true;int calls=0;
+    final c=ExpenseRemovalCommand.create(id(1),id(2),id(3),1,id(4),'訂正');
+    final repo=ExpenseManagerRemovalRepository(actor:()=>id(1),session:()=>id(4),journal:journal,rpc:(n,p)async{calls++;return saved(c);});addTearDown(repo.dispose);
+    await expectLater(repo.submit(c,ExpenseRemovalCapability(capability(id(4)),id(4))),throwsStateError);expect(calls,0);
+  });
+  test('Auth change while clearing restores the journal and requires result observation',()async{
+    final events=StreamController<void>.broadcast(sync:true);addTearDown(events.close);
+    final journal=Journal()..erased=()=>events.add(null);
+    final c=ExpenseRemovalCommand.create(id(1),id(2),id(3),1,id(4),'訂正');
+    final repo=ExpenseManagerRemovalRepository(actor:()=>id(1),session:()=>id(4),invalidations:events.stream,journal:journal,rpc:(n,p)async=>saved(c));addTearDown(repo.dispose);
+    await expectLater(repo.submit(c,ExpenseRemovalCapability(capability(id(4)),id(4))),throwsStateError);
+    expect((await repo.pending(id(2)))!.encoded,c.encoded);
+  });
+  test('result containing extra error metadata cannot become confirmed success',(){
+    final c=ExpenseRemovalCommand.create(id(1),id(2),id(3),1,id(4),'訂正');
+    expect(()=>ExpenseRemovalResult({...saved(c),'error':'unavailable'},c),throwsFormatException);
   });
 
 }

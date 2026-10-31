@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -44,6 +45,8 @@ class ExpenseRemovalCommand {
 
 class ExpenseRemovalResult {
   ExpenseRemovalResult(Map<String,dynamic> value, ExpenseRemovalCommand command) {
+    const keys={'command_id','company_id','claim_id','requested_revision','manager_deleted','deleted_by','deleted_at','financial_state','correction_required','notification_id','notification_state'};
+    if(value.length!=keys.length || !value.keys.toSet().containsAll(keys)) { throw const FormatException('Unexpected deletion result fields'); }
     if(value['command_id']!=command.id || value['company_id']!=command.company || value['claim_id']!=command.claim ||
       value['requested_revision'] is! int || value['requested_revision']!=command.revision || value['deleted_by']!=command.actor || value['manager_deleted']!=true ||
       value['notification_state']!='stored' || !_uuid(value['notification_id']) ||
@@ -56,13 +59,44 @@ class ExpenseRemovalResult {
   late final bool correctionRequired;
 }
 
+abstract interface class ExpenseRemovalJournal {
+  Future<String?> read(String key);
+  Future<void> write(String key,String value);
+  Future<void> erase(String key,String expected);
+}
+class SharedExpenseRemovalJournal implements ExpenseRemovalJournal {
+  @override Future<String?> read(String key)async{final prefs=await SharedPreferences.getInstance();await prefs.reload();return prefs.getString(key);}
+  @override Future<void> write(String key,String value)async{
+    final prefs=await SharedPreferences.getInstance();
+    if(!await prefs.setString(key,value))throw StateError('削除確認を端末に保存できません。');
+    await prefs.reload();if(prefs.getString(key)!=value)throw StateError('削除確認の保存内容を確認できません。');
+  }
+  @override Future<void> erase(String key,String expected)async{
+    final prefs=await SharedPreferences.getInstance();await prefs.reload();
+    if(prefs.getString(key)!=expected || !await prefs.remove(key))throw StateError('保存済みの結果を再確認してください。');
+    await prefs.reload();if(prefs.getString(key)!=null)throw StateError('結果確認の保存状態を確認できません。');
+  }
+}
+
 /// A pending command is observation-only after an uncertain send. Never resend
 /// from a new login, or infer success from a missing result.
 class ExpenseManagerRemovalRepository {
-  ExpenseManagerRemovalRepository({String? Function()? actor, String? Function()? session, ExpenseRpc? rpc})
+  ExpenseManagerRemovalRepository({String? Function()? actor, String? Function()? session, ExpenseRpc? rpc, Stream<void>? invalidations, ExpenseRemovalJournal? journal})
     : _actor=actor??(() => SupabaseBackend.isInitialized ? SupabaseBackend.client.auth.currentUser?.id : null),
       _session=session??_liveSession,
-      _rpc=rpc??((name,params)=>SupabaseBackend.client.rpc(name,params:params));
+      _rpc=rpc??((name,params)=>SupabaseBackend.client.rpc(name,params:params)),
+      _journal=journal??SharedExpenseRemovalJournal() {
+    final events=invalidations ?? (SupabaseBackend.isInitialized ? SupabaseBackend.client.auth.onAuthStateChange.map((_) {}) : null);
+    _subscription=events?.listen((_) {_epoch++;},onError:(Object _){_epoch++;});
+  }
+  final ExpenseRemovalJournal _journal;
+  StreamSubscription<void>? _subscription;
+  int _epoch=0;
+  bool _disposed=false;
+  void dispose(){_disposed=true;_epoch++;_subscription?.cancel();}
+  void _same(int epoch,String expected,String? capturedSession){
+    if(_disposed || _epoch!=epoch || actor!=expected || session!=capturedSession)throw StateError('ログイン状態が変わりました。保存結果を照会してください。');
+  }
   final String? Function() _actor, _session;
   final ExpenseRpc _rpc;
   String? get actor=>_actor();
@@ -78,8 +112,8 @@ class ExpenseManagerRemovalRepository {
   void _check(String expected){if(actor!=expected || !_uuid(session))throw StateError('ログイン情報が変わりました。');}
   Future<ExpenseRemovalCommand?> pending(String company)async{
     final expected=actor;if(expected==null)throw StateError('ログインが必要です。');
-    final prefs=await SharedPreferences.getInstance();if(actor!=expected)throw StateError('ログイン情報が変わりました。');
-    final text=prefs.getString(_key(expected,company));if(text==null)return null;
+    final epoch=_epoch;final capturedSession=session;
+    final text=await _journal.read(_key(expected,company));_same(epoch,expected,capturedSession);if(text==null)return null;
     final command=ExpenseRemovalCommand.decode(text);
     if(command.actor!=expected || command.company!=company)throw StateError('削除の対象が一致しません。');return command;
   }
@@ -87,38 +121,42 @@ class ExpenseManagerRemovalRepository {
   Future<ExpenseRemovalResult> submit(ExpenseRemovalCommand command,ExpenseRemovalCapability capability)async{
     ExpenseRemovalCommand.decode(command.encoded);_check(command.actor);
     if(!capability.enabled || session!=command.session)throw StateError('削除機能と現在の権限を確認してください。');
+    final epoch=_epoch;final capturedSession=session;
     final key=_key(command.actor,command.company);
     if(!_running.add(key))throw StateError('削除結果を確認中です。');
     try{
-      final prefs=await SharedPreferences.getInstance();_check(command.actor);
-      if(prefs.containsKey(key))throw StateError('先に保存済みの削除結果を確認してください。');
+      final previous=await _journal.read(key);_same(epoch,command.actor,capturedSession);
+      if(previous!=null)throw StateError('先に保存済みの削除結果を確認してください。');
       if(session!=command.session)throw StateError('ログイン情報が変わりました。');
-      if(!await prefs.setString(key,command.encoded))throw StateError('削除確認を端末に保存できません。');
-      _check(command.actor);if(session!=command.session)throw StateError('ログイン情報が変わりました。');
-      final raw=await _rpc('expense_manager_remove',command.params);_check(command.actor);
+      await _journal.write(key,command.encoded);_same(epoch,command.actor,capturedSession);
+      if(await _journal.read(key)!=command.encoded)throw StateError('削除確認の保存内容を確認できません。');
+      _same(epoch,command.actor,capturedSession);_check(command.actor);if(session!=command.session)throw StateError('ログイン情報が変わりました。');
+      final raw=await _rpc('expense_manager_remove',command.params);_same(epoch,command.actor,capturedSession);_check(command.actor);
       if(session!=command.session)throw StateError('ログイン情報が変わりました。保存結果を照会してください。');
       final result=ExpenseRemovalResult(Map<String,dynamic>.from(raw as Map),command);
-      await _clear(prefs,key,command);return result;
+      await _clear(key,command,epoch,capturedSession);return result;
     }finally{_running.remove(key);}
   }
   Future<ExpenseRemovalResult?> observe(ExpenseRemovalCommand command)async{
     ExpenseRemovalCommand.decode(command.encoded);_check(command.actor);
+    final epoch=_epoch;final capturedSession=session;
     final key=_key(command.actor,command.company);
     if(!_running.add(key))throw StateError('削除結果を確認中です。');
     try{
-      final prefs=await SharedPreferences.getInstance();_check(command.actor);
-      if(prefs.getString(key)!=command.encoded)throw StateError('保存済みの削除対象が一致しません。');
+      final previous=await _journal.read(key);_same(epoch,command.actor,capturedSession);_check(command.actor);
+      if(previous!=command.encoded)throw StateError('保存済みの削除対象が一致しません。');
       final observedSession=session;
-      final raw=await _rpc('expense_manager_removal_result',{'p_command':command.id,'p_company':command.company});_check(command.actor);
+      final raw=await _rpc('expense_manager_removal_result',{'p_command':command.id,'p_company':command.company});_same(epoch,command.actor,capturedSession);_check(command.actor);
       if(session!=observedSession)throw StateError('ログイン情報が変わりました。');
       if(raw==null)return null;
       final result=ExpenseRemovalResult(Map<String,dynamic>.from(raw as Map),command);
-      await _clear(prefs,key,command);return result;
+      await _clear(key,command,epoch,capturedSession);return result;
     }finally{_running.remove(key);}
   }
-  Future<void> _clear(SharedPreferences prefs,String key,ExpenseRemovalCommand command)async{
-    _check(command.actor);
-    if(prefs.getString(key)!=command.encoded || !await prefs.remove(key))throw StateError('保存済みの結果を再確認してください。');
-    _check(command.actor);
+  Future<void> _clear(String key,ExpenseRemovalCommand command,int epoch,String? capturedSession)async{
+    _same(epoch,command.actor,capturedSession);_check(command.actor);
+    await _journal.erase(key,command.encoded);
+    try{_same(epoch,command.actor,capturedSession);_check(command.actor);}
+    catch(_){if(await _journal.read(key)==null)await _journal.write(key,command.encoded);rethrow;}
   }
 }

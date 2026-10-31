@@ -42,6 +42,7 @@ class _ExpenseManagementPageState extends State<ExpenseManagementPage> {
   @override
   void dispose() {
     _generation++;
+    if(widget.removals==null)_removals.dispose();
     super.dispose();
   }
 
