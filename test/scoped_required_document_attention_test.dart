@@ -40,7 +40,8 @@ class Fixture {
         final capturedSid=sid;entered?.complete();if(release!=null){await release!.future;}
         if(unavailable){status=404;value={'code':'PGRST202','message':'scoped attention unavailable'};}
         else{value={'capability_version':1,'company_id':responseCompany??jsonDecode(request.body)['p_company_id'],'worker_id':worker,
-          'actor_id':actor,'session_id':responseSid??capturedSid,'missing_count':0,'missing_names':[],'unknown_count':0,'unknown_names':[]};}
+          'actor_id':actor,'session_id':responseSid??capturedSid,'evidence_contract_version':1,'items':[],
+          'required_count':0,'saved_count':0,'exempt_count':0,'missing_count':0,'missing_names':[],'unknown_count':0,'unknown_names':[]};}
       default: throw StateError('Unexpected endpoint: ${request.url.path}');
     }
     return http.Response(jsonEncode(value),status,headers:{'content-type':'application/json'},request:request);
