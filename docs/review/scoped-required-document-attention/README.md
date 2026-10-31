@@ -1,0 +1,13 @@
+# Explicit-company required-document evidence contract
+
+Review-only successor to the limited evidence correction. Production HOLD and individual exemption OFF remain. No migration or production application is included.
+
+The new `current_user_required_document_attention_for_company(uuid)` public invoker calls a narrowly exposed private implementation. That implementation validates the existing actual live-session helper, one current company membership and exactly one active worker bound to the authenticated person and explicit company. The existing no-argument RPC and original helper bodies are not changed or delegated to. The evidence query is checked against the preceding review candidate with one explicit finite-date guard: SQL infinity/BC dates remain unknown, matching the client calendar contract. It returns separate missing and unknown names plus an exact actor/SID/company/worker receipt.
+
+The installer requires the five captured generic helper bodies, owners, ACLs, security-definer flags and configs. Existing helpers and legacy RPC must remain byte-identical after installation. New entry points are authenticated-only, with no PUBLIC/anon/service_role or grant-option access. There are no table grants, role changes, business-row writes, exemption activation or old-SID rewrites.
+
+The app reuses `TradeDocumentFormSession`, `SecondaryResetSessionGuard` and the existing gateway epoch/cancellation behavior. Every read uses the captured Bearer; results must match the actor/SID/company. Multiple company memberships require explicit selection; absence of a selected company never falls back to the old LIMIT 1 RPC. The displayed home identity supplies the same company to the guide and attention loader. Unknown/uninstalled states remain visible as unavailable and never become completed or zero-obligation success. The legacy unscoped permission enrichment is not used for an explicitly selected company when multiple memberships exist.
+
+Tests execute the five actual generic helper bodies with synthetic Auth rows, metadata and claims. This is not real GoTrue/token-signature, production, Release or iPhone evidence. Local PGlite and exact-head CI outcomes are tracked separately. Production approval must include a fresh complete catalog receipt, coordinated/stopped DDL writers, read-only unknown-COMMIT receipt inspection and a separately reviewed post-COMMIT recovery decision; never restore old business data or blindly reapply.
+
+The person's birth date is a separate already-existing backend candidate. This contract does not install it, substitute a family/payroll birth date or declare that integration complete.

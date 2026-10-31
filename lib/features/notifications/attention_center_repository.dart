@@ -2,6 +2,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
 import 'app_notification_repository.dart';
+import 'scoped_required_document_attention_repository.dart';
 import 'attention_center_item.dart';
 import 'notification_business_status.dart';
 
@@ -32,7 +33,7 @@ class AttentionCenterRepository {
     return AttentionCenterRepository._(SupabaseBackend.client, notifications);
   }
 
-  Future<AttentionCenterData> load({Set<String>? availableActionKeys}) async {
+  Future<AttentionCenterData> load({Set<String>? availableActionKeys, String? companyId, String? Function()? currentCompany}) async {
     final failures = <String>{};
     var notifications = const <AppNotificationRecord>[];
     final items = <AttentionCenterItem>[];
@@ -51,7 +52,7 @@ class AttentionCenterRepository {
       }),
       readSource('required_documents', () async {
         items.addAll(mapRequiredDocumentAttention(
-          await _client.rpc('current_user_required_document_attention'),
+          await ScopedRequiredDocumentAttentionRepository(_client).load(companyId: companyId, currentCompany: currentCompany),
           availableActionKeys: availableActionKeys,
         ));
       }),

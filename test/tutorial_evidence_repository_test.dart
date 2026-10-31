@@ -18,7 +18,7 @@ class FixtureSource implements TutorialEvidenceSource, TutorialSetupEvidenceSour
     'user_id': 'u1', 'display_name': '保存済み氏名', 'phone': '',
   };
   Map<String, dynamic>? personnelRow = {
-    'worker_id': 'w1', 'name': '保存済み氏名', 'address': '',
+    'worker_id': 'w1', 'name': '保存済み氏名', 'birth_date': '', 'address': '',
     'blood_type': '', 'role': '', 'emergency_name': '',
     'emergency_relation': '', 'emergency_phone': '', 'emergency_address': '',
   };
@@ -44,6 +44,38 @@ class FixtureSource implements TutorialEvidenceSource, TutorialSetupEvidenceSour
 }
 
 void main() {
+  test('birth date is read from the existing personnel profile as optional evidence', () async {
+    final source = FixtureSource();
+    source.personnelRow = {...source.personnelRow!, 'birth_date': '1980-01-02'};
+    final snapshot = await TutorialEvidenceRepository(source).load(availableActionKeys: {'profile'});
+    final details = snapshot.tasks.singleWhere((task) => task.key == 'personnel_details_recommended');
+    final birth = details.checkpoints.singleWhere((item) => item.key == 'birth_date');
+    expect(details.requiredForCompletion, isFalse);
+    expect(birth.label, '生年月日');
+    expect(birth.state, TutorialEvidenceState.saved);
+    expect(birth.evidenceKey, 'w1:birth_date');
+    expect(source.personnelRow!['birth_date'], '1980-01-02');
+  });
+
+  test('multi-photo evidence uses the same retained-photo parser as document screens', () {
+    TutorialEvidenceCheckpoint checkpoint(Object? paths, {String? legacy}) =>
+      TutorialEvidenceRepository.documentCheckpoints({
+        'worker_id': 'w1',
+        'requirements': [{'id': 'r1', 'name': '雇用保険被保険者証', 'is_active': true, 'is_required': true}],
+        'statuses': [{'id': 's1', 'worker_id': 'w1', 'requirement_id': 'r1',
+          'status': 'submitted', 'attachment_paths': paths, 'attachment_path': legacy}],
+      }, today: DateTime(2026, 10, 31)).single;
+    expect(checkpoint(['synthetic/a', 'synthetic/b']).state, TutorialEvidenceState.saved);
+    expect(checkpoint(['synthetic/a']).statusLabel, '提出済み');
+    expect(checkpoint([], legacy: 'synthetic/legacy').state, TutorialEvidenceState.saved);
+    expect(checkpoint([]).state, TutorialEvidenceState.missing);
+    expect(checkpoint([]).statusLabel, '添付待ち');
+    for (final invalid in ['invalid', [''], ['synthetic/a', 'synthetic/a'], [1]]) {
+      expect(checkpoint(invalid, legacy: 'synthetic/legacy').state, TutorialEvidenceState.unknown);
+      expect(checkpoint(invalid).statusLabel, '添付情報を確認');
+    }
+  });
+
   test('four membership roles only receive authorized preparation actions', () async {
     const personal = {'profile', 'document_register'};
     const setup = {'trade_companies', 'subcontractors', 'site_register',

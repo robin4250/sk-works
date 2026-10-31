@@ -1,0 +1,74 @@
+name: Scoped required document attention contract
+on:
+  pull_request:
+    paths:
+      - 'docs/review/scoped-required-document-attention/**'
+      - 'lib/features/notifications/scoped_required_document_attention_repository.dart'
+      - 'lib/features/notifications/attention_center_repository.dart'
+      - 'lib/features/notifications/notifications_page.dart'
+      - 'lib/features/home/home_membership_repository.dart'
+      - 'lib/features/home/home_attention_repository.dart'
+      - 'lib/features/tutorial/**'
+      - 'lib/app_v2.dart'
+      - 'test/scoped_required_document_attention_test.dart'
+      - 'test/tutorial_bank_account_evidence_test.dart'
+      - '.github/workflows/scoped-required-document-attention.yml'
+permissions:
+  contents: read
+jobs:
+  actual-helpers-pglite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.22.1'
+      - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
+      - run: |
+          ln -s "$PWD/tool/security/fixture_dependencies/node_modules" docs/review/scoped-required-document-attention/node_modules
+          node docs/review/scoped-required-document-attention/verify.mjs
+  actual-helpers-native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:17.6
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_scoped_attention_fixture
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      SKO_SCOPED_ATTENTION_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_scoped_attention_fixture
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.22.1'
+      - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
+      - run: |
+          ln -s "$PWD/tool/security/fixture_dependencies/node_modules" docs/review/scoped-required-document-attention/node_modules
+          node docs/review/scoped-required-document-attention/verify.mjs
+  scoped-sdk-and-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: dart analyze lib/features/notifications/scoped_required_document_attention_repository.dart lib/features/notifications/attention_center_repository.dart lib/features/notifications/notifications_page.dart lib/features/home/home_membership_repository.dart lib/features/home/home_attention_repository.dart lib/features/tutorial/tutorial_evidence_repository.dart lib/features/tutorial/tutorial_home_card.dart lib/features/tutorial/tutorial_page.dart lib/app_v2.dart test/scoped_required_document_attention_test.dart
+      - run: flutter test test/scoped_required_document_attention_test.dart test/attention_center_mapping_test.dart test/required_document_evidence_notice_test.dart test/tutorial_workspace_ui_test.dart test/tutorial_bank_account_evidence_test.dart test/tutorial_evidence_repository_test.dart test/home_identity_role_preservation_contract_test.dart

@@ -45,8 +45,8 @@ class HomeAttentionRepository {
     return repository == null ? null : HomeAttentionRepository._(repository);
   }
 
-  Future<RequiredDocumentAttention> loadRequiredDocumentAttention() async {
-    final data = await _repository.load();
+  Future<RequiredDocumentAttention> loadRequiredDocumentAttention({required String companyId, String? Function()? currentCompany}) async {
+    final data = await _repository.load(companyId: companyId, currentCompany: currentCompany);
     final pending = data.snapshot.items.where((item) => item.needsAction);
     final documents = pending.where((item) => item.source == 'required_document');
     final generation = pending.where((item) => item.source == 'generation_setting');

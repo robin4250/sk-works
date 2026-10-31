@@ -81,7 +81,7 @@ class _TutorialHomeCardState extends State<TutorialHomeCard> with WidgetsBinding
       // Completion preferences record past success, not current required evidence.
       // Re-evaluate after company requirements or saved documents change.
       final loader = widget.loadSnapshot;
-      final repository = widget.repository ?? TutorialEvidenceRepository.maybeCreate();
+      final repository = widget.repository ?? TutorialEvidenceRepository.maybeCreate(companyId: widget.companyId);
       if (loader == null && repository == null) {
         throw StateError('Tutorial evidence unavailable');
       }
