@@ -89,7 +89,7 @@ def transform(signature, source):
             "      and i.payload_kind='site_share'\n      and not exists(select 1 from site_order_package_private.packages p where p.data_item_id=i.id)")
     elif 'site_payment_pair' in signature:
         source = once(source, ' select d.sender_company_id,d.recipient_company_id,',
-            " if exists(select 1 from site_order_package_private.packages p where p.data_item_id=p_item) then\n  raise exception '現場注文は専用の承認経路を使用してください。' using errcode='22023';\n end if;\n select d.sender_company_id,d.recipient_company_id,")
+            " if exists(select 1 from site_order_package_private.packages p where p.data_item_id=p_item and p_company in(p.sender_company_id,p.recipient_company_id)) then\n  raise exception '現場注文は専用の承認経路を使用してください。' using errcode='22023';\n end if;\n select d.sender_company_id,d.recipient_company_id,")
     elif 'site_payment_agreement_targets' in signature:
         source = once(source, " where b.status='accepted' and i.payload_kind='site_share'",
             " where b.status='accepted' and i.payload_kind='site_share'\n and not exists(select 1 from site_order_package_private.packages p where p.data_item_id=b.data_item_id)")

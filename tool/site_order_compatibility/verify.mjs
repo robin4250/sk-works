@@ -214,12 +214,35 @@ update private.company_data_delivery_items set payload='{"source_site_id":"${id(
 assert((await db.query('select private.site_payment_pair($1,$2) v',[id(15),id(2)])).rows[0].v.source_site_id===id(31),'legacy accepted pair preserved');
 const targets=(await db.query('select private.site_payment_agreement_targets($1) v',[id(2)])).rows[0].v;
 assert(targets.length===1&&targets[0].shared_item_id===id(15),'legacy targets preserved and owned accepted excluded');
+// Foreign-only ownership must not reveal a package's existence to company A.
+await db.exec(`insert into private.document_deliveries(id,sender_company_id,recipient_company_id,sender_name,recipient_name,sent_by,note)
+ values('${id(90)}','${id(3)}','${id(4)}','B','C','${id(5)}','foreign fixture');
+insert into public.sites values('${id(97)}','${id(4)}','foreign recipient');
+insert into private.company_data_delivery_items(id,delivery_id,payload_kind,payload) values
+ ('${id(91)}','${id(90)}','site_share','{"source_site_id":"${id(31)}"}'),
+ ('${id(98)}','${id(90)}','site_share','{"source_site_id":"${id(31)}"}');
+insert into private.site_share_inbox values('${id(91)}','${id(4)}','accepted',now(),'${id(97)}'),('${id(98)}','${id(4)}','accepted',now(),'${id(97)}');
+insert into site_order_artifact_private.render_jobs values('${id(93)}');
+insert into site_order_artifact_private.pdf_records values('${id(94)}');
+insert into site_order_package_private.packages values('${id(92)}','${id(3)}','${id(4)}','${id(5)}','${id(96)}','${id(95)}','${id(93)}','${id(94)}','${id(91)}','{}',now());`);
+const foreignRows=async()=>JSON.stringify((await db.query(`select
+ (select jsonb_agg(to_jsonb(p)order by id)from site_order_package_private.packages p) packages,
+ (select jsonb_agg(to_jsonb(i)order by id)from private.company_data_delivery_items i) items,
+ (select jsonb_agg(to_jsonb(s)order by data_item_id)from private.site_share_inbox s) inbox`)).rows);
+const foreignBefore=await foreignRows();
+const denial=async item=>{try{await db.query('select private.site_payment_pair($1,$2)',[item,id(2)]);}catch(e){return{code:e.code,message:e.message};}throw Error('foreign pair accepted');};
+const unknown=await denial(id(999));
+assert(unknown.code==='P0001','unknown pair retains legacy generic error');
+assert(JSON.stringify(await denial(id(91)))===JSON.stringify(unknown),'foreign package indistinguishable from unknown');
+assert(JSON.stringify(await denial(id(98)))===JSON.stringify(unknown),'foreign legacy indistinguishable from unknown');
+assert(foreignBefore===await foreignRows(),'foreign metadata and rows unchanged');
+
 
 await db.exec(`insert into private.document_receive_codes(code,company_id) values('${id(50)}','${id(4)}')`);
 const packet={request_id:id(51),code:id(50),items:[{kind:'received_data',id:id(11)},{kind:'received_data',id:id(13)}]};
 await deny(()=>db.query("select private.company_document_exchange('send',$1::jsonb)",[JSON.stringify(packet)]),'22023');
 assert((await db.query('select used_at from private.document_receive_codes where code=$1',[id(50)])).rows[0].used_at===null,'mixed forward code untouched');
-assert((await db.query('select count(*)::int n from private.document_deliveries')).rows[0].n===1,'mixed forward delivery absent');
+assert((await db.query('select count(*)::int n from private.document_deliveries')).rows[0].n===2,'mixed forward delivery absent');
 packet.items=[{kind:'received_data',id:id(11)},{kind:'received_data',id:id(12)},{kind:'received',id:id(14)}];
 await db.query("select private.company_document_exchange('send',$1::jsonb)",[JSON.stringify(packet)]);
 assert((await db.query('select count(*)::int n from private.company_data_delivery_items where delivery_id=$1',[id(51)])).rows[0].n===2,'old structured retransfers preserved');

@@ -761,7 +761,7 @@ begin
   select 1 from public.company_members m where m.company_id=p_company
    and m.user_id=auth.uid() and m.role::text in ('owner','admin')
  ) then raise exception '管理者のみ操作できます。' using errcode='42501'; end if;
- if exists(select 1 from site_order_package_private.packages p where p.data_item_id=p_item) then
+ if exists(select 1 from site_order_package_private.packages p where p.data_item_id=p_item and p_company in(p.sender_company_id,p.recipient_company_id)) then
   raise exception '現場注文は専用の承認経路を使用してください。' using errcode='22023';
  end if;
  select d.sender_company_id,d.recipient_company_id,
