@@ -9,15 +9,15 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sk_works/features/people/worker_document_admin_correction_entry.dart';
 import 'package:sk_works/features/people/worker_document_admin_correction_repository.dart';
 
+class _RealNativeHttp extends HttpOverrides {}
+
 void main() {
   final contextPath = Platform.environment['SKO_DOCUMENT_NATIVE_HTTP_CONTEXT'];
   testWidgets(
     'actual SDK list projection to inspect to form to same Native full-row CAS',
-    (tester) async {
+    (tester) => tester.runAsync(() => HttpOverrides.runWithHttpOverrides(() async {
+      debugPrint('Native document phase: load context');
       final config = jsonDecode(File(contextPath!).readAsStringSync()) as Map;
-      final previousOverrides = HttpOverrides.current;
-      HttpOverrides.global = null;
-      addTearDown(() => HttpOverrides.global = previousOverrides);
       final client = SupabaseClient(
         config['url'] as String,
         config['token'] as String,
@@ -30,14 +30,15 @@ void main() {
         final response = await http.get(
           Uri.parse('${config['url']}/fixture-context'),
           headers: {'Authorization': 'Bearer ${config['token']}'},
-        );
+        ).timeout(const Duration(seconds: 10));
         expect(response.statusCode, 200);
         return Map<String, dynamic>.from(
           (jsonDecode(response.body) as Map)['projection'] as Map,
         );
       }
 
-      final projected = (await tester.runAsync(readProjection))!;
+      debugPrint('Native document phase: list projection');
+      final projected = await readProjection();
       expect(projected.containsKey('updated_by'), false);
       expect(projected.containsKey('template_version_id'), false);
       Map<String, dynamic>? command;
@@ -54,16 +55,14 @@ void main() {
           return client.rpc(
             'worker_document_admin_self_correction',
             params: {'p_action': action, 'p_data': data},
-          );
+          ).timeout(const Duration(seconds: 10));
         },
       );
       bool? handled;
       Object? failure;
       Future<void> waitFor(bool Function() ready) async {
         for (var i = 0; i < 100; i++) {
-          await tester.runAsync(() async {
-            await Future<void>.delayed(const Duration(milliseconds: 25));
-          });
+          await Future<void>.delayed(const Duration(milliseconds: 25));
           await tester.pump(const Duration(milliseconds: 10));
           if (ready()) {
             return;
@@ -96,6 +95,7 @@ void main() {
           ),
         ),
       );
+      debugPrint('Native document phase: open actual entry');
       await tester.tap(find.text('open'));
       await waitFor(
         () =>
@@ -124,10 +124,10 @@ void main() {
       final reviewed = command!['expected_snapshot'] as Map;
       expect(reviewed.containsKey('updated_by'), true);
       expect(reviewed.containsKey('template_version_id'), true);
-      final actual = await tester.runAsync(readProjection);
-      expect(actual!['expires_at'], '2040-01-01');
-      final receipt = await tester.runAsync(
-        () => client.rpc(
+      debugPrint('Native document phase: inspect committed row');
+      final actual = await readProjection();
+      expect(actual['expires_at'], '2040-01-01');
+      final receipt = await client.rpc(
           'worker_document_admin_self_correction',
           params: {
             'p_action': 'get',
@@ -137,10 +137,9 @@ void main() {
               'request_id': command!['request_id'],
             },
           },
-        ),
-      );
+      ).timeout(const Duration(seconds: 10));
       expect((receipt as Map)['status'], 'applied');
-    },
+    }, _RealNativeHttp())),
     skip: contextPath == null,
   );
 }
