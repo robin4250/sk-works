@@ -13,7 +13,14 @@ import '../shared/pdf_bytes_cache.dart';
 import '../shared/pdf_pinch_pages.dart';
 
 class CompanyDeliveryInboxPage extends StatefulWidget {
-  const CompanyDeliveryInboxPage({super.key});
+  const CompanyDeliveryInboxPage({super.key}) : _testRepository = null;
+
+  const CompanyDeliveryInboxPage.forTesting({
+    super.key,
+    required CompanyDocumentExchangeRepository repository,
+  }) : _testRepository = repository;
+
+  final CompanyDocumentExchangeRepository? _testRepository;
 
   @override
   State<CompanyDeliveryInboxPage> createState() =>
@@ -21,7 +28,7 @@ class CompanyDeliveryInboxPage extends StatefulWidget {
 }
 
 class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
-  final _repository = CompanyDocumentExchangeRepository.maybeCreate();
+  late final CompanyDocumentExchangeRepository? _repository;
   final _noteController = TextEditingController();
 
   final List<_ReceivedTransferItem> _items = [];
@@ -37,6 +44,7 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
   @override
   void initState() {
     super.initState();
+    _repository = widget._testRepository ?? CompanyDocumentExchangeRepository.maybeCreate();
     _load();
   }
 
@@ -145,11 +153,19 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
   }
 
 
+  bool _rejectUnavailable(Iterable<_ReceivedTransferItem> items) {
+    if (!items.any((item) => !item.isTransferable)) return false;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('この画面では操作できないデータが含まれています。専用の承認画面で確認してください。')),
+    );
+    return true;
+  }
+
   Future<void> _openPrintPreview(
     String title,
     List<_ReceivedTransferItem> items,
   ) async {
-    if (items.isEmpty) return;
+    if (items.isEmpty || _rejectUnavailable(items)) return;
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => _ReceivedDataPdfPreview(
@@ -165,6 +181,9 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
   ) async {
     final repository = _repository;
     if (repository == null) return;
+    if (items.any((item) => !item.isTransferable)) {
+      throw StateError('unsupported received data');
+    }
     final keys = items.map((item) => item.key).toList(growable: false);
     if (keys.isEmpty) return;
     await repository.saveDeliveryItems(keys);
@@ -174,6 +193,7 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
   }
 
   Future<void> _showReceivedDetail(_ReceivedTransferItem item) async {
+    if (_rejectUnavailable([item])) return;
     final alreadySaved = _savedState.containsKey(item.key);
     final shouldSave = await showDialog<bool>(
       context: context,
@@ -250,6 +270,7 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
     String companyName,
     List<_ReceivedTransferItem> items,
   ) async {
+    if (_rejectUnavailable(items)) return;
     final unsaved =
         items.where((item) => !_savedState.containsKey(item.key)).toList();
     if (unsaved.isEmpty) {
@@ -488,7 +509,7 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
                                           tooltip: _savedState.containsKey(item.key)
                                               ? '保存したデータを開く'
                                               : '詳細・保存',
-                                          onPressed: () =>
+                                          onPressed: !item.isTransferable ? null : () =>
                                               _showReceivedDetail(item),
                                           icon: Icon(
                                             _savedState.containsKey(item.key)

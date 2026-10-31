@@ -5,6 +5,7 @@ on:
       - 'docs/review/site-order-compatibility/**'
       - 'tool/site_order_compatibility/**'
       - 'lib/features/people/company_delivery_inbox_page.dart'
+      - 'test/company_delivery_unknown_kind_test.dart'
       - '.github/workflows/site-order-compatibility.yml'
 permissions:
   contents: read
@@ -40,3 +41,15 @@ jobs:
           export SKO_PG_MODULE="file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"
           export SKO_PGLITE_MODULE="file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
           node tool/site_order_compatibility/verify.mjs '${{ matrix.engine }}'
+
+  inbox-unknown-kind:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: '3.47.5', channel: stable, cache: true}
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter test test/company_delivery_unknown_kind_test.dart test/company_delivery_inbox_sections_contract_test.dart
+      - run: flutter analyze lib/features/people/company_delivery_inbox_page.dart test/company_delivery_unknown_kind_test.dart

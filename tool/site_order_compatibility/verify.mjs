@@ -6,8 +6,8 @@ if(native){
  const url=new URL(process.env.SKO_COMPAT_FIXTURE_URL);
  if(url.hostname!=='127.0.0.1'||url.pathname!=='/sko_order_compat_fixture')throw Error('isolated localhost fixture only');
  const pg=await import(process.env.SKO_PG_MODULE);const Client=pg.Client??pg.default.Client;
- const client=new Client({connectionString:url.href});await client.connect();
- db={query:(...a)=>client.query(...a),exec:s=>client.query(s),close:()=>client.end()};
+ const client=new Client({connectionString:url.href,application_name:'sko-compat-owner'});await client.connect();
+ db={query:(...a)=>client.query(...a),exec:s=>client.query(s),close:()=>client.end(),openPeer:async()=>{const peer=new Client({connectionString:url.href,application_name:'sko-compat-peer',statement_timeout:5000,lock_timeout:3000});await peer.connect();return peer;}};
 }else{const {PGlite}=await import(process.env.SKO_PGLITE_MODULE);db=new PGlite();}
 let checks=0;
 const assert=(v,message)=>{if(!v)throw Error(message);checks++;};
@@ -15,6 +15,7 @@ const deny=async(fn,code)=>{let error;try{await fn();}catch(e){error=e;}assert(e
 const id=n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 try{
 await db.exec(`create role authenticated;create schema private;create schema auth;create schema site_order_package_private;
+create function private.account_access_allowed() returns boolean language sql as $$select true$$;
 create function auth.uid() returns uuid language sql as $$select '${id(1)}'::uuid$$;
 create table companies(id uuid primary key,name text);
 create table company_members(company_id uuid,user_id uuid,role text);
@@ -26,7 +27,10 @@ create table private.company_delivery_saved_items(company_id uuid,item_key text,
 create table private.document_receive_codes(code uuid primary key,company_id uuid,created_by uuid,expires_at timestamptz default now()+interval '1 day',used_at timestamptz);
 create table public.app_notifications(company_id uuid,recipient_user_id uuid,kind text,title text,body text,action_key text,action_id uuid);
 create table site_order_package_private.packages(id uuid primary key,data_item_id uuid unique references private.company_data_delivery_items(id));
-create table private.site_share_inbox(data_item_id uuid primary key,recipient_company_id uuid,status text,created_at timestamptz);
+create table private.site_share_inbox(data_item_id uuid primary key,recipient_company_id uuid,status text,created_at timestamptz,accepted_site_id uuid);
+create table public.sites(id uuid primary key,company_id uuid,name text);
+create table private.company_connections(parent_company_id uuid,child_company_id uuid,status text);
+create table private.site_payment_agreement_rollout(company_id uuid,enabled boolean);
 insert into companies values('${id(2)}','A'),('${id(3)}','B'),('${id(4)}','C');
 insert into company_members values('${id(2)}','${id(1)}','owner');
 insert into private.document_deliveries values('${id(10)}','${id(3)}','${id(2)}','B','A','${id(5)}','seed',now());
@@ -34,7 +38,7 @@ insert into private.company_data_delivery_items(id,delivery_id,payload_kind,payl
 insert into private.document_delivery_items(id,delivery_id,name,bucket,path,company_path) values('${id(14)}','${id(10)}','file','old','preserved','[]');`);
 const originals=JSON.parse(await fs.readFile('docs/review/site-order-compatibility/pinned-consumers.json','utf8'));
 for(const f of originals)await db.exec(f.definition);
-await db.exec('revoke all on function private.company_document_exchange(text,jsonb) from public;grant execute on function private.company_document_exchange(text,jsonb) to authenticated');
+await db.exec('revoke all on function private.company_document_exchange(text,jsonb) from public;grant execute on function private.company_document_exchange(text,jsonb) to authenticated;revoke all on function private.site_payment_pair(uuid,uuid) from public;revoke all on function private.site_payment_agreement_targets(uuid) from public;grant execute on function private.site_payment_agreement_targets(uuid) to authenticated');
 await deny(()=>db.exec(`insert into private.company_data_delivery_items(id,delivery_id,payload_kind,payload) values('${id(13)}','${id(10)}','site_share','{}')`),'23514');
 const rows=async()=>JSON.stringify((await db.query('select * from private.company_data_delivery_items order by id')).rows);
 const initial=await rows();
@@ -49,8 +53,27 @@ const sourceHashes=async()=>JSON.stringify((await db.query(`select oid,md5(prosr
 const hashesBefore=await sourceHashes();
 await deny(()=>db.exec(invalidPatch),'23514');await db.exec('rollback');
 assert(hashesBefore===await sourceHashes(),'failed patch source bodies rolled back');
+if(native){
+ const peer=await db.openPeer();
+ try{
+  await peer.query('begin;lock table private.company_data_delivery_items in access share mode');
+  const started=db.exec(patch).then(()=>({ok:true}),error=>({error}));
+  let observed=false;
+  for(let i=0;i<30;i++){
+   const state=await peer.query("select wait_event_type from pg_stat_activity where application_name='sko-compat-owner'");
+   if(state.rows.some(r=>r.wait_event_type==='Lock')){observed=true;break;}
+   await new Promise(resolve=>setTimeout(resolve,20));
+  }
+  assert(observed,'actual second-connection lock wait observed');
+  const outcome=await started;
+  assert(outcome.error?.code==='55P03','bounded deployment lock timeout');
+  await db.exec('rollback');
+  assert(hashesBefore===await sourceHashes(),'lock failure source unchanged');
+  assert(initial===await rows(),'lock failure rows unchanged');
+ }finally{await peer.query('rollback');await peer.end();}
+}
 await db.exec(patch);assert(before===await attrs(),'function OID/ACL/attributes preserved');assert(initial===await rows(),'existing rows unchanged');
-await db.exec(`insert into private.company_data_delivery_items(id,delivery_id,payload_kind,payload) values('${id(13)}','${id(10)}','site_share','{}');insert into site_order_package_private.packages values('${id(20)}','${id(13)}');insert into private.site_share_inbox values('${id(13)}','${id(2)}','pending',now())`);
+await db.exec(`insert into private.company_data_delivery_items(id,delivery_id,payload_kind,payload) values('${id(13)}','${id(10)}','site_share','{}');insert into site_order_package_private.packages values('${id(20)}','${id(13)}');insert into private.site_share_inbox values('${id(13)}','${id(2)}','pending',now(),null)`);
 await deny(()=>db.exec(`insert into private.company_data_delivery_items(id,delivery_id,payload_kind,payload) values('${id(99)}','${id(10)}','unknown','{}')`),'23514');
 await deny(()=>db.exec(`insert into private.company_data_delivery_items(id,delivery_id,payload_kind,payload) values('${id(99)}','${id(10)}','personnel','[]')`),'23514');
 const data=(await db.query("select private.company_document_exchange('data_items',$1::jsonb) v",[JSON.stringify({id:id(10)})])).rows[0].v;
@@ -63,6 +86,18 @@ assert((await db.query('select count(*)::int n from private.company_delivery_sav
 for(const bad of [null,'bad',`data:${id(11)}:extra`])await deny(()=>db.query('select private.save_company_delivery_items($1::text[])',[[bad]]),'22023');
 await deny(()=>db.query('select private.send_site_share($1,$2::uuid[])',[id(30),[id(3)]]),'22023');
 assert((await db.query('select private.site_share_inbox() v')).rows[0].v.length===0,'owned package excluded from legacy inbox');
+await deny(()=>db.query('select private.site_payment_pair($1,$2)',[id(13),id(2)]),'22023');
+await db.exec(`insert into sites values('${id(31)}','${id(3)}','legacy source'),('${id(32)}','${id(2)}','legacy recipient');
+insert into private.company_connections values('${id(3)}','${id(2)}','accepted');
+insert into private.site_payment_agreement_rollout values('${id(3)}',true),('${id(2)}',true);
+insert into private.company_data_delivery_items(id,delivery_id,payload_kind,payload) values('${id(15)}','${id(10)}','site_share','{"source_site_id":"${id(31)}"}');
+insert into private.site_share_inbox values('${id(15)}','${id(2)}','accepted',now(),'${id(32)}');
+update private.site_share_inbox set status='accepted',accepted_site_id='${id(32)}' where data_item_id='${id(13)}';
+update private.company_data_delivery_items set payload='{"source_site_id":"${id(31)}"}' where id='${id(13)}';`);
+assert((await db.query('select private.site_payment_pair($1,$2) v',[id(15),id(2)])).rows[0].v.source_site_id===id(31),'legacy accepted pair preserved');
+const targets=(await db.query('select private.site_payment_agreement_targets($1) v',[id(2)])).rows[0].v;
+assert(targets.length===1&&targets[0].shared_item_id===id(15),'legacy targets preserved and owned accepted excluded');
+
 await db.exec(`insert into private.document_receive_codes(code,company_id) values('${id(50)}','${id(4)}')`);
 const packet={request_id:id(51),code:id(50),items:[{kind:'received_data',id:id(11)},{kind:'received_data',id:id(13)}]};
 await deny(()=>db.query("select private.company_document_exchange('send',$1::jsonb)",[JSON.stringify(packet)]),'22023');

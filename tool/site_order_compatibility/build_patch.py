@@ -10,6 +10,8 @@ PINS = {
     'private.save_company_delivery_items(text[])': 'e3ac57f00f6c4bf6e18f00e87c482b71',
     'private.send_site_share(uuid,uuid[])': '43e5cc748daadeca5011498d4e7019af',
     'private.site_share_inbox()': '092efa3b4009c7fc70d9d88424c4562d',
+    'private.site_payment_pair(uuid,uuid)': '232f462a369a6ab76609bc82a8f5b146',
+    'private.site_payment_agreement_targets(uuid)': '6fb428bb819041b1388aff0cb94ffb04',
 }
 
 
@@ -85,6 +87,12 @@ def transform(signature, source):
     elif 'site_share_inbox' in signature:
         source = once(source, "      and i.payload_kind='site_share'",
             "      and i.payload_kind='site_share'\n      and not exists(select 1 from site_order_package_private.packages p where p.data_item_id=i.id)")
+    elif 'site_payment_pair' in signature:
+        source = once(source, ' select d.sender_company_id,d.recipient_company_id,',
+            " if exists(select 1 from site_order_package_private.packages p where p.data_item_id=p_item) then\n  raise exception '現場注文は専用の承認経路を使用してください。' using errcode='22023';\n end if;\n select d.sender_company_id,d.recipient_company_id,")
+    elif 'site_payment_agreement_targets' in signature:
+        source = once(source, " where b.status='accepted' and i.payload_kind='site_share'",
+            " where b.status='accepted' and i.payload_kind='site_share'\n and not exists(select 1 from site_order_package_private.packages p where p.data_item_id=b.data_item_id)")
     return source
 
 
@@ -110,7 +118,7 @@ def build():
  if (select to_jsonb(p)-'prosrc' from pg_proc p where p.oid=to_regprocedure(signature)) is distinct from before_attributes then
   raise exception 'compatibility function attributes changed: %%', signature;
  end if;
-""" % ("'" + signature + "'", "'" + hashlib.md5(row['definition'].encode()).hexdigest() + "'", ("'{postgres=X/postgres,authenticated=X/postgres}'" if 'company_document_exchange' in signature else 'null'), revised))
+""" % ("'" + signature + "'", "'" + hashlib.md5(row['definition'].encode()).hexdigest() + "'", ("'{postgres=X/postgres,authenticated=X/postgres}'" if ('company_document_exchange' in signature or 'site_payment_agreement_targets' in signature) else ("'{postgres=X/postgres}'" if 'site_payment_pair' in signature else 'null')), revised))
     return """-- REVIEW ONLY. Separate production approval required; feature remains OFF.
 -- Install after package foundation; before any delivery mutation becomes reachable.
 begin;

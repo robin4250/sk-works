@@ -579,6 +579,105 @@ $replacement$;
   raise exception 'compatibility function attributes changed: %', signature;
  end if;
 
+ signature := 'private.site_payment_agreement_targets(uuid)';
+ if to_regprocedure(signature) is null or md5(pg_get_functiondef(to_regprocedure(signature))) <> 'c34023de31aded85b942c0edf32db3d0' then
+  raise exception 'compatibility dependency source drift: %', signature;
+ end if;
+ if exists(select 1 from pg_proc p where p.oid=to_regprocedure(signature)
+   and (p.proowner<>'postgres'::regrole or not p.prosecdef or p.proconfig is distinct from array['search_path=""']::text[]
+     or p.proacl::text is distinct from '{postgres=X/postgres,authenticated=X/postgres}')) then
+  raise exception 'compatibility dependency owner/config/ACL drift: %', signature;
+ end if;
+ select to_jsonb(p)-'prosrc' into before_attributes from pg_proc p where p.oid=to_regprocedure(signature);
+ execute $replacement$CREATE OR REPLACE FUNCTION private.site_payment_agreement_targets(p_company uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare result jsonb;
+begin
+ if auth.uid() is null or not private.account_access_allowed() or not exists(
+  select 1 from public.company_members m where m.company_id=p_company
+  and m.user_id=auth.uid() and m.role::text in ('owner','admin')
+ ) then raise exception '管理者のみ操作できます。' using errcode='42501'; end if;
+ select coalesce(jsonb_agg(jsonb_build_object('shared_item_id',b.data_item_id,
+  'site_name',s.name,'counterparty_name',co.name)),'[]'::jsonb) into result
+ from private.site_share_inbox b join private.company_data_delivery_items i on i.id=b.data_item_id
+ join private.document_deliveries d on d.id=i.delivery_id
+ join public.sites s on s.id=(i.payload->>'source_site_id')::uuid and s.company_id=d.sender_company_id
+ join public.sites target on target.id=b.accepted_site_id and target.company_id=d.recipient_company_id
+ join public.companies co on co.id=case when p_company=d.sender_company_id then d.recipient_company_id else d.sender_company_id end
+ where b.status='accepted' and i.payload_kind='site_share'
+ and not exists(select 1 from site_order_package_private.packages p where p.data_item_id=b.data_item_id)
+ and p_company in(d.sender_company_id,d.recipient_company_id)
+ and exists(select 1 from private.company_connections c where c.status='accepted'
+  and ((c.parent_company_id=d.sender_company_id and c.child_company_id=d.recipient_company_id)
+   or(c.parent_company_id=d.recipient_company_id and c.child_company_id=d.sender_company_id)))
+ and exists(select 1 from private.site_payment_agreement_rollout r where r.company_id=d.sender_company_id and r.enabled)
+ and exists(select 1 from private.site_payment_agreement_rollout r where r.company_id=d.recipient_company_id and r.enabled);
+ return result;
+end $function$
+$replacement$;
+ if (select to_jsonb(p)-'prosrc' from pg_proc p where p.oid=to_regprocedure(signature)) is distinct from before_attributes then
+  raise exception 'compatibility function attributes changed: %', signature;
+ end if;
+
+ signature := 'private.site_payment_pair(uuid,uuid)';
+ if to_regprocedure(signature) is null or md5(pg_get_functiondef(to_regprocedure(signature))) <> '6cc0486a06b5721b9abea0e97af9f0d4' then
+  raise exception 'compatibility dependency source drift: %', signature;
+ end if;
+ if exists(select 1 from pg_proc p where p.oid=to_regprocedure(signature)
+   and (p.proowner<>'postgres'::regrole or not p.prosecdef or p.proconfig is distinct from array['search_path=""']::text[]
+     or p.proacl::text is distinct from '{postgres=X/postgres}')) then
+  raise exception 'compatibility dependency owner/config/ACL drift: %', signature;
+ end if;
+ select to_jsonb(p)-'prosrc' into before_attributes from pg_proc p where p.oid=to_regprocedure(signature);
+ execute $replacement$CREATE OR REPLACE FUNCTION private.site_payment_pair(p_item uuid, p_company uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare x record; parent_id uuid; child_id uuid;
+begin
+ if auth.uid() is null or not private.account_access_allowed() or not exists(
+  select 1 from public.company_members m where m.company_id=p_company
+   and m.user_id=auth.uid() and m.role::text in ('owner','admin')
+ ) then raise exception '管理者のみ操作できます。' using errcode='42501'; end if;
+ if exists(select 1 from site_order_package_private.packages p where p.data_item_id=p_item) then
+  raise exception '現場注文は専用の承認経路を使用してください。' using errcode='22023';
+ end if;
+ select d.sender_company_id,d.recipient_company_id,
+  (i.payload->>'source_site_id')::uuid source_site_id,b.accepted_site_id
+ into x from private.site_share_inbox b
+ join private.company_data_delivery_items i on i.id=b.data_item_id
+ join private.document_deliveries d on d.id=i.delivery_id
+ where b.data_item_id=p_item and b.status='accepted' and i.payload_kind='site_share'
+  and b.recipient_company_id=d.recipient_company_id
+  and p_company in (d.sender_company_id,d.recipient_company_id);
+ if x.source_site_id is null or x.accepted_site_id is null then
+  raise exception '承認済みの共有現場が必要です。'; end if;
+ select c.parent_company_id,c.child_company_id into parent_id,child_id
+ from private.company_connections c where c.status='accepted' and
+ ((c.parent_company_id=x.sender_company_id and c.child_company_id=x.recipient_company_id)
+ or(c.parent_company_id=x.recipient_company_id and c.child_company_id=x.sender_company_id));
+ if parent_id is null or not exists(select 1 from public.sites s
+  where s.id=x.source_site_id and s.company_id=x.sender_company_id)
+ or not exists(select 1 from public.sites s where s.id=x.accepted_site_id
+  and s.company_id=x.recipient_company_id) then raise exception '会社・現場の対応が確認できません。'; end if;
+ if not exists(select 1 from private.site_payment_agreement_rollout r
+  where r.company_id=parent_id and r.enabled) or not exists(
+  select 1 from private.site_payment_agreement_rollout r where r.company_id=child_id and r.enabled
+ ) then raise exception '現場別支払合意は未有効です。' using errcode='55000'; end if;
+ return jsonb_build_object('parent_company_id',parent_id,'child_company_id',child_id,
+  'source_site_id',x.source_site_id,'recipient_site_id',x.accepted_site_id);
+end $function$
+$replacement$;
+ if (select to_jsonb(p)-'prosrc' from pg_proc p where p.oid=to_regprocedure(signature)) is distinct from before_attributes then
+  raise exception 'compatibility function attributes changed: %', signature;
+ end if;
+
  signature := 'private.site_share_inbox()';
  if to_regprocedure(signature) is null or md5(pg_get_functiondef(to_regprocedure(signature))) <> 'c77ddebec774be0aeb82732358828195' then
   raise exception 'compatibility dependency source drift: %', signature;
