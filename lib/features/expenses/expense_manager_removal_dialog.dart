@@ -14,6 +14,7 @@ class _ExpenseManagerRemovalDialogState extends State<ExpenseManagerRemovalDialo
   bool _retired=false;
   void _retire(){_retired=true;scheduleMicrotask((){if(mounted)setState((){_reason.clear();});});}
   @override void initState(){super.initState();_subscription=widget.invalidations?.listen((_)=>_retire(),onDone:_retire,onError:(Object _)=>_retire());}
+  @override void didUpdateWidget(covariant ExpenseManagerRemovalDialog oldWidget){super.didUpdateWidget(oldWidget);if(!oldWidget.claim.sameAs(widget.claim) || oldWidget.invalidations!=widget.invalidations){_subscription?.cancel();_retire();}}
   @override void dispose(){_subscription?.cancel();_reason.dispose();super.dispose();}
   @override Widget build(BuildContext context)=>AlertDialog(title:const Text('経費を削除しますか？'),
     content:_retired ? const Text('ログイン状態が変わりました。閉じて画面を開き直してください。') : SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[

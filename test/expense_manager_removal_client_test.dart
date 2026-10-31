@@ -137,4 +137,14 @@ void main(){
     await events.close();await tester.pumpAndSettle();expect(find.text('別の画面'),findsOneWidget);expect(tester.takeException(),null);
   });
 
+  testWidgets('replacing a deletion modal claim permanently retires its old reason and action',(tester)async{
+    final original=ExpenseClaim(id:id(3),companyId:id(2),applicantId:id(9),applicantName:'本人',incurredOn:DateTime(2026,10,1),submittedAt:DateTime(2026,10,2),description:'元の経費',amountYen:1200,approval:ExpenseApproval.approved,allocation:ExpenseAllocation(ExpenseCategory.ownCompany));
+    final changed=ValueNotifier(original);addTearDown(changed.dispose);
+    await tester.pumpWidget(MaterialApp(home:Scaffold(body:ValueListenableBuilder<ExpenseClaim>(valueListenable:changed,builder:(_,claim,child)=>ExpenseManagerRemovalDialog(claim:claim)))));
+    await tester.enterText(find.byType(TextField),'元の理由');
+    changed.value=ExpenseClaim(id:id(33),companyId:id(2),applicantId:id(9),applicantName:'本人',incurredOn:DateTime(2026,10,1),submittedAt:DateTime(2026,10,2),description:'別の経費',amountYen:500,approval:ExpenseApproval.pending,allocation:ExpenseAllocation(ExpenseCategory.unallocated));
+    await tester.pumpAndSettle();expect(find.byType(TextField),findsNothing);expect(find.text('別の経費'),findsNothing);
+    expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton,'削除を確定')).onPressed,null);expect(tester.takeException(),null);
+  });
+
 }
