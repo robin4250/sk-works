@@ -19,5 +19,5 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get --enforce-lockfile
-      - run: dart analyze lib/features/payroll/payroll_keyboard_access.dart test/payroll_keyboard_access_test.dart test/individual_payroll_fixed_footer_test.dart
+      - run: dart analyze lib/features/payroll/individual_payroll_settings_page.dart lib/features/payroll/payroll_keyboard_access.dart test/payroll_keyboard_access_test.dart test/individual_payroll_fixed_footer_test.dart
       - run: flutter test test/payroll_keyboard_access_test.dart test/individual_payroll_fixed_footer_test.dart test/individual_payroll_ui_tabs_test.dart --reporter expanded
