@@ -198,6 +198,7 @@ class SiteOrderConsentJournal {
   ) => _serial(() async {
     final p = await _preferences();
     await p.reload();
+    siteOrderDeliveryMarkers(p, actor, company, reference.prepare.siteId);
     siteOrderRequireUnrecorded(
       p,
       actor,
@@ -226,19 +227,24 @@ class SiteOrderConsentJournal {
     final p = await _preferences();
     await p.reload();
     final prefix = _prefix(actor, company, site);
+    final archived = siteOrderDeliveryMarkers(p, actor, company, site);
     final keys = p.getKeys().where((k) => k.startsWith(prefix)).toList()
       ..sort();
     return List.unmodifiable(
-      keys.map((key) {
-        final reference = SiteOrderConsentReference.fromJson(
-          jsonDecode(p.getString(key)!),
-        );
-        if (reference.prepare.siteId != site ||
-            key != '$prefix${reference.prepare.requestId}') {
-          throw StateError('保存した注文確認を照合できません。');
-        }
-        return reference;
-      }),
+      keys
+          .map((key) {
+            final reference = SiteOrderConsentReference.fromJson(
+              jsonDecode(p.getString(key)!),
+            );
+            if (reference.prepare.siteId != site ||
+                key != '$prefix${reference.prepare.requestId}') {
+              throw StateError('保存した注文確認を照合できません。');
+            }
+            return reference;
+          })
+          .where(
+            (reference) => !archived.containsKey(reference.prepare.requestId),
+          ),
     );
   });
 }

@@ -6,6 +6,7 @@ import 'package:printing/printing.dart';
 
 import '../shared/pdf_pinch_pages.dart';
 import 'site_order_original_review.dart';
+import 'site_order_delivery_journal.dart';
 import 'site_order_outgoing_consent.dart';
 import 'site_order_outgoing_execution.dart';
 import 'site_order_workflow_repository.dart';
@@ -392,6 +393,37 @@ class _SiteOrderOriginalReviewPageState
     }
   }
 
+  Future<void> _recordDelivery() async {
+    if (_busy ||
+        _invalid ||
+        _hidden ||
+        _status?.recipientStored != true ||
+        _bytes == null) {
+      return;
+    }
+    final generation = _generation;
+    setState(() => _busy = true);
+    try {
+      final record = await widget.api.recordOutgoingDelivery(
+        widget.reference,
+        jobId: widget.jobId,
+        recipientCompanyId: widget.recipientCompanyId,
+      );
+      _current(generation);
+      if (mounted) {
+        Navigator.pop<SiteOrderDeliveryRecord>(context, record);
+      }
+    } catch (_) {
+      if (mounted && !_invalid) {
+        setState(() => _message = '共有結果の保管が未確認です。原記録を保持し、状態を再照会してください。');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _busy = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
@@ -467,6 +499,11 @@ class _SiteOrderOriginalReviewPageState
                             ? null
                             : _share,
                         child: const Text('共有内容を最終確認'),
+                      ),
+                    if (_status?.recipientStored == true && _bytes != null)
+                      FilledButton(
+                        onPressed: _busy ? null : _recordDelivery,
+                        child: const Text('共有結果を保管して閉じる'),
                       ),
                     OutlinedButton(
                       onPressed: _busy ? null : _load,

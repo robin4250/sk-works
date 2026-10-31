@@ -11,6 +11,7 @@ import 'site_order_outgoing_entry_page.dart';
 import 'site_order_outgoing_recovery_page.dart';
 import 'site_order_workflow_repository.dart';
 import 'site_order_original_review_page.dart';
+import 'site_order_delivery_journal.dart';
 
 /// Input -> server prepare -> fresh server preview -> explicit issuer consent.
 /// Original registration and sharing require a separate persisted-original review.
@@ -619,18 +620,36 @@ class _SiteOrderOutgoingComposePageState
                             ? null
                             : () async {
                                 _require();
-                                await Navigator.push<void>(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => SiteOrderOriginalReviewPage(
-                                      api: widget.api,
-                                      reference: _reference!,
-                                      jobId: _preparedJobId!,
-                                      recipientCompanyId:
-                                          _preview!.recipientCompanyId,
-                                    ),
-                                  ),
-                                );
+                                final record =
+                                    await Navigator.push<
+                                      SiteOrderDeliveryRecord
+                                    >(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) =>
+                                            SiteOrderOriginalReviewPage(
+                                              api: widget.api,
+                                              reference: _reference!,
+                                              jobId: _preparedJobId!,
+                                              recipientCompanyId:
+                                                  _preview!.recipientCompanyId,
+                                            ),
+                                      ),
+                                    );
+                                if (record != null && mounted && !_retired) {
+                                  try {
+                                    _require();
+                                  } catch (_) {
+                                    return;
+                                  }
+                                  if (jsonEncode(record.reference.toJson()) ==
+                                          jsonEncode(_reference!.toJson()) &&
+                                      record.jobId == _preparedJobId &&
+                                      record.recipientCompanyId ==
+                                          _preview!.recipientCompanyId) {
+                                    Navigator.pop(context);
+                                  }
+                                }
                               },
                         child: const Text('原本保存・共有の確認'),
                       ),

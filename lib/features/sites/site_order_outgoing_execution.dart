@@ -10,6 +10,8 @@ import 'site_order_outgoing_journal.dart';
 /// not establish either original storage or delivery to the recipient inbox.
 class SiteOrderExecutionObservation {
   const SiteOrderExecutionObservation._({
+    required this.reference,
+    required this.companyId,
     required this.jobId,
     required this.renderHash,
     required this.recipientCompanyId,
@@ -19,6 +21,11 @@ class SiteOrderExecutionObservation {
     required this.sharingState,
     required this.packageId,
   });
+  final SiteOrderConsentReference reference;
+  final String companyId;
+  bool binds(SiteOrderConsentReference other, String company) =>
+      companyId == company &&
+      jsonEncode(reference.toJson()) == jsonEncode(other.toJson());
   final String jobId, renderHash, recipientCompanyId, sharingState;
   final String? originalReceiptId, pdfHash, packageId;
   final int? pdfByteLength;
@@ -113,6 +120,8 @@ class SiteOrderExecutionObservation {
       throw StateError('共有結果が未解決です。再送せず状態を確認してください。');
     }
     return SiteOrderExecutionObservation._(
+      reference: reference,
+      companyId: companyId,
       jobId: jobId,
       renderHash: raw['render_hash'] as String,
       recipientCompanyId: recipientCompanyId,
@@ -138,10 +147,17 @@ class SiteOrderExecutionJournal {
     String stage,
   ) => siteOrderJournalSerial(() async {
     if (![actorId, companyId].every(SiteOrderPendingPrepare.validId) ||
-        !{'original', 'share'}.contains(stage))
+        !{'original', 'share'}.contains(stage)) {
       throw StateError('注文の本人・会社・保存段階を確認できません。');
+    }
     final preferences = await _preferences();
     await preferences.reload();
+    siteOrderDeliveryMarkers(
+      preferences,
+      actorId,
+      companyId,
+      reference.prepare.siteId,
+    );
     siteOrderRequireUnrecorded(
       preferences,
       actorId,
@@ -153,11 +169,15 @@ class SiteOrderExecutionJournal {
         'sko.site_order.execution.v1.$actorId.$companyId.${reference.prepare.siteId}.${reference.prepare.requestId}.$stage';
     final encoded = jsonEncode(reference.toJson()),
         old = preferences.getString(key);
-    if (old != null && old != encoded)
+    if (old != null && old != encoded) {
       throw StateError('保存中の注文が一致しません。再送せず状態を確認してください。');
-    if (old != null) return false;
-    if (!await preferences.setString(key, encoded))
+    }
+    if (old != null) {
+      return false;
+    }
+    if (!await preferences.setString(key, encoded)) {
       throw StateError('注文の照合情報を保存できません。');
+    }
     return true;
   });
 }

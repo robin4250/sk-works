@@ -6,6 +6,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/sites/site_order_original_review.dart';
+import 'package:sk_works/features/sites/site_order_delivery_journal.dart';
 import 'package:sk_works/features/sites/site_order_original_review_page.dart';
 import 'package:sk_works/features/sites/site_order_outgoing_consent.dart';
 import 'package:sk_works/features/sites/site_order_outgoing_execution.dart';
@@ -49,7 +50,7 @@ class Api extends SiteOrderWorkflowApi {
       saved = true,
       missingRate = false,
       consentNotObserved = false;
-  int shares = 0, registers = 0, reads = 0;
+  int shares = 0, registers = 0, reads = 0, records = 0;
   @override
   bool get invalidated => retired;
   @override
@@ -172,6 +173,22 @@ class Api extends SiteOrderWorkflowApi {
     if (unknown) throw const SiteOrderResultUnknown();
     shared = true;
     return observation();
+  }
+
+  @override
+  Future<SiteOrderDeliveryRecord> recordOutgoingDelivery(
+    SiteOrderConsentReference r, {
+    required String jobId,
+    required String recipientCompanyId,
+  }) async {
+    requireCurrent();
+    records++;
+    return SiteOrderDeliveryRecord.fromObservation(
+      id(90),
+      company,
+      r,
+      observation(),
+    );
   }
 
   @override
@@ -346,6 +363,49 @@ void main() {
       expect(find.text('表示を閉じました'), findsOneWidget);
       expect(find.textContaining('合成工事'), findsNothing);
       expect(api.shares, 0);
+    },
+  );
+  testWidgets(
+    'record sender delivery explicitly while OFF/new SID without claiming recipient approval',
+    (tester) async {
+      final api = Api()
+        ..shared = true
+        ..allowed = false
+        ..sameSession = false;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: TextButton(
+                onPressed: () => Navigator.push<SiteOrderDeliveryRecord>(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => SiteOrderOriginalReviewPage(
+                      api: api,
+                      reference: reference,
+                      jobId: id(10),
+                      recipientCompanyId: recipient,
+                      previewBuilder: (_) =>
+                          const Text('verified original PDF'),
+                    ),
+                  ),
+                ),
+                child: const Text('site home'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('site home'));
+      await tester.pumpAndSettle();
+      expect(api.records, 0);
+      expect(find.textContaining('相手の承認は未確認'), findsOneWidget);
+      await tester.tap(find.text('共有結果を保管して閉じる'));
+      await tester.pumpAndSettle();
+      expect(api.records, 1);
+      expect(api.shares, 0);
+      expect(api.registers, 0);
+      expect(find.text('site home'), findsOneWidget);
     },
   );
   testWidgets(

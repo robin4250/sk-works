@@ -15,6 +15,7 @@ import 'site_order_outgoing_entries.dart';
 import 'site_order_outgoing_consent.dart';
 import 'site_order_outgoing_execution.dart';
 import 'site_order_original_review.dart';
+import 'site_order_delivery_journal.dart';
 import 'site_order_outgoing_consent_preview.dart';
 
 String siteOrderRequestId() {
@@ -100,6 +101,8 @@ abstract class SiteOrderWorkflowApi extends ChangeNotifier {
   Future<SiteOrderConsentObservation> inspectOutgoingConsent(SiteOrderConsentReference reference) async =>
       throw StateError('注文の結果を確認できません。');
   Future<bool> canMutateOutgoingReference(SiteOrderConsentReference reference) async => false;
+  Future<List<SiteOrderDeliveryRecord>> recordedOutgoing(String siteId) async => const [];
+  Future<SiteOrderDeliveryRecord> recordOutgoingDelivery(SiteOrderConsentReference reference, {required String jobId, required String recipientCompanyId}) async => throw StateError('共有結果の保管を確認できません。');
   Future<SiteOrderExecutionObservation> resolveOutgoingExecutionForReview(SiteOrderConsentReference reference, {required String jobId}) async => throw StateError('保存した注文の共有先を確認できません。');
   Future<SiteOrderExecutionObservation> inspectOutgoingExecution(SiteOrderConsentReference reference,
       {required String jobId, required String recipientCompanyId}) async =>
@@ -152,6 +155,7 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
   final SiteOrderOutgoingJournal _outgoingJournal;
   final _consentJournal = SiteOrderConsentJournal();
   final _executionJournal = SiteOrderExecutionJournal();
+  final _deliveryJournal = SiteOrderDeliveryJournal();
   final _replyJournal = SiteOrderApprovalJournal.forReplyRecovery();
   final _refusalJournal = SiteOrderRefusalJournal();
   String get _actor => _client.auth.currentUser!.id;
@@ -351,6 +355,22 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
     await verify();
     final result = _map(_map(await _call(reference.command('decision_status'), outgoing: true))['result']);
     return SiteOrderConsentObservation.decode(result, reference, _company!);
+  }
+
+  @override
+  Future<List<SiteOrderDeliveryRecord>> recordedOutgoing(String siteId) async {
+    await verify();final entries=await _deliveryJournal.read(_actor,_company!,siteId);
+    await verify();return entries;
+  }
+  @override
+  Future<SiteOrderDeliveryRecord> recordOutgoingDelivery(SiteOrderConsentReference reference,
+      {required String jobId,required String recipientCompanyId}) async {
+    await verify();
+    // Fresh server observation is mandatory even when a local marker exists.
+    final observation=await inspectOutgoingExecution(reference,jobId:jobId,recipientCompanyId:recipientCompanyId);
+    await verify();
+    final result=await _deliveryJournal.record(_actor,_company!,reference,observation,verifyScope:verify);
+    await verify();return result;
   }
 
   @override
