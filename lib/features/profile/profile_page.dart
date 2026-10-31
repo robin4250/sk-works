@@ -211,7 +211,9 @@ class _ProfilePageState extends State<ProfilePage> {
       firstDate: DateTime(1900), lastDate: now,
     );
     if (!mounted || selected == null || !identical(evidence, _birthdayEvidence) ||
-        evidence?.canEdit != true) return;
+        evidence?.canEdit != true) {
+      return;
+    }
     setState(() {
       _personnelBirth.text = selected.toIso8601String().substring(0, 10);
       _birthDateDirty = true;

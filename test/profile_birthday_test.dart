@@ -115,6 +115,7 @@ Future<void> saveProfile(WidgetTester tester) async {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  group('profile own birthday', () {
 
   test('old contract cannot save own birthday or substitute the family birthday', () async {
     final w = Wire()..contract = null; addTearDown(w.client.dispose); await w.login(sidA);
@@ -188,7 +189,9 @@ void main() {
     expect(w.writes, isEmpty);
   });
   test('approval response is pending and does not pretend the official date changed', () async {
-    final w = Wire()..pending = true; addTearDown(w.client.dispose); await w.login(sidA);
+    final w = Wire()..pending = true
+      ..members = [{'company_id': company, 'role': 'employee'}];
+    addTearDown(w.client.dispose); await w.login(sidA);
     final evidence = await w.load(); addTearDown(evidence.dispose);
     final result = await w.save(evidence, '1981-01-01');
     expect(result['requires_approval'], isTrue); expect(w.birthday, '1980-01-15');
@@ -208,7 +211,8 @@ void main() {
     expect(evidence.canEdit, isFalse); expect(w.writes.length, 1);
   });
   testWidgets('old database shows disabled own birthday without disabling unrelated save', (tester) async {
-    final w = Wire()..contract = null; addTearDown(w.client.dispose); await w.login(sidA);
+    final w = Wire()..contract = null; addTearDown(w.client.dispose);
+    await tester.runAsync(() => w.login(sidA));
     await showProfile(tester, w);
     final field = tester.widget<TextField>(find.byKey(const ValueKey('profile-birthday-field')));
     expect(field.enabled, isFalse); expect(field.controller!.text, isEmpty);
@@ -217,7 +221,8 @@ void main() {
     expect((w.writes.single['p_payload'] as Map).containsKey('birth_date'), isFalse);
   });
   testWidgets('unmodified profile UI omits own birthday even when contract is enabled', (tester) async {
-    final w = Wire(); addTearDown(w.client.dispose); await w.login(sidA);
+    final w = Wire(); addTearDown(w.client.dispose);
+    await tester.runAsync(() => w.login(sidA));
     await showProfile(tester, w);
     final field = tester.widget<TextField>(find.byKey(const ValueKey('profile-birthday-field')));
     expect(field.enabled, isTrue); expect(field.controller!.text, '1980-01-15');
@@ -226,7 +231,8 @@ void main() {
     expect(w.birthday, '1980-01-15');
   });
   testWidgets('explicit clear in profile UI submits null and preserves family birthday', (tester) async {
-    final w = Wire(); addTearDown(w.client.dispose); await w.login(sidA);
+    final w = Wire(); addTearDown(w.client.dispose);
+    await tester.runAsync(() => w.login(sidA));
     await showProfile(tester, w);
     final clear = find.byKey(const ValueKey('profile-birthday-clear'));
     await tester.scrollUntilVisible(clear, 400, scrollable: find.byType(Scrollable).first);
@@ -235,4 +241,5 @@ void main() {
     expect((w.writes.single['p_payload'] as Map)['birth_date'], isNull);
     expect(((w.writes.single['p_payload'] as Map)['family_members'] as List).single['birth_date'], '2020-02-02');
   });
+  }, timeout: const Timeout(Duration(seconds: 45)));
 }
