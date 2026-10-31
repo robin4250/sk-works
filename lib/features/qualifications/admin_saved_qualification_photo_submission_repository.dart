@@ -405,8 +405,9 @@ class AdminSavedQualificationSubmissionRepository {
     final archiveKey = '$journalKey.receipt.${record['request_id']}';
     final encoded = jsonEncode(record);
     final existing = await port.readJournal(archiveKey);
-    if (existing != null && existing != encoded)
+    if (existing != null && existing != encoded) {
       throw StateError('保存済み申請結果が一致しません。');
+    }
     if (existing == null) await port.writeJournal(archiveKey, encoded);
     await port.check();
     await port.clearJournal(journalKey);

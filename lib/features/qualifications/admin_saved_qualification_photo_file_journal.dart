@@ -60,8 +60,9 @@ class FileAdminSavedQualificationPhotoJournal {
       await root.create(recursive: true);
       type = await FileSystemEntity.type(root.path, followLinks: false);
     }
-    if (type != FileSystemEntityType.directory)
+    if (type != FileSystemEntityType.directory) {
       throw StateError('資格申請の保存場所を確認できません。');
+    }
     final canonical = await root.resolveSymbolicLinks();
     _bound(key);
     final folder = Directory('$canonical/qualification-admin-photo-pending-v1');
@@ -70,8 +71,9 @@ class FileAdminSavedQualificationPhotoJournal {
       await folder.create();
       type = await FileSystemEntity.type(folder.path, followLinks: false);
     }
-    if (type != FileSystemEntityType.directory)
+    if (type != FileSystemEntityType.directory) {
       throw StateError('資格申請の保存場所を確認できません。');
+    }
     return File('${folder.path}/${sha256.convert(utf8.encode(key))}.json');
   }
 
@@ -99,8 +101,9 @@ class FileAdminSavedQualificationPhotoJournal {
         await lock?.close();
       } finally {
         gate.complete();
-        if (identical(_queues[file.path], gate.future))
+        if (identical(_queues[file.path], gate.future)) {
           _queues.remove(file.path);
+        }
       }
     }
   }
@@ -163,8 +166,9 @@ class FileAdminSavedQualificationPhotoJournal {
     final temp = File('${file.path}.tmp');
     if (await temp.exists()) {
       // A competing or interrupted replacement is never silently discarded.
-      if (await file.exists())
+      if (await file.exists()) {
         throw StateError('資格申請の保存記録が競合しています。再送せず確認してください。');
+      }
       await _decodeFile(temp, key);
       final handle = await temp.open(mode: FileMode.append);
       try {
@@ -227,14 +231,16 @@ class FileAdminSavedQualificationPhotoJournal {
     }
     await temp.writeAsString(_encode(key, value), flush: true);
     _bound(key);
-    if (await _decodeFile(temp, key) != value)
+    if (await _decodeFile(temp, key) != value) {
       throw StateError('資格申請の保存内容が一致しません。');
+    }
     await afterFlush?.call();
     _bound(key);
     await temp.rename(file.path);
     _bound(key);
-    if (await _decodeFile(file, key) != value)
+    if (await _decodeFile(file, key) != value) {
       throw StateError('資格申請の保存内容が一致しません。');
+    }
   });
   Future<void> clear(String key) => _locked(key, (file) async {
     final active = await _read(file, key);
@@ -245,8 +251,9 @@ class FileAdminSavedQualificationPhotoJournal {
     final saved = await _read(receiptFile, receiptKey);
     if (saved == null) throw StateError('確定した資格申請の記録がありません。');
     final receipt = _record(receiptKey, saved);
-    if (!const ['approved', 'rejected'].contains(receipt['stage']))
+    if (!const ['approved', 'rejected'].contains(receipt['stage'])) {
       throw StateError('申請結果は未確定です。');
+    }
     _sameIntent(key, active, jsonEncode(receipt));
     _bound(key);
     await file.delete();

@@ -52,9 +52,9 @@ class FilePort extends Port {
     if (action != 'prepare_admin_saved_photos') return super.call(action, data);
     await check();
     calls.add(action);
-    request = jsonDecode((await file.read(key))!) as Map<String, dynamic>;
-    expect(request!['stage'], 'prepare_started');
-    expect(data['request_id'], request!['request_id']);
+    this.request = jsonDecode((await file.read(key))!) as Map<String, dynamic>;
+    expect(this.request!['stage'], 'prepare_started');
+    expect(data['request_id'], this.request!['request_id']);
     expect(data['expected_photo_paths'], ['synthetic/front', 'synthetic/back']);
     if (unknownPrepare) throw StateError('fixture prepare unknown');
     return result();
