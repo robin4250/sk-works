@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -12,7 +14,8 @@ import 'employee_registration_page.dart';
 import '../../international/language_controller.dart';
 
 class EmployeeInitialRegistrationPage extends StatefulWidget {
-  const EmployeeInitialRegistrationPage({super.key});
+  const EmployeeInitialRegistrationPage({super.key, this.selectedCompanyId});
+  final String? selectedCompanyId;
 
   @override
   State<EmployeeInitialRegistrationPage> createState() =>
@@ -30,10 +33,29 @@ class _EmployeeInitialRegistrationPageState
   EmployeeInviteResult? _result;
   bool _savingUrl = false;
   String? _loadedActor;
+  EmployeeInviteRequest? _request;
+  StreamSubscription<dynamic>? _authSubscription;
+  bool _invalidated = false;
+  bool _current() => !_invalidated && _request?.isCurrent == true;
+  void _invalidate() {
+    if (!mounted || _invalidated) return;
+    _testFlightUrl.clear();
+    setState(() { _invalidated = true; _result = null; _employees = const [];
+      _loadedActor = null; _loading = false; _error = 'ログイン状態または会社が変わりました。画面を開き直してください。'; });
+  }
+  @override
+  void didUpdateWidget(covariant EmployeeInitialRegistrationPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.selectedCompanyId != widget.selectedCompanyId) _invalidate();
+  }
+
 
   @override
   void initState() {
     super.initState();
+    _authSubscription = _repository?.authChanges.listen((_) {
+      if (_request != null && !_request!.isCurrent) _invalidate();
+    });
     _load();
   }
 
@@ -46,14 +68,17 @@ class _EmployeeInitialRegistrationPageState
       });
       return;
     }
+    if (_invalidated) return;
     final actor = SupabaseBackend.client.auth.currentUser?.id;
     try {
+      _request ??= await repository.beginRequest(companyId: widget.selectedCompanyId);
+      _request!.check();
       final results = await Future.wait([
         repository.loadRegisteredEmployees(),
         repository.loadTestFlightUrl(),
       ]);
       if (!mounted) return;
-      if (actor == null || SupabaseBackend.client.auth.currentUser?.id != actor) {
+      if (!_current() || actor == null || SupabaseBackend.client.auth.currentUser?.id != actor) {
         _testFlightUrl.clear();
         setState(() { _employees = const []; _loadedActor = null; _loading = false;
           _error = 'ログイン情報が変わりました。画面を開き直してください。'; });
@@ -79,7 +104,7 @@ class _EmployeeInitialRegistrationPageState
 
   Future<void> _saveTestFlightUrl() async {
     final repository = _repository;
-    if (repository == null || _savingUrl) return;
+    if (repository == null || _savingUrl || !_current()) return;
     setState(() => _savingUrl = true);
     try {
       await repository.saveTestFlightUrl(_testFlightUrl.text);
@@ -96,20 +121,21 @@ class _EmployeeInitialRegistrationPageState
 
   @override
   void dispose() {
+    _authSubscription?.cancel();
     _testFlightUrl.dispose();
     super.dispose();
   }
 
   Future<void> _send(InitialRegistrationEmployee employee) async {
     final repository = _repository;
-    if (repository == null || _busyWorkerId != null) return;
+    if (repository == null || _busyWorkerId != null || !_current()) return;
     setState(() {
       _busyWorkerId = employee.id;
       _error = null;
     });
     try {
-      final result = await repository.createInviteForWorker(employee.id);
-      if (!mounted) return;
+      final result = await repository.createInviteForWorker(employee.id, request: _request);
+      if (!mounted || !_current()) { _invalidate(); return; }
       setState(() => _result = result);
       await _load();
     } catch (error) {
@@ -147,10 +173,13 @@ class _EmployeeInitialRegistrationPageState
     return buffer.toString();
   }
 
-  Future<void> _share(EmployeeInviteResult result) =>
-      SharePlus.instance.share(ShareParams(text: _shareText(result)));
+  Future<void> _share(EmployeeInviteResult result) async {
+    if (!_current() || !identical(result, _result)) { _invalidate(); return; }
+    await SharePlus.instance.share(ShareParams(text: _shareText(result)));
+  }
 
   Future<void> _openSms(EmployeeInviteResult result) async {
+    if (!_current() || !identical(result, _result)) { _invalidate(); return; }
     final body = Uri.encodeComponent(_shareText(result));
     final uri = Uri.parse('sms:${result.phone}?body=$body');
     if (!await launchUrl(uri)) {
@@ -303,7 +332,7 @@ class _EmployeeInitialRegistrationPageState
                               ),
                       ),
                     ),
-                  if (_result != null) ...[
+                  if (_current() && _result != null) ...[
                     const SizedBox(height: 14),
                     _ResultCard(
                       result: _result!,

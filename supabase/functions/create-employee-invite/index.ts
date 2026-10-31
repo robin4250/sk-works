@@ -110,6 +110,30 @@ async function callerUser(req: Request) {
   return await response.json();
 }
 
+const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function verifiedSession(req: Request, actor: string) {
+  // Only called after the same Bearer was verified by Auth /user. Decoding is
+  // binding, never signature validation or authorization from body metadata.
+  try {
+    const token = (req.headers.get('authorization') ?? '').slice(7).split('.');
+    if (token.length !== 3) return null;
+    const text = token[1].replace(/-/g, '+').replace(/_/g, '/');
+    const claims = JSON.parse(atob(text.padEnd(Math.ceil(text.length / 4) * 4, '=')));
+    if (claims.sub !== actor || claims.role !== 'authenticated' ||
+        !uuid.test(claims.session_id ?? '') || !Number.isFinite(claims.exp) ||
+        claims.exp * 1000 <= Date.now()) return null;
+    return claims.session_id;
+  } catch { return null; }
+}
+async function inviteContext(actor: string, session: string, company: string) {
+  const raw = await accessRpc('employee_invite_operation_context',
+    {p_actor: actor, p_session: session, p_company: company});
+  if (!raw || typeof raw !== 'object' || raw.version !== 1 ||
+      raw.actor_id !== actor || raw.session_id !== session || raw.company_id !== company ||
+      !['owner','admin','manager','viewer'].includes(raw.role)) throw Error('invite_context_unavailable');
+  return raw;
+}
+
 Deno.serve(async (req: Request) => {
   const inspection = await inspectDeletion(req);
   if (inspection) return inspection;
@@ -136,21 +160,15 @@ Deno.serve(async (req: Request) => {
       : null;
   const deliverSms = payload?.deliverSms === true;
 
-  const membershipResponse = await serviceFetch(
-    "/rest/v1/company_members?user_id=eq." +
-      encodeURIComponent(caller.id) +
-      "&select=company_id,role&limit=1",
-    { method: "GET" },
-  );
-  if (!membershipResponse.ok) {
-    return json({ error: "会社情報を確認できませんでした。" }, 500);
+  const sessionId = verifiedSession(req, caller.id);
+  const companyId = payload?.companyId;
+  if (!sessionId || payload?.sessionId !== sessionId || !uuid.test(companyId ?? '')) {
+    return json({error: '対象会社・ログイン状態を確認してください。'}, 403);
   }
-  const memberships = await membershipResponse.json();
-  if (!Array.isArray(memberships) || memberships.length === 0) {
-    return json({ error: "従業員登録は会社メンバーのみ利用できます。" }, 403);
-  }
-  const companyId = memberships[0].company_id;
-  const callerRole = String(memberships[0].role ?? "viewer");
+  let context: any;
+  try { context = await inviteContext(caller.id, sessionId, companyId); }
+  catch { return json({error: '招待の利用状態を確認できません。'}, 503); }
+  const callerRole = context.role;
   const canAssignManagementRole =
     callerRole === "owner" || callerRole === "admin";
 
@@ -290,6 +308,12 @@ Deno.serve(async (req: Request) => {
     return json({ error: '利用権限を確認できませんでした。時間をおいてお試しください。' }, 503);
   }
   // Any unconfirmed remote failure leaves this activity pending for operator review.
+  // Recheck live SID, account, exact selected membership and role immediately
+  // before creating Auth. This does not make multiple REST writes atomic.
+  try {
+    const fresh = await inviteContext(caller.id, sessionId, companyId);
+    if (fresh.role !== callerRole) throw Error('role_changed');
+  } catch { return json({error: '招待の利用状態が変わりました。'}, 403); }
   const password = temporaryPassword();
   const authResponse = await serviceFetch("/auth/v1/admin/users", {
     method: "POST",
@@ -422,6 +446,15 @@ Deno.serve(async (req: Request) => {
     if (!testFlightUrl) {
       testFlightUrl = Deno.env.get("SKO_TESTFLIGHT_URL") ?? "";
     }
+    // Never disclose credentials or deliver after context revocation. Existing
+    // created rows remain an unresolved operation; no blind recreation/cleanup.
+    try {
+      const fresh = await inviteContext(caller.id, sessionId, companyId);
+      if (fresh.role !== callerRole) throw Error('role_changed');
+    } catch {
+      return json({error: '作成結果は未解決です。再作成せず管理者に確認してください。',
+        code: 'invite_result_unknown'}, 409);
+    }
     let smsSent = false;
     let deliveryMessage = "";
     if (deliverSms) {
@@ -467,7 +500,15 @@ Deno.serve(async (req: Request) => {
       // The pending activity still prevents deletion until reconciled.
       console.error('employee invite activity completion unconfirmed');
     }
+    try {
+      const fresh = await inviteContext(caller.id, sessionId, companyId);
+      if (fresh.role !== callerRole) throw Error('role_changed');
+    } catch {
+      return json({error: '作成結果は未解決です。再作成せず管理者に確認してください。',
+        code: 'invite_result_unknown'}, 409);
+    }
     return json({
+      actorId: caller.id, sessionId, companyId, workerId: persistedWorkerId, authUserId,
       inviteId,
       name,
       phone,

@@ -1,4 +1,8 @@
+import 'dart:convert';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../auth/apple_session_navigation_binding.dart';
 
 import '../../data/supabase_backend.dart';
 
@@ -51,14 +55,61 @@ class InitialRegistrationEmployee {
 }
 
 class EmployeeInviteRepository {
-  EmployeeInviteRepository._(this._client);
+  EmployeeInviteRepository(this._client);
 
   final SupabaseClient _client;
+  final Set<String> _attempted = {};
+  Stream<AuthState> get authChanges => _client.auth.onAuthStateChange;
+  AppleSessionNavigationBinding? get binding =>
+      AppleSessionNavigationBinding.fromSession(_client.auth.currentSession);
+
+  Future<EmployeeInviteRequest> beginRequest({String? companyId}) async {
+    final session = _client.auth.currentSession;
+    final captured = binding;
+    if (session == null || captured == null) throw StateError('ログイン情報を確認してください。');
+    final raw = await _client.from('company_members').select('company_id,role')
+        .eq('user_id', captured.actorId)
+        .setHeader('Authorization', 'Bearer ${session.accessToken}').retry(enabled: false);
+    if (binding != captured || raw is! List) throw StateError('ログイン状態が変わりました。');
+    final rows = raw.whereType<Map>().where((r) => companyId == null || r['company_id'] == companyId).toList();
+    if (rows.length != 1 || !_uuid.hasMatch(rows.single['company_id']?.toString() ?? '') ||
+        !const {'owner','admin','manager','viewer'}.contains(rows.single['role'])) {
+      throw StateError('対象会社を一意に確認できません。会社を選び直してください。');
+    }
+    final request = EmployeeInviteRequest._(captured, rows.single['company_id'] as String,
+      session.accessToken, () => binding == captured);
+    request.check();
+    return request;
+  }
+
+  static final _uuid = RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$');
+
+  Future<EmployeeInviteResult> _create(Map<String, dynamic> body,
+      {EmployeeInviteRequest? request}) async {
+    final context = request ?? await beginRequest();
+    context.check();
+    final recipient = body['workerId'] ?? body['phone'];
+    final key = '${context.actorId}:${context.companyId}:$recipient';
+    if (!_attempted.add(key)) throw StateError('作成結果が未解決です。再作成せず管理者に確認してください。');
+    try {
+      final response = await _client.functions.invoke('create-employee-invite',
+        headers: {'Authorization': context.authorization},
+        body: {...body, 'companyId': context.companyId, 'sessionId': context.sessionId});
+      context.check();
+      return _resultFromResponse(response, request: context,
+          expectedWorker: body['workerId'] as String?, expectedPhone: body['phone'] as String?);
+    } catch (_) {
+      // No credentials or password journal. This process retains only the intent
+      // block; no receipt exists to safely recreate an uncertain remote result.
+      throw StateError('作成結果を確認できません。結果未解決のため再作成せず管理者に確認してください。');
+    }
+  }
+
 
   static EmployeeInviteRepository? maybeCreate() {
     if (!SupabaseBackend.isInitialized) return null;
     if (SupabaseBackend.client.auth.currentUser == null) return null;
-    return EmployeeInviteRepository._(SupabaseBackend.client);
+    return EmployeeInviteRepository(SupabaseBackend.client);
   }
 
   Future<List<ApprovalAssigneeOption>> loadCurrentApprovalAssignees() async {
@@ -132,66 +183,66 @@ class EmployeeInviteRepository {
   }
 
   Future<EmployeeInviteResult> createInviteForWorker(
-    String workerId, {
-    bool deliverSms = true,
-  }) async {
-    final response = await _client.functions.invoke(
-      'create-employee-invite',
-      body: {
-        'workerId': workerId,
-        'deliverSms': deliverSms,
-      },
-    );
-    return _resultFromResponse(response);
-  }
+    String workerId, {bool deliverSms = false, EmployeeInviteRequest? request}) =>
+      _create({'workerId': workerId, 'deliverSms': deliverSms}, request: request);
 
   Future<EmployeeInviteResult> createInvite({
-    required String name,
-    required String phone,
-    String requestedRole = 'viewer',
-    bool requestedApprovalAssignee = false,
-    String? replaceApprovalAssigneeUserId,
-  }) async {
-    final response = await _client.functions.invoke(
-      'create-employee-invite',
-      body: {
-        'name': name.trim(),
-        'phone': phone.trim(),
-        'requestedRole': requestedRole,
-        'requestedApprovalAssignee': requestedApprovalAssignee,
-        'replaceApprovalAssigneeUserId': replaceApprovalAssigneeUserId,
-      },
-    );
-    return _resultFromResponse(
-      response,
-      fallbackName: name.trim(),
-      fallbackPhone: phone.trim(),
-    );
-  }
+    required String name, required String phone, String requestedRole = 'viewer',
+    bool requestedApprovalAssignee = false, String? replaceApprovalAssigneeUserId,
+    EmployeeInviteRequest? request,
+  }) => _create({
+    'name': name.trim(), 'phone': phone.trim(), 'requestedRole': requestedRole,
+    'requestedApprovalAssignee': requestedApprovalAssignee,
+    'replaceApprovalAssigneeUserId': replaceApprovalAssigneeUserId,
+    'deliverSms': false,
+  }, request: request);
 
-  EmployeeInviteResult _resultFromResponse(
-    FunctionResponse response, {
-    String fallbackName = '',
-    String fallbackPhone = '',
+  EmployeeInviteResult _resultFromResponse(FunctionResponse response, {
+    required EmployeeInviteRequest request, String? expectedWorker, String? expectedPhone,
   }) {
-    final data = response.data;
-    if (response.status < 200 || response.status >= 300 || data is! Map) {
-      throw StateError('初回登録を作成できませんでした。');
+    final raw = response.data;
+    if (response.status < 200 || response.status >= 300 || raw is! Map) {
+      throw const FormatException('Unconfirmed invitation result');
     }
-
-    final map = Map<String, dynamic>.from(data);
-    final error = map['error']?.toString();
-    if (error != null && error.isNotEmpty) throw StateError(error);
-
-    return EmployeeInviteResult(
-      inviteId: map['inviteId']?.toString() ?? '',
-      name: map['name']?.toString() ?? fallbackName,
-      phone: map['phone']?.toString() ?? fallbackPhone,
-      temporaryPassword: map['temporaryPassword']?.toString() ?? '',
-      qrPayload: map['qrPayload']?.toString() ?? '',
-      smsSent: map['smsSent'] == true,
-      testFlightUrl: map['testFlightUrl']?.toString(),
-      deliveryMessage: map['deliveryMessage']?.toString(),
-    );
+    final map = Map<String, dynamic>.from(raw);
+    final id = map['inviteId'], phone = map['phone'], password = map['temporaryPassword'];
+    final qr = map['qrPayload'];
+    if (!_uuid.hasMatch(id is String ? id : '') || phone is! String ||
+        !RegExp(r'^\+81(?:70|80|90)\d{8}$').hasMatch(phone) || password is! String ||
+        password.isEmpty || qr is! String || map['name'] is! String ||
+        map['name'].toString().trim().isEmpty || map['smsSent'] is! bool ||
+        map['companyId'] != request.companyId || map['actorId'] != request.actorId ||
+        map['sessionId'] != request.sessionId || !_uuid.hasMatch(map['workerId']?.toString() ?? '') ||
+        !_uuid.hasMatch(map['authUserId']?.toString() ?? '') ||
+        (expectedWorker != null && map['workerId'] != expectedWorker)) {
+      throw const FormatException('Unconfirmed invitation result');
+    }
+    if (expectedPhone != null) {
+      var normalized = expectedPhone.replaceAll(RegExp(r'[\s()\-]'), '');
+      if (normalized.startsWith('0')) normalized = '+81${normalized.substring(1)}';
+      if (normalized != phone) throw const FormatException('Invitation recipient changed');
+    }
+    final decoded = jsonDecode(qr);
+    if (decoded is! Map || decoded['type'] != 'sko_employee_invite' ||
+        decoded['inviteId'] != id || decoded['phone'] != phone || decoded['password'] != password) {
+      throw const FormatException('Unconfirmed invitation QR');
+    }
+    return EmployeeInviteResult(inviteId: id as String, name: map['name'] as String,
+      phone: phone, temporaryPassword: password, qrPayload: qr,
+      smsSent: map['smsSent'] as bool, testFlightUrl: map['testFlightUrl'] as String?,
+      deliveryMessage: map['deliveryMessage'] as String?);
   }
+}
+
+class EmployeeInviteRequest {
+  EmployeeInviteRequest._(this._binding, this.companyId, this._token, this._current);
+  final AppleSessionNavigationBinding _binding;
+  final String companyId;
+  final String _token;
+  final bool Function() _current;
+  String get actorId => _binding.actorId;
+  String get sessionId => _binding.sessionId;
+  String get authorization => 'Bearer $_token';
+  bool get isCurrent => _current();
+  void check() { if (!isCurrent) throw StateError('ログイン状態が変わりました。画面を開き直してください。'); }
 }

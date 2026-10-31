@@ -1,0 +1,42 @@
+-- SOURCE ONLY. No deployment approval. Dedicated read-only service boundary.
+begin;
+do $guard$
+begin
+ if to_regprocedure('public.employee_invite_operation_context(uuid,uuid,uuid)') is not null
+ or to_regprocedure('private.employee_invite_operation_context(uuid,uuid,uuid)') is not null
+ then raise exception 'invite context already exists; compare exact source/ACL before proceeding'; end if;
+ if to_regprocedure('public.account_server_access_allowed(uuid)') is null
+ or to_regclass('auth.sessions') is null or to_regclass('public.company_members') is null
+ then raise exception 'reviewed invite dependencies unavailable'; end if;
+end $guard$;
+create function private.employee_invite_operation_context(p_actor uuid,p_session uuid,p_company uuid)
+returns jsonb language plpgsql stable security definer set search_path='' as $$
+declare member_role text;
+begin
+ -- The trusted Edge has verified this exact Bearer actor/SID tuple. This
+ -- service-only lookup cannot be used by a client to assert another identity.
+ if (auth.jwt()->>'role') is distinct from 'service_role' or p_actor is null
+ or p_session is null or p_company is null then raise exception 'invite context denied' using errcode='42501'; end if;
+ if not public.account_server_access_allowed(p_actor) then raise exception 'invite context denied' using errcode='42501'; end if;
+ if not exists(select 1 from auth.sessions s where s.id=p_session and s.user_id=p_actor
+   and (s.not_after is null or s.not_after>clock_timestamp()))
+ then raise exception 'invite session unavailable' using errcode='42501'; end if;
+ select m.role::text into member_role from public.company_members m
+ where m.user_id=p_actor and m.company_id=p_company;
+ if member_role is null or member_role not in('owner','admin','manager','viewer')
+ or (select count(*) from public.company_members m where m.user_id=p_actor and m.company_id=p_company)<>1
+ then raise exception 'invite membership unavailable' using errcode='42501'; end if;
+ return jsonb_build_object('version',1,'actor_id',p_actor,'session_id',p_session,'company_id',p_company,'role',member_role);
+end $$;
+alter function private.employee_invite_operation_context(uuid,uuid,uuid) owner to postgres;
+revoke all on function private.employee_invite_operation_context(uuid,uuid,uuid) from public,anon,authenticated,service_role;
+grant execute on function private.employee_invite_operation_context(uuid,uuid,uuid) to service_role;
+create function public.employee_invite_operation_context(p_actor uuid,p_session uuid,p_company uuid)
+returns jsonb language sql stable security invoker set search_path='' as $$
+select private.employee_invite_operation_context(p_actor,p_session,p_company) $$;
+alter function public.employee_invite_operation_context(uuid,uuid,uuid) owner to postgres;
+revoke all on function public.employee_invite_operation_context(uuid,uuid,uuid) from public,anon,authenticated,service_role;
+grant execute on function public.employee_invite_operation_context(uuid,uuid,uuid) to service_role;
+-- No table or schema ACLs are broadened. Missing service private USAGE is a
+-- deployment preflight failure, not permission to grant private to clients.
+commit;
