@@ -39,13 +39,16 @@ const attributes = async () => (await db.query("select to_jsonb(p)-array['prosrc
 const beforeAttributes = await attributes();
 const records = async () => (await db.query("select (select jsonb_agg(to_jsonb(t)) from worker_document_statuses t) statuses,(select jsonb_agg(to_jsonb(t)) from document_requirements t) requirements")).rows;
 const beforeRecords = await records();
+await db.exec('alter table document_requirements rename column expiry_required to synthetic_missing_expiry');
+await assert.rejects(db.exec(forward),/evidence dependencies changed/);
+await db.exec('rollback; alter table document_requirements rename column synthetic_missing_expiry to expiry_required');
 await db.exec('grant execute on function public.current_user_required_document_attention() to authenticated with grant option');
 await assert.rejects(db.exec(forward),/captured contract changed/);
 await db.exec('rollback; revoke grant option for execute on function public.current_user_required_document_attention() from authenticated');
 await db.exec(forward);
 assert.deepEqual(await attributes(), beforeAttributes, 'all other function metadata unchanged');
 assert.deepEqual(await records(), beforeRecords, 'installation preserves document/requirement data');
-let checks = 4;
+let checks = 5;
 async function expectMissing(expected, label) { assert.equal((await row()).missing_count, expected, label); checks++; }
 await expectMissing(0, 'valid ordered multi-photo metadata');
 await db.exec("update worker_document_statuses set status='unrecognized'");
@@ -89,6 +92,13 @@ await db.exec(`insert into worker_document_statuses values('${req}','${req}','${
 await db.exec("update document_requirements set name='synthetic document'");
 await db.exec("select set_config('fixture.user','',false)");
 await expectMissing(0,'unauthenticated contract remains unchanged');
+await db.exec("alter table worker_document_statuses drop column attachment_paths; alter table worker_document_statuses add column attachment_paths text[]; update document_requirements set is_required=true,expiry_required=false; update worker_document_statuses set expires_at=null,attachment_path=null,attachment_paths=array['synthetic/a','synthetic/b']");
+await db.exec(`select set_config('fixture.user','${user}',false)`);
+await expectMissing(0,'actual text-array column shape accepts retained photos');
+await db.exec("update worker_document_statuses set attachment_paths=array['']");
+assert.equal((await row()).unknown_count,1,'invalid text-array metadata remains unknown');checks++;
+await db.exec("update worker_document_statuses set attachment_paths=array[array['synthetic/a','synthetic/b']]");
+assert.equal((await row()).unknown_count,1,'nested text-array metadata remains unknown');checks++;
 await db.exec("alter table worker_document_statuses drop column attachment_paths; update document_requirements set is_required=true,expiry_required=false; update worker_document_statuses set attachment_path='synthetic/legacy',expires_at=null");
 await db.exec(`select set_config('fixture.user','${user}',false)`);
 await expectMissing(0,'to_jsonb supports legacy table without new column');
