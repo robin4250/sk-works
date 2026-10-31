@@ -31,6 +31,19 @@ void main() {
     expect(result.unambiguousTotal, 1200);
     expect(result.candidates, hasLength(1));
   });
+  test('negative conventions never become positive currency candidates', () {
+    for (final text in ['合計 －100円','合計 ▲100円','合計 △100円','合計 −100円',
+      '合計 (100円)','合計 （￥１００）','合計 100円－','合計 —¥100']) {
+      final result = ExpenseReceiptAmountRecognition.parse(text);
+      expect(result.candidates,isEmpty,reason:text);
+      expect(result.unambiguousTotal,isNull,reason:text);
+    }
+  });
+  test('refund or cancellation labels on another line require manual review', () {
+    for (final label in ['返金','返品','取消','払戻','キャンセル']) {
+      expect(ExpenseReceiptAmountRecognition.parse('$label\n合計 ¥1,000').candidates,isEmpty,reason:label);
+    }
+  });
   test('failure and excessive ambiguous input do not invent a zero amount', () {
     expect(ExpenseReceiptAmountRecognition.parse('').candidates, isEmpty);
     expect(ExpenseReceiptAmountRecognition.parse(List.generate(13, (i) => '商品 ¥${i + 1}').join('\n')).candidates, isEmpty);

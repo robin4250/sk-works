@@ -27,7 +27,7 @@ class ExpenseReceiptAmountRecognition {
 
   static String _normalize(String input) => String.fromCharCodes(input.runes.map((c) {
     if (c >= 0xff10 && c <= 0xff19) return c - 0xfee0;
-    return switch (c) { 0xff0c => 0x2c, 0xffe5 => 0xa5, 0x3000 => 0x20, _ => c };
+    return switch (c) { 0xff0c => 0x2c, 0xffe5 => 0xa5, 0xff0d => 0x2d, 0x3000 => 0x20, _ => c };
   }));
 
   static int? _yen(String input) {
@@ -41,6 +41,11 @@ class ExpenseReceiptAmountRecognition {
     if (recognizedText.length > 20000) return const ExpenseReceiptAmountResult([]);
     final lines = _normalize(recognizedText).split(RegExp(r'[\r\n]+'))
       .map((line) => line.trim()).where((line) => line.isNotEmpty).toList();
+    // A refund/cancellation is not a positive expense. Do not turn its amount
+    // into a positive candidate even when OCR puts the label on another line.
+    if (lines.any((line) => RegExp(r'返金|返品|取消|キャンセル|払戻|払い戻し|返還').hasMatch(line))) {
+      return const ExpenseReceiptAmountResult([]);
+    }
     final excluded = RegExp(r'お?預[りか]|お?釣[り銭]?|釣銭|小計|税抜|消費税|外税|内税|税額|単価|数量|ポイント|残高|割引|値引');
     final total = RegExp(r'税込合計|総合計|合計金額|合計|お支払[い]?額|お支払[い]?|ご請求金額|請求金額|領収金額|お買上[げ]?金額');
     final currency = RegExp(r'[¥￥]\s*([0-9][0-9,]*)(?![0-9,.])|(?<![0-9,.])([0-9][0-9,]*)\s*円');
@@ -54,7 +59,10 @@ class ExpenseReceiptAmountRecognition {
     }
     for (var index = 0; index < lines.length; index++) {
       final line = lines[index];
-      if (excluded.hasMatch(line) || RegExp(r'[-−]\s*[¥￥]?\s*[0-9]').hasMatch(line)) continue;
+      if (excluded.hasMatch(line) ||
+          RegExp(r'[-−‐‑‒–—﹣－▲△]\s*[¥￥]?\s*[0-9]').hasMatch(line) ||
+          RegExp(r'[0-9][0-9,]*\s*円?\s*[-−‐‑‒–—﹣－▲△]\s*$').hasMatch(line) ||
+          RegExp(r'[（(]\s*[¥￥]?\s*[0-9][0-9,]*\s*円?\s*[）)]').hasMatch(line)) continue;
       final label = total.firstMatch(line);
       if (label != null) {
         final tail = line.substring(label.end);
