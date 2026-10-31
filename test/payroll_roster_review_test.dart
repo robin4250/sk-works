@@ -235,7 +235,10 @@ void main() {
         expect((await readRpc(malformed)).canCompareRoster, isFalse);
       }
       final partial = payload();
-      (partial['statements'] as List).add('invalid-statement');
+      partial['statements'] = <dynamic>[
+        ...partial['statements'] as List,
+        'invalid-statement',
+      ];
       final workspace = await readRpc(partial);
       expect(workspace.items.length, 6);
       expect(workspace.canCompareRoster, isFalse);
