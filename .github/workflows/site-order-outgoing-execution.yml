@@ -7,6 +7,9 @@ on:
       - 'supabase/functions/site-order-workflow/*.mjs'
       - 'docs/review/site-order-outgoing-execution/**'
       - 'docs/review/site-order-outgoing-consent/**'
+      - 'lib/features/sites/site_order_outgoing_execution.dart'
+      - 'lib/features/sites/site_order_workflow_repository.dart'
+      - 'test/site_order_outgoing_execution*.dart'
       - '.github/workflows/site-order-outgoing-execution.yml'
 permissions:
   contents: read
@@ -53,6 +56,7 @@ jobs:
           test "$(id -u)" -ne 0
           export SKO_CANONICAL_DART="$(command -v dart)"
           export SKO_OUTGOING_EXECUTION_REVIEW_HOOK=contract-v1
+          export SKO_EXECUTION_RECEIPT_PATH="$GITHUB_WORKSPACE/execution-receipt.json"
           export SKO_CONSENT_RECEIPT_PATH="$GITHUB_WORKSPACE/consent-receipt.json"
           export SKO_EXACT_EIGHT_SOURCE_ROOT="$GITHUB_WORKSPACE/.actual-source"
           export SKO_TRADE_C_SOURCE_ROOT="$GITHUB_WORKSPACE/.c-source"
@@ -64,3 +68,34 @@ jobs:
           else
             node docs/review/site-order-outgoing-consent/verify.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
           fi
+      - name: Hash Native execution and consent receipts
+        if: matrix.engine == 'postgres'
+        run: sha256sum execution-receipt.json consent-receipt.json > execution-receipt.sha256
+      - uses: actions/upload-artifact@v4
+        if: matrix.engine == 'postgres'
+        with:
+          name: order-execution-native-${{ github.sha }}
+          path: |
+            execution-receipt.json
+            consent-receipt.json
+            execution-receipt.sha256
+          if-no-files-found: error
+  execution-native-sdk:
+    needs: original-sharing-source
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: subosito/flutter-action@v2
+        with: {channel: stable, flutter-version: '3.47.5', cache: true}
+      - run: flutter pub get --enforce-lockfile
+      - uses: actions/download-artifact@v4
+        with: {name: 'order-execution-native-${{ github.sha }}'}
+      - run: sha256sum --check execution-receipt.sha256
+      - name: Actual SDK uses same-head Native HTTP execution receipts
+        env:
+          SKO_EXECUTION_RECEIPT_PATH: ${{ github.workspace }}/execution-receipt.json
+          SKO_CONSENT_RECEIPT_PATH: ${{ github.workspace }}/consent-receipt.json
+        run: flutter test test/site_order_outgoing_execution_test.dart test/site_order_outgoing_execution_repository_test.dart test/site_order_outgoing_consent_repository_test.dart
+      - run: flutter analyze lib/features/sites/site_order_outgoing_execution.dart lib/features/sites/site_order_workflow_repository.dart test/site_order_outgoing_execution_test.dart test/site_order_outgoing_execution_repository_test.dart

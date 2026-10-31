@@ -13,6 +13,7 @@ import 'site_order_approval_journal.dart';
 import 'site_order_outgoing_journal.dart';
 import 'site_order_outgoing_entries.dart';
 import 'site_order_outgoing_consent.dart';
+import 'site_order_outgoing_execution.dart';
 import 'site_order_outgoing_consent_preview.dart';
 
 String siteOrderRequestId() {
@@ -133,6 +134,7 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
   final SiteOrderApprovalJournal _approvalJournal;
   final SiteOrderOutgoingJournal _outgoingJournal;
   final _consentJournal = SiteOrderConsentJournal();
+  final _executionJournal = SiteOrderExecutionJournal();
   final _replyJournal = SiteOrderApprovalJournal.forReplyRecovery();
   final _refusalJournal = SiteOrderRefusalJournal();
   String get _actor => _client.auth.currentUser!.id;
@@ -333,6 +335,70 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
     final result = _map(_map(await _call(reference.command('decision_status'), outgoing: true))['result']);
     return SiteOrderConsentObservation.decode(result, reference, _company!);
   }
+
+  Future<SiteOrderExecutionObservation> inspectOutgoingExecution(
+    SiteOrderConsentReference reference, {
+    required String jobId,
+    required String recipientCompanyId,
+  }) async {
+    await verify();
+    final result = _map(_map(await _call(
+      reference.command('original_status'), outgoing: true,
+    ))['result']);
+    return SiteOrderExecutionObservation.decode(result, reference, _company!,
+      jobId: jobId, recipientCompanyId: recipientCompanyId);
+  }
+
+  Future<SiteOrderExecutionObservation> _executeOutgoingStage(
+    SiteOrderConsentReference reference, {
+    required String jobId,
+    required String recipientCompanyId,
+    required String stage,
+    required bool confirmed,
+  }) async {
+    if (!confirmed) throw StateError('保存・共有内容の明示確認が必要です。');
+    await verify();
+    if (reference.prepare.sessionId != _capturedSessionId) {
+      throw StateError('ログイン状態が変わりました。結果照会を先に行ってください。');
+    }
+    if (!SiteOrderPendingPrepare.validId(jobId) ||
+        !SiteOrderPendingPrepare.validId(recipientCompanyId)) {
+      throw StateError('注文の原本・共有先を確認できません。');
+    }
+    if (!await _executionJournal.begin(_actor, _company!, reference, stage)) {
+      throw StateError('保存・共有を確認中です。再送せず状態を照会してください。');
+    }
+    await verify();
+    await _call({
+      ...reference.command(stage == 'original'
+          ? 'register_outgoing_original' : 'share_confirmed'),
+      if (stage == 'share') 'confirmed': true,
+    }, write: true, outgoing: true);
+    // Observe durable server evidence in a separate request. A mutation response
+    // alone never clears quarantine or claims recipient acknowledgement.
+    final result = await inspectOutgoingExecution(reference,
+      jobId: jobId, recipientCompanyId: recipientCompanyId);
+    if (stage == 'original' ? !result.originalSaved : !result.recipientStored) {
+      throw const SiteOrderResultUnknown();
+    }
+    return result;
+  }
+
+  Future<SiteOrderExecutionObservation> registerOutgoingOriginal(
+    SiteOrderConsentReference reference, {
+    required String jobId,
+    required String recipientCompanyId,
+    required bool confirmed,
+  }) => _executeOutgoingStage(reference, jobId: jobId,
+    recipientCompanyId: recipientCompanyId, stage: 'original', confirmed: confirmed);
+
+  Future<SiteOrderExecutionObservation> shareOutgoingOriginal(
+    SiteOrderConsentReference reference, {
+    required String jobId,
+    required String recipientCompanyId,
+    required bool confirmed,
+  }) => _executeOutgoingStage(reference, jobId: jobId,
+    recipientCompanyId: recipientCompanyId, stage: 'share', confirmed: confirmed);
 
   @override
   Future<List<SiteOrderRegisteredTarget>> registeredOutgoingTargets(String siteId) async {

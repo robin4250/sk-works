@@ -1,0 +1,22 @@
+name: Outgoing original and sharing SDK source
+on:
+  pull_request:
+    paths:
+      - 'lib/features/sites/site_order_outgoing_execution.dart'
+      - 'lib/features/sites/site_order_workflow_repository.dart'
+      - 'test/site_order_outgoing_execution_test.dart'
+      - '.github/workflows/site-order-execution-sdk.yml'
+permissions:
+  contents: read
+jobs:
+  execution-sdk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: '3.47.5', channel: stable, cache: true}
+      - run: flutter pub get
+      - run: flutter test test/site_order_outgoing_execution_test.dart test/site_order_outgoing_consent_repository_test.dart
+      - run: flutter analyze lib/features/sites/site_order_outgoing_execution.dart lib/features/sites/site_order_workflow_repository.dart test/site_order_outgoing_execution_test.dart

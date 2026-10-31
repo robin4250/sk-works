@@ -1,4 +1,5 @@
 import {createRequire} from 'node:module';
+import {writeFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import path from 'node:path';
 import {createProjectVerifier} from '../../../supabase/functions/site-order-workflow/auth.mjs';
@@ -35,7 +36,7 @@ export async function verifyExecution(db,{q,check,UA,A,B,sid,sid2,make,prepare,p
  const fresh=async n=>{const x=await make(n);await prepare(x);const p=await preview(x),r=await confirm(x,p);return{x,p,r,identity:identityOf(x,p)};};
  const old={...httpReceipt.identity,preview_id:httpReceipt.preview.preview_id,decision_id:httpReceipt.decision_id};
  const job=httpReceipt.result.job_id;
- const noOriginal=await post('original_status',old);check(noOriginal.status,200);check((await noOriginal.json()).result.original_saved,false);
+ const noOriginal=await post('original_status',old);check(noOriginal.status,200);const absentOriginal=(await noOriginal.json()).result;check(absentOriginal.original_saved,false);
  check((await post('register_original',{job_id:job},{legacyRoute:true})).status,403);check(renders,0);
  check((await post('send_order',{job_id:job,original_receipt_id:'95000000-0000-4000-8000-000000000001',request_id:'95000000-0000-4000-8000-000000000002'},{legacyRoute:true})).status,403);
  dropAck=true;const unknown=await post('register_outgoing_original',old);check(unknown.status,409);check((await unknown.json()).error,'result_unknown');check(renders,1);
@@ -152,6 +153,13 @@ export async function verifyExecution(db,{q,check,UA,A,B,sid,sid2,make,prepare,p
  check(await q('select count(*)::int v from site_order_package_private.packages where source_job_id=$1',[newPrice.r.job_id]),0);
  check(await q('select count(*)::int v from trade_document_consent_private.consents where document_id=$1 and revision=2',[newPrice.x.doc]),0);
  check(await q('select pdf_sha256 v from site_order_artifact_private.pdf_records where job_id=$1',[newPrice.r.job_id]),oldPriceHash);
+ if(process.env.SKO_EXECUTION_RECEIPT_PATH)await writeFile(process.env.SKO_EXECUTION_RECEIPT_PATH,JSON.stringify({
+  contract_version:1,synthetic_auth:true,real_GoTrue:false,production_changed:false,
+  actor:UA,company:A,session:sid,identity:old,body_hash:httpReceipt.preview.body_hash,
+  operation_id:httpReceipt.preview.operation_id,job_id:job,recipient_company_id:B,
+  no_original:absentOriginal,
+  original,shared,
+ }));
  check(closed,connections);
  console.log(JSON.stringify({outgoing_execution_source_only:true,native_real_waits:nativeWaits,late_notice_rollback:true,foreign_legacy_package_not_adopted:true,new_price_requires_new_consent:true,actual_canonical_pdf:true,same_original_bytes:true,register_ack_loss_reconciled:true,share_ack_loss_reconciled:true,one_package:true,one_notice_set:true,legacy_owned_routes_rejected:true,connections_closed:closed,renders,real_GoTrue:false,production_changed:false}));
 }
