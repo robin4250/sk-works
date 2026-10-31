@@ -20,19 +20,22 @@ class SiteOrderOutgoingEntries {
   String value(String key) => _input[key] ?? '';
   int _money(String key) {
     final text = value(key).trim();
-    if (!RegExp(r'^\d{1,10}$').hasMatch(text))
+    if (!RegExp(r'^\d{1,10}$').hasMatch(text)) {
       throw const FormatException('金額を入力してください。');
+    }
     final n = int.parse(text);
     if (n > 2147483647) throw const FormatException('金額の上限を超えています。');
     return n;
   }
 
   void validate() {
-    if (_input.keys.any((k) => !labels.containsKey(k)))
+    if (_input.keys.any((k) => !labels.containsKey(k))) {
       throw const FormatException('入力項目を確認してください。');
+    }
     for (final key in ['work_name', 'work_address']) {
-      if (value(key).trim().isEmpty || value(key).runes.length > 240)
+      if (value(key).trim().isEmpty || value(key).runes.length > 240) {
         throw const FormatException('工事名称・場所を入力してください。');
+      }
     }
     for (final key in ['period_start', 'period_end']) {
       final text = value(key), date = DateTime.tryParse(text);
@@ -42,16 +45,18 @@ class SiteOrderOutgoingEntries {
         throw const FormatException('工期はYYYY-MM-DDで入力してください。');
       }
     }
-    if (value('period_start').compareTo(value('period_end')) > 0)
+    if (value('period_start').compareTo(value('period_end')) > 0) {
       throw const FormatException('工期を確認してください。');
+    }
     _money('unit_price');
     final total = _money('total_amount_yen'), tax = _money('tax_amount_yen');
     if (tax > total) throw const FormatException('消費税額が発注金額を超えています。');
     if (value('quantity').length > 16 ||
         !RegExp(r'^\d+(?:\.\d{1,3})?$').hasMatch(value('quantity')) ||
         value('unit').trim().isEmpty ||
-        value('unit').runes.length > 16)
+        value('unit').runes.length > 16) {
       throw const FormatException('数量・単位を確認してください。');
+    }
   }
 
   String get unitPriceLabel {

@@ -88,8 +88,9 @@ class _SiteOrderOutgoingEntryPageState extends State<SiteOrderOutgoingEntryPage>
       );
     }
     try {
-      if (!SiteOrderPendingPrepare.validId(widget.siteId))
+      if (!SiteOrderPendingPrepare.validId(widget.siteId)) {
         throw StateError('現場を確認してください。');
+      }
       final ids = <String>{};
       for (final target in widget.targets) {
         if (!SiteOrderPendingPrepare.validId(target.id) ||
@@ -292,8 +293,9 @@ class _SiteOrderOutgoingEntryPageState extends State<SiteOrderOutgoingEntryPage>
         );
       });
     } catch (error) {
-      if (mounted && !_retired && generation == _generation)
+      if (mounted && !_retired && generation == _generation) {
         setState(() => _error = error.toString());
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -557,7 +559,7 @@ class _SiteOrderOutgoingEntryPageState extends State<SiteOrderOutgoingEntryPage>
                                   canChangePageFormat: false,
                                   allowPrinting: false,
                                   allowSharing: false,
-                                  previewPageBuilder: (context, pages) =>
+                                  pagesBuilder: (context, pages) =>
                                       PdfPinchPages(pages: pages),
                                 ),
                           ),
