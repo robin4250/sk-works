@@ -103,15 +103,68 @@ try{
  assert.equal((await db.query('select count(*)::int n from private.worker_document_admin_correction_tickets')).rows[0].n,0);
  await assert.rejects(db.query('delete from private.worker_document_admin_corrections where request_id=$1',[uid(20)]));
  pass('full original/revision/reason/SID retained in append-only archive and one-use ticket consumed');
+ await db.exec('begin');
+ await db.exec('alter table public.worker_document_statuses disable trigger zzz_worker_document_admin_correction_ticket');
+ await actor(owner,sid);
+ await assert.rejects(rpc('correct',{...command,request_id:uid(35),expected_snapshot:revised}));
+ await db.exec('rollback');assert.deepEqual(await status(),revised);
+ pass('disabled ticket guard cannot silently bypass protected write; entire correction rolls back');
+ await db.exec('reset role');
+ assert.equal((await db.query("select has_function_privilege('authenticated','public.worker_document_admin_self_correction(text,jsonb)','EXECUTE') v")).rows[0].v,true);
+ for(const role of ['anon','service_role']){
+  assert.equal((await db.query('select has_function_privilege($1,$2,\'EXECUTE\') v',[role,'public.worker_document_admin_self_correction(text,jsonb)'])).rows[0].v,false);
+ }
+ assert.equal((await db.query("select has_function_privilege('authenticated','private.worker_document_admin_correction_ticket_guard()','EXECUTE') v")).rows[0].v,false);
+ pass('public-only defaults narrowed on new endpoint; private writer guard receives no authenticated grant');
  await actor(owner,sid);await assert.rejects(db.exec('select * from private.worker_document_admin_corrections'));
  await db.exec('reset role');await db.query('delete from auth.sessions where id=$1',[sid]);
  await actor(owner,sid);await assert.rejects(rpc('get',{...identity,request_id:uid(20)}));
  await db.exec('reset role');await db.query('insert into auth.sessions values($1,$2,null)',[uid(30),owner]);
  await actor(owner,uid(30));assert.deepEqual(await rpc('get',{...identity,request_id:uid(20)}),receipt);
  pass('no direct archive access; revoked SID rejected and legitimate new live SID reads same opaque receipt');
+ await db.exec('reset role');await db.exec('begin');
+ await db.query('delete from public.worker_document_statuses where id=$1',[target]);
+ await actor(owner,uid(30));assert.deepEqual(await rpc('get',{...identity,request_id:uid(20)}),receipt);
+ await db.exec('rollback');
+ pass('committed ID-only receipt survives later status removal without relaxing current worker or company authority');
  await db.exec('reset role');await db.exec('update private.worker_document_admin_correction_state set enabled=false');
  await actor(owner,uid(30));assert.deepEqual(await rpc('reconcile_cancel',{...identity,request_id:uid(20)}),receipt);
  await assert.rejects(rpc('correct',{...command,request_id:uid(31),expected_snapshot:revised}));
  pass('OFF stops new writes while scoped ID-only reconciliation preserves committed outcome');
+ if(native){
+  const pg=await import(pathToFileURL(path.resolve(process.argv[2])));
+  const other=new(pg.Client??pg.default.Client)({connectionString:native});await other.connect();
+  try{
+   const pid=(await other.query('select pg_backend_pid() pid')).rows[0].pid;
+   await other.query("select set_config('fixture.uid',$1,false),set_config('request.jwt.claims',$2,false)",
+    [owner,JSON.stringify({sub:owner,session_id:uid(30),role:'authenticated',is_anonymous:false})]);
+   await other.query('set role authenticated');
+   const otherRpc=(a,d)=>other.query('select public.worker_document_admin_self_correction($1,$2::jsonb) v',[a,JSON.stringify(d)]);
+   async function observedWait(){
+    for(let n=0;n<100;n++){
+     const waiting=(await db.query("select exists(select 1 from pg_locks where pid=$1 and locktype='advisory' and not granted) v",[pid])).rows[0].v;
+     if(waiting){return;}
+     await new Promise(resolve=>setTimeout(resolve,25));
+    }
+    throw Error('second connection never observed waiting at request barrier');
+   }
+   await db.exec('reset role');await db.exec('update private.worker_document_admin_correction_state set enabled=true');
+   const concurrent={...command,request_id:uid(40),expected_snapshot:await status(),reason:'concurrent correction'};
+   await actor(owner,uid(30));await db.exec('begin');
+   const applied=await rpc('correct',concurrent);
+   const waiting=otherRpc('reconcile_cancel',{...identity,request_id:uid(40)});
+   await observedWait();await db.exec('commit');
+   assert.deepEqual((await waiting).rows[0].v,applied);
+   pass('Native two connections: cancellation actually waits for in-flight correction and returns its committed receipt');
+   const afterConcurrent=await status();
+   await db.exec('begin');await rpc('reconcile_cancel',{...identity,request_id:uid(41)});
+   const delayed=otherRpc('correct',{...concurrent,request_id:uid(41),expected_snapshot:afterConcurrent});
+   // Attach a rejection observer before the COMMIT can release the barrier.
+   const rejected=assert.rejects(delayed,error=>error.code==='23505');
+   await observedWait();await db.exec('commit');await rejected;
+   assert.deepEqual(await status(),afterConcurrent);
+   pass('Native two connections: delayed correction actually waits for cancellation and cannot resurrect the fixed ID');
+  }finally{await db.exec('reset role');await db.exec('rollback');await other.end();}
+ }
  console.log(JSON.stringify({checks:count,fixture:native?'Native PostgreSQL17':'PGlite',production:false,real_storage:false}));
 }finally{await close();}

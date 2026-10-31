@@ -96,9 +96,23 @@ begin
  perform 1 from public.member_feature_permissions where company_id=cid and user_id=actor for share;
  if private.has_company_feature(cid,'can_manage_people') is not true then
   raise exception 'people permission required' using errcode='42501';end if;
- -- Target may only be the administrator's own current active worker.
- select s.worker_id,s.requirement_id into wid,rid from public.worker_document_statuses s
- where s.id=target and s.company_id=cid;
+ if p_action<>'capability' then
+  request:=(p_data->>'request_id')::uuid;
+  if request is null then raise exception 'fixed request ID required' using errcode='22023';end if;
+  perform pg_advisory_xact_lock(hashtextextended('worker-document-admin-correction:'||request::text,0));
+  select * into saved from private.worker_document_admin_corrections where request_id=request;
+  if found and(saved.company_id is distinct from cid or saved.actor_id is distinct from actor
+   or saved.target_id is distinct from target)
+  then raise exception 'request identity conflict' using errcode='23505';end if;
+ end if;
+ -- A committed opaque receipt remains recoverable after the status row is
+ -- legitimately removed; its exact archived worker/company still require
+ -- current administrator authority and an own active worker.
+ if saved.request_id is not null then wid:=saved.worker_id;rid:=saved.requirement_id;
+ else
+  select s.worker_id,s.requirement_id into wid,rid from public.worker_document_statuses s
+   where s.id=target and s.company_id=cid;
+ end if;
  perform 1 from public.workers where id=wid and company_id=cid and user_id=actor and status::text='active' for share;
  if not found then raise exception 'own active worker required' using errcode='42501';end if;
  perform 1 from public.document_requirements where id=rid and company_id=cid for share;
@@ -109,13 +123,6 @@ begin
   return jsonb_build_object('version',1,'contract','worker_document_admin_self_correction','company_id',cid,
    'target_id',target,'actor_id',actor,'available',enabled is true,'new_upload_available',false,'max_photos',20);
  end if;
- request:=(p_data->>'request_id')::uuid;
- if request is null then raise exception 'fixed request ID required' using errcode='22023';end if;
- perform pg_advisory_xact_lock(hashtextextended('worker-document-admin-correction:'||request::text,0));
- select * into saved from private.worker_document_admin_corrections where request_id=request;
- if found and(saved.company_id is distinct from cid or saved.actor_id is distinct from actor
-  or saved.target_id is distinct from target or saved.worker_id is distinct from wid or saved.requirement_id is distinct from rid)
- then raise exception 'request identity conflict' using errcode='23505';end if;
  if p_action in('get','reconcile_cancel') then
   if (select count(*) from jsonb_object_keys(p_data))<>3 then raise exception 'ID-only recovery required' using errcode='22023';end if;
   if saved.request_id is null and p_action='get' then
