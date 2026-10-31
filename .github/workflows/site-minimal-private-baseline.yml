@@ -33,13 +33,14 @@ jobs:
         with: {node-version: '22.21.0'}
       - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts
       - run: python -m unittest discover -s docs/review/site-order-private-baseline -p 'test_*.py' -v
-      - name: Seven exact generic helpers; synthetic seal and Auth rows
+      - run: node --test docs/review/site-order-private-baseline/sql_transaction.test.mjs
+      - name: Twelve atomic modules; seven exact helpers and synthetic seal/Auth
         env:
           SKO_CONSENT_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_document_consent_fixture
         run: |
           export SKO_TRADE_C_SOURCE_ROOT="$GITHUB_WORKSPACE/.c-source"
           if [ '${{ matrix.engine }}' = 'postgres' ]; then
-            node docs/review/site-order-private-baseline/verify_composition.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js" postgres
+            node docs/review/site-order-private-baseline/verify_composition.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js" postgres --full
           else
-            node docs/review/site-order-private-baseline/verify_composition.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
+            node docs/review/site-order-private-baseline/verify_composition.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js" --full
           fi

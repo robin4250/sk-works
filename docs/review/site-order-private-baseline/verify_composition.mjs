@@ -33,12 +33,19 @@ try{
   await db.exec(matched[0][0].replace(/^create function /i,'create or replace function '));
   check(await q('select md5(prosrc) v from pg_proc where oid=to_regprocedure($1)',[sig]),expected);
  }
+ await db.exec("create function private.document_company_seal_snapshot(jsonb,uuid,boolean) returns jsonb language plpgsql set search_path='' as $$begin raise sqlstate '0A000' using message='fixture_seal_snapshot_not_connected';end$$");
  await db.exec('alter default privileges for role postgres in schema public grant execute on functions to anon,authenticated,service_role');
  await db.exec(cSql);
  const cBefore=await q("select jsonb_build_object('body',md5(prosrc),'acl',proacl::text,'config',proconfig) v from pg_proc where oid='private.require_standalone_trade_document_access()'::regprocedure");
  const connection=await read('supabase/migrations/20261001213349_add_company_connection_foundation.sql');
  await db.exec(connection.slice(0,connection.indexOf('create or replace function private.company_connection_targets')));
  await db.exec('create table public.sites(id uuid primary key,company_id uuid,name text);alter table public.trade_companies add column link_status text');
+ let fullReceipt;
+ if(process.argv.includes('--full')){
+  const {composeFull}=await import('./full_composition.mjs');
+  fullReceipt=await composeFull(db,{read,q,check,manifest});
+  if(process.env.SKO_CATALOG_RECEIPT_PATH)await fs.writeFile(process.env.SKO_CATALOG_RECEIPT_PATH,JSON.stringify(fullReceipt,null,2));
+ }else{
  await db.exec(await read('docs/candidates/trade_document_bound_seal_consent_20261021.sql.review-only'));
  const api=await read('docs/candidates/trade_document_confirmation_api_20261022.sql.review-only');
  const actor=api.match(/create function trade_document_confirmation_api_private\.actor\(\)[\s\S]*?end \$\$;/)?.[0];
@@ -46,6 +53,7 @@ try{
  await db.exec('create schema trade_document_confirmation_api_private;revoke all on schema trade_document_confirmation_api_private from public,anon,authenticated,service_role;'+actor+'revoke all on function trade_document_confirmation_api_private.actor() from public,anon,authenticated,service_role');
  await db.exec(await read('docs/review/site-order-artifact-registration/private-register.sql.review-only'));
  await db.exec(await read('docs/review/site-order-manager-purpose/adapter.sql.review-only'));
+ }
  check(await q("select jsonb_build_object('body',md5(prosrc),'acl',proacl::text,'config',proconfig) v from pg_proc where oid='private.require_standalone_trade_document_access()'::regprocedure"),cBefore);
  check(await q("select count(*)::int v from pg_proc where pronamespace='trade_document_confirmation_api_private'::regnamespace"),1);
  check(await q("select count(*)::int v from pg_proc where pronamespace='public'::regnamespace and proname like '%trade_document_confirmation%'"),0);
@@ -68,5 +76,5 @@ try{
  await reject('select private.require_standalone_trade_document_access()');
  await db.exec(`update auth.users set is_anonymous=false where id='${uid}';insert into private.account_deletion_access_restrictions values('${uid}')`);
  await reject('select private.require_standalone_trade_document_access()');
- console.log(JSON.stringify({result:'PASS minimal private site composition',checks,actual_current_generic_helpers:7,seal_snapshot_synthetic:true,private_eight_body_result_separate:true,synthetic_auth_identity_and_rows:true,financial_api_installed:false,production_changed:false}));
+ console.log(JSON.stringify({result:'PASS minimal private site composition',checks,actual_current_generic_helpers:7,seal_snapshot_synthetic:true,private_eight_body_result_separate:true,synthetic_auth_identity_and_rows:true,financial_api_installed:false,full_modules:fullReceipt?.modules_installed??0,atomic_faults:fullReceipt?.faults??0,production_changed:false}));
 }catch(error){console.error(JSON.stringify({error:error.message,code:error.code,where:error.where}));process.exitCode=1;}finally{await db.close();}
