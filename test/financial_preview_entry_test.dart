@@ -16,6 +16,7 @@ import 'package:sk_works/features/invoices/invoice_cloud_page.dart';
 import 'package:sk_works/features/payroll/payment_certificate_repository.dart';
 import 'package:sk_works/features/payroll/payment_certificates_page.dart';
 import 'package:sk_works/features/shared/financial_preview_chrome.dart';
+import 'package:sk_works/features/shared/company_seal_pdf.dart';
 
 // The public printing cache supplies repository font bytes without a network
 // request or PdfMemoryCache's 20-minute eviction Timer in widget FakeAsync.
@@ -114,6 +115,14 @@ void main() {
       testWidgets(
         'actual ${payment ? 'payment' : 'invoice'} entry keeps one compact footer narrow=$narrow',
         (tester) async {
+          // The immutable seal asset Future is cached globally in production.
+          // Create it in the real async zone before any widget mount, so the
+          // next test never awaits a Future owned by a retired FakeAsync zone.
+          await tester.runAsync(() async {
+            await CompanySealPdf.loadFont();
+            await PdfGoogleFonts.notoSansJPRegular();
+            await PdfGoogleFonts.notoSansJPBold();
+          });
           tester.view.physicalSize = Size(narrow ? 320 : 430, 932);
           tester.view.devicePixelRatio = 1;
           addTearDown(tester.view.resetPhysicalSize);
