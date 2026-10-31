@@ -89,9 +89,10 @@ export async function verifyConsent(db,{q,check,sourceContract}){
    const pg=(await import(process.argv[2])).default;
    const peer=new pg.Client({connectionString:process.env.SKO_CONSENT_FIXTURE_URL,application_name:'sko-consent-peer'});
    await peer.connect();
+   await peer.query("set statement_timeout='10s';set lock_timeout='8s'");
    try{
     await peer.query("select set_config('request.jwt.claim.sub','',false),set_config('request.jwt.claim','',false),set_config('request.jwt.claims',$1,false)",[claims()]);
-    const blocked=async()=>{for(let n=0;n<100;n++){if(await q("select exists(select 1 from pg_stat_activity where application_name='sko-consent-peer' and wait_event_type='Lock')v")){nativeWaits++;return;}await new Promise(r=>setTimeout(r,10));}throw Error('Native peer did not really wait');};
+    const blocked=async()=>{for(let n=0;n<200;n++){if(await q("select exists(select 1 from pg_stat_activity where application_name='sko-consent-peer' and wait_event_type='Lock')v")){nativeWaits++;return;}await new Promise(r=>setTimeout(r,10));}throw Error('Native peer did not really wait');};
     const peerConfirm=(x,p)=>peer.query('select site_order_outgoing_private.confirm_unsigned($1,$2,$3,$4,$5,$6,$7,true)v',[...params(x),p.preview_id,x.decision]);
     const peerRetire=x=>peer.query('select site_order_outgoing_private.retire_prepare($1,$2,$3,$4,$5,true)v',params(x));
     const retireFirst=await make(200);await prepare(retireFirst);const rfp=await preview(retireFirst);
@@ -101,6 +102,8 @@ export async function verifyConsent(db,{q,check,sourceContract}){
     await blocked();await db.exec('commit');
     const refused=await waitingConfirm;check(Boolean(refused.error&&/retired/.test(refused.error.message)),true);
     check(await q('select count(*)::int v from site_order_artifact_private.render_jobs where request_id=$1',[retireFirst.decision]),0);
+    check(await q('select count(*)::int v from trade_document_consent_private.receipts where request_id=$1',[retireFirst.decision]),0);
+    check(await q('select count(*)::int v from site_order_outgoing_private.decision_receipts where request_id=$1',[retireFirst.decision]),0);
     const consentFirst=await make(220);await prepare(consentFirst);const cfp=await preview(consentFirst);
     await db.exec('begin');await confirm(consentFirst,cfp);
     const waitingRetire=peerRetire(consentFirst).then(r=>r.rows[0].v);

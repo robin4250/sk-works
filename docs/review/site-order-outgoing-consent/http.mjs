@@ -20,8 +20,9 @@ export async function verifyConsentHttp(db,{q,check,UA,A,sid,sid2,make,prepare,p
  const handler=createOutgoingPrepareHandler({verify:createProjectVerifier(client,base),connect:async()=>{
   connections++;let peer=db;
   if(process.argv[3]==='postgres'){const pg=(await import(process.argv[2])).default;peer=new pg.Client({connectionString:process.env.SKO_CONSENT_FIXTURE_URL});await peer.connect();}
+  const before=(await peer.query("select coalesce(nullif(current_setting('request.jwt.claims',true),''),'{}')::jsonb v")).rows[0].v;
   await peer.query("select set_config('request.jwt.claim.sub','',false),set_config('request.jwt.claim','',false)");
-  return {query:async(sql,args)=>{if(sql.includes('.confirm_unsigned('))mutations++;const result=await peer.query(sql,args);if(sql==='commit'&&dropAck){dropAck=false;throw Error('fixture committed ACK lost');}return result;},end:async()=>{closed++;if(peer!==db)await peer.end();}};
+  return {query:async(sql,args)=>{if(sql.includes('.confirm_unsigned('))mutations++;const result=await peer.query(sql,args);if(sql==='commit'){const state=(await peer.query("select jsonb_build_object('claims',coalesce(nullif(current_setting('request.jwt.claims',true),''),'{}')::jsonb,'sub',coalesce(current_setting('request.jwt.claim.sub',true),''),'claim',coalesce(current_setting('request.jwt.claim',true),''))v")).rows[0].v;check(state,{claims:before,sub:'',claim:''});}if(sql==='commit'&&dropAck){dropAck=false;throw Error('fixture committed ACK lost');}return result;},end:async()=>{closed++;if(peer!==db)await peer.end();}};
  }});
  const post=async(body,session=sid,token)=>handler(new Request(base+'/functions/v1/site-order-workflow/outgoing',{method:'POST',headers:{authorization:'Bearer '+(token??await jwt(session))},body:JSON.stringify(body)}));
  const x=await make(300);await prepare(x);const [site,doc,local,trade,request]=params(x);

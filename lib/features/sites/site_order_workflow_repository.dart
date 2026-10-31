@@ -12,6 +12,8 @@ import '../shared/trade_document_form_session.dart';
 import 'site_order_approval_journal.dart';
 import 'site_order_outgoing_journal.dart';
 import 'site_order_outgoing_entries.dart';
+import 'site_order_outgoing_consent.dart';
+import 'site_order_outgoing_consent_preview.dart';
 
 String siteOrderRequestId() {
   final random = Random.secure();
@@ -80,6 +82,13 @@ abstract class SiteOrderWorkflowApi extends ChangeNotifier {
       throw StateError('注文の準備結果を確認できません。');
   Future<String> retireOutgoing(SiteOrderPendingPrepare entry, {required bool confirmed}) async =>
       throw StateError('注文の準備停止を確認できません。');
+  Future<List<SiteOrderConsentReference>> pendingOutgoingConsents(String siteId) async => const [];
+  Future<SiteOrderOutgoingConsentPreview> previewUnsignedOutgoing(SiteOrderPendingPrepare entry) async =>
+      throw StateError('注文の押印前確認を開始できません。');
+  Future<SiteOrderConsentObservation> confirmUnsignedOutgoing(SiteOrderConsentReference reference, {required bool confirmed}) async =>
+      throw StateError('注文の確認を保存できません。');
+  Future<SiteOrderConsentObservation> inspectOutgoingConsent(SiteOrderConsentReference reference) async =>
+      throw StateError('注文の結果を確認できません。');
   Future<List<SiteOrderRegisteredTarget>> registeredOutgoingTargets(String siteId) async =>
       throw StateError('登録済み協力会社を確認できません。');
 }
@@ -115,6 +124,7 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
   final _retired = Completer<void>();
   final SiteOrderApprovalJournal _approvalJournal;
   final SiteOrderOutgoingJournal _outgoingJournal;
+  final _consentJournal = SiteOrderConsentJournal();
   final _replyJournal = SiteOrderApprovalJournal.forReplyRecovery();
   final _refusalJournal = SiteOrderRefusalJournal();
   String get _actor => _client.auth.currentUser!.id;
@@ -208,6 +218,49 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
     final entries = await _outgoingJournal.read(_actor, _company!, siteId);
     await verify();
     return entries;
+  }
+
+  @override
+  Future<List<SiteOrderConsentReference>> pendingOutgoingConsents(String siteId) async {
+    await verify();
+    final entries = await _consentJournal.read(_actor, _company!, siteId);
+    await verify();
+    return entries;
+  }
+
+  @override
+  Future<SiteOrderOutgoingConsentPreview> previewUnsignedOutgoing(SiteOrderPendingPrepare entry) async {
+    await verify();
+    if (entry.sessionId != _capturedSessionId) {
+      throw StateError('ログイン状態が変わりました。結果照会を先に行ってください。');
+    }
+    final value = _map(_map(await _call(entry.command('preview_unsigned'), write: true, outgoing: true))['result']);
+    if (value['document_id'] != entry.documentId ||
+        (value['body'] as Map?)?['issuer_company_id'] != _company) {
+      throw StateError('注文の確認元が変わりました。');
+    }
+    return SiteOrderOutgoingConsentPreview.fromServerEnvelope(value);
+  }
+
+  @override
+  Future<SiteOrderConsentObservation> confirmUnsignedOutgoing(SiteOrderConsentReference reference, {required bool confirmed}) async {
+    if (!confirmed) throw StateError('押印内容の明示確認が必要です。');
+    await verify();
+    if (reference.prepare.sessionId != _capturedSessionId) {
+      throw StateError('ログイン状態が変わりました。結果照会を先に行ってください。');
+    }
+    // Persist only IDs/digest before the first mutation; unknown results retain it.
+    await _consentJournal.save(_actor, _company!, reference);
+    await verify();
+    final result = _map(_map(await _call({...reference.command('confirm_unsigned'), 'confirmed': true}, write: true, outgoing: true))['result']);
+    return SiteOrderConsentObservation.decode(result, reference, _company!);
+  }
+
+  @override
+  Future<SiteOrderConsentObservation> inspectOutgoingConsent(SiteOrderConsentReference reference) async {
+    await verify();
+    final result = _map(_map(await _call(reference.command('decision_status'), outgoing: true))['result']);
+    return SiteOrderConsentObservation.decode(result, reference, _company!);
   }
 
   @override

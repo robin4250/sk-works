@@ -47,6 +47,7 @@ jobs:
           SKO_CONSENT_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_document_consent_fixture
         run: |
           test "$(id -u)" -ne 0
+          export SKO_CONSENT_RECEIPT_PATH="$GITHUB_WORKSPACE/consent-receipt.json"
           export SKO_EXACT_EIGHT_SOURCE_ROOT="$GITHUB_WORKSPACE/.actual-source"
           export SKO_TRADE_C_SOURCE_ROOT="$GITHUB_WORKSPACE/.c-source"
           export SKO_SITE_REPLY_RECOVERY_SOURCE_ROOT="$GITHUB_WORKSPACE/.reply-source"
@@ -57,7 +58,19 @@ jobs:
           else
             node docs/review/site-order-outgoing-consent/verify.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
           fi
+      - name: Hash Native HTTP receipt
+        if: matrix.engine == 'postgres'
+        run: sha256sum consent-receipt.json > consent-receipt.sha256
+      - uses: actions/upload-artifact@v4
+        if: matrix.engine == 'postgres'
+        with:
+          name: order-consent-native-${{ github.sha }}
+          path: |
+            consent-receipt.json
+            consent-receipt.sha256
+          if-no-files-found: error
   preview-sdk:
+    needs: exact-eight-consent
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -66,5 +79,11 @@ jobs:
       - uses: subosito/flutter-action@v2
         with: {channel: stable, flutter-version: '3.47.5', cache: true}
       - run: flutter pub get --enforce-lockfile
-      - run: flutter test test/site_order_outgoing_consent_preview_test.dart
-      - run: flutter analyze lib/features/sites/site_order_outgoing_consent_preview.dart test/site_order_outgoing_consent_preview_test.dart
+      - uses: actions/download-artifact@v4
+        with: {name: 'order-consent-native-${{ github.sha }}'}
+      - run: sha256sum --check consent-receipt.sha256
+      - name: Actual SDK repository, persistent ID journal and Native receipt
+        env:
+          SKO_CONSENT_RECEIPT_PATH: ${{ github.workspace }}/consent-receipt.json
+        run: flutter test test/site_order_outgoing_consent_preview_test.dart test/site_order_outgoing_consent_repository_test.dart
+      - run: flutter analyze lib/features/sites/site_order_outgoing_consent.dart lib/features/sites/site_order_outgoing_consent_preview.dart lib/features/sites/site_order_workflow_repository.dart test/site_order_outgoing_consent_preview_test.dart test/site_order_outgoing_consent_repository_test.dart

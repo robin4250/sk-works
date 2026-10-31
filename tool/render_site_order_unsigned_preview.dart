@@ -28,7 +28,8 @@ Future<void> main(List<String> arguments) async {
       throw const FormatException('Preview envelope required.');
     }
     final preview = SiteOrderOutgoingConsentPreview.fromServerEnvelope(
-        Map<String, dynamic>.from(raw));
+      Map<String, dynamic>.from(raw),
+    );
     final bytes = await preview.render();
     if (bytes.length > 20 * 1024 * 1024) {
       throw StateError('Preview PDF too large.');
