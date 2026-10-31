@@ -23,16 +23,22 @@ Map<String, String> _input() => {
 
 class _Api extends SiteOrderWorkflowApi {
   bool expired = false;
+  bool admitted = false;
   int contexts = 0;
   @override
   bool get invalidated => expired;
   @override
   void requireCurrent() {
-    if (expired) throw StateError('expired');
+    if (expired || !admitted) throw StateError('expired or not admitted');
   }
 
   @override
-  Future<void> verify() async => requireCurrent();
+  Future<void> verify() async {
+    if (expired) throw StateError('expired');
+    admitted = true;
+    requireCurrent();
+  }
+
   @override
   Future<Map<String, dynamic>> outgoingContext(
     String siteId,
