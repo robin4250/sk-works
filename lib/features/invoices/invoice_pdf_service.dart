@@ -1410,33 +1410,14 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                           ? _openAcceptanceEditor : null,
                     ),
                   if (approvals.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              approvals
-                                  .map(
-                                    (item) =>
-                                        '${item.name}：${item.approved ? '承認済み' : '承認待ち'}',
-                                  )
-                                  .join('　'),
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                          if (approvals.any((row) => row.canCurrentUserSetStampSurname))
-                            TextButton.icon(
-                              onPressed: _approving ? null : _setApprovalSurname,
+                    InvoicePreviewApprovalStatus(
+                      approvals: approvals,
+                      surnameAction: approvals.any((row) => row.canCurrentUserSetStampSurname)
+                          ? TextButton.icon(onPressed: _approving ? null : _setApprovalSurname,
                               icon: const Icon(Icons.badge_outlined),
-                              label: Text(SkoLanguageController.isEnglish ? 'Seal surname' : '名字設定'),
-                            ),
-                          if (!invoiceNoticeApprovalReleased) approvalEntry,
-                        ],
-                      ),
+                              label: Text(SkoLanguageController.isEnglish ? 'Seal surname' : '名字設定'))
+                          : null,
+                      approvalAction: invoiceNoticeApprovalReleased ? null : approvalEntry,
                     ),
                   if (invoiceNoticeApprovalReleased)
                     Padding(
@@ -1493,6 +1474,26 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
       ),
     ));
   }
+}
+
+/// Approval text and actions wrap independently at narrow widths and large text.
+class InvoicePreviewApprovalStatus extends StatelessWidget {
+  const InvoicePreviewApprovalStatus({super.key, required this.approvals,
+    this.surnameAction, this.approvalAction});
+  final List<InvoiceApprovalRecord> approvals;
+  final Widget? surnameAction, approvalAction;
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Text(approvals.map((item) => '${item.name}：${item.approved ? '承認済み' : '承認待ち'}').join('　'),
+        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+      Wrap(spacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
+        if (surnameAction != null) surnameAction!,
+        if (approvalAction != null) approvalAction!,
+      ]),
+    ]),
+  );
 }
 
 /// Optional preview instructions stay collapsed so the document has priority.

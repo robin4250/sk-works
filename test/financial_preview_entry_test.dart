@@ -43,78 +43,86 @@ void main() {
     PrintingPlatform.instance = original;
   });
   for (final payment in [false, true]) {
-    testWidgets(
-      'actual ${payment ? 'payment' : 'invoice'} entry keeps one compact footer',
-      (tester) async {
-        tester.view.physicalSize = const Size(430, 932);
-        tester.view.devicePixelRatio = 1;
-        addTearDown(tester.view.resetPhysicalSize);
-        addTearDown(tester.view.resetDevicePixelRatio);
-        final invoice = InvoiceEngine.calculate(
-          customerId: 'Synthetic company',
-          billingPeriod: '2026年9月',
-          detailMode: InvoiceDetailMode.siteBreakdownOnInvoice,
-          sites: const [
-            SiteInvoiceCalculation(
-              siteId: 'synthetic-site',
-              siteName: 'Synthetic site',
-              lines: [
-                InvoiceLine(label: 'work', quantity: 1, unitPriceYen: 100),
-              ],
+    for (final narrow in [false, true]) {
+      testWidgets(
+        'actual ${payment ? 'payment' : 'invoice'} entry keeps one compact footer narrow=$narrow',
+        (tester) async {
+          tester.view.physicalSize = Size(narrow ? 320 : 430, 932);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+          final invoice = InvoiceEngine.calculate(
+            customerId: 'Synthetic company',
+            billingPeriod: '2026年9月',
+            detailMode: InvoiceDetailMode.siteBreakdownOnInvoice,
+            sites: const [
+              SiteInvoiceCalculation(
+                siteId: 'synthetic-site',
+                siteName: 'Synthetic site',
+                lines: [
+                  InvoiceLine(label: 'work', quantity: 1, unitPriceYen: 100),
+                ],
+              ),
+            ],
+          );
+          final record = PaymentCertificateRecord(
+            id: 'synthetic-preview',
+            partnerCompanyName: 'Synthetic partner',
+            periodStart: DateTime(2026, 9),
+            periodEnd: DateTime(2026, 9, 30),
+            grossAmount: 100,
+            deductions: 0,
+            netAmount: 100,
+            status: 'preview',
+            revision: 1,
+          );
+          await tester.pumpWidget(
+            MaterialApp(
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(context)
+                    .copyWith(textScaler: TextScaler.linear(narrow ? 2 : 1)),
+                child: child!,
+              ),
+              home: payment
+                  ? PaymentCertificatePreviewPage(record: record)
+                  : InvoicePreviewPage(invoice: invoice),
             ),
-          ],
-        );
-        final record = PaymentCertificateRecord(
-          id: 'synthetic-preview',
-          partnerCompanyName: 'Synthetic partner',
-          periodStart: DateTime(2026, 9),
-          periodEnd: DateTime(2026, 9, 30),
-          grossAmount: 100,
-          deductions: 0,
-          netAmount: 100,
-          status: 'preview',
-          revision: 1,
-        );
-        await tester.pumpWidget(
-          MaterialApp(
-            home: payment
-                ? PaymentCertificatePreviewPage(record: record)
-                : InvoicePreviewPage(invoice: invoice),
-          ),
-        );
-        // PDF font fallback and PNG conversion use real async work; advance them
-        // outside FakeAsync, then render frames. No timeout enlargement or real RPC.
-        for (
-          var stage = 0;
-          stage < 100 && find.byType(FinancialPreviewChrome).evaluate().isEmpty;
-          stage++
-        ) {
+          );
+          // PDF font fallback and PNG conversion use real async work; advance them
+          // outside FakeAsync, then render frames. No timeout enlargement or real RPC.
+          for (
+            var stage = 0;
+            stage < 100 &&
+                find.byType(FinancialPreviewChrome).evaluate().isEmpty;
+            stage++
+          ) {
+            await tester.runAsync(
+              () => Future<void>.delayed(const Duration(milliseconds: 20)),
+            );
+            await tester.pump();
+          }
+          expect(find.byType(FinancialPreviewChrome), findsOneWidget);
+          expect(find.byType(Scaffold), findsOneWidget);
+          final viewport = tester.getSize(
+            find.byKey(const ValueKey('financial_preview_document_viewport')),
+          );
+          expect(viewport.height, greaterThan(narrow ? 300 : 550));
+          expect(
+            find.byKey(const ValueKey('financial_preview_footer')),
+            findsOneWidget,
+          );
+          if (payment) {
+            final preview = tester.widget<PdfPreview>(find.byType(PdfPreview));
+            expect(preview.useActions, isFalse);
+            expect(preview.initialPageFormat, PdfPageFormat.a4);
+          }
+          expect(tester.takeException(), isNull);
+          await tester.pumpWidget(const SizedBox.shrink());
           await tester.runAsync(
             () => Future<void>.delayed(const Duration(milliseconds: 20)),
           );
-          await tester.pump();
-        }
-        expect(find.byType(FinancialPreviewChrome), findsOneWidget);
-        expect(find.byType(Scaffold), findsOneWidget);
-        final viewport = tester.getSize(
-          find.byKey(const ValueKey('financial_preview_document_viewport')),
-        );
-        expect(viewport.height, greaterThan(550));
-        expect(
-          find.byKey(const ValueKey('financial_preview_footer')),
-          findsOneWidget,
-        );
-        if (payment) {
-          final preview = tester.widget<PdfPreview>(find.byType(PdfPreview));
-          expect(preview.useActions, isFalse);
-          expect(preview.initialPageFormat, PdfPageFormat.a4);
-        }
-        expect(tester.takeException(), isNull);
-        await tester.pumpWidget(const SizedBox.shrink());
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 20)),
-        );
-      },
-    );
+        },
+      );
+    }
   }
 }

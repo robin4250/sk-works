@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/shared/financial_preview_chrome.dart';
+import 'package:sk_works/features/invoices/invoice_pdf_service.dart';
+import 'package:sk_works/features/invoices/invoice_approval_repository.dart';
+import 'package:sk_works/features/invoices/invoice_approval_entry_actions.dart';
 
 void main() {
   for (final scale in [1.0, 1.5, 2.0]) {
@@ -90,4 +93,67 @@ void main() {
       },
     );
   }
+  testWidgets('real approval controls wrap at 320px with double text', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 750);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    var approves = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MediaQuery(
+          data: const MediaQueryData(
+            size: Size(320, 750),
+            textScaler: TextScaler.linear(2),
+          ),
+          child: Scaffold(
+            body: FinancialPreviewChrome(
+              actions: const [],
+              status: [
+                InvoicePreviewApprovalStatus(
+                  approvals: const [
+                    InvoiceApprovalRecord(
+                      userId: 'synthetic',
+                      name: 'Synthetic approver',
+                      position: 1,
+                      status: 'pending',
+                      canCurrentUserApprove: true,
+                    ),
+                  ],
+                  surnameAction: TextButton(
+                    onPressed: () {},
+                    child: const Text('名字設定'),
+                  ),
+                  approvalAction: InvoiceApprovalEntryActions(
+                    notificationOnly: false,
+                    canApprove: true,
+                    isPendingApprover: true,
+                    fromNotification: false,
+                    busy: false,
+                    onLegacyApprove: () {
+                      approves++;
+                    },
+                    controller: null,
+                    notificationId: '',
+                    invoiceId: 'synthetic',
+                    revision: '1',
+                    confirmSavedApproval: () async => true,
+                  ),
+                ),
+              ],
+              preview: const ColoredBox(color: Colors.white),
+              footer: const SizedBox(height: 48),
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(find.text('Synthetic approver：承認待ち'), findsOneWidget);
+    await tester.ensureVisible(find.widgetWithText(FilledButton, '承認'));
+    await tester.tap(find.widgetWithText(FilledButton, '承認'));
+    expect(approves, 1);
+    expect(tester.takeException(), isNull);
+  });
 }
