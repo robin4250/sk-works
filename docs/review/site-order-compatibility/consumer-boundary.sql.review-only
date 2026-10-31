@@ -1,0 +1,638 @@
+-- REVIEW ONLY. Separate production approval required; feature remains OFF.
+-- Install after package foundation; before any delivery mutation becomes reachable.
+begin;
+set local lock_timeout='2s';
+set local statement_timeout='20s';
+do $compatibility$
+declare signature text; before_attributes jsonb; check_definition text;
+begin
+ if current_user<>'postgres' then raise exception 'owner deployment only'; end if;
+ if to_regclass('site_order_package_private.packages') is null then raise exception 'package ownership dependency absent'; end if;
+ lock table private.company_data_delivery_items in access exclusive mode;
+ select pg_get_constraintdef(c.oid) into check_definition from pg_constraint c
+ where c.conrelid='private.company_data_delivery_items'::regclass
+ and c.conname='company_data_delivery_items_payload_kind_check'
+ and c.contype='c' and c.convalidated and not c.connoinherit;
+ if check_definition is distinct from 'CHECK ((payload_kind = ANY (ARRAY[''qualification''::text, ''personnel''::text])))' then
+  raise exception 'payload-kind CHECK drift';
+ end if;
+
+ signature := 'private.company_document_exchange(text,jsonb)';
+ if to_regprocedure(signature) is null or md5(pg_get_functiondef(to_regprocedure(signature))) <> '1cdade431386654aaf123955b5fc49b2' then
+  raise exception 'compatibility dependency source drift: %', signature;
+ end if;
+ if exists(select 1 from pg_proc p where p.oid=to_regprocedure(signature)
+   and (p.proowner<>'postgres'::regrole or not p.prosecdef or p.proconfig is distinct from array['search_path=""']::text[]
+     or p.proacl::text is distinct from '{postgres=X/postgres,authenticated=X/postgres}')) then
+  raise exception 'compatibility dependency owner/config/ACL drift: %', signature;
+ end if;
+ select to_jsonb(p)-'prosrc' into before_attributes from pg_proc p where p.oid=to_regprocedure(signature);
+ execute $replacement$CREATE OR REPLACE FUNCTION private.company_document_exchange(p_action text, p_data jsonb DEFAULT '{}'::jsonb)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare c uuid; cn text; target uuid; tn text; token uuid; did uuid; x jsonb; r record; item record; ancestry jsonb; fid uuid; count_items integer:=0; exchange_path text; exchange_photo_index integer; qualification_extra_path text; qualification_extra_index integer;
+begin
+ if auth.uid() is null then raise exception 'ログインしてください。'; end if;
+ select m.company_id,co.name into c,cn from public.company_members m join public.companies co on co.id=m.company_id
+ where m.user_id=auth.uid() and m.role::text in ('owner','admin') limit 1;
+ if c is null then raise exception '会社の管理者だけが操作できます。';end if;
+ if p_action='issue' then
+  insert into private.document_receive_codes(company_id,created_by) values(c,auth.uid()) returning code into token;
+  return jsonb_build_object('code',token,'company_name',cn,'expires_days',7);
+ elsif p_action='resolve' then
+  select rc.company_id,co.name into target,tn from private.document_receive_codes rc join public.companies co on co.id=rc.company_id
+  where rc.code=(p_data->>'code')::uuid and rc.expires_at>now() and rc.used_at is null;
+  if target is null or target=c then raise exception '有効な相手会社の受取コードを入力してください。';end if;
+  return jsonb_build_object('company_name',tn);
+ elsif p_action='list' then
+  return coalesce((select jsonb_agg(to_jsonb(d)||jsonb_build_object('received',d.recipient_company_id=c) order by d.created_at desc)
+   from private.document_deliveries d where d.recipient_company_id=c or d.sender_company_id=c),'[]'::jsonb);
+ elsif p_action='items' then
+  if not exists(select 1 from private.document_deliveries d where d.id=(p_data->>'id')::uuid and (d.recipient_company_id=c or d.sender_company_id=c)) then raise exception 'この提出書類は確認できません。';end if;
+  return coalesce((select jsonb_agg(to_jsonb(i) order by i.photo_order nulls last,i.name,i.id) from private.document_delivery_items i where i.delivery_id=(p_data->>'id')::uuid),'[]'::jsonb);
+ elsif p_action='data_items' then
+  if not exists(select 1 from private.document_deliveries d where d.id=(p_data->>'id')::uuid and (d.recipient_company_id=c or d.sender_company_id=c)) then raise exception 'この提出データは確認できません。';end if;
+  return coalesce((select jsonb_agg(to_jsonb(i) order by i.created_at,i.id) from private.company_data_delivery_items i where i.delivery_id=(p_data->>'id')::uuid and i.payload_kind in ('qualification','personnel')),'[]'::jsonb);
+ elsif p_action='sources' then
+  return coalesce((select jsonb_agg(v) from (
+   select jsonb_build_object('id',d.id,'kind','company','name',d.name,'group',cn) v from public.company_required_documents d
+   where d.company_id=c and d.attachment_path is not null and d.is_active and d.scope='upstream'
+   union all
+   select jsonb_build_object('id',d.id,'kind','archive','name',d.name,'group',f.name) from public.partner_archive_documents d
+   join public.partner_archive_folders f on f.id=d.folder_id where d.company_id=c and d.attachment_path is not null and d.is_active
+   union all
+   select jsonb_build_object(
+     'id',s.id,
+     'kind','worker_document',
+     'name',w.name||' / '||dr.name,
+     'group',w.name,
+     'worker_id',s.worker_id
+   )
+   from public.worker_document_statuses s
+   join public.document_requirements dr on dr.id=s.requirement_id
+   join public.workers w on w.id=s.worker_id
+   where s.company_id=c
+     and w.company_id=c
+     and dr.company_id=c
+     and dr.scope in ('upstream','both')
+     and dr.is_active
+     and s.attachment_path is not null
+     and s.status in ('submitted','verified')
+   union all
+   select jsonb_build_object(
+     'id',q.id,
+     'kind','worker_qualification',
+     'name',w.name||' / '||qm.name,
+     'group',w.name,
+     'worker_id',q.worker_id
+   )
+   from public.worker_qualifications q
+   join public.qualification_master qm on qm.id=q.qualification_master_id
+   join public.workers w on w.id=q.worker_id
+   where q.company_id=c
+     and w.company_id=c
+     and qm.company_id=c
+   union all
+   select jsonb_build_object(
+     'id',w.id,
+     'kind','worker_personnel',
+     'name',w.name,
+     'group',cn,
+     'worker_id',w.id
+   )
+   from public.workers w
+   where w.company_id=c and w.status='active'
+  ) s),'[]'::jsonb);
+ elsif p_action<>'send' then raise exception '操作を確認してください。';end if;
+ did:=(p_data->>'request_id')::uuid;
+ if did is null then raise exception '送信をやり直してください。';end if;
+ -- Network retries return the same result and never send twice.
+ if exists(select 1 from private.document_deliveries d where d.id=did and d.sender_company_id=c and d.sent_by=auth.uid()) then return jsonb_build_object('id',did);end if;
+ if jsonb_typeof(p_data->'items') is distinct from 'array' then raise exception '書類を選択してください。';end if;
+ if jsonb_array_length(p_data->'items') not between 1 and 100 or length(coalesce(p_data->>'note',''))>2000 then raise exception '書類は1〜100件、案内は2000文字以内にしてください。';end if;
+
+ -- Validate every received-data reference before delivery/code mutation.
+ for x in select value from jsonb_array_elements(p_data->'items') loop
+  if jsonb_typeof(x) is distinct from 'object' or jsonb_typeof(x->'kind') is distinct from 'string'
+    or x->>'kind' not in ('received','received_data','worker_personnel','worker_qualification','company','archive','worker_document')
+    or jsonb_typeof(x->'id') is distinct from 'string'
+    or x->>'id' !~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' then
+   raise exception '送信データの種類を確認してください。' using errcode='22023';
+  end if;
+  if x->>'kind'='received_data' then
+   if not exists (
+    select 1 from private.company_data_delivery_items i
+    join private.document_deliveries d on d.id=i.delivery_id
+    where i.id=(x->>'id')::uuid and d.recipient_company_id=c
+      and i.payload_kind in ('qualification','personnel')
+   ) then raise exception 'このデータは個別の承認画面で確認してください。' using errcode='22023'; end if;
+  end if;
+ end loop;
+ token:=(p_data->>'code')::uuid;
+ select rc.company_id into target from private.document_receive_codes rc where rc.code=token and rc.expires_at>now() and rc.used_at is null for update;
+ if target is null or target=c then raise exception '受取コードが無効・使用済みです。相手管理者に確認してください。';end if;
+ select name into tn from public.companies where id=target;
+ insert into private.document_deliveries(id,sender_company_id,recipient_company_id,sender_name,recipient_name,sent_by,note)
+ values(did,c,target,cn,tn,auth.uid(),coalesce(p_data->>'note',''));
+ for x in select value from jsonb_array_elements(p_data->'items') loop
+  if x->>'kind'='received' then
+   select i.* into r from private.document_delivery_items i join private.document_deliveries d on d.id=i.delivery_id
+   where i.id=(x->>'id')::uuid and d.recipient_company_id=c;
+   if not found then raise exception '再提出できる受領書類がありません。';end if;
+   ancestry:=jsonb_build_array(cn)||r.company_path;
+   if jsonb_array_length(ancestry)>32 then raise exception '所属関係が長すぎます。';end if;
+   insert into private.document_delivery_items(delivery_id,name,bucket,path,company_path,source_item_id,expires_at)
+   values(did,r.name,r.bucket,r.path,ancestry,r.id,r.expires_at);
+  elsif x->>'kind'='received_data' then
+   select i.* into r
+   from private.company_data_delivery_items i
+   join private.document_deliveries d on d.id=i.delivery_id
+   where i.id=(x->>'id')::uuid and d.recipient_company_id=c and i.payload_kind in ('qualification','personnel');
+   if not found then raise exception '再提出できる受領データがありません。';end if;
+   ancestry:=jsonb_build_array(cn)||r.company_path;
+   if jsonb_array_length(ancestry)>32 then raise exception '所属関係が長すぎます。';end if;
+   insert into private.company_data_delivery_items(delivery_id,payload_kind,payload,company_path,source_item_id)
+   values(did,r.payload_kind,r.payload,ancestry,r.id);
+  elsif x->>'kind'='worker_personnel' then
+   select w.* into r
+   from public.workers w
+   where w.id=(x->>'id')::uuid
+     and w.company_id=c
+     and w.status='active';
+   if not found then raise exception '送信できる人員情報がありません。';end if;
+   ancestry:=jsonb_build_array(cn);
+   insert into private.company_data_delivery_items(delivery_id,payload_kind,payload,company_path)
+   values(
+     did,
+     'personnel',
+     jsonb_build_object(
+       'source_worker_id',r.id,
+       'name',r.name,
+       'kana',r.kana,
+       'phone',r.phone,
+       'email',r.email,
+       'affiliation',r.affiliation,
+       'role',r.role,
+       'experience_years',r.experience_years
+     ),
+     ancestry
+   );
+
+   for item in
+    select q.*,qm.name qualification_name,qm.issuer master_issuer
+    from public.worker_qualifications q
+    join public.qualification_master qm on qm.id=q.qualification_master_id
+    where q.company_id=c
+      and q.worker_id=r.id
+      and qm.company_id=c
+   loop
+    insert into private.company_data_delivery_items(delivery_id,payload_kind,payload,company_path)
+    values(
+      did,
+      'qualification',
+      jsonb_build_object(
+        'source_worker_id',item.worker_id,
+        'source_qualification_id',item.id,
+        'worker_name',r.name,
+        'qualification_name',item.qualification_name,
+        'certificate_number',item.certificate_number,
+        'issuer',coalesce(item.issuer,item.master_issuer),
+        'issued_at',item.issued_at,
+        'expires_at',item.expires_at,
+        'notes',item.notes,
+        'attachment_paths',to_jsonb(array_remove(array[item.attachment_path,item.attachment_back_path]||item.attachment_extra_paths,null))
+      ),
+      ancestry
+    );
+    if item.attachment_path is not null then
+     if not exists(select 1 from storage.objects o where o.bucket_id='qualification-certificates' and o.name=item.attachment_path) then raise exception '資格証ファイルが見つかりません。';end if;
+     insert into private.document_delivery_items(delivery_id,name,bucket,path,company_path,expires_at)
+     values(did,r.name||' / '||item.qualification_name,'qualification-certificates',item.attachment_path,ancestry,item.expires_at);
+    end if;
+    if item.attachment_back_path is not null then
+     if not exists(select 1 from storage.objects o where o.bucket_id='qualification-certificates' and o.name=item.attachment_back_path) then raise exception '資格証裏面ファイルが見つかりません。';end if;
+     insert into private.document_delivery_items(delivery_id,name,bucket,path,company_path,expires_at)
+     values(did,r.name||' / '||item.qualification_name||'（裏面）','qualification-certificates',item.attachment_back_path,ancestry,item.expires_at);
+    end if;
+    qualification_extra_index:=2;
+    foreach qualification_extra_path in array item.attachment_extra_paths loop
+     qualification_extra_index:=qualification_extra_index+1;
+     if not exists(select 1 from storage.objects o where o.bucket_id='qualification-certificates' and o.name=qualification_extra_path) then
+       raise exception '資格証追加写真ファイルが見つかりません。';
+     end if;
+     insert into private.document_delivery_items(delivery_id,name,bucket,path,company_path,expires_at)
+     values(did,r.name||' / '||item.qualification_name||'（写真'||qualification_extra_index::text||'）','qualification-certificates',qualification_extra_path,ancestry,item.expires_at);
+    end loop;
+   end loop;
+
+   for item in
+    select s.*,dr.name document_name
+    from public.worker_document_statuses s
+    join public.document_requirements dr on dr.id=s.requirement_id
+    where s.company_id=c
+      and s.worker_id=r.id
+      and dr.company_id=c
+      and dr.scope in ('upstream','both')
+      and dr.is_active
+      and s.attachment_path is not null
+      and s.status in ('submitted','verified')
+   loop
+    exchange_photo_index:=0;
+    foreach exchange_path in array case when cardinality(item.attachment_paths)>0
+        then item.attachment_paths else array[item.attachment_path] end loop
+     exchange_photo_index:=exchange_photo_index+1;
+     if not exists(select 1 from storage.objects o where o.bucket_id='worker-documents' and o.name=exchange_path) then raise exception '添付ファイルが見つかりません。';end if;
+     insert into private.document_delivery_items(delivery_id,name,bucket,path,company_path,expires_at)
+     values(did,r.name||' / '||item.document_name||case when exchange_photo_index=1 then '' else '（写真'||exchange_photo_index::text||'）' end,'worker-documents',exchange_path,ancestry,item.expires_at);
+    end loop;
+   end loop;
+  elsif x->>'kind'='worker_qualification' then
+   select
+     q.*,
+     qm.name qualification_name,
+     qm.issuer master_issuer,
+     w.name worker_name
+   into r
+   from public.worker_qualifications q
+   join public.qualification_master qm on qm.id=q.qualification_master_id
+   join public.workers w on w.id=q.worker_id
+   where q.id=(x->>'id')::uuid
+     and q.company_id=c
+     and w.company_id=c
+     and qm.company_id=c;
+   if not found then raise exception '送信できる資格情報がありません。';end if;
+   ancestry:=jsonb_build_array(cn);
+   insert into private.company_data_delivery_items(delivery_id,payload_kind,payload,company_path)
+   values(
+     did,
+     'qualification',
+     jsonb_build_object(
+       'source_worker_id',r.worker_id,
+       'source_qualification_id',r.id,
+       'worker_name',r.worker_name,
+       'qualification_name',r.qualification_name,
+       'certificate_number',r.certificate_number,
+       'issuer',coalesce(r.issuer,r.master_issuer),
+       'issued_at',r.issued_at,
+       'expires_at',r.expires_at,
+       'notes',r.notes,
+        'attachment_paths',to_jsonb(array_remove(array[r.attachment_path,r.attachment_back_path]||r.attachment_extra_paths,null))
+     ),
+     ancestry
+   );
+   if r.attachment_path is not null then
+    if not exists(select 1 from storage.objects o where o.bucket_id='qualification-certificates' and o.name=r.attachment_path) then raise exception '資格証ファイルが見つかりません。';end if;
+    insert into private.document_delivery_items(delivery_id,name,bucket,path,company_path,expires_at)
+    values(did,r.worker_name||' / '||r.qualification_name,'qualification-certificates',r.attachment_path,ancestry,r.expires_at);
+   end if;
+   if r.attachment_back_path is not null then
+    if not exists(select 1 from storage.objects o where o.bucket_id='qualification-certificates' and o.name=r.attachment_back_path) then raise exception '資格証裏面ファイルが見つかりません。';end if;
+    insert into private.document_delivery_items(delivery_id,name,bucket,path,company_path,expires_at)
+    values(did,r.worker_name||' / '||r.qualification_name||'（裏面）','qualification-certificates',r.attachment_back_path,ancestry,r.expires_at);
+   end if;
+    qualification_extra_index:=2;
+    foreach qualification_extra_path in array r.attachment_extra_paths loop
+     qualification_extra_index:=qualification_extra_index+1;
+     if not exists(select 1 from storage.objects o where o.bucket_id='qualification-certificates' and o.name=qualification_extra_path) then
+       raise exception '資格証追加写真ファイルが見つかりません。';
+     end if;
+     insert into private.document_delivery_items(delivery_id,name,bucket,path,company_path,expires_at)
+     values(did,r.worker_name||' / '||r.qualification_name||'（写真'||qualification_extra_index::text||'）','qualification-certificates',qualification_extra_path,ancestry,r.expires_at);
+    end loop;
+  else
+   if x->>'kind'='company' then
+    select d.name,d.attachment_path,d.attachment_paths,d.expires_at,'company-required-documents'::text bucket,null::uuid folder_id into r
+    from public.company_required_documents d where d.id=(x->>'id')::uuid and d.company_id=c and d.is_active and d.scope='upstream';
+   elsif x->>'kind'='archive' then
+    select d.name,d.attachment_path,array[d.attachment_path]::text[] attachment_paths,d.expires_at,'partner-archive-documents'::text bucket,d.folder_id into r
+    from public.partner_archive_documents d where d.id=(x->>'id')::uuid and d.company_id=c and d.is_active;
+   elsif x->>'kind'='worker_document' then
+    select w.name||' / '||dr.name as name,s.attachment_path,s.attachment_paths,s.expires_at,'worker-documents'::text bucket,null::uuid folder_id into r
+    from public.worker_document_statuses s
+    join public.document_requirements dr on dr.id=s.requirement_id
+    join public.workers w on w.id=s.worker_id
+    where s.id=(x->>'id')::uuid
+      and s.company_id=c
+      and w.company_id=c
+      and dr.company_id=c
+      and dr.scope in ('upstream','both')
+      and dr.is_active
+      and s.status in ('submitted','verified');
+   else raise exception '書類の種類を確認してください。';end if;
+   if not found or r.attachment_path is null then raise exception '送信できる添付書類がありません。';end if;
+   ancestry:='[]'::jsonb;fid:=r.folder_id;count_items:=0;
+   while fid is not null loop
+    select f.parent_id,jsonb_build_array(f.name)||ancestry into fid,ancestry from public.partner_archive_folders f where f.id=fid and f.company_id=c;
+    count_items:=count_items+1;
+    if count_items>30 then raise exception '所属関係を確認してください。';end if;
+   end loop;
+   ancestry:=jsonb_build_array(cn)||ancestry;
+   exchange_photo_index:=0;
+   foreach exchange_path in array case when cardinality(r.attachment_paths)>0
+       then r.attachment_paths else array[r.attachment_path] end loop
+    exchange_photo_index:=exchange_photo_index+1;
+    if not exists(select 1 from storage.objects o where o.bucket_id=r.bucket and o.name=exchange_path) then raise exception '添付ファイルが見つかりません。';end if;
+    insert into private.document_delivery_items(delivery_id,name,bucket,path,company_path,expires_at)
+    values(did,r.name||case when exchange_photo_index=1 then '' else '（写真'||exchange_photo_index::text||'）' end,r.bucket,exchange_path,ancestry,r.expires_at);
+   end loop;
+  end if;
+ end loop;
+ update private.document_receive_codes set used_at=now() where code=token;
+ insert into public.app_notifications(company_id,recipient_user_id,kind,title,body,action_key,action_id)
+ select target,m.user_id,'info','協力会社から書類が届きました',cn||'からの提出書類を確認してください。','company_document_delivery',did
+ from public.company_members m where m.company_id=target and m.role::text in ('owner','admin');
+ return jsonb_build_object('id',did);
+end;
+$function$
+$replacement$;
+ if (select to_jsonb(p)-'prosrc' from pg_proc p where p.oid=to_regprocedure(signature)) is distinct from before_attributes then
+  raise exception 'compatibility function attributes changed: %', signature;
+ end if;
+
+ signature := 'private.save_company_delivery_items(text[])';
+ if to_regprocedure(signature) is null or md5(pg_get_functiondef(to_regprocedure(signature))) <> '74298292dc6e7e30034f0fc3b0993ef4' then
+  raise exception 'compatibility dependency source drift: %', signature;
+ end if;
+ if exists(select 1 from pg_proc p where p.oid=to_regprocedure(signature)
+   and (p.proowner<>'postgres'::regrole or not p.prosecdef or p.proconfig is distinct from array['search_path=""']::text[]
+     or p.proacl::text is distinct from null)) then
+  raise exception 'compatibility dependency owner/config/ACL drift: %', signature;
+ end if;
+ select to_jsonb(p)-'prosrc' into before_attributes from pg_proc p where p.oid=to_regprocedure(signature);
+ execute $replacement$CREATE OR REPLACE FUNCTION private.save_company_delivery_items(p_item_keys text[])
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare
+  c uuid;
+  k text;
+  item_id uuid;
+  item_kind text;
+begin
+  select m.company_id into c
+  from public.company_members m
+  where m.user_id=auth.uid() and m.role::text in ('owner','admin')
+  limit 1;
+  if c is null then raise exception '会社の管理者だけが操作できます。'; end if;
+  if p_item_keys is null or cardinality(p_item_keys) not between 1 and 500 then
+    raise exception '保存対象を確認してください。';
+  end if;
+
+
+  -- Preflight the complete batch before the first saved-item write.
+  foreach k in array p_item_keys loop
+    if k is null or k !~ '^(file|data):[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' then
+      raise exception '保存対象を確認してください。' using errcode='22023';
+    end if;
+    item_kind:=split_part(k,':',1); item_id:=split_part(k,':',2)::uuid;
+    if item_kind='file' then
+      if not exists(select 1 from private.document_delivery_items i
+        join private.document_deliveries d on d.id=i.delivery_id
+        where i.id=item_id and d.recipient_company_id=c) then
+        raise exception '保存できない書類が含まれています。' using errcode='22023';
+      end if;
+    else
+      if not exists(select 1 from private.company_data_delivery_items i
+        join private.document_deliveries d on d.id=i.delivery_id
+        where i.id=item_id and d.recipient_company_id=c
+          and i.payload_kind in ('qualification','personnel')) then
+        raise exception 'このデータは個別の承認画面で確認してください。' using errcode='22023';
+      end if;
+    end if;
+  end loop;
+  foreach k in array p_item_keys loop
+    item_kind:=split_part(k,':',1);
+    begin
+      item_id:=split_part(k,':',2)::uuid;
+    exception when others then
+      raise exception '保存対象を確認してください。';
+    end;
+
+    if item_kind='file' then
+      if not exists(
+        select 1
+        from private.document_delivery_items i
+        join private.document_deliveries d on d.id=i.delivery_id
+        where i.id=item_id and d.recipient_company_id=c
+      ) then
+        raise exception '保存できない書類が含まれています。';
+      end if;
+    elsif item_kind='data' then
+      if not exists(
+        select 1
+        from private.company_data_delivery_items i
+        join private.document_deliveries d on d.id=i.delivery_id
+        where i.id=item_id and d.recipient_company_id=c and i.payload_kind in ('qualification','personnel')
+      ) then
+        raise exception '保存できないデータが含まれています。';
+      end if;
+    else
+      raise exception '保存対象の種類を確認してください。';
+    end if;
+
+    insert into private.company_delivery_saved_items(
+      company_id,item_key,saved_by,saved_at
+    )
+    values(c,k,auth.uid(),now())
+    on conflict(company_id,item_key)
+    do update set saved_by=excluded.saved_by,saved_at=excluded.saved_at;
+  end loop;
+end
+$function$
+$replacement$;
+ if (select to_jsonb(p)-'prosrc' from pg_proc p where p.oid=to_regprocedure(signature)) is distinct from before_attributes then
+  raise exception 'compatibility function attributes changed: %', signature;
+ end if;
+
+ signature := 'private.send_site_share(uuid,uuid[])';
+ if to_regprocedure(signature) is null or md5(pg_get_functiondef(to_regprocedure(signature))) <> '6464b62a7cbee910572ea7dc37f9d019' then
+  raise exception 'compatibility dependency source drift: %', signature;
+ end if;
+ if exists(select 1 from pg_proc p where p.oid=to_regprocedure(signature)
+   and (p.proowner<>'postgres'::regrole or not p.prosecdef or p.proconfig is distinct from array['search_path=""']::text[]
+     or p.proacl::text is distinct from null)) then
+  raise exception 'compatibility dependency owner/config/ACL drift: %', signature;
+ end if;
+ select to_jsonb(p)-'prosrc' into before_attributes from pg_proc p where p.oid=to_regprocedure(signature);
+ execute $replacement$CREATE OR REPLACE FUNCTION private.send_site_share(p_site_id uuid, p_target_company_ids uuid[])
+ RETURNS integer
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare
+  c uuid;
+  cn text;
+  s record;
+  target uuid;
+  target_name text;
+  delivery_id uuid;
+  data_id uuid;
+  sent_count integer:=0;
+  r record;
+begin
+  raise exception '現場注文は専用の承認経路を使用してください。' using errcode='22023';
+  select m.company_id,co.name into c,cn
+  from public.company_members m
+  join public.companies co on co.id=m.company_id
+  where m.user_id=auth.uid()
+    and m.role::text in ('owner','admin','manager')
+  limit 1;
+  if c is null then raise exception '管理者・サブ管理者だけが操作できます。'; end if;
+
+  if p_target_company_ids is null
+     or cardinality(p_target_company_ids) not between 1 and 100 then
+    raise exception '送信先会社を選択してください。';
+  end if;
+
+  select st.*,cu.name as customer_name
+  into s
+  from public.sites st
+  left join public.customers cu on cu.id=st.customer_id
+  where st.id=p_site_id and st.company_id=c;
+  if s.id is null then raise exception '現場が見つかりません。'; end if;
+
+  foreach target in array p_target_company_ids loop
+    if not exists(
+      select 1 from private.company_connections cc
+      where cc.status='accepted'
+        and (
+          (cc.parent_company_id=c and cc.child_company_id=target)
+          or
+          (cc.child_company_id=c and cc.parent_company_id=target)
+        )
+    ) then
+      raise exception '接続済みの会社だけに送信できます。';
+    end if;
+
+    select co.name into target_name from public.companies co where co.id=target;
+    if target_name is null then raise exception '送信先会社が見つかりません。'; end if;
+
+    delivery_id:=gen_random_uuid();
+    insert into private.document_deliveries(
+      id,sender_company_id,recipient_company_id,
+      sender_name,recipient_name,sent_by,note
+    )
+    values(
+      delivery_id,c,target,cn,target_name,auth.uid(),
+      '現場データ共有'
+    );
+
+    insert into private.company_data_delivery_items(
+      delivery_id,payload_kind,payload,company_path
+    )
+    values(
+      delivery_id,
+      'site_share',
+      jsonb_build_object(
+        'source_site_id',s.id,
+        'name',coalesce(nullif(s.formal_name,''),s.name),
+        'formal_name',coalesce(s.formal_name,''),
+        'customer_name',coalesce(s.customer_name,''),
+        'address',coalesce(s.address,''),
+        'nearest_station',coalesce(s.nearest_station,''),
+        'representative_name',coalesce(s.representative_name,''),
+        'representative_phone',coalesce(s.representative_phone,''),
+        'notes',coalesce(s.notes,''),
+        'status',s.status,
+        'latitude',s.latitude,
+        'longitude',s.longitude
+      ),
+      jsonb_build_array(cn)
+    )
+    returning id into data_id;
+
+    insert into private.site_share_inbox(
+      data_item_id,recipient_company_id,status
+    )
+    values(data_id,target,'pending');
+
+    insert into public.app_notifications(
+      company_id,recipient_user_id,kind,title,body,action_key,action_id
+    )
+    select
+      target,
+      m.user_id,
+      'approval',
+      '現場データの承認が必要です',
+      cn||'から現場「'||coalesce(nullif(s.formal_name,''),s.name)||
+        '」が届いています。',
+      'site_share_approval',
+      data_id
+    from public.company_members m
+    where m.company_id=target
+      and m.role::text in ('owner','admin','manager');
+
+    sent_count:=sent_count+1;
+  end loop;
+
+  return sent_count;
+end
+$function$
+$replacement$;
+ if (select to_jsonb(p)-'prosrc' from pg_proc p where p.oid=to_regprocedure(signature)) is distinct from before_attributes then
+  raise exception 'compatibility function attributes changed: %', signature;
+ end if;
+
+ signature := 'private.site_share_inbox()';
+ if to_regprocedure(signature) is null or md5(pg_get_functiondef(to_regprocedure(signature))) <> 'c77ddebec774be0aeb82732358828195' then
+  raise exception 'compatibility dependency source drift: %', signature;
+ end if;
+ if exists(select 1 from pg_proc p where p.oid=to_regprocedure(signature)
+   and (p.proowner<>'postgres'::regrole or not p.prosecdef or p.proconfig is distinct from array['search_path=""']::text[]
+     or p.proacl::text is distinct from null)) then
+  raise exception 'compatibility dependency owner/config/ACL drift: %', signature;
+ end if;
+ select to_jsonb(p)-'prosrc' into before_attributes from pg_proc p where p.oid=to_regprocedure(signature);
+ execute $replacement$CREATE OR REPLACE FUNCTION private.site_share_inbox()
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare c uuid;
+begin
+  select m.company_id into c
+  from public.company_members m
+  where m.user_id=auth.uid()
+    and m.role::text in ('owner','admin','manager')
+  limit 1;
+  if c is null then raise exception '管理者・サブ管理者だけが確認できます。'; end if;
+
+  return coalesce((
+    select jsonb_agg(
+      jsonb_build_object(
+        'data_item_id',i.id,
+        'delivery_id',d.id,
+        'sender_company_name',d.sender_name,
+        'payload',i.payload,
+        'status',s.status,
+        'created_at',s.created_at
+      )
+      order by s.created_at desc
+    )
+    from private.site_share_inbox s
+    join private.company_data_delivery_items i on i.id=s.data_item_id
+    join private.document_deliveries d on d.id=i.delivery_id
+    where s.recipient_company_id=c
+      and s.status='pending'
+      and i.payload_kind='site_share'
+      and not exists(select 1 from site_order_package_private.packages p where p.data_item_id=i.id)
+  ),'[]'::jsonb);
+end
+$function$
+$replacement$;
+ if (select to_jsonb(p)-'prosrc' from pg_proc p where p.oid=to_regprocedure(signature)) is distinct from before_attributes then
+  raise exception 'compatibility function attributes changed: %', signature;
+ end if;
+
+ alter table private.company_data_delivery_items drop constraint company_data_delivery_items_payload_kind_check;
+ alter table private.company_data_delivery_items add constraint company_data_delivery_items_payload_kind_check
+ check(payload_kind in ('qualification','personnel','site_share'));
+end $compatibility$;
+commit;

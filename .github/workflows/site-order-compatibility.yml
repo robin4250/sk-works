@@ -1,0 +1,42 @@
+name: Order delivery existing-consumer compatibility
+on:
+  pull_request:
+    paths:
+      - 'docs/review/site-order-compatibility/**'
+      - 'tool/site_order_compatibility/**'
+      - 'lib/features/people/company_delivery_inbox_page.dart'
+      - '.github/workflows/site-order-compatibility.yml'
+permissions:
+  contents: read
+jobs:
+  actual-consumer-compatibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        engine: [pglite, postgres]
+    services:
+      postgres:
+        image: postgres:17.6
+        env:
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_order_compat_fixture
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22.21.0'}
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts
+      - name: Reproducible guarded review SQL
+        run: |
+          python3 tool/site_order_compatibility/build_patch.py > /tmp/consumer-boundary.sql
+          cmp /tmp/consumer-boundary.sql docs/review/site-order-compatibility/consumer-boundary.sql.review-only
+      - name: Actual consumer definitions and constrained fixture
+        env:
+          SKO_COMPAT_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_order_compat_fixture
+        run: |
+          export SKO_PG_MODULE="file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"
+          export SKO_PGLITE_MODULE="file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
+          node tool/site_order_compatibility/verify.mjs '${{ matrix.engine }}'

@@ -464,7 +464,7 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
                                       CheckboxListTile(
                                         value:
                                             _selectedKeys.contains(item.key),
-                                        onChanged: (value) {
+                                        onChanged: !item.isTransferable ? null : (value) {
                                           setState(() {
                                             if (value == true) {
                                               _selectedKeys.add(item.key);
@@ -574,7 +574,7 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
     final selected = _items
         .where((item) => _selectedKeys.contains(item.key))
         .toList(growable: false);
-    if (selected.isEmpty) return;
+    if (selected.isEmpty || selected.any((item) => !item.isTransferable)) return;
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -681,7 +681,8 @@ enum _ReceivedTransferCategory {
   qualifications('資格'),
   workerDocuments('必要書類'),
   companyDocuments('会社提出書類'),
-  signatures('サイン一覧');
+  signatures('サイン一覧'),
+  unavailable('この画面では操作できないデータ');
 
   const _ReceivedTransferCategory(this.label);
 
@@ -698,6 +699,7 @@ class _ReceivedTransferItem {
     required this.originCompany,
     required this.title,
     required this.subtitle,
+    this.isTransferable = true,
   });
 
   final String id;
@@ -708,6 +710,7 @@ class _ReceivedTransferItem {
   final String originCompany;
   final String title;
   final String subtitle;
+  final bool isTransferable;
 
   String get key => '${isStructured ? 'data' : 'file'}:$id';
 
@@ -755,7 +758,7 @@ class _ReceivedTransferItem {
         : <String, dynamic>{};
     final kind = row['payload_kind']?.toString() ?? 'data';
     final title = switch (kind) {
-      'personnel' || 'personnel_detail' =>
+      'personnel' =>
         payload['name']?.toString() ?? '社員情報',
       'qualification' =>
         '${payload['worker_name']?.toString() ?? ''} / ${payload['qualification_name']?.toString() ?? '資格'}',
@@ -763,25 +766,26 @@ class _ReceivedTransferItem {
         (payload['report_date']?.toString() ?? '') + ' / ' +
             (payload['site_name']?.toString() ?? '現場') + ' / ' +
             (payload['signer_name']?.toString() ?? 'サイン'),
-      _ => '受信データ',
+      _ => 'この画面では操作できない受信データ',
     };
     final category = switch (kind) {
-      'personnel' || 'personnel_detail' =>
+      'personnel' =>
         _ReceivedTransferCategory.personnel,
       'qualification' => _ReceivedTransferCategory.qualifications,
       'signature' => _ReceivedTransferCategory.signatures,
-      _ => _ReceivedTransferCategory.personnel,
+      _ => _ReceivedTransferCategory.unavailable,
     };
     return _ReceivedTransferItem(
       id: row['id']?.toString() ?? '',
       deliveryId: deliveryId,
       savedAt: savedAt,
       isStructured: true,
+      isTransferable: kind == 'qualification' || kind == 'personnel',
       category: category,
       originCompany: _origin(path, fallbackCompany),
       title: title,
       subtitle: [
-        kind == 'personnel' || kind == 'personnel_detail'
+        kind == 'personnel'
             ? '社員情報'
             : kind == 'qualification'
                 ? '資格'
