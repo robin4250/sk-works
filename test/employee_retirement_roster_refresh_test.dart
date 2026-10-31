@@ -113,8 +113,13 @@ void main() {
       final oldRow=Map<String,dynamic>.from(repository.row);
       final pending=Completer<List<Map<String,dynamic>>>();
       repository.pendingRoster=pending;
+      final initialReads=repository.reads;
       await tester.pageBack();
-      await tester.pump(const Duration(milliseconds:400));
+      for(var frame=0; frame<10 && repository.reads==initialReads; frame++) {
+        await tester.pump(const Duration(milliseconds:100));
+      }
+      await tester.pump();
+      expect(repository.reads,greaterThan(initialReads));
       expect(find.text(workerName),findsNothing);
       if(boundary=='actor') {
         await tester.runAsync(()=>wire.seed(uid:fixture.other));
