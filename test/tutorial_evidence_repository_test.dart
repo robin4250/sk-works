@@ -18,7 +18,7 @@ class FixtureSource implements TutorialEvidenceSource, TutorialSetupEvidenceSour
     'user_id': 'u1', 'display_name': '保存済み氏名', 'phone': '',
   };
   Map<String, dynamic>? personnelRow = {
-    'worker_id': 'w1', 'name': '保存済み氏名', 'address': '',
+    'worker_id': 'w1', 'name': '保存済み氏名', 'birth_date': '', 'address': '',
     'blood_type': '', 'role': '', 'emergency_name': '',
     'emergency_relation': '', 'emergency_phone': '', 'emergency_address': '',
   };
