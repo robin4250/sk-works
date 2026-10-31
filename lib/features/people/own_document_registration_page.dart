@@ -310,11 +310,12 @@ class _OwnDocumentRegistrationPageState
       final companyId = await gateway.changeCompanyId();
       if (!mounted || !changes.isCurrentActor || !gateway.isCurrentActor) return true;
       if (gateway is OwnDocumentAdminCorrectionGateway) {
+        final adminGateway = gateway as OwnDocumentAdminCorrectionGateway;
         final snapshot = Map<String, dynamic>.from(row ?? const {});
         bool currentTarget() => mounted && identical(_repository, gateway) && gateway.isCurrentActor &&
             snapshot['company_id'] == companyId && _worker?['company_id'] == companyId &&
             _worker?['id'] == snapshot['worker_id'];
-        final adminCorrection = await gateway.createAdminCorrectionRepository(
+        final adminCorrection = await adminGateway.createAdminCorrectionRepository(
           companyId: companyId,
           targetId: snapshot['id'] as String,
           isCurrentTarget: currentTarget,
@@ -343,6 +344,9 @@ class _OwnDocumentRegistrationPageState
           }
           return true;
         }
+      }
+      if (!mounted || !changes.isCurrentActor || !gateway.isCurrentActor) {
+        return true;
       }
       await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => WorkerDocumentChangePage(
         repository: changes, actor: actor, companyId: companyId, row: row!,

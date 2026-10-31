@@ -1063,6 +1063,9 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
           }
           return;
         }
+        if (!mounted || !changes.isCurrentActor || !currentTarget()) {
+          return;
+        }
         await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => WorkerDocumentChangePage(
           repository: changes, actor: actor, companyId: membership.companyId, row: current!,
           signedUrl: repository.createSignedAttachmentUrl,
