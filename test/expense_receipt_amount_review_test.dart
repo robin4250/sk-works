@@ -57,6 +57,9 @@ void main() {
     await tester.ensureVisible(find.text('申請する'));
     await tester.tap(find.text('申請する'));await tester.pump();
     expect(access.sent.single.amount,1234);expect(access.sent.single.receipt,same(photo));
+    await tester.pump(const Duration(milliseconds:400));
+    expect(find.text('経費の申請が完了しました'),findsOneWidget);
+    await tester.tap(find.text('申請履歴を確認'));
     await tester.pumpAndSettle();
   });
   testWidgets('late result cannot overwrite a manually edited amount', (tester) async {
