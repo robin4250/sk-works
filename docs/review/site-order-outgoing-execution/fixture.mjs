@@ -129,6 +129,17 @@ export async function verifyExecution(db,{q,check,UA,A,B,sid,sid2,make,prepare,p
   check(await q('select count(*)::int v from site_order_package_private.packages where source_job_id=$1',[changedAfterOriginal.r.job_id]),0);
   check(await q('select pdf_sha256 v from site_order_artifact_private.pdf_records where job_id=$1',[changedAfterOriginal.r.job_id]),keptHash);}
  finally{await db.query("update public.companies set company_seal_style='legacy' where id=$1",[A]);}
+ // Historical direct-owner legacy data is not silently adopted by the new route.
+ const historical=await fresh(820);check((await post('register_outgoing_original',historical.identity)).status,200);
+ const historicalReceipt=await q('select receipt_id v from site_order_artifact_private.pdf_records where job_id=$1',[historical.r.job_id]);
+ const historicalRequest='95000000-0000-4000-8000-000000000820';
+ await q('select site_order_package_private.send_order($1,$2,$3)v',[historical.r.job_id,historicalReceipt,historicalRequest]);
+ const historicalCounts=await counts();
+ check((await post('share_confirmed',historical.identity,{extra:{confirmed:true}})).status,403);
+ const historicalStatus=await post('original_status',historical.identity);check(historicalStatus.status,200);
+ const historicalResult=(await historicalStatus.json()).result;check(historicalResult.sharing_state,'unresolved');check(historicalResult.package_id,null);
+ check(await counts(),historicalCounts);
+ check(await q('select count(*)::int v from site_order_package_private.packages where source_job_id=$1',[historical.r.job_id]),1);
  check(closed,connections);
- console.log(JSON.stringify({outgoing_execution_source_only:true,native_real_waits:nativeWaits,late_notice_rollback:true,actual_canonical_pdf:true,same_original_bytes:true,register_ack_loss_reconciled:true,share_ack_loss_reconciled:true,one_package:true,one_notice_set:true,legacy_owned_routes_rejected:true,connections_closed:closed,renders,real_GoTrue:false,production_changed:false}));
+ console.log(JSON.stringify({outgoing_execution_source_only:true,native_real_waits:nativeWaits,late_notice_rollback:true,foreign_legacy_package_not_adopted:true,actual_canonical_pdf:true,same_original_bytes:true,register_ack_loss_reconciled:true,share_ack_loss_reconciled:true,one_package:true,one_notice_set:true,legacy_owned_routes_rejected:true,connections_closed:closed,renders,real_GoTrue:false,production_changed:false}));
 }
