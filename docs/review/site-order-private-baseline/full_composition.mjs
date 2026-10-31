@@ -35,8 +35,8 @@ export async function composeFull(db,{read,q,check,manifest}){
   const relations=Object.fromEntries(Object.entries(c.relations).filter(([name])=>relationNames.includes(name)));
   const additions=await db.query(`select t.tgname name,np.nspname||'.'||parent.relname parent,nc.nspname||'.'||child.relname child,k.conname constraint_name,
     pg_get_constraintdef(k.oid,true) constraint_definition,
-    (select array_agg(a.attname order by x.ord)from unnest(k.conkey)with ordinality x(num,ord)join pg_attribute a on a.attrelid=k.conrelid and a.attnum=x.num) child_columns,
-    (select array_agg(a.attname order by x.ord)from unnest(k.confkey)with ordinality x(num,ord)join pg_attribute a on a.attrelid=k.confrelid and a.attnum=x.num) parent_columns,
+    (select jsonb_agg(a.attname::text order by x.ord)from unnest(k.conkey)with ordinality x(num,ord)join pg_attribute a on a.attrelid=k.conrelid and a.attnum=x.num) child_columns,
+    (select jsonb_agg(a.attname::text order by x.ord)from unnest(k.confkey)with ordinality x(num,ord)join pg_attribute a on a.attrelid=k.confrelid and a.attnum=x.num) parent_columns,
     k.confupdtype,k.confdeltype,k.confmatchtype,k.condeferrable,k.condeferred,k.convalidated,t.tgfoid::regprocedure::text function,t.tgtype,t.tgenabled,t.tgisinternal,t.tgnargs,t.tgdeferrable,t.tginitdeferred,
     t.tgconstrrelid=k.conrelid child_binding,t.tgconstrindid=k.conindid index_binding,
     exists(select 1 from pg_depend d where d.classid='pg_trigger'::regclass and d.objid=t.oid and d.refclassid='pg_constraint'::regclass and d.refobjid=k.oid and d.deptype='i') internal_dependency
