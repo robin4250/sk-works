@@ -135,6 +135,7 @@ async function inviteContext(actor: string, session: string, company: string) {
 }
 
 Deno.serve(async (req: Request) => {
+  try {
   const inspection = await inspectDeletion(req);
   if (inspection) return inspection;
   if (req.method !== "POST") return json({ error: "Method Not Allowed" }, 405);
@@ -561,7 +562,13 @@ Deno.serve(async (req: Request) => {
         : '作成結果は未解決です。再作成せず管理者に確認してください。',
       code: confirmedWorkerCasNoWrite ? 'invite_worker_cas_no_write' : 'invite_result_unknown',
     }, 409);
+  }  } catch {
+    // An unconfirmed Auth/transport response can contain personal data in its
+    // exception. Do not let runtime error logging disclose it or imply retry.
+    console.error('employee invite operation result unconfirmed');
+    return json({error:'作成結果を確認できません。再作成せず管理者に確認してください。',code:'invite_result_unknown'},503);
   }
+
 });
 
 

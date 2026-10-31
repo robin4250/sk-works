@@ -74,6 +74,7 @@ test('actual HTTP handler binds selected company/live SID and never exposes unce
   if(path==='/rest/v1/rpc/finish_account_server_activity')return reply(true);
   if(path==='/auth/v1/admin/users'&&req.method==='POST'){
    issued++;
+   if(scenario==='auth-commit-ack-loss'){req.socket.destroy();return;}
    if(scenario==='phone-during-auth')storedWorker.phone='08000000000';
    if(scenario==='linked-during-auth')storedWorker.user_id='60000000-0000-0000-0000-000000000001';
    if(scenario==='company-during-auth')storedWorker.company_id=worker;
@@ -181,6 +182,10 @@ test('actual HTTP handler binds selected company/live SID and never exposes unce
    if(scenario==='invite-commit-ack-loss')assert.equal(storedInvite.auth_user_id,authUser);
    assert.equal(issued,1);
   }
+  logs.length=0;scenario='auth-commit-ack-loss';contextCalls=0;issued=0;ownAuthDeletes.length=0;
+  let authUnknown=await send({});assert.equal(authUnknown.status,503);
+  assert.equal((await authUnknown.json()).code,'invite_result_unknown');assert.equal(issued,1);assert.deepEqual(ownAuthDeletes,[]);
+  assert.deepEqual(logs,[['employee invite operation result unconfirmed']]);
   logs.length=0;
   scenario='post-revoked';contextCalls=0;issued=0;
   let response=await send({});assert.equal(response.status,409);assert.equal(issued,1);
