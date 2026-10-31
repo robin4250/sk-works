@@ -50,6 +50,7 @@ class ExpenseClaim {
     required this.allocation,
     this.revision = 1,
     this.withdrawn = false,
+    this.managerDeleted = false,
     this.settlement,
     this.reviewedAt, this.reviewedBy, this.reviewMemo, this.receiptObjectPath, this.reviewedByName,
   }) : incurredOn = DateTime.utc(
@@ -85,6 +86,7 @@ class ExpenseClaim {
   final ExpenseApproval approval;
   final int revision;
   final bool withdrawn;
+  final bool managerDeleted;
   final ExpenseAllocation allocation;
   final ExpenseSettlementChoice? settlement;
   final DateTime? reviewedAt;
@@ -92,7 +94,7 @@ class ExpenseClaim {
 
   /// A candidate only. Period, payment and immutable snapshot rules belong to
   /// the future persistence contract, not to this display model.
-  bool get isSettlementCandidate => !withdrawn && approval == ExpenseApproval.approved;
+  bool get isSettlementCandidate => !withdrawn && !managerDeleted && approval == ExpenseApproval.approved;
 
   ExpenseClaim _copy(ExpenseApproval status, ExpenseAllocation destination) =>
       ExpenseClaim(
@@ -108,13 +110,14 @@ class ExpenseClaim {
         allocation: destination,
         revision: revision,
         withdrawn: withdrawn,
+        managerDeleted: managerDeleted,
         settlement: settlement,
         reviewedAt: reviewedAt, reviewedBy: reviewedBy, reviewedByName: reviewedByName, reviewMemo: reviewMemo, receiptObjectPath: receiptObjectPath,
       );
 
   /// An already approved claim is not silently reassigned by a duplicate event.
   ExpenseClaim approve() {
-    if (withdrawn) throw StateError('Withdrawn expenses cannot be approved.');
+    if (withdrawn || managerDeleted) throw StateError('Withdrawn expenses cannot be approved.');
     return approval == ExpenseApproval.approved
       ? this
       : _copy(
@@ -123,11 +126,11 @@ class ExpenseClaim {
         );
   }
   ExpenseClaim reject() {
-    if (withdrawn) throw StateError('Withdrawn expenses cannot be reviewed.');
+    if (withdrawn || managerDeleted) throw StateError('Withdrawn expenses cannot be reviewed.');
     return _copy(ExpenseApproval.rejected, allocation);
   }
   ExpenseClaim allocate(ExpenseAllocation destination) {
-    if (withdrawn || approval != ExpenseApproval.approved ||
+    if (withdrawn || managerDeleted || approval != ExpenseApproval.approved ||
         destination.category == ExpenseCategory.unallocated) {
       throw StateError(
         'Only approved claims can be allocated to a destination.',
@@ -147,7 +150,7 @@ class ExpenseClaim {
       amountYen == other.amountYen &&
       approval == other.approval &&
       revision == other.revision &&
-      withdrawn == other.withdrawn &&
+      withdrawn == other.withdrawn && managerDeleted == other.managerDeleted &&
       (settlement == null ? other.settlement == null : other.settlement != null && settlement!.sameAs(other.settlement!)) &&
       reviewedAt == other.reviewedAt && reviewedBy == other.reviewedBy &&
       reviewedByName == other.reviewedByName && reviewMemo == other.reviewMemo &&
@@ -258,4 +261,5 @@ String expenseCategoryLabel(ExpenseCategory category) => switch (category) {
   ExpenseCategory.other => 'その他（承認のみ）',
 };
 
-String expenseClaimStatusLabel(ExpenseClaim claim) => claim.withdrawn ? '取り下げ（削除済み）' : expenseApprovalLabel(claim.approval);
+String expenseClaimStatusLabel(ExpenseClaim claim) => claim.managerDeleted ? '管理者削除（原本・履歴を保持）' : claim.withdrawn ? '取り下げ（削除済み）' : expenseApprovalLabel(claim.approval);
+

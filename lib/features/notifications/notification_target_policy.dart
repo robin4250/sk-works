@@ -16,6 +16,7 @@ bool notificationTargetIsValid(String? actionKey, String? actionId) {
     'invoice_approval',
     'expense_review_request',
     'expense_review_completed',
+    'expense_manager_deleted',
   };
   if (!requiredTargets.contains(actionKey)) return true;
   return actionId != null &&
@@ -23,3 +24,4 @@ bool notificationTargetIsValid(String? actionKey, String? actionId) {
         r'^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$',
       ).hasMatch(actionId);
 }
+

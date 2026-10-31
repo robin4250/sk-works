@@ -6,6 +6,7 @@ import '../../data/supabase_backend.dart';
 import 'expense_claim.dart';
 import 'expense_settlement_choice.dart';
 import 'expense_submission_repository.dart';
+import 'expense_manager_removal_repository.dart';
 
 class ExpenseReviewCommand {
   ExpenseReviewCommand(
@@ -153,6 +154,7 @@ class ExpenseReviewWorkspace {
     final entries = <ExpenseClaim>[];
     for (final v in data['claims'] as List) {
       final r = Map<String, dynamic>.from(v);
+      if (r.containsKey('manager_deleted') && r['manager_deleted'] is! bool) throw const FormatException('Invalid removal metadata');
       final date = DateTime.parse(r['incurred_on']);
       if (r['company_id'] != company ||
           date.year != month.year ||
@@ -177,6 +179,7 @@ class ExpenseReviewWorkspace {
           approval: ExpenseApproval.values.byName(r['approval']),
         revision: r['revision'] as int? ?? 1,
         withdrawn: r['withdrawn'] == true,
+        managerDeleted: r['manager_deleted'] == true,
           settlement: r['settlement_method'] == null && r['settlement_month'] == null
               ? null : ExpenseSettlementChoice.decode(r['settlement_method'], r['settlement_month']),
           allocation: ExpenseAllocation(
@@ -198,6 +201,7 @@ class ExpenseReviewWorkspace {
         )
         .toList();
   }
+  Map<String,dynamic> removalData = {};
   late final ExpenseClaims claims;
   late final bool canReview, canConfigure;
   late final bool settlementChoiceEnabled, canSettle, costAllocationEnabled, reviewFlowEnabled;
@@ -208,7 +212,7 @@ class ExpenseReviewWorkspace {
   final revisions = <String, int>{};
   final actors = <String, String>{};
   bool canDecide(ExpenseClaim claim, String actor) =>
-      canReview && !claim.withdrawn && (approvers.length == 1 || actors[claim.id] != actor);
+      canReview && !claim.withdrawn && !claim.managerDeleted && (approvers.length == 1 || actors[claim.id] != actor);
 }
 
 abstract class ExpenseManagementAccess {
@@ -260,12 +264,17 @@ class ExpenseManagementRepository implements ExpenseManagementAccess {
     };
     dynamic data;
     try {
-      data = await _read('expense_review_flow_workspace', params);
+      data = await _read('expense_manager_removal_workspace', params);
     } on PostgrestException catch (error) {
       if (error.code != 'PGRST202') rethrow;
-      data = await _read('expense_settlement_workspace', params);
+      try { data = await _read('expense_review_flow_workspace', params); } on PostgrestException catch (oldError) {
+        if(oldError.code != 'PGRST202') rethrow;
+        data = await _read('expense_settlement_workspace', params);
+      }
     }
-    return ExpenseReviewWorkspace(Map<String, dynamic>.from(data), company, month);
+    final raw=Map<String,dynamic>.from(data);
+    ExpenseRemovalCapability(raw, null); // Validate known metadata even when unavailable.
+    return ExpenseReviewWorkspace(raw, company, month)..removalData=raw;
   }
 
   Future<Map<String, dynamic>> reviewHistory(ExpenseClaim claim) async {
@@ -394,3 +403,4 @@ class ExpenseManagementRepository implements ExpenseManagementAccess {
     });
   }
 }
+

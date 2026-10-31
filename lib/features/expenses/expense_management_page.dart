@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'expense_claim.dart';
 import 'expense_surface_card.dart';
@@ -10,10 +11,13 @@ import 'expense_review_detail_page.dart';
 import 'expense_review_history_dialog.dart';
 import 'expense_edit_dialog.dart';
 import 'expense_submission_repository.dart';
+import 'expense_manager_removal_repository.dart';
+import 'expense_manager_removal_dialog.dart';
 
 class ExpenseManagementPage extends StatefulWidget {
-  const ExpenseManagementPage({super.key, this.access});
+  const ExpenseManagementPage({super.key, this.access, this.removals});
   final ExpenseManagementAccess? access;
+  final ExpenseManagerRemovalRepository? removals;
   @override
   State<ExpenseManagementPage> createState() => _ExpenseManagementPageState();
 }
@@ -21,27 +25,48 @@ class ExpenseManagementPage extends StatefulWidget {
 class _ExpenseManagementPageState extends State<ExpenseManagementPage> {
   late final ExpenseManagementAccess _access =
       widget.access ?? ExpenseManagementRepository();
+  late final ExpenseManagerRemovalRepository _removals = widget.removals ?? ExpenseManagerRemovalRepository();
+  ExpenseRemovalCommand? _removalPending;
   List<Map<String, dynamic>> _companies = [];
   String? _company, _actor, _error;
   DateTime _month = DateTime(DateTime.now().year, DateTime.now().month);
   ExpenseReviewWorkspace? _data;
   ExpenseReviewCommand? _pending;
   bool _busy = true;
+  final _dialogChanges=StreamController<void>.broadcast(sync:true);
+  bool _contextChanged=false;
+  StreamSubscription<void>? _removalSubscription;
   int _generation = 0;
   @override
   void initState() {
     super.initState();
+    _removalSubscription=_removals.changes.listen((_) {
+      _generation++;_contextChanged=true;_dialogChanges.add(null);
+      if(mounted)setState((){_data=null;_pending=null;_removalPending=null;_busy=false;});
+    });
     _start();
+  }
+
+  @override
+  void didUpdateWidget(covariant ExpenseManagementPage oldWidget){
+    super.didUpdateWidget(oldWidget);
+    if(oldWidget.access!=widget.access || oldWidget.removals!=widget.removals){
+      _generation++;_contextChanged=true;_dialogChanges.add(null);
+      _data=null;_pending=null;_removalPending=null;_busy=false;
+    }
   }
 
   @override
   void dispose() {
     _generation++;
+    _dialogChanges.close();
+    _removalSubscription?.cancel();
+    if(widget.removals==null)_removals.dispose();
     super.dispose();
   }
 
   bool _current(int g) =>
-      mounted && g == _generation && _access.actor == _actor;
+      mounted && !_contextChanged && g == _generation && _access.actor == _actor;
   Future<void> _start() async {
     final g = ++_generation;
     setState(() {
@@ -72,6 +97,8 @@ class _ExpenseManagementPageState extends State<ExpenseManagementPage> {
     final pending = await _access.pending(_company!);
     if (!_current(g)) return;
     _pending = pending;
+    _removalPending = _removals.actor != _actor ? null : await _removals.pending(_company!);
+    if (!_current(g)) return;
     final data = await _access.load(_company!, _month);
     if (!_current(g)) return;
     _data = data;
@@ -99,7 +126,7 @@ class _ExpenseManagementPageState extends State<ExpenseManagementPage> {
     String action, [
     ExpenseAllocation? destination,
   ]) async {
-    if (_busy || _pending != null || _data == null || _access.actor != _actor) {
+    if (_busy || _pending != null || _removalPending != null || _data == null || _access.actor != _actor) {
       return;
     }
     final generation = _generation;
@@ -108,7 +135,7 @@ class _ExpenseManagementPageState extends State<ExpenseManagementPage> {
     final revision = _data!.revisions[claim.id]!;
     if (_data!.reviewFlowEnabled && _data!.canSettle && ['approve', 'reject'].contains(action)) {
       final decision = await showDialog<ExpenseReviewDecision>(context: context,
-        builder: (_) => ExpenseReviewFlowDialog(claim: claim, destinations: _data!.destinations));
+        builder: (_) => ExpenseReviewFlowDialog(claim: claim, destinations: _data!.destinations, initialApprove: action != 'reject'));
       if (decision == null || !_current(generation) || actor != _actor || company != _company ||
           _pending != null || _busy || _data?.revisions[claim.id] != revision) {
         return;
@@ -150,10 +177,40 @@ class _ExpenseManagementPageState extends State<ExpenseManagementPage> {
     await _execute(command);
   }
 
+  bool _canRemove(ExpenseClaim claim) {
+    final data=_data;
+    return !_busy && _pending==null && _removalPending==null && data!=null &&
+      _removals.actor==_actor && ExpenseRemovalCapability(data.removalData,_removals.session).enabled &&
+      data.claims.entries.any((current)=>current.id==claim.id && current.revision==claim.revision && !current.managerDeleted && !current.withdrawn) && data.canDecide(claim,_actor!);
+  }
+  Future<void> _remove(ExpenseClaim claim)async{
+    if(!_canRemove(claim))return;
+    final g=_generation;final company=_company;final session=_removals.session;final epoch=_removals.epoch;
+    final reason=await showDialog<String>(context:context,builder:(_)=>ExpenseManagerRemovalDialog(claim:claim,invalidations:_dialogChanges.stream));
+    if(reason==null || !_current(g) || company!=_company || session!=_removals.session || epoch!=_removals.epoch || !_canRemove(claim))return;
+    final command=ExpenseRemovalCommand.create(_actor!,company!,claim.id,claim.revision,session!,reason);
+    final generation=++_generation;
+    setState((){_busy=true;_error=null;});
+    try{
+      final result=await _removals.submit(command,ExpenseRemovalCapability(_data!.removalData,session));
+      if(_current(generation))_error=result.correctionRequired?'削除を記録しました。確定済み原本の金額訂正は別途必要です。':'削除と申請者への通知を記録しました。通知の配信・閲覧は別途確認してください。';
+    }catch(_){if(_current(generation))_error='削除結果は未確認です。「削除結果を照会」で確認してください。再送は行いません。';}
+    finally{if(_current(generation)){try{await _read(generation);}catch(_){_data=null;}if(_current(generation))setState(()=>_busy=false);}}
+  }
+  Future<void> _observeRemoval()async{
+    final command=_removalPending;if(_busy || command==null)return;
+    final g=++_generation;setState((){_busy=true;_error=null;});
+    try{final result=await _removals.observe(command);
+      if(_current(g))_error=result==null?'保存結果は未確認です。再送せず管理者へ確認してください。':result.correctionRequired?'削除記録を確認しました。確定済み原本の訂正は別途必要です。':'削除と通知の保存結果を確認しました。';
+    }catch(_){if(_current(g))_error='削除結果を照会できません。保留を維持しています。';}
+    finally{if(_current(g)){try{await _read(g);}catch(_){_data=null;}if(_current(g))setState(()=>_busy=false);}}
+  }
+
   Future<void> _openDetail(ExpenseClaim claim) async {
     await Navigator.of(context).push(MaterialPageRoute<void>(builder: (detailContext) => ExpenseReviewDetailPage(
       claim: claim,
-      onEdit: _data?.canSettle != true || _access is! ExpenseManagementRepository ? null : () async {
+      onDelete: _canRemove(claim) ? () => _remove(claim) : null,
+      onEdit: claim.managerDeleted || _removalPending!=null || _data?.canSettle != true || _access is! ExpenseManagementRepository ? null : () async {
         final generation = _generation;
         final edit = await showDialog<ExpenseSubmission>(context: detailContext,
           builder: (_) => ExpenseEditDialog(claim: claim, actor: _actor!));
@@ -176,7 +233,7 @@ class _ExpenseManagementPageState extends State<ExpenseManagementPage> {
   }
 
   Future<void> _execute(ExpenseReviewCommand command) async {
-    if (_busy || _access.actor != _actor) return;
+    if (_busy || _removalPending!=null || _access.actor != _actor) return;
     final g = ++_generation;
     setState(() {
       _busy = true;
@@ -203,7 +260,7 @@ class _ExpenseManagementPageState extends State<ExpenseManagementPage> {
 
   Future<void> _settings() async {
     final data = _data;
-    if (_busy || data == null || !data.canConfigure || _pending != null) return;
+    if (_busy || data == null || !data.canConfigure || _pending != null || _removalPending!=null) return;
     final actor = _actor, company = _company;
     final selected = data.approvers.toSet();
     final result = await showDialog<List<String>>(
@@ -346,12 +403,16 @@ class _ExpenseManagementPageState extends State<ExpenseManagementPage> {
             ),
         ],
       ),
+      if (_removalPending != null) ListTile(
+        title: const Text('削除結果の確認が必要です'),
+        subtitle: const Text('同じ本人・会社の現在の権限で保存結果だけを照会します。再送しません。'),
+        trailing: TextButton(onPressed:_busy?null:_observeRemoval,child:const Text('削除結果を照会'))),
       if (_pending != null)
         ListTile(
           title: const Text('結果確認待ちの操作があります'),
           subtitle: const Text('別の変更を行う前に、同じ操作の結果を確認してください。'),
           trailing: TextButton(
-            onPressed: _busy ? null : () => _execute(_pending!),
+            onPressed: _busy || _removalPending!=null ? null : () => _execute(_pending!),
             child: const Text('同じ操作を再確認'),
           ),
         ),
@@ -363,7 +424,7 @@ class _ExpenseManagementPageState extends State<ExpenseManagementPage> {
   );
   @override
   Widget build(BuildContext context) {
-    if (_actor != null && _access.actor != _actor) {
+    if (_contextChanged || (_actor != null && _access.actor != _actor)) {
       return Scaffold(
         backgroundColor: const Color(0xfff5f7fa),
         appBar: AppBar(
@@ -397,7 +458,7 @@ class _ExpenseManagementPageState extends State<ExpenseManagementPage> {
         ),
       );
     }
-    final enabled = !_busy && _pending == null && data.canReview;
+    final enabled = !_busy && _pending == null && _removalPending==null && data.canReview;
     return ExpenseClaimsPage(
       claims: data.claims,
       header: _header(),
@@ -407,6 +468,7 @@ class _ExpenseManagementPageState extends State<ExpenseManagementPage> {
       costAllocationEnabled: data.costAllocationEnabled,
       reviewFlowEnabled: data.reviewFlowEnabled && data.canSettle,
       onOpenDetail: data.reviewFlowEnabled ? (c) => _openDetail(c) : null,
+      onDelete: ExpenseRemovalCapability(data.removalData,_removals.session).enabled ? (c) => _remove(c) : null,
       onReject: enabled ? (c) => _act(c, 'reject') : null,
       onAllocate: enabled && (!data.costAllocationEnabled || data.canSettle)
           ? (c, d) => _act(c, 'allocate', d) : null,
@@ -414,3 +476,4 @@ class _ExpenseManagementPageState extends State<ExpenseManagementPage> {
     );
   }
 }
+
