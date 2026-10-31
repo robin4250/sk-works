@@ -104,7 +104,7 @@ class _Wire extends http.BaseClient {
   }
 }
 
-Future<(SupabaseClient, SiteOrderWorkflowRepository)> repository(
+Future<(SupabaseClient, SiteOrderWorkflowRepository)> _repository(
   _Wire wire,
 ) async {
   final client = SupabaseClient(
@@ -218,7 +218,7 @@ void main() {
     test('SDK $state preserves journal and never sends prepare', () async {
       await SiteOrderOutgoingJournal().begin(actor, company, entry());
       final wire = _Wire()..state = state;
-      final (client, repo) = await repository(wire);
+      final (client, repo) = await _repository(wire);
       try {
         expect(await repo.inspectOutgoing(entry()), state);
         expect((await repo.pendingOutgoing(site)).length, 1);
@@ -235,7 +235,7 @@ void main() {
     () async {
       await SiteOrderOutgoingJournal().begin(actor, company, entry());
       final wire = _Wire()..state = 'retired';
-      final (client, repo) = await repository(wire);
+      final (client, repo) = await _repository(wire);
       try {
         expect(await repo.retireOutgoing(entry(), confirmed: true), 'retired');
         expect(await repo.pendingOutgoing(site), isEmpty);
@@ -258,7 +258,7 @@ void main() {
         ..wrongCompany = mode == 'wrong-company'
         ..forgedClear = mode == 'clear-without-retirement'
         ..status = mode == 'commit-ack-lost' ? 409 : 200;
-      final (client, repo) = await repository(wire);
+      final (client, repo) = await _repository(wire);
       try {
         await expectLater(
           Future.sync(

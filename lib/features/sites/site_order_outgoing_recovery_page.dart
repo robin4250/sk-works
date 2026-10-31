@@ -57,8 +57,9 @@ class _SiteOrderOutgoingRecoveryPageState
       if (!mounted || _retired || widget.api.invalidated) return;
       setState(() => _entries = entries);
     } catch (_) {
-      if (mounted && !_retired)
+      if (mounted && !_retired) {
         setState(() => _message = '保存状態を確認できません。記録は保持しています。');
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -84,8 +85,9 @@ class _SiteOrderOutgoingRecoveryPageState
           ],
         ),
       );
-      if (confirmed != true || !mounted || _retired || widget.api.invalidated)
+      if (confirmed != true || !mounted || _retired || widget.api.invalidated) {
         return;
+      }
     }
     setState(() {
       _busy = true;
@@ -107,8 +109,9 @@ class _SiteOrderOutgoingRecoveryPageState
       );
       await _load();
     } catch (_) {
-      if (mounted && !_retired)
+      if (mounted && !_retired) {
         setState(() => _message = '結果を確認できません。再送せず、記録を保持しています。');
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
