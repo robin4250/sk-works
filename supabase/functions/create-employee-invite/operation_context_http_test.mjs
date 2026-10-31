@@ -1,3 +1,4 @@
+import {createHash} from 'node:crypto';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -56,6 +57,7 @@ test('actual HTTP handler binds selected company/live SID and never exposes unce
   calls.push({path,method:req.method});
   const reply=(value,status=200)=>{res.writeHead(status,{'content-type':'application/json'});res.end(JSON.stringify(value));};
   if(path==='/auth/v1/user')return reply({id:actor});
+  if(path==='/rest/v1/company_members')return reply([{company_id:company,role:'owner'}]);
   if(path==='/rest/v1/rpc/account_server_access_allowed')return reply(true);
   if(path==='/rest/v1/rpc/employee_invite_operation_context'){
    contextCalls++;
@@ -126,10 +128,28 @@ test('actual HTTP handler binds selected company/live SID and never exposes unce
  });
  try{
   await import('data:text/javascript;base64,'+Buffer.from(stripTypeScriptTypes(source,{mode:'strip'})).toString('base64'));
+  if(process.env.SKO_INVITE_LEGACY_PROBE==='1'){
+   const old=spawnSync('git',['show','79dbe587e3d8c8ede194ecfaa1cae20b0a4d01ef:supabase/functions/create-employee-invite/index.ts'],{encoding:'utf8'});
+   assert.equal(old.status,0,'immutable predecessor must be available');
+   const bytes=Buffer.from(old.stdout);
+   assert.equal(createHash('sha1').update(Buffer.from('blob '+bytes.length+'\0')).update(bytes).digest('hex'),'754c7afa1f921724bb440136e4135faf6fab569f');
+   const modern=handler;
+   const legacy=old.stdout.replace('import "jsr:@supabase/functions-js/edge-runtime.d.ts";','').replace(/from '([^']+\.mjs)'/g,(_,p)=>'from '+JSON.stringify(new URL(p,sourceUrl).href));
+   await import('data:text/javascript;base64,'+Buffer.from(stripTypeScriptTypes(legacy,{mode:'strip'})).toString('base64'));
+   try {
+    calls.length=0;issued=0;
+    const oldResponse=await handler(new Request(origin+'/legacy',{method:'POST',headers:{authorization:'Bearer '+token},body:JSON.stringify({operation:'inspect_context',companyId:company,sessionId:sid})}));
+    assert.equal(oldResponse.status,400);assert.equal(issued,0);
+    assert.equal(calls.some(c=>c.path==='/rest/v1/rpc/begin_account_server_activity'),false);
+   }finally{handler=modern;}
+  }
   await new Promise(r=>setImmediate(r));logs.length=0;
   await new Promise(r=>incoming.listen(0,'127.0.0.1',r));
   const endpoint=`http://127.0.0.1:${incoming.address().port}/`;
-  const send=payload=>{storedInvite=null;storedWorker={id:worker,company_id:company,affiliation:'employee',name:'Synthetic',phone:'07000000000',user_id:null,status:'inactive'};return originalFetch(endpoint,{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({name:'Synthetic',phone:'07000000000',companyId:company,sessionId:sid,...payload})});};
+  const send=payload=>{storedInvite=null;storedWorker={id:worker,company_id:company,affiliation:'employee',name:'Synthetic',phone:'07000000000',user_id:null,status:'inactive'};return originalFetch(endpoint,{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({name:'Synthetic',phone:'07000000000',companyId:company,sessionId:sid,operation:'create_bound_v1',...payload})});};
+  contextCalls=0;issued=0;
+  const inspected=await originalFetch(endpoint,{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({operation:'inspect_context',companyId:company,sessionId:sid})});
+  assert.equal(inspected.status,200);assert.equal((await inspected.json()).capability,'employee_invite_bound_v1');assert.equal(issued,0);assert.equal(contextCalls,1);
   for(const payload of [{companyId:undefined},{sessionId:undefined},{sessionId:worker},{companyId:'not-uuid'}]){
    calls.length=0;issued=0;const response=await send(payload);assert.equal(response.status,403);assert.equal(issued,0);
    assert.equal(calls.some(c=>c.path.includes('employee_invite_operation_context')),false);

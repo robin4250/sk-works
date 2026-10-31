@@ -170,6 +170,11 @@ Deno.serve(async (req: Request) => {
   try { context = await inviteContext(caller.id, sessionId, companyId); }
   catch { return json({error: '招待の利用状態を確認できません。'}, 503); }
   const callerRole = context.role;
+  if (payload?.operation === 'inspect_context') {
+    if ('name' in payload || 'phone' in payload || 'workerId' in payload) return json({error:'invalid context inspection'},400);
+    return json({version:1,capability:'employee_invite_bound_v1',actorId:caller.id,companyId,sessionId});
+  }
+  if (payload?.operation !== 'create_bound_v1') return json({error:'招待機能を更新してください。'},400);
   const canAssignManagementRole =
     callerRole === "owner" || callerRole === "admin";
 

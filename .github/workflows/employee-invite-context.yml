@@ -27,6 +27,8 @@ jobs:
           --health-timeout 3s --health-retries 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -34,6 +36,7 @@ jobs:
       - run: node --test supabase/functions/create-employee-invite/operation_context_http_test.mjs
         env:
           SKO_INVITE_NATIVE_FIXTURE: '1'
+          SKO_INVITE_LEGACY_PROBE: '1'
           PGHOST: '127.0.0.1'
           PGPORT: '5432'
           PGUSER: postgres

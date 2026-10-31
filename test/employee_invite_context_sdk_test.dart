@@ -183,6 +183,23 @@ class Fixture {
           );
         }
         if (request.url.path == '/functions/v1/create-employee-invite') {
+          final operation = (jsonDecode(request.body) as Map)['operation'];
+          if (operation == 'inspect_context') {
+            inspections++;
+            final payload = jsonDecode(request.body) as Map;
+            expect(payload.keys.toSet(), {
+              'operation',
+              'companyId',
+              'sessionId',
+            });
+            return http.Response(
+              jsonEncode(capability),
+              200,
+              headers: {'content-type': 'application/json'},
+              request: request,
+            );
+          }
+          expect(operation, 'create_bound_v1');
           invokes++;
           expect(
             request.headers['Authorization'] == 'Bearer ${token(sid)}',
@@ -210,7 +227,14 @@ class Fixture {
   late final SupabaseClient client;
   late final ObservedInviteRepository repository;
   String session = sid;
-  int invokes = 0;
+  int invokes = 0, inspections = 0;
+  Object capability = {
+    'version': 1,
+    'capability': 'employee_invite_bound_v1',
+    'actorId': actor,
+    'companyId': company,
+    'sessionId': sid,
+  };
   Object response = result();
   Completer<http.Response>? pending;
   List<Object> memberships = [
@@ -259,6 +283,24 @@ void main() {
     expect(value.inviteId, invite);
     expect(value.temporaryPassword, fixturePassword);
     expect(f.invokes, 1);
+  });
+
+  test('legacy or incomplete capability never starts create', () async {
+    final f = Fixture();
+    addTearDown(f.close);
+    await f.login();
+    f.capability = <String, dynamic>{};
+    final context = await f.repository.beginRequest();
+    await expectLater(
+      f.repository.createInvite(
+        name: 'Synthetic',
+        phone: '07000000000',
+        request: context,
+      ),
+      throwsStateError,
+    );
+    expect(f.inspections, 1);
+    expect(f.invokes, 0);
   });
 
   test(

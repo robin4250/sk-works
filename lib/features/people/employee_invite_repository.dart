@@ -171,7 +171,33 @@ class EmployeeInviteRepository {
             ? '+81${rawPhone!.substring(1)}'
             : rawPhone);
     final key = '${context.actorId}:${context.companyId}:$recipient';
-    if (!_attempted.add(key)) throw StateError('作成結果が未解決です。再作成せず管理者に確認してください。');
+    if (_attempted.contains(key)) {
+      throw StateError('作成結果が未解決です。再作成せず管理者に確認してください。');
+    }
+    // No recipient fields: a legacy issuer rejects this before Auth creation.
+    final inspection = await _client.functions.invoke(
+      'create-employee-invite',
+      headers: {'Authorization': context.authorization},
+      body: {
+        'operation': 'inspect_context',
+        'companyId': context.companyId,
+        'sessionId': context.sessionId,
+      },
+    );
+    context.check();
+    final capability = inspection.data;
+    if (inspection.status != 200 ||
+        capability is! Map ||
+        capability['version'] != 1 ||
+        capability['capability'] != 'employee_invite_bound_v1' ||
+        capability['actorId'] != context.actorId ||
+        capability['companyId'] != context.companyId ||
+        capability['sessionId'] != context.sessionId) {
+      throw StateError('招待機能の更新を確認できません。作成は開始していません。');
+    }
+    if (!_attempted.add(key)) {
+      throw StateError('作成結果が未解決です。再作成せず管理者に確認してください。');
+    }
     try {
       final response = await _client.functions.invoke(
         'create-employee-invite',
@@ -180,6 +206,7 @@ class EmployeeInviteRepository {
           ...body,
           'companyId': context.companyId,
           'sessionId': context.sessionId,
+          'operation': 'create_bound_v1',
         },
       );
       context.check();
