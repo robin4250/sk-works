@@ -1,0 +1,22 @@
+name: Site-order outgoing body factory
+on:
+  pull_request:
+    paths:
+      - 'lib/features/sites/site_order_outgoing_body_factory.dart'
+      - 'test/site_order_outgoing_body_factory_test.dart'
+      - 'docs/review/site-order-outgoing/body-factory-contract.md'
+      - '.github/workflows/site-order-body-factory.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  body-factory:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: '3.47.5', channel: stable, cache: true}
+      - run: flutter pub get --enforce-lockfile
+      - run: dart analyze lib/features/sites/site_order_outgoing_body_factory.dart test/site_order_outgoing_body_factory_test.dart
+      - run: flutter test test/site_order_outgoing_body_factory_test.dart --reporter expanded
