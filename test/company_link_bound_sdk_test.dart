@@ -59,7 +59,12 @@ class Fixture {
             }
           }
           final result = command == 'workspace'
-              ? {'enabled': true, 'requests': workspaceRows}
+              ? {
+                  'available': true,
+                  'writes_enabled': writesEnabled,
+                  'enabled': writesEnabled,
+                  'requests': workspaceRows,
+                }
               : command == 'search'
               ? [
                   {
@@ -111,6 +116,7 @@ class Fixture {
   ];
   bool loseAck = false, badEnvelope = false;
   int mutations = 0;
+  bool writesEnabled = true;
   Map<String, dynamic>? saved;
   Completer<http.Response>? pending;
   final arrived = Completer<void>();
@@ -174,11 +180,14 @@ void main() {
     );
     expect(f.mutations, 1);
     await first.dispose();
+    f.writesEnabled = false;
     f.session = sid2;
     await f.login();
     final second = await f.repository.openBoundLinkContext();
     addTearDown(second.dispose);
     expect(second.hasUnknownResult, true);
+    expect((await second.workspace())['writes_enabled'], false);
+    expect((await f.repository.linkWorkspace())['enabled'], true);
     await expectLater(
       second.mutate('set_enabled', {'enabled': true}),
       throwsStateError,

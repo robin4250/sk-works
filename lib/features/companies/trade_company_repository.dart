@@ -152,7 +152,10 @@ class TradeCompanyRepository {
   Future<Map<String, dynamic>> linkWorkspace() async {
     final context = await openBoundLinkContext();
     try {
-      return await context.workspace();
+      final value = await context.workspace();
+      // Existing entry callers use `enabled` only for navigation. Read-only
+      // history and unresolved-result lookup remain available while writes stop.
+      return {...value, 'enabled': value['available'] == true};
     } finally {
       await context.dispose();
     }
@@ -531,6 +534,9 @@ class CompanyLinkBoundContext {
   Future<Map<String, dynamic>> workspace() async {
     final value = await _call('workspace', const {});
     if (value is! Map ||
+        value.length != 4 ||
+        value['available'] is! bool ||
+        value['writes_enabled'] is! bool ||
         value['enabled'] is! bool ||
         value['requests'] is! List) {
       throw StateError('会社連携の状態を確認できません');

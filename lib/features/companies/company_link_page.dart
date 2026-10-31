@@ -237,7 +237,10 @@ class _CompanyLinkPageState extends State<CompanyLinkPage>
     }
     final enabled = _workspace?['enabled'] == true;
     final blocked =
-        _busy || _bound?.isCurrent != true || _bound?.hasUnknownResult == true;
+        _busy ||
+        _bound?.isCurrent != true ||
+        _bound?.hasUnknownResult == true ||
+        _workspace?['writes_enabled'] != true;
     final allRequests = (_workspace?['requests'] as List?) ?? const [];
     final requests = widget.initialRequestId == null
         ? allRequests
@@ -288,6 +291,8 @@ class _CompanyLinkPageState extends State<CompanyLinkPage>
                     }),
             ),
           if (_busy) const LinearProgressIndicator(),
+          if (_workspace?['writes_enabled'] == false)
+            const Text('会社連携の操作は停止中です。履歴と処理結果を確認できます。'),
           if (_bound?.hasUnknownResult == true)
             OutlinedButton(
               onPressed: _busy

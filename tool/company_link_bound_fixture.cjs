@@ -46,6 +46,12 @@ let db;let nativeClient;
   const v=(await db.query(`select public.company_link_bound_v1('${company}','${session}',${op?`'${op}'`:'null'},'${command}','${JSON.stringify(payload)}'::jsonb) value`)).rows[0].value;
   assert.equal(v.company_id,company);assert.equal(v.actor_id,actor);assert.equal(v.session_id,session);return v.value;
  };
+ await db.exec(`insert into private.trade_company_link_settings values('${ids(1)}',true),('${ids(2)}',true),('${ids(3)}',true);`);
+ assert.deepEqual(await invoke(ids(1),'workspace'),{available:true,writes_enabled:false,enabled:false,requests:[]});
+ await assert.rejects(invoke(ids(1),'set_enabled',{enabled:false},ids(200)),/stopped/);
+ assert.equal((await db.query('select count(*)::integer n from private.company_link_bound_operations')).rows[0].n,0);
+ assert.equal((await db.query('select bool_and(enabled) enabled from private.trade_company_link_settings')).rows[0].enabled,true);
+ await db.exec('update private.company_link_bound_control set enabled=true;');
  for(const role of ['anon','service_role']){
   await db.exec(`set role ${role};`);
   await assert.rejects(invoke(ids(1),'workspace'),/permission denied/);await db.exec('reset role;');
@@ -82,6 +88,15 @@ let db;let nativeClient;
  await invoke(ids(3),'respond',{request_id:first.request_id,action:'accept'},ids(205));
  assert.equal((await db.query('select count(*)::integer n from public.trade_companies')).rows[0].n,2);
  assert.equal((await db.query(`select count(*)::integer n from public.trade_companies where company_id='${ids(1)}'`)).rows[0].n,0);
+ await db.exec('update private.company_link_bound_control set enabled=false;');
+ assert.equal((await invoke(ids(2),'result',{},ids(204))).state,'committed');
+ for(const [command,body] of [['set_enabled',{enabled:false}],['request',payload],['respond',{request_id:first.request_id,action:'cancel'}]]){
+  await assert.rejects(invoke(ids(2),command,body,ids(299)),/stopped/);
+ }
+ await db.exec('delete from private.company_link_bound_control;');
+ assert.equal((await invoke(ids(2),'workspace')).writes_enabled,false);
+ await assert.rejects(invoke(ids(2),'request',payload,ids(299)),/stopped/);
+ await db.exec('insert into private.company_link_bound_control values(true,true);');
  await invoke(ids(2),'set_enabled',{enabled:false},ids(206));
  assert.equal((await invoke(ids(2),'result',{},ids(204))).state,'committed');
  for(const mutation of [
@@ -131,10 +146,26 @@ let db;let nativeClient;
   const {Client}=require('pg'),other=new Client();await other.connect();
   try{
    const pid=(await other.query('select pg_backend_pid() pid')).rows[0].pid;
+   await db.exec('begin');await invoke(ids(2),'set_enabled',{enabled:true},ids(215));
+   const gateStop=other.query('update private.company_link_bound_control set enabled=false');
+   let gateWait=false;
+   for(let i=0;i<100&&!gateWait;i++){
+    await db.query('select pg_stat_clear_snapshot()');
+    gateWait=(await db.query(`select wait_event_type='Lock' waiting from pg_stat_activity where pid=${pid}`)).rows[0]?.waiting===true;
+   }
+   assert(gateWait,'new gate OFF must wait behind an already authorized mutation SHARE lock');
+   await db.exec('commit');await gateStop;
+   assert.equal((await invoke(ids(2),'result',{},ids(215))).state,'committed');
+   await assert.rejects(invoke(ids(2),'set_enabled',{enabled:false},ids(216)),/stopped/);
+   await db.exec('update private.company_link_bound_control set enabled=true;');
+   console.log('NATIVE_COMPANY_LINK_GLOBAL_GATE_OFF_WAIT: 1');
    await db.exec('begin');await invoke(ids(2),'workspace');
    const waiting=other.query(`update public.company_members set role='viewer' where company_id='${ids(2)}' and user_id='${actor}'`);
    let observed=false;
-   for(let i=0;i<100&&!observed;i++)observed=(await db.query(`select wait_event_type='Lock' waiting from pg_stat_activity where pid=${pid}`)).rows[0]?.waiting===true;
+   for(let i=0;i<100&&!observed;i++){
+    await db.query('select pg_stat_clear_snapshot()');
+    observed=(await db.query(`select wait_event_type='Lock' waiting from pg_stat_activity where pid=${pid}`)).rows[0]?.waiting===true;
+   }
    assert(observed,'actual role revoke must wait behind captured membership SHARE lock');
    await db.exec('commit');await waiting;
    await assert.rejects(invoke(ids(2),'workspace'),/role unavailable/);

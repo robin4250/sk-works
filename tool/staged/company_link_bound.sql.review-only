@@ -19,6 +19,7 @@ begin
  end loop;
  if to_regprocedure('public.company_link_bound_v1(uuid,uuid,uuid,text,jsonb)') is not null
    or to_regclass('private.company_link_bound_operations') is not null
+   or to_regclass('private.company_link_bound_control') is not null
    or exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
     where n.nspname in('private','public') and p.proname in(
      'company_link_bound_v1','require_company_link_bound_v1','company_link_bound_receipt_immutable_v1')) then
@@ -28,6 +29,17 @@ begin
   raise exception 'existing private schema privilege requires independent review';
  end if;
 end $guard$;
+
+-- Separate rollout gate. This never changes any existing company's link setting.
+-- No client API can enable it. A separately approved operator action is required.
+create table private.company_link_bound_control (
+ singleton boolean primary key default true check(singleton),
+ enabled boolean not null default false
+);
+alter table private.company_link_bound_control owner to postgres;
+alter table private.company_link_bound_control enable row level security;
+revoke all on private.company_link_bound_control from public,anon,authenticated,service_role;
+insert into private.company_link_bound_control values(true,false);
 
 -- Exact original command retained solely to prevent operation-ID reuse with changed data.
 -- No tokens, passwords, names, phone numbers or document bytes are recorded here.
@@ -99,8 +111,11 @@ begin
      'original_session_id',previous.original_session_id,'result',previous.result) end;
  elsif p_command='workspace' then
   if p_payload<>'{}'::jsonb then raise exception 'invalid workspace payload'; end if;
-  value:=jsonb_build_object('enabled',coalesce((select s.enabled from private.trade_company_link_settings s
-   where s.company_id=p_company),false),'requests',coalesce((select jsonb_agg(jsonb_build_object(
+  value:=jsonb_build_object('available',true,
+   'writes_enabled',coalesce((select c.enabled from private.company_link_bound_control c where c.singleton),false),
+   'enabled',coalesce((select c.enabled from private.company_link_bound_control c where c.singleton),false)
+    and coalesce((select s.enabled from private.trade_company_link_settings s where s.company_id=p_company),false),
+   'requests',coalesce((select jsonb_agg(jsonb_build_object(
     'id',r.id,'incoming',r.target_company_id=p_company,'company_id',c.id,'company_name',c.name,
     'start_month',r.start_month,'status',r.status,'created_at',r.created_at,
     'local_role',case when r.sender_company_id=p_company then r.local_role
@@ -112,7 +127,8 @@ begin
   if (select array_agg(k order by k) from jsonb_object_keys(p_payload) k) is distinct from array['query']::text[]
    or jsonb_typeof(p_payload->'query')<>'string'
    or char_length(trim(p_payload->>'query')) not between 2 and 100 then raise exception 'invalid search'; end if;
-  if not coalesce((select s.enabled from private.trade_company_link_settings s where s.company_id=p_company),false)
+  if not coalesce((select c.enabled from private.company_link_bound_control c where c.singleton),false)
+   or not coalesce((select s.enabled from private.trade_company_link_settings s where s.company_id=p_company),false)
    then raise exception 'company linking disabled'; end if;
   value:=coalesce((select jsonb_agg(x) from(select c.id company_id,c.name company_name,c.address,c.corporate_number
    from public.companies c join private.trade_company_link_settings s on s.company_id=c.id and s.enabled
@@ -121,6 +137,9 @@ begin
    order by c.name,c.id limit 30)x),'[]'::jsonb);
  elsif p_command in('set_enabled','request','respond') then
   if p_operation is null then raise exception 'operation ID required'; end if;
+  perform 1 from private.company_link_bound_control c where c.singleton for share;
+  if not found or not coalesce((select c.enabled from private.company_link_bound_control c where c.singleton),false)
+   then raise exception 'new company-link operations stopped; result lookup remains available'; end if;
   perform pg_advisory_xact_lock(hashtextextended(p_company::text||actor::text||p_operation::text,771));
   actor:=private.require_company_link_bound_v1(p_company,p_session);
   select * into previous from private.company_link_bound_operations o
@@ -205,6 +224,9 @@ begin
  else raise exception 'unknown company-link command';
  end if;
  actor:=private.require_company_link_bound_v1(p_company,p_session);
+ if p_command in('set_enabled','request','respond') and
+  not coalesce((select c.enabled from private.company_link_bound_control c where c.singleton),false)
+ then raise exception 'new company-link operations stopped; result lookup remains available'; end if;
  return jsonb_build_object('version',1,'actor_id',actor,'company_id',p_company,'session_id',p_session,
   'operation_id',p_operation,'command',p_command,'value',value);
 end $$;
@@ -251,6 +273,17 @@ begin
    where a.grantee<>'postgres'::regrole::oid)
   or exists(select 1 from pg_attribute where attrelid='private.company_link_bound_operations'::regclass and attnum>0 and attacl is not null)
   or exists(select 1 from pg_policy where polrelid='private.company_link_bound_operations'::regclass)
+  or exists(select 1 from pg_policy where polrelid='private.company_link_bound_control'::regclass)
+  or exists(select 1 from pg_attribute where attrelid='private.company_link_bound_control'::regclass and attnum>0 and attacl is not null)
+  or exists(select 1 from aclexplode(coalesce((select relacl from pg_class where oid='private.company_link_bound_control'::regclass),acldefault('r','postgres'::regrole::oid))) a
+   where a.grantee<>'postgres'::regrole::oid)
+  or not exists(select 1 from pg_class where oid='private.company_link_bound_control'::regclass
+   and relowner='postgres'::regrole::oid and relrowsecurity and relkind='r' and relpersistence='p')
+  or (select array_agg(attname::text||':'||format_type(atttypid,atttypmod)||':'||attnotnull::text order by attnum)
+   from pg_attribute where attrelid='private.company_link_bound_control'::regclass and attnum>0 and not attisdropped)
+   is distinct from array['singleton:boolean:true','enabled:boolean:true']::text[]
+  or (select count(*) from private.company_link_bound_control)<>1
+  or (select enabled from private.company_link_bound_control where singleton) is distinct from false
   or not exists(select 1 from pg_class where oid='private.company_link_bound_operations'::regclass
    and relowner='postgres'::regrole::oid and relrowsecurity and relkind='r' and relpersistence='p')
   or (select array_agg(attname::text||':'||format_type(atttypid,atttypmod)||':'||attnotnull::text order by attnum)
