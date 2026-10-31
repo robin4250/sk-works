@@ -104,6 +104,24 @@ void main(){
       await tester.pumpWidget(const SizedBox.shrink());await tester.pump();
     });
   }
+  for(final osBack in [false,true]){
+    testWidgets('owned draft returns locally via ${osBack?'OS back':'cancel'}',(tester)async{
+      final p=Port();final target=AdminSavedQualificationTarget(row());
+      final repository=AdminSavedQualificationSubmissionRepository(p,target);
+      await tester.pumpWidget(MaterialApp(home:AdminSavedQualificationPhotoPage(
+        row:row(),current:()=>true,repository:repository,
+        photoBuilder:(_,__)=>const Text('Synthetic retained image'))));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('残す写真・順番を選ぶ'));await tester.pumpAndSettle();
+      expect(find.text('資格写真の変更内容'),findsOneWidget);
+      if(osBack){await tester.binding.handlePopRoute();}
+      else{await tester.tap(find.text('キャンセル'));}
+      await tester.pumpAndSettle();
+      expect(find.text('資格写真の変更内容'),findsNothing);
+      expect(find.text('残す写真・順番を選ぶ'),findsOneWidget);
+      expect(p.calls,['admin_saved_photo_capability']);expect(tester.takeException(),isNull);
+    });
+  }
   testWidgets('parent disposal masks a confirmation retained in the navigator',(tester)async{
     final p=Port();final target=AdminSavedQualificationTarget(row());
     final visible=ValueNotifier(true);addTearDown(visible.dispose);

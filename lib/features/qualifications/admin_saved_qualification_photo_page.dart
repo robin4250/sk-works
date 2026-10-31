@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../../data/supabase_backend.dart';
+import '../people/worker_document_change_route_host.dart';
 import 'admin_saved_qualification_photo_contract.dart';
 import 'admin_saved_qualification_photo_draft_page.dart';
 import 'admin_saved_qualification_photo_submission_repository.dart';
@@ -20,7 +21,6 @@ class AdminSavedQualificationPhotoPage extends StatefulWidget {
   State<AdminSavedQualificationPhotoPage> createState()=>_AdminSavedQualificationPhotoPageState();
 }
 class _AdminSavedQualificationPhotoPageState extends State<AdminSavedQualificationPhotoPage> with WidgetsBindingObserver {
-  final _flowNavigator=GlobalKey<NavigatorState>();
   BuildContext? _flowContext;
   final _renderChanges=ValueNotifier(0);
   void _update(VoidCallback action){super.setState(action);_renderChanges.value++;}
@@ -120,8 +120,9 @@ class _AdminSavedQualificationPhotoPageState extends State<AdminSavedQualificati
     final repo=_repository;
     if(repo==null || _retired || _busy || _journal!=null || !_cap.available)return;
     final port=repo.port;
-    final navigator=_flowNavigator.currentState;
-    if(navigator==null)return;
+    final flow=_flowContext;
+    if(flow==null || !flow.mounted)return;
+    final navigator=Navigator.of(flow);
     final selected=await navigator.push<AdminSavedQualificationPhotoDraft>(
       MaterialPageRoute(builder:(_)=>AdminSavedQualificationPhotoDraftPage(
         capability:_cap,companyId:repo.target.company,actorId:port.actor,targetId:repo.target.id,
@@ -184,12 +185,11 @@ class _AdminSavedQualificationPhotoPageState extends State<AdminSavedQualificati
     _port?.lease.removeListener(_invalidate);_port?.dispose();_scope.dispose();_renderChanges.dispose();super.dispose();
   }
   @override
-  Widget build(BuildContext context)=>Navigator(
-    key:_flowNavigator,
-    onGenerateRoute:(_)=>MaterialPageRoute<void>(builder:(flowContext)=>
-      AnimatedBuilder(animation:_renderChanges,builder:(_,__){
-        _flowContext=flowContext;return _body(context);
-      })));
+  Widget build(BuildContext context)=>WorkerDocumentChangeRouteHost(
+    onClose:(){if(mounted)Navigator.of(context).pop();},
+    builder:(flowContext)=>AnimatedBuilder(animation:_renderChanges,builder:(_,__){
+      _flowContext=flowContext;return _body(context);
+    }));
   Widget _body(BuildContext context)=>Scaffold(
     appBar:AppBar(title:const Text('資格写真の変更申請')),
     body:_retired ? const Center(child:Text('表示状態が変わりました。元の画面から開き直してください。')) : SafeArea(child:ListView(padding:const EdgeInsets.all(16),children:[
