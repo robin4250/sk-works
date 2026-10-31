@@ -42,7 +42,9 @@ void main() {
     });
   }
   testWidgets('actual SDK loader mapping keeps initial CAS through DTO, editor and narrow save', (t) async {
-    final wire = fixture.Wire();
+    debugPrint('DOB_LOADER sdk-construction-start');
+    final wire = (await t.runAsync(() async => fixture.Wire()))!;
+    debugPrint('DOB_LOADER sdk-construction-complete');
     debugPrint('DOB_LOADER seed-start');
     await t.runAsync(wire.seed);
     debugPrint('DOB_LOADER seed-complete');
@@ -111,8 +113,8 @@ void main() {
     await t.tap(find.byTooltip('生年月日を未登録に戻す'));
     await t.pumpAndSettle();
     debugPrint('DOB_LOADER clear-settled');
-    final save = find.widgetWithText(FilledButton, '保存する');
-    await t.ensureVisible(save);
+    final save = find.text('保存する');
+    await t.scrollUntilVisible(save, 500, scrollable: find.byType(Scrollable).first);
     debugPrint('DOB_LOADER save-visible');
     await t.tap(save);
     await t.pumpAndSettle();
