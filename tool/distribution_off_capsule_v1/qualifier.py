@@ -424,5 +424,5 @@ def qualify(installer, evidence):
             'create_tables': ['private.app_distribution_links', 'private.app_distribution_invitation_channels'],
             'preserve': 'all other definitions, owners, ACLs, settings, histories and company URLs',
         },
-        'blocked': ['private preservation anchor contents unverified', 'full dependency closure and atomic before/post guard not bound', 'freshness and project identity require independent private verification', 'production approval absent', 'no execution path exists'],
+        'blocked': ['private preservation anchor contents unverified', 'full dependency closure and atomic before/post guard not bound', 'freshness, project identity, namespace OID and non-owner role OID mapping require independent private verification', 'production approval absent', 'no execution path exists'],
     }
