@@ -119,17 +119,21 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> with WidgetsB
         }
       });
     } catch (_) {
-      if (current()) setState(() {
-        _ocrReading = false;
-        _ocrMessage = '金額を読み取れませんでした。写真は保持しています。金額を入力して申請できます。';
-      });
+      if (current()) {
+        setState(() {
+          _ocrReading = false;
+          _ocrMessage = '金額を読み取れませんでした。写真は保持しています。金額を入力して申請できます。';
+        });
+      }
     }
   }
 
   void _useAmountCandidate(ExpenseReceiptAmountCandidate candidate) {
     if (_busy || !_ready || _pending != null || _access?.actor != _actor ||
         _candidateReceipt == null || !identical(_receipt, _candidateReceipt) ||
-        !_amountCandidates.contains(candidate)) return;
+        !_amountCandidates.contains(candidate)) {
+      return;
+    }
     setState(() {
       _amount.text = '${candidate.amountYen}';
       _ocrMessage = '選択した金額と領収書の税込合計を確認してから申請してください。';
