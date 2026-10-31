@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -15,6 +16,85 @@ import 'package:sk_works/features/invoices/invoice_cloud_page.dart';
 import 'package:sk_works/features/payroll/payment_certificate_repository.dart';
 import 'package:sk_works/features/payroll/payment_certificates_page.dart';
 import 'package:sk_works/features/shared/financial_preview_chrome.dart';
+
+// Fonts are served from the repository asset through an in-memory HttpClient.
+// This keeps Google-font HTTP fallback timeouts out of the widget FakeAsync
+// clock and makes repeated real-page mounts deterministic without a network.
+class _FontHttp extends HttpOverrides {
+  final Uint8List bytes = File('assets/fonts/company-seal/NotoSansJP-Bold.ttf')
+      .readAsBytesSync();
+  @override
+  HttpClient createHttpClient(SecurityContext? context) => _FontClient(bytes);
+}
+
+class _FontClient implements HttpClient {
+  _FontClient(this.bytes);
+  final Uint8List bytes;
+  @override
+  Future<HttpClientRequest> openUrl(String method, Uri url) async =>
+      _FontRequest(bytes);
+  @override
+  Future<HttpClientRequest> getUrl(Uri url) async => _FontRequest(bytes);
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
+}
+
+class _Headers implements HttpHeaders {
+  @override
+  void forEach(void Function(String, List<String>) action) {}
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
+}
+
+class _FontRequest implements HttpClientRequest {
+  _FontRequest(this.bytes);
+  final Uint8List bytes;
+  @override
+  final HttpHeaders headers = _Headers();
+  @override
+  Future<void> addStream(Stream<List<int>> stream) async {
+    await stream.drain<void>();
+  }
+
+  @override
+  Future<HttpClientResponse> close() async => _FontResponse(bytes);
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
+}
+
+class _FontResponse extends Stream<List<int>> implements HttpClientResponse {
+  _FontResponse(this.bytes);
+  final Uint8List bytes;
+  @override
+  int get statusCode => 200;
+  @override
+  bool get isRedirect => false;
+  @override
+  bool get persistentConnection => false;
+  @override
+  String get reasonPhrase => 'OK';
+  @override
+  int get contentLength => bytes.length;
+  @override
+  HttpClientResponseCompressionState get compressionState =>
+      HttpClientResponseCompressionState.notCompressed;
+  @override
+  final HttpHeaders headers = _Headers();
+  @override
+  StreamSubscription<List<int>> listen(
+    void Function(List<int>)? onData, {
+    Function? onError,
+    void Function()? onDone,
+    bool? cancelOnError,
+  }) => Stream<List<int>>.value(bytes).listen(
+    onData,
+    onError: onError,
+    onDone: onDone,
+    cancelOnError: cancelOnError,
+  );
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
+}
 
 class _Raster extends PdfRaster {
   _Raster() : super(1, 1, Uint8List.fromList([255, 255, 255, 255]));
@@ -82,7 +162,7 @@ void main() {
     for (final narrow in [false, true]) {
       testWidgets(
         'actual ${payment ? 'payment' : 'invoice'} entry keeps one compact footer narrow=$narrow',
-        (tester) async {
+        (tester) async => HttpOverrides.runWithHttpOverrides(() async {
           tester.view.physicalSize = Size(narrow ? 320 : 430, 932);
           tester.view.devicePixelRatio = 1;
           addTearDown(tester.view.resetPhysicalSize);
@@ -218,7 +298,7 @@ void main() {
           await tester.runAsync(
             () => Future<void>.delayed(const Duration(milliseconds: 20)),
           );
-        },
+        }, _FontHttp()),
       );
     }
   }
