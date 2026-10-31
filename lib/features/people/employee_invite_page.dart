@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -8,9 +10,16 @@ import '../../international/language_controller.dart';
 import 'employee_invite_repository.dart';
 
 class EmployeeInvitePage extends StatefulWidget {
-  const EmployeeInvitePage({super.key, this.canAssignManagementRole = false});
+  const EmployeeInvitePage({
+    super.key,
+    this.canAssignManagementRole = false,
+    this.selectedCompanyId,
+    this.repository,
+  });
 
   final bool canAssignManagementRole;
+  final String? selectedCompanyId;
+  final EmployeeInviteRepository? repository;
 
   @override
   State<EmployeeInvitePage> createState() => _EmployeeInvitePageState();
@@ -19,7 +28,7 @@ class EmployeeInvitePage extends StatefulWidget {
 class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
   final _name = TextEditingController();
   final _phone = TextEditingController();
-  final _repository = EmployeeInviteRepository.maybeCreate();
+  late final EmployeeInviteRepository? _repository;
 
   bool _busy = false;
   bool _assigneeLoading = false;
@@ -29,19 +38,58 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
   List<ApprovalAssigneeOption> _currentApprovalAssignees = const [];
   EmployeeInviteResult? _result;
   String? _error;
+  EmployeeInviteRequest? _request;
+  StreamSubscription<dynamic>? _authSubscription;
+  bool _invalidated = false;
+
+  void _invalidate() {
+    if (!mounted || _invalidated) return;
+    setState(() {
+      _invalidated = true;
+      _result = null;
+      _name.clear();
+      _phone.clear();
+      _error = 'ログイン状態または会社が変わりました。画面を開き直してください。';
+    });
+  }
+
+  bool _current() => !_invalidated && _request?.isCurrent == true;
+  Future<void> _bindContext() async {
+    try {
+      final request = await _repository?.beginRequest(
+        companyId: widget.selectedCompanyId,
+      );
+      if (!mounted || _invalidated || request == null) return;
+      setState(() => _request = request);
+      if (widget.canAssignManagementRole) await _loadApprovalAssignees();
+    } catch (_) {
+      _invalidate();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant EmployeeInvitePage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.selectedCompanyId != widget.selectedCompanyId) _invalidate();
+  }
 
   String _tr(String ja, String en) => SkoLanguageController.isEnglish ? en : ja;
 
   @override
   void initState() {
     super.initState();
-    if (widget.canAssignManagementRole) {
-      _loadApprovalAssignees();
-    }
+    _repository = widget.repository ?? EmployeeInviteRepository.maybeCreate();
+    _authSubscription = _repository?.authChanges.listen((event) {
+      _request?.observeSession(event.session);
+      if (_request != null && !_request!.isCurrent) _invalidate();
+    });
+    _bindContext();
   }
 
   @override
   void dispose() {
+    _authSubscription?.cancel();
+    if (widget.repository == null) _repository?.dispose();
     _name.dispose();
     _phone.dispose();
     super.dispose();
@@ -49,11 +97,13 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
 
   Future<void> _loadApprovalAssignees() async {
     final repository = _repository;
-    if (repository == null) return;
+    if (repository == null || !_current()) return;
     setState(() => _assigneeLoading = true);
     try {
-      final rows = await repository.loadCurrentApprovalAssignees();
-      if (!mounted) return;
+      final rows = await repository.loadCurrentApprovalAssignees(
+        request: _request,
+      );
+      if (!mounted || !_current()) return;
       setState(() {
         _currentApprovalAssignees = rows;
         _assigneeLoading = false;
@@ -149,7 +199,7 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
 
   Future<void> _create() async {
     final repository = _repository;
-    if (repository == null) return;
+    if (repository == null || !_current()) return;
     if (_name.text.trim().isEmpty || _phone.text.trim().isEmpty) {
       setState(
         () => _error = _tr(
@@ -189,8 +239,12 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
         requestedRole: _makeSubAdmin ? 'manager' : 'viewer',
         requestedApprovalAssignee: _makeApprovalAssignee,
         replaceApprovalAssigneeUserId: _replaceApprovalAssigneeUserId,
+        request: _request,
       );
-      if (!mounted) return;
+      if (!mounted || !_current()) {
+        _invalidate();
+        return;
+      }
       setState(() {
         _busy = false;
         _result = result;
@@ -216,10 +270,18 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
             'SKOアプリを開き、初期パスワードでログインしてください。初回ログイン後に本パスワードを設定します。';
 
   Future<void> _share(EmployeeInviteResult result) async {
+    if (!_current() || !identical(result, _result)) {
+      _invalidate();
+      return;
+    }
     await SharePlus.instance.share(ShareParams(text: _shareText(result)));
   }
 
   Future<void> _sendEmployeeSms(EmployeeInviteResult result) async {
+    if (!_current() || !identical(result, _result)) {
+      _invalidate();
+      return;
+    }
     final phone = result.phone.trim();
     if (phone.isEmpty) return;
     final body =
@@ -240,9 +302,8 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
       }
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('SMS作成画面を開けませんでした。')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('SMS作成画面を開けませんでした。')));
     }
   }
 
@@ -263,7 +324,7 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
 
   @override
   Widget build(BuildContext context) {
-    final result = _result;
+    final result = _current() ? _result : null;
     final replacementName = _replaceApprovalAssigneeUserId == null
         ? null
         : _currentApprovalAssignees
@@ -397,7 +458,7 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
             const SizedBox(height: 16),
             if (result == null)
               FilledButton.icon(
-                onPressed: _busy ? null : _create,
+                onPressed: _busy || !_current() ? null : _create,
                 icon: _busy
                     ? const SizedBox.square(
                         dimension: 18,
@@ -457,6 +518,10 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
                       const SizedBox(height: 12),
                       OutlinedButton.icon(
                         onPressed: () async {
+                          if (!_current() || !identical(result, _result)) {
+                            _invalidate();
+                            return;
+                          }
                           await Clipboard.setData(
                             ClipboardData(text: result.temporaryPassword),
                           );
