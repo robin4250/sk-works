@@ -9,7 +9,8 @@ import 'admin_saved_qualification_photo_submission_repository.dart';
 /// Registered retained-photo changes only. No metadata or new-upload controls.
 class AdminSavedQualificationPhotoPage extends StatefulWidget {
   const AdminSavedQualificationPhotoPage({super.key,required this.row,required this.current,
-    this.repository,this.photoBuilder,this.invalidations});
+    this.repository,this.photoBuilder,this.invalidations,this.onClose});
+  final VoidCallback? onClose;
   final Listenable? invalidations;
   @visibleForTesting
   final AdminSavedQualificationSubmissionRepository? repository;
@@ -22,6 +23,7 @@ class AdminSavedQualificationPhotoPage extends StatefulWidget {
 }
 class _AdminSavedQualificationPhotoPageState extends State<AdminSavedQualificationPhotoPage> with WidgetsBindingObserver {
   BuildContext? _flowContext;
+  void _close(){if(!mounted)return;final close=widget.onClose;if(close!=null){close();}else{Navigator.of(context).pop();}}
   final _renderChanges=ValueNotifier(0);
   void _update(VoidCallback action){super.setState(action);_renderChanges.value++;}
   late final String _initialRow;
@@ -163,7 +165,7 @@ class _AdminSavedQualificationPhotoPageState extends State<AdminSavedQualificati
     if(repo==null || _retired || _busy)return;
     _update(()=>_busy=true);
     try {
-      if(acknowledge){await repo.acknowledgeFinal(); if(mounted)Navigator.pop(context);return;}
+      if(acknowledge){await repo.acknowledgeFinal(); if(mounted)_close();return;}
       else {
         final result=await repo.reconcile();
         if(mounted && !_retired){_update(()=>_message=switch(result?.status){
@@ -186,7 +188,7 @@ class _AdminSavedQualificationPhotoPageState extends State<AdminSavedQualificati
   }
   @override
   Widget build(BuildContext context)=>WorkerDocumentChangeRouteHost(
-    onClose:(){if(mounted)Navigator.of(context).pop();},
+    onClose:_close,
     builder:(flowContext)=>AnimatedBuilder(animation:_renderChanges,builder:(_,__){
       _flowContext=flowContext;return _body(context);
     }));
@@ -205,6 +207,6 @@ class _AdminSavedQualificationPhotoPageState extends State<AdminSavedQualificati
       ],
       if(!_retired && _journal==null && _cap.available)
         FilledButton(onPressed:_busy?null:_edit,child:const Text('残す写真・順番を選ぶ')),
-      OutlinedButton(onPressed:()=>Navigator.pop(context),child:const Text('閉じる')),
+      OutlinedButton(onPressed:_close,child:const Text('閉じる')),
     ])));
 }
