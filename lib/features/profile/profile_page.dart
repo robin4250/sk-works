@@ -386,6 +386,9 @@ class _ProfilePageState extends State<ProfilePage> {
       );
       if (!mounted) return;
       final pending = result['requires_approval'] == true;
+      if (pending && _birthDateDirty) {
+        setState(() => _birthdayError = '生年月日の変更申請中です。承認後に反映されます。');
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(

@@ -267,4 +267,18 @@ void main() {
     expect((w.writes.single['p_payload'] as Map)['birth_date'], '1980-01-16');
     expect(w.birthday, '1980-01-16');
   }, timeout: const Timeout(Duration(seconds: 45)));
+  testWidgets('pending birthday stays a disabled proposal and is not labelled as the official date', (tester) async {
+    final w = Wire()..pending = true
+      ..members = [{'company_id': company, 'role': 'employee'}];
+    disposeWidgetClient(tester, w);
+    await tester.runAsync(() => w.login(sidA));
+    await showProfile(tester, w);
+    await tester.tap(find.byKey(const ValueKey('profile-birthday-clear')));
+    await tester.pumpAndSettle();
+    await saveProfile(tester);
+    expect(w.birthday, '1980-01-15');
+    expect(find.text('生年月日の変更申請中です。承認後に反映されます。'), findsOneWidget);
+    expect(tester.widget<TextField>(find.byKey(const ValueKey('profile-birthday-field'))).enabled, isFalse);
+    expect(w.writes.length, 1);
+  }, timeout: const Timeout(Duration(seconds: 45)));
 }
