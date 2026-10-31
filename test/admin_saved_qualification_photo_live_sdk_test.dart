@@ -14,7 +14,7 @@ const sidA='10000000-0000-0000-0000-000000000005';
 const sidB='10000000-0000-0000-0000-000000000006';
 class Wire {
   String sid=sidA,role='admin';
-  bool current=true;
+  bool current=true,multipleCompanies=false,missingCount=false,truncatedCount=false;
   String returnedCompany=company;
   final requests=<http.Request>[];
   final expiry=DateTime.now().millisecondsSinceEpoch~/1000+3600;
@@ -37,7 +37,8 @@ class Wire {
           'user':{'id':actor,'aud':'authenticated','role':'authenticated',
             'email':'synthetic@example.invalid','app_metadata':{},'user_metadata':{},
             'created_at':'2026-10-31T00:00:00Z'}};
-      case '/rest/v1/company_members':value=[{'company_id':company,'role':role}];
+      case '/rest/v1/company_members':value=[{'company_id':company,'role':role},
+        if(multipleCompanies){'company_id':worker,'role':'admin'}];
       case '/rest/v1/workers':value=[{'id':worker,'company_id':returnedCompany}];
       case '/rest/v1/rpc/personal_qualification_submission':
         final data=jsonDecode(request.body) as Map;
@@ -48,7 +49,9 @@ class Wire {
           'photo_upload_allowed':false,'max_photos':20,'self_approval_allowed':false};
       default:throw StateError('Unexpected path ${request.url.path}');
     }
-    return http.Response(jsonEncode(value),200,headers:{'content-type':'application/json'},request:request);
+    return http.Response(jsonEncode(value),200,headers:{'content-type':'application/json',
+      if(request.url.path=='/rest/v1/company_members' && !missingCount)
+        'content-range':multipleCompanies?'0-1/2':truncatedCount?'0-0/2':'0-0/1'},request:request);
   }
   AdminSavedQualificationTarget target()=>AdminSavedQualificationTarget({
     'id':qualification,'company_id':company,'worker_id':worker,
@@ -68,6 +71,7 @@ void main(){
       ['/rest/v1/rpc/personal_qualification_submission']);
     expect(f.requests.every((r)=>r.headers['Authorization']=='Bearer ${f.token()}'),isTrue);
     expect(f.requests.where((r)=>r.url.path.contains('/storage/')),isEmpty);
+    expect(f.requests.firstWhere((r)=>r.url.path=='/rest/v1/company_members').headers['Prefer'],contains('count=exact'));
   });
   test('same actor new SID retires old live intent without mutation fallback',()async{
     final f=Wire();await f.login();
@@ -78,12 +82,15 @@ void main(){
     expect(f.requests.where((r)=>r.url.path.endsWith('personal_qualification_submission')),isEmpty);
   });
   test('worker company mismatch, role loss and target retirement reject',()async{
-    for(final mode in ['worker','role','target']){
+    for(final mode in ['worker','role','target','multipleCompanies','missingCount','truncatedCount']){
       final f=Wire();await f.login();
       final port=LiveAdminSavedQualificationPort(f.client,f.target(),current:()=>f.current);
       if(mode=='worker')f.returnedCompany=worker;
       if(mode=='role')f.role='viewer';
       if(mode=='target')f.current=false;
+      if(mode=='multipleCompanies')f.multipleCompanies=true;
+      if(mode=='missingCount')f.missingCount=true;
+      if(mode=='truncatedCount')f.truncatedCount=true;
       await expectLater(port.call('submit',{'id':qualification}),throwsStateError);
       expect(f.requests.where((r)=>r.url.path.endsWith('personal_qualification_submission')),isEmpty);
       port.dispose();await f.client.dispose();

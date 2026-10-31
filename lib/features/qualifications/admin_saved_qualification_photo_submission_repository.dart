@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
@@ -62,11 +63,16 @@ class LiveAdminSavedQualificationPort implements AdminSavedQualificationPort {
     }
     actor = client.auth.currentUser!.id;
     sid = claims['session_id'] as String;
+    _token=session!.accessToken;
     lease = TradeDocumentFormSession(client, target: true, currentTarget: current);
+    lease.addListener(_retireReads);
   }
   final SupabaseClient client;
   final AdminSavedQualificationTarget target;
   late final TradeDocumentFormSession lease;
+  late final String _token;
+  final _retiredReads=Completer<void>();
+  void _retireReads(){if(!_retiredReads.isCompleted)_retiredReads.complete();}
   @override
   late final String actor;
   @override
@@ -74,9 +80,17 @@ class LiveAdminSavedQualificationPort implements AdminSavedQualificationPort {
   @override
   Future<void> check() async {
     await lease.ready();
-    final membership = await lease.readOwnMemberships();
-    if (membership is! List || membership.whereType<Map>().where((r) =>
-        r['company_id'] == target.company && const ['owner','admin'].contains(r['role'])).length != 1) {
+    final counted = await client.from('company_members').select('company_id,role')
+      .eq('user_id',actor).limit(2).setHeader('Authorization','Bearer $_token')
+      .abortSignal(_retiredReads.future).count(CountOption.exact)
+      .timeout(const Duration(seconds:30));
+    await lease.ready();
+    final membership=counted.data;
+    // Existing qualification navigation has no verified selected-company bridge.
+    // Until it does, multiple memberships are read-only rather than picking first.
+    if (counted.count != 1 || membership.length != 1 ||
+        membership.single['company_id'] != target.company ||
+        !const ['owner','admin'].contains(membership.single['role'])) {
       throw StateError('現在の会社の管理権限を確認できません。');
     }
     final workers = await lease.readWorkerCompany(target.worker);
@@ -121,7 +135,7 @@ class LiveAdminSavedQualificationPort implements AdminSavedQualificationPort {
     await check();
     return value;
   }
-  void dispose() => lease.dispose();
+  void dispose(){_retireReads();lease.removeListener(_retireReads);lease.dispose();}
 }
 
 class AdminSavedQualificationResult {

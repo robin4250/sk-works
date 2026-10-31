@@ -44,7 +44,7 @@ Future<void> waitFor(WidgetTester tester,Finder finder)async{
     await tester.runAsync(()=>Future<void>.delayed(Duration.zero));
   }
   if(finder.evaluate().isEmpty){
-    print('QUAL wait target absent; visible: '+tester.widgetList<Text>(find.byType(Text)).map((t)=>t.data??'').join('|'));
+    debugPrint('QUAL wait target absent');
   }
   expect(finder,findsOneWidget);
 }
@@ -77,7 +77,7 @@ void main(){
     expect(p.calls,['admin_saved_photo_capability']);
   });
   for(final background in [false,true]){
-    testWidgets('open confirmation masks on '+(background?'background':'parent invalidation'),(tester)async{
+    testWidgets('open confirmation masks on ${background?'background':'parent invalidation'}',(tester)async{
       final p=Port();final target=AdminSavedQualificationTarget(row());
       final invalidations=ValueNotifier(0);
       addTearDown(invalidations.dispose);
@@ -89,7 +89,12 @@ void main(){
       await tester.tap(find.text('残す写真・順番を選ぶ'));await tester.pumpAndSettle();
       await tester.tap(find.text('選択を確認'));await tester.pumpAndSettle();
       expect(find.text('申請を送信'),findsOneWidget);
-      if(background){tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);}
+      if(background){
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+        await tester.pump();
+        // Paused apps do not draw frames. Resume must keep the intent retired.
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      }
       else{invalidations.value++;}
       await tester.pumpAndSettle();
       expect(find.text('申請を送信'),findsNothing);
@@ -103,18 +108,18 @@ void main(){
     late SaveWire f;
     late LiveAdminSavedQualificationPort port;
     await tester.runAsync(()async{
-      f=SaveWire();await f.login();print('QUAL login complete');
+      f=SaveWire();await f.login();debugPrint('QUAL login complete');
       port=LiveAdminSavedQualificationPort(f.client,f.target(),current:()=>f.current);
-      await port.check();print('QUAL lease check complete');
+      await port.check();debugPrint('QUAL lease check complete');
     });
     final target=f.target();
     addTearDown(()=>f.client.dispose());
     final repo=AdminSavedQualificationSubmissionRepository(port,target);
     await tester.pumpWidget(MaterialApp(home:AdminSavedQualificationPhotoPage(
       row:{},current:()=>true,repository:repo,photoBuilder:(_,__)=>const Text('Synthetic saved preview'))));
-    print('QUAL host mounted');
+    debugPrint('QUAL host mounted');
     await waitFor(tester,find.text('残す写真・順番を選ぶ'));
-    print('QUAL host capability loaded');
+    debugPrint('QUAL host capability loaded');
     await tester.tap(find.text('残す写真・順番を選ぶ'));await tester.pumpAndSettle();
     await tester.tap(find.text('選択から外す'));await tester.pumpAndSettle();
     await tester.tap(find.text('選択を確認'));await tester.pumpAndSettle();
@@ -122,7 +127,7 @@ void main(){
     await tester.runAsync(()=>tester.tap(find.text('申請を送信')));
     await waitFor(tester,find.text('同じ申請を再確認'));
     expect(find.textContaining('申請受付を確認しました。'),findsOneWidget);
-    print('QUAL fixed request receipt observed');
+    debugPrint('QUAL fixed request receipt observed');
     expect(f.prepared!['expected_photo_paths'],['synthetic/front']);
     expect(f.prepared!['photo_slots'],isEmpty);
     expect(f.prepared!['company_id'],company);
