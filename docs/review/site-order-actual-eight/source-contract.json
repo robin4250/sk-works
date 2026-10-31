@@ -1,0 +1,226 @@
+{
+  "public_source_parent": "07c40926afc19b18bb39d98b840723e101482041",
+  "files": {
+    "docs/candidates/company_seal_uploaded_png_20261020.sql.review-only": "afb4d3fb4ffff27ac763def102df6c267e7864c0a583955a8efa3b04dadcced1",
+    "docs/review/collector-current-core-20261026/sources/reauthentication_proofs.sql": "7172b71ab3ed61dcc8e6d654b897488104690abbe78fe8ddb87249f412f0abc2",
+    "docs/review/site-order-private-baseline/current-generic-auth-functions.fixture.sql": "5774ecebd10858dae5f218274c573e097b5b5a11ba221aac3d68e11412b2af0d",
+    "supabase/migrations/20261009011357_company_seal_aoyagi_style.sql": "be96fd84ac53837941848eee8bf52eb609f20b06f49e383e56c8f108c39428d6",
+    "supabase/migrations/20261010160154_company_seal_png_designs.sql": "02db484c001d034c3ce3bb8227af5a8fc0a8ff74a65534915983389b1057741f",
+    "tool/security/worker_document_change_session/baseline.sql": "1fdf546cc43e37a94b2be2d03996bff2c3a8739c54018d2c6c9d280021848e55"
+  },
+  "generic_sources": {
+    "private.uploaded_company_seal_snapshot(uuid)": "docs/candidates/company_seal_uploaded_png_20261020.sql.review-only",
+    "private.require_reauthentication_session()": "docs/review/collector-current-core-20261026/sources/reauthentication_proofs.sql",
+    "private.account_access_allowed()": "tool/security/worker_document_change_session/baseline.sql",
+    "private.aoyagi_reisho_name_supported(text)": "supabase/migrations/20261009011357_company_seal_aoyagi_style.sql",
+    "auth.uid()": "docs/review/site-order-private-baseline/current-generic-auth-functions.fixture.sql",
+    "auth.jwt()": "docs/review/site-order-private-baseline/current-generic-auth-functions.fixture.sql",
+    "private.account_deletion_barrier_key(uuid)": "docs/review/site-order-private-baseline/current-generic-auth-functions.fixture.sql"
+  },
+  "functions": [
+    {
+      "signature": "auth.jwt()",
+      "source_md5": "2db09c3fc855ba90e71d3ae28cfadae3",
+      "security_definer": false,
+      "volatility": "s",
+      "config": null,
+      "owner": "supabase_auth_admin",
+      "acl": [
+        {
+          "grantee": "PUBLIC",
+          "grantor": "supabase_auth_admin",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        },
+        {
+          "grantee": "postgres",
+          "grantor": "supabase_auth_admin",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        },
+        {
+          "grantee": "supabase_auth_admin",
+          "grantor": "supabase_auth_admin",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        },
+        {
+          "grantee": "dashboard_user",
+          "grantor": "supabase_auth_admin",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        }
+      ]
+    },
+    {
+      "signature": "auth.uid()",
+      "source_md5": "cdef18c69c4f4cbbced2eaf81e628b49",
+      "security_definer": false,
+      "volatility": "s",
+      "config": null,
+      "owner": "supabase_auth_admin",
+      "acl": [
+        {
+          "grantee": "PUBLIC",
+          "grantor": "supabase_auth_admin",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        },
+        {
+          "grantee": "supabase_auth_admin",
+          "grantor": "supabase_auth_admin",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        },
+        {
+          "grantee": "dashboard_user",
+          "grantor": "supabase_auth_admin",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        }
+      ]
+    },
+    {
+      "signature": "private.account_access_allowed()",
+      "source_md5": "aeca25db212c043c472334026bd98724",
+      "security_definer": true,
+      "volatility": "s",
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": [
+        {
+          "grantee": "postgres",
+          "grantor": "postgres",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        },
+        {
+          "grantee": "anon",
+          "grantor": "postgres",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        },
+        {
+          "grantee": "authenticated",
+          "grantor": "postgres",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        },
+        {
+          "grantee": "service_role",
+          "grantor": "postgres",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        }
+      ]
+    },
+    {
+      "signature": "private.document_company_seal_snapshot(jsonb,uuid,boolean)",
+      "source_md5": "823cc52d0c652e7f04ff816a8a8eaf64",
+      "security_definer": true,
+      "volatility": "v",
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": [
+        {
+          "grantee": "postgres",
+          "grantor": "postgres",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        }
+      ]
+    },
+    {
+      "signature": "private.require_reauthentication_session()",
+      "source_md5": "b5c8e2f259a99b3c69694ad0640080e5",
+      "security_definer": true,
+      "volatility": "v",
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": [
+        {
+          "grantee": "postgres",
+          "grantor": "postgres",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        }
+      ]
+    },
+    {
+      "signature": "private.account_deletion_barrier_key(uuid)",
+      "source_md5": "84db8dfee728dd9187f3c05b29e29e1a",
+      "security_definer": false,
+      "volatility": "i",
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": [
+        {
+          "grantee": "postgres",
+          "grantor": "postgres",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        },
+        {
+          "grantee": "authenticated",
+          "grantor": "postgres",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        },
+        {
+          "grantee": "service_role",
+          "grantor": "postgres",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        }
+      ]
+    },
+    {
+      "signature": "private.aoyagi_reisho_name_supported(text)",
+      "source_md5": "ca6eecc48cfcbb24faac27c82bc3ed30",
+      "security_definer": false,
+      "volatility": "i",
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": [
+        {
+          "grantee": "postgres",
+          "grantor": "postgres",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        }
+      ]
+    },
+    {
+      "signature": "private.uploaded_company_seal_snapshot(uuid)",
+      "source_md5": "8d941e41fa11beadff7f36b95fd71035",
+      "security_definer": false,
+      "volatility": "v",
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": [
+        {
+          "grantee": "postgres",
+          "grantor": "postgres",
+          "privilege": "EXECUTE",
+          "grant_option": false
+        }
+      ]
+    }
+  ],
+  "seal_base": "supabase/migrations/20261010160154_company_seal_png_designs.sql",
+  "seal_base_body_md5": "5e29407c55cfe7fa33eb7933a38d2af7",
+  "seal_patch": "docs/candidates/company_seal_uploaded_png_20261020.sql.review-only",
+  "seal_patch_statement_sha256": "aa422aed313d99b370b30987f6cb04a21f82b149a1bd706758ba7804ba2e37c6"
+}
