@@ -8,6 +8,7 @@ import 'attendance_management_company_allowances.dart';
 import 'attendance_management_company_allowance_field.dart';
 import '../daily_reports/daily_report_company_allowance_selection.dart';
 import '../../international/language_controller.dart';
+import '../people/worker_document_change_route_host.dart';
 
 String attendanceManagementActionErrorMessage(Object error) {
   final raw = error.toString();
@@ -436,28 +437,125 @@ class _BulkManagementPanel extends StatefulWidget {
   State<_BulkManagementPanel> createState() => _BulkManagementPanelState();
 }
 
-class _BulkManagementPanelState extends State<_BulkManagementPanel> {
+class _BulkManagementPanelState extends State<_BulkManagementPanel> with WidgetsBindingObserver {
   @override
-  void dispose() { _form.dispose(); super.dispose(); }
+  void dispose() { _marksGeneration++; WidgetsBinding.instance.removeObserver(this); _form.dispose(); _changes.dispose(); super.dispose(); }
   final _form = _ManagementFormState();
+  final _changes = ValueNotifier<int>(0);
+  void _update(VoidCallback change) {
+    setState(change);
+    _changes.value++;
+  }
   final Set<String> _workerIds = {};
   final Set<DateTime> _dates = {};
   late DateTime _month;
   bool _busy = false;
+  bool _marksLoading = false;
+  bool _marksReady = false;
+  Object? _marksError;
+  int _marksGeneration = 0;
+  int _routeEpoch = 0;
+  Object? _deleteConfirmation;
+  bool get _confirmingDelete => _deleteConfirmation != null;
+  Map<int, Map<String, int>> _marks = const {};
 
   @override
   void initState() {
     super.initState();
     final now = DateTime.now();
     _month = DateTime(now.year, now.month);
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didUpdateWidget(covariant _BulkManagementPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.repository, widget.repository) ||
+        _workerIds.any((id) => !widget.workers.any((worker) => worker.id == id))) {
+      _workerIds.clear();
+      _routeEpoch++;
+      _invalidateMarks();
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive || state == AppLifecycleState.hidden || state == AppLifecycleState.paused) {
+      if (mounted) _update(() { _invalidateMarks(); _routeEpoch++; });
+    } else if (state == AppLifecycleState.resumed && !_busy && _workerIds.isNotEmpty) {
+      _loadMarks();
+    }
+  }
+
+  void _invalidateMarks() {
+    _marksGeneration++;
+    _dates.clear();
+    _marks = const {};
+    _marksReady = false;
+    _marksLoading = false;
+    _marksError = null;
+  }
+
+  bool _sameWorkers(List<String> ids) => ids.length == _workerIds.length && ids.every(_workerIds.contains);
+
+  Future<bool> _loadMarks({bool clearDates = true}) async {
+    if (!mounted) return false;
+    final generation = ++_marksGeneration;
+    final ids = _workerIds.toList()..sort();
+    final month = _month;
+    _update(() {
+      if (clearDates) _dates.clear();
+      _marks = const {};
+      _marksReady = false;
+      _marksError = null;
+      _marksLoading = ids.isNotEmpty;
+    });
+    if (ids.isEmpty) return false;
+    try {
+      final results = await Future.wait([
+        for (final id in ids) widget.repository.loadMonthMarks(workerId: id, month: month),
+      ]);
+      if (!mounted || generation != _marksGeneration || month != _month || !_sameWorkers(ids)) return false;
+      final merged = <int, Map<String, int>>{};
+      for (final result in results) {
+        for (final entry in result.entries) {
+          if (entry.key < 1 || entry.key > DateUtils.getDaysInMonth(month.year, month.month) ||
+              entry.value.any((kind) => !const {'work','punch','leave'}.contains(kind))) {
+            throw StateError('勤務日の記録を確認できません。');
+          }
+          for (final kind in entry.value) {
+            final counts = merged.putIfAbsent(entry.key, () => <String,int>{});
+            counts[kind] = (counts[kind] ?? 0) + 1;
+          }
+        }
+      }
+      _update(() { _marks = merged; _marksReady = true; _marksLoading = false; });
+      return true;
+    } catch (error) {
+      if (mounted && generation == _marksGeneration && month == _month && _sameWorkers(ids)) {
+        _update(() { _marks = const {}; _marksReady = false; _marksLoading = false; _marksError = error; });
+      }
+      return false;
+    }
+  }
+
+  void _selectWorkers(void Function() change) {
+    _update(() { change(); _invalidateMarks(); if (_confirmingDelete) _routeEpoch++; });
+    _loadMarks();
+  }
+
+  void _moveMonth(int delta) {
+    _update(() { _month = DateTime(_month.year, _month.month + delta); _invalidateMarks(); if (_confirmingDelete) _routeEpoch++; });
+    _loadMarks();
   }
 
   Future<void> _apply() async {
     if (_busy) return;
+    if (!_marksReady || _marksLoading) { _show('勤務日の目印を確認してから操作してください'); return; }
     if (_workerIds.isEmpty || _dates.isEmpty) { _show('従業員と日付を1つ以上選択してください'); return; }
     final values = _form.values(context, widget.sites);
     if (values == null) return;
-    setState(() => _busy = true);
+    _update(() => _busy = true);
     try {
       final count = await widget.repository.apply(
         
@@ -469,38 +567,70 @@ class _BulkManagementPanelState extends State<_BulkManagementPanel> {
         clockIn: values.clockIn, clockOut: values.clockOut,
       );
       if (mounted) _show('$count件を管理者登録として保存しました');
+      if (mounted) await _loadMarks();
     } catch (error) {
       if (mounted) _show(attendanceManagementActionErrorMessage(error));
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) _update(() => _busy = false);
     }
   }
 
-  Future<void> _delete() async {
-    if (_busy) return;
+  Future<void> _delete(BuildContext dialogOwner) async {
+    if (_busy || !dialogOwner.mounted) return;
+    if (!_marksReady || _marksLoading) { _show('勤務日の目印を確認してから操作してください'); return; }
     if (_workerIds.isEmpty || _dates.isEmpty) { _show('従業員と日付を1つ以上選択してください'); return; }
-    final total = _workerIds.length * _dates.length;
-    final ok = await showDialog<bool>(
-      context: context,
+    final ids = List<String>.unmodifiable(_workerIds.toList()..sort());
+    final dates = List<DateTime>.unmodifiable(_dates.toList()..sort());
+    final month = _month;
+    final generation = _marksGeneration;
+    final total = ids.length * dates.length;
+    final confirmation = Object();
+    _deleteConfirmation = confirmation;
+    bool? ok;
+    try {
+      ok = await showDialog<bool>(
+      context: dialogOwner,
+      useRootNavigator: false,
       builder: (dialogContext) => AlertDialog(
         title: Text('$total件を一括削除しますか？'),
-        content: const Text('選択した従業員・日付の出勤、有給、日報行を直接削除します。'),
+        content: SingleChildScrollView(child: Text(
+          '選択した${ids.length}人×${dates.length}日の出勤、有給、日報行を直接削除します。\n'
+          '出勤印のない人も選択日の削除範囲に含まれます。\n'
+          '従業員：${widget.workers.where((worker) => ids.contains(worker.id)).map((worker) => worker.name).join('、')}\n'
+          '日付：${dates.map((date) => '${date.month}/${date.day}').join('、')}')),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(SkoLanguageController.tr('キャンセル'))),
           FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: Text(SkoLanguageController.tr('一括削除'))),
         ],
       ),
-    );
+      );
+    } finally {
+      if (identical(_deleteConfirmation, confirmation)) _deleteConfirmation = null;
+    }
     if (ok != true || !mounted) return;
-    setState(() => _busy = true);
+    if (generation != _marksGeneration || month != _month || !_sameWorkers(ids) ||
+        dates.length != _dates.length || !dates.every(_dates.contains) || !_marksReady) {
+      _show('対象が変わりました。従業員と日付を選び直してください');
+      return;
+    }
+    _update(() => _busy = true);
     try {
+      final ready = await _loadMarks(clearDates: false);
+      if (!mounted) return;
+      if (!ready) { _show('勤務日の目印を確認できないため、一括削除していません。'); return; }
+      if (month != _month || !_sameWorkers(ids) ||
+          dates.length != _dates.length || !dates.every(_dates.contains)) {
+        _show('対象が変わりました。従業員と日付を選び直してください');
+        return;
+      }
       final count = await widget.repository.apply(
-        action: 'delete', workerIds: _workerIds, dates: _dates, mode: 'off');
+        action: 'delete', workerIds: ids, dates: dates, mode: 'off');
       if (mounted) _show('$count件を一括削除しました');
+      if (mounted) await _loadMarks();
     } catch (error) {
       if (mounted) _show(attendanceManagementActionErrorMessage(error));
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) _update(() => _busy = false);
     }
   }
 
@@ -508,6 +638,26 @@ class _BulkManagementPanelState extends State<_BulkManagementPanel> {
 
   @override
   Widget build(BuildContext context) {
+    final ownerRoute = ModalRoute.of(context);
+    final ownerNavigator = Navigator.of(context);
+    return WorkerDocumentChangeRouteHost(
+      key: ValueKey(_routeEpoch),
+      onClose: () {
+        if (!mounted || !ownerNavigator.mounted || ownerRoute?.isCurrent != true ||
+            !identical(ModalRoute.of(this.context), ownerRoute) ||
+            !identical(Navigator.of(this.context), ownerNavigator) || !ownerNavigator.canPop()) {
+          return;
+        }
+        ownerNavigator.pop();
+      },
+      builder: (context) => ValueListenableBuilder<int>(
+        valueListenable: _changes,
+        builder: (context, version, child) => _buildPanel(context),
+      ),
+    );
+  }
+
+  Widget _buildPanel(BuildContext context) {
     final days = DateUtils.getDaysInMonth(_month.year, _month.month);
     return ListView(
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
@@ -523,7 +673,7 @@ class _BulkManagementPanelState extends State<_BulkManagementPanel> {
                 value: _workerIds.length == widget.workers.length && widget.workers.isNotEmpty,
                 tristate: true,
                 title: const Text('全員選択'),
-                onChanged: _busy ? null : (value) => setState(() {
+                onChanged: _busy ? null : (value) => _selectWorkers(() {
                   if (value == true) { _workerIds.addAll(widget.workers.map((e) => e.id)); } else { _workerIds.clear(); }
                 }),
               ),
@@ -533,7 +683,7 @@ class _BulkManagementPanelState extends State<_BulkManagementPanel> {
                   value: _workerIds.contains(worker.id),
                   title: Text(worker.name),
                   dense: true,
-                  onChanged: _busy ? null : (value) => setState(() { if (value == true) { _workerIds.add(worker.id); } else { _workerIds.remove(worker.id); } }),
+                  onChanged: _busy ? null : (value) => _selectWorkers(() { if (value == true) { _workerIds.add(worker.id); } else { _workerIds.remove(worker.id); } }),
                 ),
             ],
           ),
@@ -541,11 +691,19 @@ class _BulkManagementPanelState extends State<_BulkManagementPanel> {
         const SizedBox(height: 12),
         Row(
           children: [
-            IconButton(onPressed: _busy ? null : () => setState(() { _month = DateTime(_month.year, _month.month - 1); _dates.clear(); }), icon: const Icon(Icons.chevron_left)),
+            IconButton(tooltip: '一括カレンダーの前の月', onPressed: _busy ? null : () => _moveMonth(-1), icon: const Icon(Icons.chevron_left)),
             Expanded(child: Text('${_month.year}年${_month.month}月', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18))),
-            IconButton(onPressed: _busy ? null : () => setState(() { _month = DateTime(_month.year, _month.month + 1); _dates.clear(); }), icon: const Icon(Icons.chevron_right)),
+            IconButton(tooltip: '一括カレンダーの次の月', onPressed: _busy ? null : () => _moveMonth(1), icon: const Icon(Icons.chevron_right)),
           ],
         ),
+        const Text('青● 出勤　橙● 打刻のみ　緑● 承認済み有給'),
+        Text('印は選択した${_workerIds.length}人の記録です。色付きの選択枠とは別です。'),
+        if (_workerIds.isEmpty) const Text('従業員を選ぶと勤務日の印を表示します。'),
+        if (_marksLoading) const LinearProgressIndicator(key: ValueKey('bulk-calendar-loading')),
+        if (_marksError != null) const Text('勤務日の目印を取得できません。未取得のため日付選択と一括削除はできません。'),
+        if (_workerIds.isNotEmpty && !_marksLoading && !_marksReady)
+          TextButton(onPressed: _busy ? null : () => _loadMarks(), child: const Text('勤務日の目印を再読み込み')),
+        if (_marksReady && _marks.isEmpty) const Text('選択した従業員のこの月の出勤・打刻・承認済み有給の記録はありません。'),
         Card(
           child: Padding(
             padding: const EdgeInsets.all(10),
@@ -555,10 +713,23 @@ class _BulkManagementPanelState extends State<_BulkManagementPanel> {
                 for (var day = 1; day <= days; day++)
                   Builder(builder: (context) {
                     final date = DateTime(_month.year, _month.month, day);
-                    return FilterChip(
-                      label: Text('$day日'), selected: _dates.contains(date),
-                      onSelected: _busy ? null : (value) => setState(() { if (value) { _dates.add(date); } else { _dates.remove(date); } }),
-                    );
+                    final counts = _marks[day] ?? const <String,int>{};
+                    final labels = {'work':'出勤','punch':'打刻のみ','leave':'承認済み有給'};
+                    final colors = {'work':Colors.blue,'punch':Colors.orange,'leave':Colors.green};
+                    final description = counts.entries.map((entry) => '${labels[entry.key]}：選択${_workerIds.length}人中${entry.value}人').join('、');
+                    return Semantics(label: '${_month.month}月$day日 ${_marksReady ? (description.isEmpty ? '勤務記録なし' : description) : '勤務記録未取得'}',
+                      selected: _dates.contains(date), child: FilterChip(
+                        key: ValueKey('bulk-calendar-day-$day'),
+                        tooltip: description.isEmpty ? null : description,
+                        label: Column(mainAxisSize: MainAxisSize.min, children: [
+                          Text('$day日'),
+                          for (final kind in ['work','punch','leave'])
+                            if ((counts[kind] ?? 0) > 0)
+                              Text('●${kind == 'work' ? '出' : kind == 'punch' ? '打' : '有'}${counts[kind]}/${_workerIds.length}',
+                                style: TextStyle(color: colors[kind], fontSize: 12)),
+                        ]), selected: _dates.contains(date),
+                        onSelected: _busy || !_marksReady || _marksLoading ? null : (value) => _update(() { if (value) { _dates.add(date); } else { _dates.remove(date); } }),
+                      ));
                   }),
               ],
             ),
@@ -569,9 +740,9 @@ class _BulkManagementPanelState extends State<_BulkManagementPanel> {
         const SizedBox(height: 14),
         Text('選択: ${_workerIds.length}人 × ${_dates.length}日 = ${_workerIds.length * _dates.length}件', style: const TextStyle(fontWeight: FontWeight.w900)),
         const SizedBox(height: 10),
-        FilledButton.icon(onPressed: _busy ? null : _apply, icon: const Icon(Icons.done_all), label: Text(SkoLanguageController.tr('一括登録・編集を直接反映'))),
+        FilledButton.icon(onPressed: _busy || !_marksReady || _marksLoading ? null : _apply, icon: const Icon(Icons.done_all), label: Text(SkoLanguageController.tr('一括登録・編集を直接反映'))),
         const SizedBox(height: 8),
-        OutlinedButton.icon(onPressed: _busy ? null : _delete, icon: const Icon(Icons.delete_sweep_outlined), label: Text(SkoLanguageController.tr('選択範囲を一括削除'))),
+        OutlinedButton.icon(onPressed: _busy || !_marksReady || _marksLoading ? null : () => _delete(context), icon: const Icon(Icons.delete_sweep_outlined), label: Text(SkoLanguageController.tr('選択範囲を一括削除'))),
       ],
     );
   }
@@ -849,5 +1020,6 @@ class _ManagementFormWidgetState extends State<_ManagementForm> {
 
 String _dateText(DateTime value) =>
     '${value.year}/${value.month.toString().padLeft(2, '0')}/${value.day.toString().padLeft(2, '0')}';
+
 
 
