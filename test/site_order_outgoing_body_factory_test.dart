@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/domain/trade_document_form_draft.dart';
 import 'package:sk_works/domain/trade_document_terms_snapshot.dart';
@@ -67,6 +70,38 @@ SiteOrderOutgoingBodyFactory _factory({
 );
 
 void main() {
+  test('registered PNG asset is checked separately from canonical body budget', () {
+    const png =
+        'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAALUlEQVR4nO3OIQEAAAwEoetf+hdjBoWlVat9mYCAgICAgICAgICAgICAwHfgAIP/+kx2iamjAAAAAElFTkSuQmCC';
+    final original = base64Decode(png), bytes = Uint8List(1048576);
+    final offset = original.length - 12,
+        paddingLength = bytes.length - original.length - 12;
+    bytes.setRange(0, offset, original);
+    final data = ByteData.sublistView(bytes)..setUint32(offset, paddingLength);
+    bytes.setRange(offset + 4, offset + 8, const [118, 112, 65, 103]);
+    data.setUint32(offset + 8 + paddingLength, 0xe2d78d2b);
+    bytes.setRange(bytes.length - 12, bytes.length, original.sublist(offset));
+    final context = _context();
+    (context['own_seal'] as Map)['snapshot'] = {
+      'version': 2,
+      'style': 'uploaded_png',
+      'name': '合成甲会社',
+      'company_id': _id(2),
+      'png_version_id': _id(10),
+      'png_base64': base64Encode(bytes),
+      'png_sha256':
+          '5f92af7cdc287da4dda4728edb9910da2cbd16d1ed336d99e8532662c1f60f8b',
+    };
+    final factory = _factory(context: context),
+        draft = factory.newEditor(issueDate: '2026-10-31').withChanges({
+          'total_amount_yen': 120,
+          'tax_amount_yen': 20,
+        });
+    expect(jsonEncode(draft.payload).length, greaterThan(16384));
+    final canonical = factory.canonicalForPrepare(draft);
+    expect(jsonEncode(canonical).length, lessThan(16384));
+    expect(canonical.containsKey('company_seal_snapshot'), false);
+  });
   test('new editor reuses adopted defaults and never fabricates money', () {
     final factory = _factory(),
         draft = factory.newEditor(issueDate: '2026-10-31'),

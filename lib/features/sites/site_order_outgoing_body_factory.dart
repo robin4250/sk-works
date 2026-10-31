@@ -167,7 +167,6 @@ class SiteOrderOutgoingBodyFactory {
   /// The editor needs a seal snapshot for drawing. Canonical prepare forbids
   /// those two editor-only fields; the server obtains consent seals itself.
   Map<String, dynamic> canonicalForPrepare(TradeDocumentFormDraft draft) {
-    draft.validateForSave();
     final body = draft.payload;
     _identity(body);
     if (!_same(
@@ -180,6 +179,12 @@ class SiteOrderOutgoingBodyFactory {
     }
     body.remove('company_seal_snapshot');
     body.remove('company_seal_enabled');
+    // Validate the canonical body budget, not the editor's separate PNG asset.
+    // Its real frozen snapshot was checked above; no substitute seal is added.
+    TradeDocumentFormDraft.fromPayload(
+      body,
+      allowAmountEditing: true,
+    ).validateForSave();
     return body;
   }
 }
