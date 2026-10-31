@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -25,6 +26,7 @@ class _Api extends SiteOrderWorkflowApi {
   bool expired = false;
   bool admitted = false;
   int contexts = 0;
+  Completer<void>? contextBarrier;
   @override
   bool get invalidated => expired;
   @override
@@ -46,6 +48,7 @@ class _Api extends SiteOrderWorkflowApi {
   ) async {
     requireCurrent();
     contexts++;
+    await contextBarrier?.future;
     expect(siteId, _id(3));
     expect(tradeId, _id(7));
     return {
@@ -309,6 +312,68 @@ void main() {
       expect(find.byType(TextField), findsNothing);
       expect(api.contexts, 0);
       expect(find.text('閉じる'), findsOneWidget);
+    },
+  );
+  testWidgets(
+    'closing the route retires a delayed binding before PDF rendering',
+    (tester) async {
+      final api = _Api()..contextBarrier = Completer<void>();
+      final targets = [SiteOrderRegisteredTarget(id: _id(7), name: '登録表示名')];
+      var renders = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SiteOrderOutgoingEntryPage(
+            api: api,
+            siteId: _id(3),
+            issueDate: '2026-10-31',
+            targets: targets,
+            initial: _input(),
+            render: (_) async {
+              renders++;
+              return Uint8List.fromList('%PDF-synthetic'.codeUnits);
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await _inputDone(tester);
+      await tester.tap(find.byType(DropdownButtonFormField<String>));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('登録表示名').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('注文書を確認'));
+      await tester.pump();
+      expect(api.contexts, 1);
+      await tester.pumpWidget(const MaterialApp(home: Text('閉じた画面')));
+      api.contextBarrier!.complete();
+      await tester.pumpAndSettle();
+      expect(renders, 0);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'caller list mutation cannot introduce an unverified dropdown option',
+    (tester) async {
+      final api = _Api(),
+          targets = [SiteOrderRegisteredTarget(id: _id(7), name: '登録表示名')];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SiteOrderOutgoingEntryPage(
+            api: api,
+            siteId: _id(3),
+            issueDate: '2026-10-31',
+            targets: targets,
+            initial: _input(),
+          ),
+        ),
+      );
+      targets.add(
+        const SiteOrderRegisteredTarget(id: 'not-a-company-id', name: '後から追加'),
+      );
+      await _inputDone(tester);
+      await tester.tap(find.byType(DropdownButtonFormField<String>));
+      await tester.pumpAndSettle();
+      expect(find.text('後から追加'), findsNothing);
     },
   );
 }

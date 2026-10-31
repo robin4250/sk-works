@@ -59,6 +59,7 @@ class SiteOrderOutgoingEntryPage extends StatefulWidget {
 class _SiteOrderOutgoingEntryPageState extends State<SiteOrderOutgoingEntryPage>
     with WidgetsBindingObserver {
   final _controllers = <String, TextEditingController>{};
+  late final List<SiteOrderRegisteredTarget> _targets;
   final _document = siteOrderRequestId(),
       _local = siteOrderRequestId(),
       _request = siteOrderRequestId();
@@ -76,6 +77,7 @@ class _SiteOrderOutgoingEntryPageState extends State<SiteOrderOutgoingEntryPage>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     widget.api.addListener(_scopeChanged);
+    _targets = List.unmodifiable(widget.targets);
     for (final key in SiteOrderOutgoingEntries.labels.keys) {
       _controllers[key] = TextEditingController(
         text:
@@ -92,7 +94,7 @@ class _SiteOrderOutgoingEntryPageState extends State<SiteOrderOutgoingEntryPage>
         throw StateError('現場を確認してください。');
       }
       final ids = <String>{};
-      for (final target in widget.targets) {
+      for (final target in _targets) {
         if (!SiteOrderPendingPrepare.validId(target.id) ||
             target.name.trim().isEmpty ||
             !ids.add(target.id)) {
@@ -429,6 +431,8 @@ class _SiteOrderOutgoingEntryPageState extends State<SiteOrderOutgoingEntryPage>
 
   @override
   void dispose() {
+    _retired = true;
+    _generation++;
     WidgetsBinding.instance.removeObserver(this);
     widget.api.removeListener(_scopeChanged);
     for (final controller in _controllers.values) {
@@ -522,7 +526,7 @@ class _SiteOrderOutgoingEntryPageState extends State<SiteOrderOutgoingEntryPage>
                               labelText: '登録済み協力会社',
                             ),
                             items: [
-                              for (final target in widget.targets)
+                              for (final target in _targets)
                                 DropdownMenuItem(
                                   value: target.id,
                                   child: Text(target.name),
@@ -550,7 +554,7 @@ class _SiteOrderOutgoingEntryPageState extends State<SiteOrderOutgoingEntryPage>
                           Expanded(
                             child:
                                 widget.previewBuilder?.call(_pdf!) ??
-                                PdfPreview(
+                                PdfPreview.builder(
                                   build: (_) async {
                                     _require();
                                     return _pdf!;
@@ -559,6 +563,7 @@ class _SiteOrderOutgoingEntryPageState extends State<SiteOrderOutgoingEntryPage>
                                   canChangePageFormat: false,
                                   allowPrinting: false,
                                   allowSharing: false,
+                                  canDebug: false,
                                   pagesBuilder: (context, pages) =>
                                       PdfPinchPages(pages: pages),
                                 ),
