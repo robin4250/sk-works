@@ -1,0 +1,24 @@
+name: Expense receipt amount review
+on:
+  pull_request:
+    paths:
+      - 'lib/features/expenses/expense_personal_page.dart'
+      - 'lib/features/expenses/expense_receipt_amount_recognition.dart'
+      - 'test/expense_receipt_amount*_test.dart'
+      - '.github/workflows/expense-receipt-amount-review.yml'
+permissions:
+  contents: read
+jobs:
+  amount-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze lib/features/expenses/expense_personal_page.dart lib/features/expenses/expense_receipt_amount_recognition.dart test/expense_receipt_amount_recognition_test.dart test/expense_receipt_amount_review_test.dart
+      - run: flutter test test/expense_receipt_amount_recognition_test.dart test/expense_receipt_amount_review_test.dart test/expense_camera_submission_test.dart test/expense_submission_completion_test.dart test/expense_personal_page_test.dart

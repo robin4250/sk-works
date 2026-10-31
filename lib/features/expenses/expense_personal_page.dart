@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/material.dart';
 import 'expense_receipt_attachment.dart';
@@ -10,17 +11,19 @@ import 'expense_claims_page.dart';
 import 'expense_submission_repository.dart';
 import 'expense_personal_change_repository.dart';
 import 'expense_edit_dialog.dart';
+import 'expense_receipt_amount_recognition.dart';
 
 class ExpensePersonalPage extends StatefulWidget {
-  const ExpensePersonalPage({super.key, this.access, this.changes, this.pickReceipt});
+  const ExpensePersonalPage({super.key, this.access, this.changes, this.pickReceipt, this.recognizeReceiptText});
   final ExpenseSubmissionAccess? access;
   final ExpensePersonalChangeAccess? changes;
   final Future<ExpenseReceiptAttachment?> Function(ImageSource source)? pickReceipt;
+  final Future<String> Function(String localPath)? recognizeReceiptText;
   @override
   State<ExpensePersonalPage> createState() => _ExpensePersonalPageState();
 }
 
-class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
+class _ExpensePersonalPageState extends State<ExpensePersonalPage> with WidgetsBindingObserver {
   ExpenseSubmissionAccess? _access;
   ExpensePersonalChangeAccess? _changes;
   ExpensePersonalChange? _pendingChange;
@@ -36,9 +39,16 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
   bool _submitting = false;
   String? _error, _actor;
   int _generation = 0;
+  int _ocrGeneration = 0, _amountRevision = 0;
+  bool _ocrReading = false;
+  String? _ocrMessage;
+  List<ExpenseReceiptAmountCandidate> _amountCandidates = const [];
+  ExpenseReceiptAttachment? _candidateReceipt;
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _amount.addListener(() => _amountRevision++);
     try {
       _access = widget.access ?? ExpenseSubmissionRepository();
       _changes =
@@ -54,9 +64,80 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
   @override
   void dispose() {
     _generation++;
+    _ocrGeneration++;
+    WidgetsBinding.instance.removeObserver(this);
     _description.dispose();
     _amount.dispose();
     super.dispose();
+  }
+
+  void _clearOcr() {
+    _ocrGeneration++;
+    _ocrReading = false;
+    _ocrMessage = null;
+    _amountCandidates = const [];
+    _candidateReceipt = null;
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (mounted && (state == AppLifecycleState.hidden || state == AppLifecycleState.paused)) {
+      setState(_clearOcr);
+    }
+  }
+
+  Future<void> _recognizeReceipt(ExpenseReceiptAttachment photo) async {
+    final request = ++_ocrGeneration;
+    final generation = _generation, actor = _actor;
+    final company = _scope?['company_id'], worker = _scope?['worker_id'];
+    final initialAmount = _amount.text, amountRevision = _amountRevision;
+    bool current() => _current(generation) && request == _ocrGeneration &&
+      actor == _actor && company == _scope?['company_id'] && worker == _scope?['worker_id'] &&
+      identical(_receipt, photo) && _pending == null;
+    setState(() { _ocrReading = true; _ocrMessage = null; });
+    try {
+      final readText = widget.recognizeReceiptText;
+      final result = readText == null
+        ? await const ExpenseReceiptAmountRecognition().recognize(photo.localPath)
+        : ExpenseReceiptAmountRecognition.parse(await readText(photo.localPath));
+      if (!current()) return;
+      setState(() {
+        _ocrReading = false;
+        _amountCandidates = result.candidates;
+        _candidateReceipt = photo;
+        final total = result.unambiguousTotal;
+        final untouched = _amountRevision == amountRevision && _amount.text == initialAmount;
+        if (total != null && initialAmount.trim().isEmpty && untouched) {
+          _amount.text = '$total';
+          _ocrMessage = '写真からの金額候補です。領収書の税込合計と金額を確認してから申請してください。';
+        } else if (result.candidates.isEmpty) {
+          _ocrMessage = '金額を読み取れませんでした。領収書を確認して金額を入力してください。';
+        } else if (!untouched || initialAmount.trim().isNotEmpty) {
+          _ocrMessage = '入力済みの金額は変更していません。写真の候補と比べてください。';
+        } else {
+          _ocrMessage = '写真の金額候補です。領収書の税込合計を確認して選択するか、金額を入力してください。';
+        }
+      });
+    } catch (_) {
+      if (current()) {
+        setState(() {
+          _ocrReading = false;
+          _ocrMessage = '金額を読み取れませんでした。写真は保持しています。金額を入力して申請できます。';
+        });
+      }
+    }
+  }
+
+  void _useAmountCandidate(ExpenseReceiptAmountCandidate candidate) {
+    if (_busy || !_ready || _pending != null || _access?.actor != _actor ||
+        _candidateReceipt == null || !identical(_receipt, _candidateReceipt) ||
+        !_amountCandidates.contains(candidate)) {
+      return;
+    }
+    setState(() {
+      _amount.text = '${candidate.amountYen}';
+      _ocrMessage = '選択した金額と領収書の税込合計を確認してから申請してください。';
+    });
   }
 
   bool _current(int generation) =>
@@ -64,6 +145,7 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
   Future<void> _loadScopes() async {
     final generation = ++_generation;
     setState(() {
+      _clearOcr();
       _busy = true;
       _ready = false;
       _error = null;
@@ -129,6 +211,7 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
     }
     final generation = ++_generation;
     setState(() {
+      _clearOcr();
       _busy = true;
       _ready = false;
       _error = null;
@@ -160,6 +243,7 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
       _busy = true;
       _submitting = true;
       _error = null;
+      _clearOcr();
     });
     final companyName = _scope!['company_name']?.toString() ?? '所属会社';
     try {
@@ -242,7 +326,7 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
       return;
     }
     final generation = _generation, actor = _actor, scope = _scope;
-    setState(() => _busy = true);
+    setState(() { _busy = true; _clearOcr(); });
     try {
       ExpenseReceiptAttachment? photo;
       if (widget.pickReceipt != null) {
@@ -258,6 +342,7 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
       }
       if (photo != null) {
         setState(() { _receipt = photo; _error = null; });
+        unawaited(_recognizeReceipt(photo));
       }
     } catch (_) {
       if (_current(generation)) {
@@ -278,7 +363,7 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
         _changes == null ||
         _pending != null ||
         _pendingChange != null ||
-        claim.withdrawn) {
+        claim.withdrawn || claim.managerDeleted) {
       return;
     }
     final generation = _generation;
@@ -325,6 +410,7 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
     }
     final generation = ++_generation;
     setState(() {
+      _clearOcr();
       _busy = true;
       _pendingChange = command;
       _error = null;
@@ -449,6 +535,7 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
                               );
                               _pending = null;
                               _receipt = null;
+                              _clearOcr();
                               _description.clear();
                               _amount.clear();
                             });
@@ -497,8 +584,15 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
                       const Text('申請前の領収書プレビュー'),
                       Image.file(File(_receipt!.localPath), height: 180, fit: BoxFit.contain,
                         errorBuilder: (_, error, stack) => const Text('写真を確認できません。選び直してください。')),
-                      TextButton(onPressed: editable ? () => setState(() => _receipt = null) : null,
+                      TextButton(onPressed: editable ? () => setState(() { _receipt = null; _clearOcr(); }) : null,
                         child: const Text('写真を外す')),
+                      if (_ocrReading) const Text('写真から金額候補を読み取り中です。金額は手入力もできます。'),
+                      if (_ocrMessage != null) Text(_ocrMessage!),
+                      if (_amountCandidates.isNotEmpty) Wrap(spacing: 8, runSpacing: 4, children: [
+                        for (final candidate in _amountCandidates)
+                          OutlinedButton(onPressed: editable ? () => _useAmountCandidate(candidate) : null,
+                            child: Text('${candidate.label} ${candidate.amountYen}円')),
+                      ]),
                     ],
                     TextField(
                       controller: _description,
@@ -555,16 +649,16 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
                     ListTile(
                       onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (detailContext) => ExpenseReviewDetailPage(
                         claim: claim,
-                        onEdit: editable && _changes != null && !claim.withdrawn ? () async {
+                        onEdit: editable && _changes != null && !claim.withdrawn && !claim.managerDeleted ? () async {
                           await _changeClaim(claim, withdraw: false);
                           if (detailContext.mounted && _pendingChange == null && _error == null) {
                             Navigator.pop(detailContext);
                           }
                         } : null,
-                        onDelete: editable && _changes != null && !claim.withdrawn ? () async {
+                        onDelete: editable && _changes != null && !claim.withdrawn && !claim.managerDeleted ? () async {
                           await _changeClaim(claim, withdraw: true);
                           if (detailContext.mounted && _pendingChange == null && _error == null &&
-                              _history.any((item) => item.id == claim.id && item.withdrawn)) {
+                              _history.any((item) => item.id == claim.id && (item.withdrawn || item.managerDeleted))) {
                             Navigator.pop(detailContext);
                           }
                         } : null,
@@ -592,7 +686,7 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
                       ),
                       trailing: Text('${claim.amountYen}円'),
                     ),
-                    if (_changes != null && !claim.withdrawn)
+                    if (_changes != null && !claim.withdrawn && !claim.managerDeleted)
                       Padding(padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                         child: Row(children: [
                           Expanded(child: OutlinedButton.icon(
@@ -640,3 +734,5 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
     );
   }
 }
+
+

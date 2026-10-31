@@ -175,6 +175,7 @@ class ExpenseSubmissionRepository implements ExpenseSubmissionAccess {
     _check(expected);
     return (rows as List).map((v) {
       final r = Map<String, dynamic>.from(v);
+      if(r.containsKey('manager_deleted') && r['manager_deleted'] is! bool)throw const FormatException('Invalid manager deletion metadata');
       if (r['company_id'] != company ||
           r['applicant_id'] != worker ||
           r['created_by'] != expected) {
@@ -195,6 +196,7 @@ class ExpenseSubmissionRepository implements ExpenseSubmissionAccess {
         approval: ExpenseApproval.values.byName(r['approval']),
         revision: r['revision'] as int? ?? 1,
         withdrawn: r['withdrawn'] == true,
+        managerDeleted: r['manager_deleted'] == true,
         settlement: r['settlement_method'] == null && r['settlement_month'] == null
           ? null : ExpenseSettlementChoice.decode(r['settlement_method'], r['settlement_month']),
         allocation: ExpenseAllocation(
@@ -318,3 +320,4 @@ class ExpenseSubmissionRepository implements ExpenseSubmissionAccess {
     if (!await prefs.remove(key)) throw StateError('保存済みです。再確認してください。');
   }
 }
+
