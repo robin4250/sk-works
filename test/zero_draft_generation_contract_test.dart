@@ -63,7 +63,7 @@ void main() {
       'lib/features/notifications/attention_center_repository.dart',
     );
     expect(repository, contains('AttentionCenterRepository'));
-    expect(repository, contains('await _repository.load()'));
+    expect(repository, contains('await _repository.load(companyId: companyId, currentCompany: currentCompany)'));
     expect(repository, contains('data.snapshot.unresolvedCount'));
     expect(center, contains('current_generation_setting_attention'));
     expect(center, contains('mapGenerationAttention'));
