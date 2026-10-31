@@ -43,7 +43,11 @@ B_ATTRIBUTES = {
 # No actual expected13 full-definition capture has been independently registered.
 # Add a receipt digest only after its real fixed-source Native artifact is reviewed.
 # No CLI/manifest override, synthetic definition or native:true flag can replace it.
-TRUSTED_EXPECTED_CAPTURE_RECEIPTS: frozenset[str] = frozenset()
+TRUSTED_EXPECTED_CAPTURE_RECEIPTS: frozenset[str] = frozenset({
+    # Independent artifact review and root source-only registration decision.
+    # This binds capture provenance, never production maintenance authority.
+    "c382cf9eaff49862c1af7ac8c822934bbbad24e34efef8a9ffa34e5632a18b7e",
+})
 UNRESOLVED = [
     "Actual ingress owner, closure acknowledgement and held operation epoch are not established by offline files.",
     "Dynamic/private/direct callers, accepted queues and active/idle/prepared transactions require actual drain evidence.",

@@ -115,8 +115,17 @@ def prepare(input_root: Path, manifest_path: str, output: Path):
             "review_sql_sha256": digest(generated), "source_segments_sha256": segment_hash,
             "input_hashes": report["input_hashes"], "before_functions": 10, "expected_after": 13,
             "receipt_scope": 18, "live_capture_or_maintenance_authority_verified": False,
+            "review_capsule_quarantined": True, "legacy_restore_operationally_authorized": False,
+            "ready_to_apply": False,
             "unresolved_requirements": UNRESOLVED.copy(),
         }
+        new_file(output / "OPERATION-PROHIBITED.json", canonical({
+            "quarantined_directory": "review-capsule", "apply_authorized": False,
+            "maintenance_authority_verified": False, "legacy_restore_authorized": False,
+            "reason": "Ingress/drain and modern read/RAM/queue exposure are unproven. Old builder restore guidance is historical review material, not an operational plan.",
+            "unknown_exposure_action": "retain guarded writers and review forward repair",
+            "saved_modern_row_count_zero_is_insufficient": True,
+        }) + b"\n")
         new_file(output / "review-material-manifest.json", canonical(result_manifest) + b"\n")
         return result_manifest, 0
     except (Rejected, subprocess.TimeoutExpired, OSError, ValueError) as error:

@@ -18,7 +18,11 @@ B is bound to four complete current function records and the full raw module pre
 
 ## Required expected13 capture
 
-No actual full-definition expected13 capture receipt is registered yet. Missing or self-asserted captures therefore block qualification and preparation. Do not construct `pg_get_functiondef` strings from stored attributes/prosrc to make the tool run.
+The exact independently reviewed receipt `c382cf9eaff49862c1af7ac8c822934bbbad24e34efef8a9ffa34e5632a18b7e` is registered for offline source review only, following an explicit source-only decision. Missing or self-asserted captures still block qualification and preparation. Do not construct `pg_get_functiondef` strings from stored attributes/prosrc to make the tool run.
+
+The actual Native capture is run `41248880936`, completed job `124677986087`, artifact `13060342812`. ZIP SHA256 is `fe8979cdb3c4c66107dc0a72189bb65f87c54c66ad2d9af5408e29621ee4f613`; unchanged thirteen-record file SHA256 is `292a75705dd72d68404181cdd970b0f0526b4aaed275257cfefeb82a25125ec6`. Candidate `ea745bbf06460d6c3a47d63706b10a5951c5315f` and tested merge `0d6f10b38d254d5b3444aff0ef891777c91a5476` have the same tree. Independent review compared all retained nonlocal attributes, source and ACLs; only the documented four catalog-local OID bindings vary. Raw context observed one postgres/public function default ACL, no global/private entries. The capture-time evidence field `fixture_defaults_equal_production:false` meant comparison was not yet qualified; it is not evidence of an actual mismatch. The immutable artifact is retained, and future evidence uses an explicit comparison-not-verified field.
+
+None of this proves actual admission closure, drained accepted jobs, zero modern exposure, real Auth or hosted behavior. The unchanged old builder emits restore material: those files are quarantined review artifacts and are **not operationally authorized**. Unknown modern exposure requires forward repair; zero saved rows do not authorize old-saver restoration. Generated review SQL must never be described as ready to apply.
 
 The existing frozen published producer is `tool/prepare_trade_document_atomic_review_fixture.py` at the same fixed commit. Its generated ordered fixture writes `expected-after-fixture.json` with thirteen actual records: `schema`, `name`, `arguments`, `definition`, `source_md5`, `attributes`, `owner`. The old workflow retains only an atomic summary artifact, not those full definitions. Obtaining and retaining that real file is a separate, purpose-specific Native capture step; the generic1711 rehearsal is not a replacement.
 
@@ -39,7 +43,7 @@ python3 tool/formal_c_rebind_review/prepare_review.py \
 
 Blocked inputs return exit2 and create no preparation output. An eligible preparation invokes only the fixed builder under isolated Python with a minimal environment, no forwarded project credentials, a thirty-second bound and a new0700 directory/0600 files. Existing outputs are never overwritten. Changed inputs, failed receipts or builder failure retain private partial material with a failure marker. Generated SQL is review-only and is never executed.
 
-The currently unavailable expected13 input means successful end-to-end material generation has not been demonstrated. Do not report that path as verified because refusal tests pass.
+With the exact registered independent receipt and unchanged actual13 capture, the first offline end-to-end qualification and material generation succeeded. This verifies the local source-only preparation path, not SQL execution or readiness to apply. The private output includes `OPERATION-PROHIBITED.json`, and reports `review_capsule_quarantined:true`, `legacy_restore_operationally_authorized:false` and `ready_to_apply:false`.
 
 ## Verification and operational limits
 
@@ -47,7 +51,7 @@ The currently unavailable expected13 input means successful end-to-end material 
 python3 -m unittest discover -s tool/formal_c_rebind_review -p test_qualification.py -v
 ```
 
-Eleven public refusal/output tests need no private project material. Nine additional tests use `SKO_FORMAL_C_TEST_INPUT_ROOT` to exercise the actual private capture package without committing it: valid C10/master/afterA/B bindings, missing expected13, metadata/ACL drift, claimed hashes, fake Native receipts and preserved private authenticated EXECUTE. The local combined run passes20 tests; the public-only run intentionally skips9 private-material tests. These are source/input checks, not production or iPhone tests.
+Eleven public refusal/output tests need no private project material. Nine additional tests use `SKO_FORMAL_C_TEST_INPUT_ROOT` to exercise the original incomplete private capture package: valid C10/master/afterA/B bindings, missing expected13, metadata/ACL drift, claimed hashes, fake Native receipts and preserved private authenticated EXECUTE. Two more use `SKO_FORMAL_C_QUALIFIED_INPUT_ROOT` with the independently registered actual13 package to check private quarantined output, unchanged input bytes, overwrite refusal and rejection of changed capture bytes despite a recomputed caller hash. The local combined run passes22 tests; the public-only run intentionally skips11 private-material tests. These are source/input checks, not production or iPhone tests.
 
 Actual ingress closure, old accepted work, private/direct/dynamic callers, idle/active/prepared transactions and queue/pool outcomes remain unqualified. Existing public save is an invoker wrapper; an owner-only private helper cannot simply be added there, and required authenticated EXECUTE must not be stripped or the wrapper changed to DEFINER to bypass that fact. No new guard/table/bootstrap/RPC or Auth change is implemented here.
 

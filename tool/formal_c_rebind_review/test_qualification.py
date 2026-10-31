@@ -237,5 +237,53 @@ class ActualMaterialTests(unittest.TestCase):
             q.compare_expected_metadata(rows, context, contract["after"])
 
 
+@unittest.skipUnless(os.environ.get("SKO_FORMAL_C_QUALIFIED_INPUT_ROOT"), "Independently reviewed actual13 material is private and optional.")
+class QualifiedMaterialTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name) / "inputs"
+        shutil.copytree(Path(os.environ["SKO_FORMAL_C_QUALIFIED_INPUT_ROOT"]), self.root)
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def test_actual13_builds_quarantined_review_only_without_touching_inputs(self):
+        before = {str(f.relative_to(self.root)): q.digest(f.read_bytes()) for f in self.root.rglob("*") if f.is_file()}
+        report, _ = q.qualify(self.root, "manifest.json")
+        self.assertTrue(report["static_qualified"])
+        self.assertFalse(report["deployable"])
+        output = self.root.parent / "quarantined-output"
+        material, status = p.prepare(self.root, "manifest.json", output)
+        self.assertEqual(status, 0)
+        self.assertFalse(material["deployable"])
+        self.assertFalse(material["ready_to_apply"])
+        self.assertFalse(material["legacy_restore_operationally_authorized"])
+        self.assertFalse(material["sql_executed"])
+        prohibition = q.strict_json((output / "OPERATION-PROHIBITED.json").read_bytes())
+        self.assertFalse(prohibition["apply_authorized"])
+        self.assertTrue(prohibition["saved_modern_row_count_zero_is_insufficient"])
+        self.assertEqual(q.digest((output / "review-capsule/atomic-forward.sql.review-only").read_bytes()), material["review_sql_sha256"])
+        self.assertEqual(before, {str(f.relative_to(self.root)): q.digest(f.read_bytes()) for f in self.root.rglob("*") if f.is_file()})
+        for f in output.rglob("*"):
+            self.assertEqual(stat.S_IMODE(f.stat().st_mode), 0o700 if f.is_dir() else 0o600)
+        with self.assertRaises(q.Rejected):
+            p.prepare(self.root, "manifest.json", output)
+
+    def test_reviewed_receipt_does_not_authorize_changed_capture(self):
+        manifest = q.strict_json((self.root / "manifest.json").read_bytes())
+        ref = manifest["inputs"]["expected_after"]
+        target = self.root / ref["path"]
+        target.write_bytes(target.read_bytes() + b"\n")
+        ref["sha256"] = q.digest(target.read_bytes())
+        write_json(self.root / "manifest.json", manifest)
+        report, _ = q.qualify(self.root, "manifest.json")
+        self.assertFalse(report["static_qualified"])
+        self.assertIn("expected_artifact_drift", {i["code"] for i in report["issues"]})
+        output = self.root.parent / "refused-output"
+        _, status = p.prepare(self.root, "manifest.json", output)
+        self.assertEqual(status, 2)
+        self.assertFalse(output.exists())
+
+
 if __name__ == "__main__":
     unittest.main()

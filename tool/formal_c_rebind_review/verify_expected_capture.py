@@ -88,9 +88,9 @@ def main():
       'context_file_sha256':sha(context_raw),'server_version_num':170006,
       'run_id':a.run_id,'job_key':a.job_key,'candidate_head':a.candidate_head,
       'test_checkout':a.test_checkout,'definitions':13,'capture_bytes_unchanged':True,
-      'fixture_defaults_equal_production':False,'independent_review_required':True,
+      'production_defaults_comparison_verified_at_capture_time':False,'independent_review_required':True,
       'registry_updated':False,'production':False,'deployable':False,
-      'limitations':['fixture defaults are not production public-only defaults',
+      'limitations':['raw fixture defaults require independent comparison with production metadata',
        'full pg_proc/proacl retained without postprocessing',
        'not an admission/drain/realAuth/hosted proof',
        'not a trusted qualifier receipt; reviewer must bind completed job and artifact digest']}
