@@ -31,10 +31,17 @@ class _FontClient implements HttpClient {
   _FontClient(this.bytes);
   final Uint8List bytes;
   @override
-  Future<HttpClientRequest> openUrl(String method, Uri url) async =>
-      _FontRequest(bytes);
+  Future<HttpClientRequest> openUrl(String method, Uri url) async {
+    if (method != 'GET' ||
+        url.scheme != 'https' ||
+        url.host != 'fonts.gstatic.com') {
+      throw StateError('Unexpected fixture request');
+    }
+    return _FontRequest(bytes);
+  }
+
   @override
-  Future<HttpClientRequest> getUrl(Uri url) async => _FontRequest(bytes);
+  Future<HttpClientRequest> getUrl(Uri url) => openUrl('GET', url);
   @override
   dynamic noSuchMethod(Invocation invocation) => null;
 }
