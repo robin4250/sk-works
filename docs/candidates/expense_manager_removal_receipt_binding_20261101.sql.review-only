@@ -14,7 +14,7 @@ alter table private.expense_manager_removals
  add column receipt_state text not null check(receipt_state in ('attached_metadata_only','reserved_not_attached','unrecorded')),
  add constraint expense_removal_receipt_snapshot_shape check(
   (receipt_state='unrecorded' and receipt_snapshot is null) or
-  (receipt_state<>'unrecorded' and jsonb_typeof(receipt_snapshot)='object'));
+  (receipt_state<>'unrecorded' and receipt_snapshot is not null and jsonb_typeof(receipt_snapshot)='object'));
 create function private.expense_removal_receipt_insert_guard() returns trigger
 language plpgsql security definer set search_path='' as $$
 begin
@@ -35,7 +35,7 @@ declare sid uuid; claim private.expense_claims%rowtype; old private.expense_mana
 begin
  sid:=private.expense_manager_removal_access(p_company,false);
  if p_command is null or p_claim is null or p_revision is null or p_revision<1
-  or p_session is null or p_reason is null or p_reason<>btrim(p_reason) or length(p_reason)>1000 then
+  or p_session is null or p_reason is null or length(btrim(p_reason))=0 or p_reason<>btrim(p_reason) or length(p_reason)>1000 then
   raise exception 'Invalid expense removal command' using errcode='22023';end if;
  select * into old from private.expense_manager_removals where command_id=p_command;
  if found then

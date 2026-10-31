@@ -36,12 +36,21 @@ try{
  const original=history.find(v=>v.id===x.claim);assert.equal(original.manager_deleted,true);assert.equal(original.receipt_object_path,photo==='attached'?x.reservation.object_path:null);
  pass(state+' original JSON + canonical receipt + exact notice + actual wrappers');
  }
+ const invalid=await claim(107,null);await actor(info.manager,info.sid);
+ for(const reason of ['', ' '])await assert.rejects(c.query('select public.expense_manager_remove($1,$2,$3,1,$4,$5)',[id(1107),info.company,invalid.claim,info.sid,reason]),e=>e.code==='22023');
+ pass('empty and whitespace reasons reject before mutation');
  const bad=await claim(103,'attached');await c.query('reset role');
  // Deliberate isolated corrupted metadata fixture; product never writes receipt metadata.
  await c.query('update private.expense_receipts set created_by=$1 where claim_id=$2',[info.manager,bad.claim]);
+ const badBefore=(await c.query('select to_jsonb(e) value from private.expense_claims e where id=$1',[bad.claim])).rows[0].value;
+ const badReceipt=(await c.query('select to_jsonb(e) value from private.expense_receipts e where claim_id=$1',[bad.claim])).rows[0].value;
+ const noticeBefore=(await c.query('select count(*)::int n from public.app_notifications')).rows[0].n;
  await assert.rejects(remove(bad.claim,id(1103)),e=>e.code==='40001');await c.query('reset role');
  assert.equal((await c.query('select count(*)::int n from private.expense_manager_removals where claim_id=$1',[bad.claim])).rows[0].n,0);
- assert.equal((await c.query('select withdrawn from private.expense_claims where id=$1',[bad.claim])).rows[0].withdrawn,false);pass('mismatched receipt rejects atomically');
+ assert.equal((await c.query('select withdrawn from private.expense_claims where id=$1',[bad.claim])).rows[0].withdrawn,false);
+ assert.deepEqual((await c.query('select to_jsonb(e) value from private.expense_claims e where id=$1',[bad.claim])).rows[0].value,badBefore);
+ assert.deepEqual((await c.query('select to_jsonb(e) value from private.expense_receipts e where claim_id=$1',[bad.claim])).rows[0].value,badReceipt);
+ assert.equal((await c.query('select count(*)::int n from public.app_notifications')).rows[0].n,noticeBefore);pass('mismatched receipt rejects atomically with original metadata and no notice');
  // Explicit prior-validation race: old prepare reaches INSERT after deletion.
  const plain=await claim(104,null);await remove(plain.claim,id(1104));await c.query('reset role');
  await assert.rejects(c.query(`insert into private.expense_receipts(claim_id,company_id,applicant_id,created_by,object_path,sha256,size_bytes,mime_type)
@@ -49,13 +58,14 @@ try{
  pass('post-removal legacy INSERT rejected; prior validation is not admission');
  const d=new Client({...config,connectionTimeoutMillis:5000,query_timeout:17000});clients.push(d);await d.connect();
  await d.query("set statement_timeout='15s';set lock_timeout='4s'");
- async function waitForLock(pid){for(let i=0;i<100;i++){const a=(await d.query('select wait_event_type from pg_stat_activity where pid=$1',[pid])).rows[0];if(a?.wait_event_type==='Lock')return;await new Promise(r=>setTimeout(r,10));}throw Error('Expected competing transaction lock not observed');}
+ async function waitForLock(pid,blocker){for(let i=0;i<100;i++){const a=(await d.query('select wait_event_type,pg_blocking_pids(pid) blockers from pg_stat_activity where pid=$1',[pid])).rows[0];if(a?.wait_event_type==='Lock'&&a.blockers.includes(blocker))return;await new Promise(r=>setTimeout(r,10));}throw Error('Expected competing transaction lock not observed');}
  const pid=(await c.query('select pg_backend_pid() pid')).rows[0].pid;
+ const dpid=(await d.query('select pg_backend_pid() pid')).rows[0].pid;
  // Reservation wins: old prepare passed validation, its INSERT holds new guard lock.
  const race=await claim(105,null);await c.query('reset role');await d.query('begin');
  await d.query(`insert into private.expense_receipts(claim_id,company_id,applicant_id,created_by,object_path,sha256,size_bytes,mime_type)
  values($1,$2,$3,$4,$5,$6,4,'image/jpeg')`,[race.claim,info.company,info.worker,info.applicant,'inflight-reservation.jpg','c'.repeat(64)]);
- const removing=remove(race.claim,id(1105));await waitForLock(pid);await d.query('commit');await removing;await c.query('reset role');
+ const removing=remove(race.claim,id(1105));await waitForLock(pid,dpid);await d.query('commit');await removing;await c.query('reset role');
  assert.equal((await c.query('select receipt_state from private.expense_manager_removals where claim_id=$1',[race.claim])).rows[0].receipt_state,'reserved_not_attached');pass('two connections: reservation-first snapshot sees committed reservation');
  // Removal wins: a legacy prepare's earlier validation cannot bypass INSERT guard.
  const late=await claim(106,null);await actor(info.manager,info.sid);await c.query('begin');
@@ -63,7 +73,7 @@ try{
  const dp=(await d.query('select pg_backend_pid() pid')).rows[0].pid;
  const inserting=d.query(`insert into private.expense_receipts(claim_id,company_id,applicant_id,created_by,object_path,sha256,size_bytes,mime_type)
  values($1,$2,$3,$4,$5,$6,4,'image/jpeg')`,[late.claim,info.company,info.worker,info.applicant,'after-validation.jpg','d'.repeat(64)]).then(()=>({ok:true}),error=>({error}));
- let blocked=false;for(let i=0;i<100;i++){if((await c.query('select wait_event_type from pg_stat_activity where pid=$1',[dp])).rows[0]?.wait_event_type==='Lock'){blocked=true;break;}await new Promise(r=>setTimeout(r,10));}
+ let blocked=false;for(let i=0;i<100;i++){const waiting=(await c.query('select wait_event_type,pg_blocking_pids(pid) blockers from pg_stat_activity where pid=$1',[dp])).rows[0];if(waiting?.wait_event_type==='Lock'&&waiting.blockers.includes(pid)){blocked=true;break;}await new Promise(r=>setTimeout(r,10));}
  assert.equal(blocked,true);await c.query('commit');assert.equal((await inserting).error?.code,'55000');pass('two connections: removal-first legacy reservation waits then rejects');
  console.log(JSON.stringify({checks,deployable:false,realStorage:false,realGoTrue:false,financialReaderQualified:false}));
 }finally{await Promise.allSettled(clients.map(x=>x.end()));}
