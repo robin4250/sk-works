@@ -304,6 +304,7 @@ class _OwnDocumentRegistrationPageState
     if (changes is! OwnDocumentChangeGateway || admin is! OwnDocumentAdminCorrectionGateway) {
       return;
     }
+    final adminAccess = admin as OwnDocumentAdminCorrectionGateway;
     final actor = changes.actorId;
     try {
       final companyId = await changes.changeCompanyId();
@@ -312,8 +313,8 @@ class _OwnDocumentRegistrationPageState
         return;
       }
       await recoverPendingWorkerDocumentAdminCorrections(
-        context: context, pendingTargets: () => admin.pendingAdminCorrectionTargets(companyId),
-        createRepository: (target) => admin.createAdminCorrectionRepository(
+        context: context, pendingTargets: () => adminAccess.pendingAdminCorrectionTargets(companyId),
+        createRepository: (target) => adminAccess.createAdminCorrectionRepository(
           companyId: companyId, targetId: target, isCurrentTarget: current),
         isCurrent: current,
       );

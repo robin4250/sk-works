@@ -141,6 +141,6 @@ void main() {
       );
       expect((receipt as Map)['status'], 'applied');
     },
-    skip: contextPath == null ? 'dedicated Native HTTP fixture only' : false,
+    skip: contextPath == null,
   );
 }

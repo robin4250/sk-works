@@ -26,7 +26,7 @@ jobs:
           --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       SKO_DOCUMENT_ADMIN_FIXTURE_URL: postgres://postgres:fixture-only@127.0.0.1:5432/sko_document_admin_fixture
-      SKO_DOCUMENT_NATIVE_HTTP_CONTEXT: ${{ runner.temp }}/document-admin-native-http.json
+      SKO_DOCUMENT_NATIVE_HTTP_CONTEXT: /tmp/document-admin-native-http-${{ github.run_id }}.json
     steps:
       - uses: actions/checkout@v4
         with: {persist-credentials: false}
