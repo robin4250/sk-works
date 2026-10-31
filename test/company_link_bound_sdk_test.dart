@@ -1,12 +1,15 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/material.dart';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sk_works/features/companies/trade_company_repository.dart';
+import 'package:sk_works/features/companies/company_link_page.dart';
 
 const actor = '10000000-0000-0000-0000-000000000001';
 const company = '20000000-0000-0000-0000-000000000001';
@@ -51,11 +54,12 @@ class Fixture {
             saved = Map<String, dynamic>.from(body);
             if (!arrived.isCompleted) arrived.complete();
             if (pending != null) return pending!.future;
-            if (loseAck)
+            if (loseAck) {
               throw http.ClientException('synthetic acknowledgement loss');
+            }
           }
           final result = command == 'workspace'
-              ? {'enabled': true, 'requests': []}
+              ? {'enabled': true, 'requests': workspaceRows}
               : command == 'result'
               ? {
                   'state': 'committed',
@@ -66,6 +70,8 @@ class Fixture {
                 }
               : {'state': 'committed', 'enabled': true};
           value = envelope(body, result);
+          if (command == 'workspace' && !workspaceLoaded.isCompleted)
+            workspaceLoaded.complete();
           if (badEnvelope) (value as Map)['company_id'] = sid2;
         } else {
           throw StateError('unexpected synthetic path');
@@ -92,6 +98,8 @@ class Fixture {
   Map<String, dynamic>? saved;
   Completer<http.Response>? pending;
   final arrived = Completer<void>();
+  final workspaceLoaded = Completer<void>();
+  List<Map<String, dynamic>> workspaceRows = [];
   Map<String, dynamic> envelope(Map body, Object value) => {
     'version': 1,
     'actor_id': actor,
@@ -217,4 +225,74 @@ void main() {
       expect(context.hasUnknownResult, true);
     },
   );
+  for (final change in ['sid', 'background', 'repository', 'mode', 'request']) {
+    testWidgets('open approval dialog masks old company on $change change', (
+      tester,
+    ) async {
+      final f = (await tester.runAsync(() async {
+        final value = Fixture();
+        await value.login();
+        return value;
+      }))!;
+      addTearDown(f.client.dispose);
+      f.workspaceRows = [
+        {
+          'id': '40000000-0000-0000-0000-000000000001',
+          'incoming': true,
+          'company_id': sid2,
+          'company_name': 'Synthetic Partner',
+          'start_month': '2026-10-01',
+          'status': 'pending',
+          'created_at': '2026-10-31',
+          'local_role': 'customer',
+        },
+      ];
+      TradeCompanyRepository repo = f.repository;
+      TradeCompanyPageMode mode = TradeCompanyPageMode.customer;
+      String? initial;
+      Widget page() => MaterialApp(
+        home: CompanyLinkPage(
+          key: const ValueKey('same-route'),
+          repository: repo,
+          mode: mode,
+          initialRequestId: initial,
+        ),
+      );
+      await tester.pumpWidget(page());
+      await tester.runAsync(() => f.workspaceLoaded.future);
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('承認'));
+      await tester.tap(find.text('承認'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Synthetic Partner'), findsWidgets);
+      if (change == 'sid') {
+        f.session = sid2;
+        await tester.runAsync(f.login);
+      } else if (change == 'background') {
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.inactive,
+        );
+      } else {
+        if (change == 'repository')
+          repo = TradeCompanyRepository.forTesting(f.client);
+        if (change == 'mode') mode = TradeCompanyPageMode.subcontractor;
+        if (change == 'request')
+          initial = '40000000-0000-0000-0000-000000000001';
+        await tester.pumpWidget(page());
+      }
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Synthetic Partner'), findsNothing);
+      expect(find.text('確認'), findsNothing);
+      expect(find.text('表示条件が変わりました'), findsOneWidget);
+      expect(f.mutations, 0);
+      await tester.tap(find.text('閉じる'));
+      await tester.pumpAndSettle();
+      expect(find.text('承認'), findsNothing);
+      if (change == 'background')
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        );
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
 }

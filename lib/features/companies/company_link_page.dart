@@ -20,7 +20,8 @@ class CompanyLinkPage extends StatefulWidget {
   State<CompanyLinkPage> createState() => _CompanyLinkPageState();
 }
 
-class _CompanyLinkPageState extends State<CompanyLinkPage> {
+class _CompanyLinkPageState extends State<CompanyLinkPage>
+    with WidgetsBindingObserver {
   final _query = TextEditingController();
   Map<String, dynamic>? _workspace;
   List<Map<String, dynamic>> _results = const [];
@@ -28,36 +29,80 @@ class _CompanyLinkPageState extends State<CompanyLinkPage> {
   String? _error;
   CompanyLinkBoundContext? _bound;
   StreamSubscription<void>? _retirement;
+  bool _routeRetired = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _run(_reload);
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _retirement?.cancel();
     _bound?.dispose();
     _query.dispose();
     super.dispose();
   }
 
+  void _invalidate() {
+    _routeRetired = true;
+    _bound?.retire();
+    _query.clear();
+    if (mounted) {
+      setState(() {
+        _workspace = null;
+        _results = const [];
+        _error = '表示条件が変わりました。画面を開き直してください';
+      });
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant CompanyLinkPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.repository, widget.repository) ||
+        oldWidget.mode != widget.mode ||
+        oldWidget.initialRequestId != widget.initialRequestId) {
+      _invalidate();
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) _invalidate();
+  }
+
+  Widget _guardedDialog(CompanyLinkBoundContext bound, Widget child) =>
+      StreamBuilder<void>(
+        stream: bound.retirements,
+        builder: (context, _) => !_routeRetired && bound.isCurrent
+            ? child
+            : AlertDialog(
+                title: const Text('表示条件が変わりました'),
+                content: const Text('内容を非表示にしました。画面を開き直してください'),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('閉じる'),
+                  ),
+                ],
+              ),
+      );
+
   Future<void> _reload() async {
+    if (_routeRetired) return;
     if (_bound == null) {
       final bound = await widget.repository.openBoundLinkContext();
-      if (!mounted) {
+      if (!mounted || _routeRetired) {
         await bound.dispose();
         return;
       }
       _bound = bound;
       _retirement = bound.retirements.listen((_) {
-        if (mounted)
-          setState(() {
-            _workspace = null;
-            _results = const [];
-            _error = 'ログイン状態が変わりました。画面を開き直してください';
-          });
+        if (mounted) _invalidate();
       });
     }
     final value = await _bound!.workspace();
@@ -72,12 +117,13 @@ class _CompanyLinkPageState extends State<CompanyLinkPage> {
     try {
       await action();
     } catch (error) {
-      if (mounted)
+      if (mounted) {
         setState(
           () => _error = error is StateError
               ? error.message.toString()
               : '処理結果を確認できません。再送せず状態を確認してください',
         );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -100,21 +146,24 @@ class _CompanyLinkPageState extends State<CompanyLinkPage> {
         : '相手を協力会社、自社を相手の取引会社として申請';
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('連携申請を送信しますか？'),
-        content: Text(
-          '${company['company_name']}\n$role\n${selected.year}年${selected.month}月から\n\n相手の承認後に双方の一覧へ追加します。給与・個人情報は自動共有しません。',
+      builder: (context) => _guardedDialog(
+        bound,
+        AlertDialog(
+          title: const Text('連携申請を送信しますか？'),
+          content: Text(
+            '${company['company_name']}\n$role\n${selected.year}年${selected.month}月から\n\n相手の承認後に双方の一覧へ追加します。給与・個人情報は自動共有しません。',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('戻る'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('申請'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('戻る'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('申請'),
-          ),
-        ],
       ),
     );
     if (confirm != true || !mounted || !bound.isCurrent) return;
@@ -140,27 +189,30 @@ class _CompanyLinkPageState extends State<CompanyLinkPage> {
     if (bound == null || !bound.isCurrent || bound.hasUnknownResult) return;
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(
-          action == 'accept'
-              ? '連携を承認しますか？'
-              : action == 'cancel'
-              ? '申請を取り消しますか？'
-              : '申請を却下しますか？',
-        ),
-        content: Text(
-          '${request['company_name']}\n開始月：${request['start_month']}\n自社側：${request['local_role'] == 'customer' ? '取引会社' : '協力会社'}',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('戻る'),
+      builder: (context) => _guardedDialog(
+        bound,
+        AlertDialog(
+          title: Text(
+            action == 'accept'
+                ? '連携を承認しますか？'
+                : action == 'cancel'
+                ? '申請を取り消しますか？'
+                : '申請を却下しますか？',
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('確認'),
+          content: Text(
+            '${request['company_name']}\n開始月：${request['start_month']}\n自社側：${request['local_role'] == 'customer' ? '取引会社' : '協力会社'}',
           ),
-        ],
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('戻る'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('確認'),
+            ),
+          ],
+        ),
       ),
     );
     if (confirmed != true || !mounted || !bound.isCurrent) return;
@@ -175,6 +227,12 @@ class _CompanyLinkPageState extends State<CompanyLinkPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (_routeRetired) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('会社を検索・連携')),
+        body: const Center(child: Text('表示条件が変わりました。画面を開き直してください')),
+      );
+    }
     final enabled = _workspace?['enabled'] == true;
     final blocked =
         _busy || _bound?.isCurrent != true || _bound?.hasUnknownResult == true;

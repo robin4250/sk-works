@@ -18,7 +18,10 @@ begin
   end if;
  end loop;
  if to_regprocedure('public.company_link_bound_v1(uuid,uuid,uuid,text,jsonb)') is not null
-   or to_regclass('private.company_link_bound_operations') is not null then
+   or to_regclass('private.company_link_bound_operations') is not null
+   or exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+    where n.nspname in('private','public') and p.proname in(
+     'company_link_bound_v1','require_company_link_bound_v1','company_link_bound_receipt_immutable_v1')) then
   raise exception 'company-link candidate already present; inspect before replacement';
  end if;
  if not has_schema_privilege('authenticated','private','USAGE') then
@@ -217,6 +220,10 @@ grant execute on function private.company_link_bound_v1(uuid,uuid,uuid,text,json
 do $acl_guard$
 declare f record; expected_role oid;
 begin
+ if (select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+  where n.nspname in('private','public') and p.proname in(
+   'company_link_bound_v1','require_company_link_bound_v1','company_link_bound_receipt_immutable_v1'))<>4
+ then raise exception 'unexpected company-link overload'; end if;
  foreach expected_role in array array['postgres'::regrole::oid,'authenticated'::regrole::oid] loop
   if expected_role is null then raise exception 'required role missing'; end if;
  end loop;
@@ -242,6 +249,10 @@ begin
   or exists(select 1 from pg_policy where polrelid='private.company_link_bound_operations'::regclass)
   or not exists(select 1 from pg_class where oid='private.company_link_bound_operations'::regclass
    and relowner='postgres'::regrole::oid and relrowsecurity and relkind='r' and relpersistence='p')
+  or (select array_agg(attname::text||':'||format_type(atttypid,atttypmod)||':'||attnotnull::text order by attnum)
+   from pg_attribute where attrelid='private.company_link_bound_operations'::regclass and attnum>0 and not attisdropped)
+   is distinct from array['company_id:uuid:true','actor_id:uuid:true','operation_id:uuid:true',
+    'original_session_id:uuid:true','command:text:true','payload:jsonb:true','result:jsonb:true','committed_at:timestamp with time zone:true']::text[]
   or not exists(select 1 from pg_trigger where tgrelid='private.company_link_bound_operations'::regclass
    and tgname='company_link_bound_receipt_immutable_v1' and tgenabled='O' and tgtype=58
    and tgfoid='private.company_link_bound_receipt_immutable_v1()'::regprocedure and not tgisinternal)

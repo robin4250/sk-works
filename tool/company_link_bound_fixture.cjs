@@ -74,6 +74,26 @@ let db;let nativeClient;
  before=await snapshot();await assert.rejects(invoke(ids(2),'request',{...payload,target_company_id:ids(1)},ids(210)),/notification failure/);
  assert.deepEqual(await snapshot(),before);await db.exec("set test.fail_notice='0';");
  if(native){
+  const http=require('node:http');let accepted=0;
+  const lostAckServer=http.createServer(async(req,res)=>{
+   try{
+    if(req.url==='/commit'){
+     accepted++;await invoke(ids(1),'set_enabled',{enabled:false},ids(211));
+     req.socket.destroy();return;
+    }
+    res.setHeader('content-type','application/json');
+    res.end(JSON.stringify(await invoke(ids(1),'result',{},ids(211))));
+   }catch(error){res.statusCode=500;res.end('synthetic fixture failure');}
+  });
+  await new Promise(resolve=>lostAckServer.listen(0,'127.0.0.1',resolve));
+  try{
+   const url=`http://127.0.0.1:${lostAckServer.address().port}`;
+   await assert.rejects(fetch(url+'/commit',{method:'POST'}));
+   const receipt=await(await fetch(url+'/result')).json();
+   assert.equal(receipt.state,'committed');assert.equal(receipt.result.enabled,false);assert.equal(accepted,1);
+   assert.equal((await db.query(`select enabled from private.trade_company_link_settings where company_id='${ids(1)}'`)).rows[0].enabled,false);
+   console.log('NATIVE_COMPANY_LINK_COMMIT_ACK_LOSS_LOOKUP: 1');
+  }finally{await new Promise(resolve=>lostAckServer.close(resolve));}
   const {Client}=require('pg'),other=new Client();await other.connect();
   try{
    const pid=(await other.query('select pg_backend_pid() pid')).rows[0].pid;

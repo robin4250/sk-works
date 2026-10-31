@@ -319,7 +319,9 @@ class CompanyLinkBoundContext {
     _binding = AppleSessionNavigationBinding.fromSession(
       _client.auth.currentSession,
     );
-    if (_binding == null) throw StateError('ログイン状態を確認してください');
+    if (_binding == null) {
+      throw StateError('ログイン状態を確認してください');
+    }
     _subscription = _client.auth.onAuthStateChange.listen((event) {
       AppleSessionNavigationBinding? next;
       try {
@@ -336,6 +338,7 @@ class CompanyLinkBoundContext {
   bool _retired = false;
   final _retirements = StreamController<void>.broadcast();
   Stream<void> get retirements => _retirements.stream;
+  void retire() => _retire();
   void _retire() {
     if (_retired) return;
     _retired = true;
@@ -363,8 +366,9 @@ class CompanyLinkBoundContext {
       if (AppleSessionNavigationBinding.fromSession(
             _client.auth.currentSession,
           ) !=
-          _binding)
+          _binding) {
         _retire();
+      }
     } catch (_) {
       _retire();
     }
@@ -460,8 +464,9 @@ class CompanyLinkBoundContext {
     }
     if (value.length != 3 ||
         value['request_id'] is! String ||
-        !_uuid.hasMatch(value['request_id'] as String))
+        !_uuid.hasMatch(value['request_id'] as String)) {
       return false;
+    }
     if (command == 'request') return value['status'] == 'pending';
     return command == 'respond' &&
         value['request_id'] == payload['request_id'] &&
@@ -587,8 +592,9 @@ class CompanyLinkBoundContext {
       if (!_validResult(command, payload, value)) {
         throw StateError('保存結果が不明です。再送しないでください');
       }
-      if (!await _preferences!.remove(_pendingKey))
+      if (!await _preferences!.remove(_pendingKey)) {
         throw StateError('結果記録の更新が必要です。再送しないでください');
+      }
       requireCurrent();
       _pendingOperation = null;
       _pendingCommand = null;
@@ -601,8 +607,9 @@ class CompanyLinkBoundContext {
 
   Future<Map<String, dynamic>> inspectUnknownResult() async {
     requireCurrent();
-    if (_pendingOperation == null || _pendingCommand == null)
+    if (_pendingOperation == null || _pendingCommand == null) {
       throw StateError('照会対象がありません');
+    }
     final value = await _call('result', const {}, operation: _pendingOperation);
     if (value is! Map ||
         !['committed', 'unobserved'].contains(value['state'])) {
@@ -623,8 +630,9 @@ class CompanyLinkBoundContext {
           value['payload'] as Map,
           value['result'],
         )) {
-      if (!await _preferences!.remove(_pendingKey))
+      if (!await _preferences!.remove(_pendingKey)) {
         throw StateError('結果記録を更新できません');
+      }
       requireCurrent();
       _pendingOperation = null;
       _pendingCommand = null;
