@@ -115,7 +115,12 @@ begin
   if previous.operation_id is not null then
    if previous.command is distinct from p_command or previous.payload is distinct from p_payload
     then raise exception 'operation ID already bound to another command'; end if;
-   -- Return original immutable receipt, even if linking was subsequently stopped.
+   if previous.original_session_id is distinct from p_session then
+    raise exception 'original session retired; use result lookup only' using errcode='42501';
+   end if;
+   if p_command<>'set_enabled' and not coalesce((select s.enabled from private.trade_company_link_settings s where s.company_id=p_company),false)
+    then raise exception 'company linking disabled; use result lookup only'; end if;
+   -- Replaying this exact observed command only returns its immutable receipt.
    value:=previous.result;
   else
    if p_command='set_enabled' then
@@ -201,6 +206,31 @@ revoke all on function private.require_company_link_bound_v1(uuid,uuid) from pub
 revoke all on function private.company_link_bound_v1(uuid,uuid,uuid,text,jsonb),public.company_link_bound_v1(uuid,uuid,uuid,text,jsonb)
  from public,anon,authenticated,service_role;
 grant execute on function private.company_link_bound_v1(uuid,uuid,uuid,text,jsonb),public.company_link_bound_v1(uuid,uuid,uuid,text,jsonb) to authenticated;
--- Final ACL/default-ACL guard, exact legacy baseline guard and Native two-connection
--- verification are still required before this proposal can be called applicable.
+do $acl_guard$
+declare f record; expected_role oid;
+begin
+ foreach expected_role in array array['postgres'::regrole::oid,'authenticated'::regrole::oid] loop
+  if expected_role is null then raise exception 'required role missing'; end if;
+ end loop;
+ for f in select p.oid,p.proowner,p.prosecdef,p.proconfig,n.nspname,p.proname
+  from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+  where (n.nspname='private' and p.proname in('require_company_link_bound_v1','company_link_bound_v1'))
+   or (n.nspname='public' and p.proname='company_link_bound_v1') loop
+  if f.proowner<>'postgres'::regrole::oid
+   or f.prosecdef is distinct from (f.nspname='private')
+   or f.proconfig is distinct from array['search_path=""']::text[]
+   or exists(select 1 from aclexplode(coalesce((select proacl from pg_proc where oid=f.oid),acldefault('f',f.proowner))) a
+    where a.grantee not in('postgres'::regrole::oid,'authenticated'::regrole::oid)
+     or (a.grantee='authenticated'::regrole::oid and (a.is_grantable or f.proname='require_company_link_bound_v1')))
+  then raise exception 'unexpected company-link function ownership or ACL'; end if;
+ end loop;
+ if not has_function_privilege('authenticated','public.company_link_bound_v1(uuid,uuid,uuid,text,jsonb)','EXECUTE')
+  or not has_function_privilege('authenticated','private.company_link_bound_v1(uuid,uuid,uuid,text,jsonb)','EXECUTE')
+  or has_function_privilege('authenticated','private.require_company_link_bound_v1(uuid,uuid)','EXECUTE')
+  or exists(select 1 from aclexplode(coalesce((select relacl from pg_class where oid='private.company_link_bound_operations'::regclass),acldefault('r','postgres'::regrole::oid))) a
+   where a.grantee<>'postgres'::regrole::oid)
+ then raise exception 'unexpected company-link function or journal access'; end if;
+end $acl_guard$;
+-- Exact legacy body/catalog guards and Native two-connection verification remain
+-- required before this proposal can be called applicable.
 commit;
