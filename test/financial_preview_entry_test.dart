@@ -73,8 +73,9 @@ void main() {
     PrintingPlatform.instance = printer;
   });
   tearDown(() {
-    if (printer.completed != null && !printer.completed!.isCompleted)
+    if (printer.completed != null && !printer.completed!.isCompleted) {
       printer.completed!.complete(false);
+    }
     PrintingPlatform.instance = original;
   });
   for (final payment in [false, true]) {
@@ -139,7 +140,9 @@ void main() {
             await tester.pump();
           }
           expect(find.byType(FinancialPreviewChrome), findsOneWidget);
-          if (!payment) expect(find.byType(InteractiveViewer), findsOneWidget);
+          if (!payment) {
+            expect(find.byType(InteractiveViewer), findsOneWidget);
+          }
           expect(find.byType(Scaffold), findsOneWidget);
           final viewport = tester.getSize(
             find.byKey(const ValueKey('financial_preview_document_viewport')),
