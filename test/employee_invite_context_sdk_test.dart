@@ -184,7 +184,11 @@ class Fixture {
         }
         if (request.url.path == '/functions/v1/create-employee-invite') {
           invokes++;
-          expect(request.headers['Authorization'], 'Bearer ${token(sid)}');
+          expect(
+            request.headers['Authorization'] == 'Bearer ${token(sid)}',
+            isTrue,
+            reason: 'captured authorization is retained',
+          );
           final body = jsonDecode(request.body) as Map;
           expect(body['companyId'], company);
           expect(body['sessionId'], sid);
@@ -435,6 +439,12 @@ void main() {
         find.text('初期パスワード: $fixturePassword'),
         200,
         maxScrolls: 20,
+        scrollable: find
+            .descendant(
+              of: find.byType(ListView).first,
+              matching: find.byType(Scrollable),
+            )
+            .first,
       );
       expect(find.text('初期パスワード: $fixturePassword'), findsOneWidget);
       f.session = nextSid;
