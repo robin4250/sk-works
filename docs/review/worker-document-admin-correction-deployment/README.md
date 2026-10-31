@@ -59,3 +59,14 @@ and dependency checks, with OFF and no correction/ticket/photo rows. After
 activation or use, preserve receipts/revision archives/originals and use a
 reviewed forward fix. OFF stops new corrections but must not erase existing
 evidence or pretend to undo a committed correction.
+
+
+The deployment generator also supplies a distinct guarded global stop and a
+read-only reconciliation query. Stop acquires the state row UPDATE barrier
+before locking original status/history tables, so it waits for an in-flight
+correction without inverting the normal write lock order. It changes only this
+purpose's enabled flag to false, retains activation evidence, records a fixed
+stop ID, and preserves every original/archive. A repeated stop command refuses
+changed receipt state: reconcile with the read-only query before any retry.
+Recovery-only get/reconcile_cancel remains supported after OFF; stop does not
+cancel unknown device journals or restore older content.

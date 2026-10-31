@@ -52,6 +52,8 @@ const injection=`
  const install=await fs.readFile(path.join(output,'install-off.guarded.sql.review-only'),'utf8');
  const restore=await fs.readFile(path.join(output,'restore-unused.guarded.sql.review-only'),'utf8');
  const enable=await fs.readFile(path.join(output,'enable-separately-approved.guarded.sql.review-only'),'utf8');
+ const stop=await fs.readFile(path.join(output,'stop-after-activation.guarded.sql.review-only'),'utf8');
+ const readback=await fs.readFile(path.join(output,'readback.read-only.sql'),'utf8');
  await db.exec(install);assert.deepEqual(await status(),original);
  assert.equal((await db.query('select enabled from private.worker_document_admin_correction_state')).rows[0].enabled,false);
  await db.exec(restore);assert.equal((await db.query("select to_regprocedure('public.worker_document_admin_self_correction(text,jsonb)') v")).rows[0].v,null);
@@ -62,11 +64,32 @@ const injection=`
  await db.exec('alter function private.worker_document_photos_are_retained(text) stable');
  await db.exec(enable);assert.deepEqual(await status(),original);
  assert.equal((await db.query('select enabled from private.worker_document_admin_correction_state')).rows[0].enabled,true);
- await db.exec('update private.worker_document_admin_correction_state set enabled=false');
+ if(native){
+  const pgStop=await import(pathToFileURL(path.resolve(process.argv[2])));
+  const stopper=new(pgStop.Client??pgStop.default.Client)({connectionString:native});await stopper.connect();
+  try{
+   const stopPid=(await stopper.query('select pg_backend_pid() pid')).rows[0].pid;
+   await actor(owner,sid);await db.exec('begin');
+   await rpc('correct',{company_id:company,target_id:target,request_id:uid(70),expected_snapshot:original,fields:{attachment_paths:original.attachment_paths,expires_at:original.expires_at,notes:original.notes},reason:'rollback-only stop barrier fixture'});
+   const stopping=stopper.query(stop);stopping.catch(()=>{});
+   let stopWaited=false;for(let n=0;n<100;n++){
+    if((await db.query('select exists(select 1 from pg_locks where pid=$1 and not granted) v',[stopPid])).rows[0].v){stopWaited=true;break;}
+    await new Promise(resolve=>setTimeout(resolve,25));
+   }
+   assert.equal(stopWaited,true,'guarded stop must wait for an actual in-flight correction');
+   await db.exec('rollback');await db.exec('reset role');await stopping;
+   console.log('STOP BARRIER PASS: actual Native in-flight correction rolled back; stop waited then committed without deadlock');
+  }finally{await db.exec('rollback');await db.exec('reset role');await stopper.end();}
+ }else{await db.exec(stop);}
+ const stopped=(await db.query(readback)).rows[0].reconciliation;
+ assert.equal(stopped.enabled,false);assert.equal(stopped.module_matches,true);assert.equal(stopped.dependencies_match,true);
+ assert.equal(stopped.receipt.activated,true);assert.ok(typeof stopped.receipt.stop_id==='string');assert.equal(stopped.ticket_count,0);
+ await assert.rejects(db.exec(stop));await db.exec('rollback');
+
  await assert.rejects(db.exec(restore));await db.exec('rollback');
  assert.equal((await db.query('select enabled from private.worker_document_admin_correction_state')).rows[0].enabled,false);
  assert.deepEqual(await status(),original);
- console.log('GUARD PASS: OFF/install-originals/unused-restore/reinstall/dependency-drift-ON-stop/ON-originals/ever-activated-restore-stop');
+ console.log('GUARD PASS: OFF/install-originals/unused-restore/reinstall/dependency-drift-ON-stop/ON-originals/ever-activated-restore-stop/guarded-stop/receipt-readback/repeat-stop-refusal');
 `;
 // This fixture only replaces direct installation with the generated guarded
 // capsule. Candidate SQL and the rest of the 18 Native checks remain unchanged.
