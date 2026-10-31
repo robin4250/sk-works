@@ -60,7 +60,7 @@ void main() {
   for (final order in [true, false]) {
     testWidgets('saved issuer seal appears on ${order ? 'order' : 'acceptance'} input without losing company tap', (tester) async {
       final semantics = tester.ensureSemantics();
-      addTearDown(semantics.dispose);
+      try {
       final value = _payload(order: order);
       final before = value['company_seal_snapshot'].toString();
       await fixture.mount(tester, payload: value);
@@ -72,6 +72,7 @@ void main() {
       await tester.tap(fixture.target('issuer')); await tester.pumpAndSettle();
       expect(find.text('自社の登録住所'), findsOneWidget);
       expect(tester.takeException(), isNull);
+      } finally { semantics.dispose(); }
     });
   }
   testWidgets('large company text on narrow portrait keeps seal preview and company detail tap usable', (tester) async {
@@ -125,7 +126,8 @@ void main() {
     await fixture.mount(tester, payload: value);
     await _wait(tester, () => seal.evaluate().isNotEmpty);
     expect(printing.rasterCalls, 1);
-    expect(String.fromCharCodes(printing.pdf!), contains('/Subtype /Image'));
+    expect(RegExp(r'/Subtype\s*/Image\b').hasMatch(String.fromCharCodes(printing.pdf!)), isTrue,
+      reason: 'The actual seal PDF must retain an image XObject');
   });
   testWidgets('uploaded PNG remains bound to its stored company and hash', (tester) async {
     const png = 'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAALUlEQVR4nO3OIQEAAAwEoetf+hdjBoWlVat9mYCAgICAgICAgICAgICAwHfgAIP/+kx2iamjAAAAAElFTkSuQmCC';
@@ -136,7 +138,8 @@ void main() {
       'png_sha256': '30ca1a5ef40b92ff14e0d5f9b4a2a9930ae2013a6cd9d7c4b636e3e70daa58fc'};
     await fixture.mount(tester, payload: value);
     await _wait(tester, () => seal.evaluate().isNotEmpty);
-    expect(String.fromCharCodes(printing.pdf!), contains('/Subtype /Image'));
+    expect(RegExp(r'/Subtype\s*/Image\b').hasMatch(String.fromCharCodes(printing.pdf!)), isTrue,
+      reason: 'The actual seal PDF must retain an image XObject');
     expect(value['company_seal_snapshot']['png_base64'], png);
   });
   testWidgets('failed native seal preview shows unavailable rather than a synthetic stamp', (tester) async {
