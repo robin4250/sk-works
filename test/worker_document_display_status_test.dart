@@ -30,7 +30,7 @@ void main() {
         ...required,
         'expiry_required': true,
       }, row).label,
-      '提出済み・期限未入力',
+      '登録済み・期限未入力',
     );
     expect(
       workerDocumentDisplayStatus(

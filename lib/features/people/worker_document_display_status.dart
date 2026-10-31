@@ -51,7 +51,7 @@ WorkerDocumentDisplayStatus workerDocumentDisplayStatus(
     if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(raw) ||
         date == null ||
         date.toIso8601String().substring(0, 10) != raw) {
-      return const WorkerDocumentDisplayStatus('提出済み・期限未入力', false);
+      return const WorkerDocumentDisplayStatus('登録済み・期限未入力', false);
     }
     final now = today ?? DateTime.now();
     if (date.isBefore(DateTime(now.year, now.month, now.day))) {

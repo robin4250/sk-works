@@ -80,7 +80,7 @@ void main() {
     expect(find.text('登録済み'), findsOneWidget);
     await show(tester, {...req('健康診断書'), 'expiry_required': true},
       {'requirement_id': 'r', 'status': 'submitted', 'attachment_paths': ['retained/a']});
-    expect(find.text('提出済み・期限未入力'), findsOneWidget);
+    expect(find.text('登録済み・期限未入力'), findsOneWidget);
     expect(find.text('登録済み'), findsNothing);
   });
 
