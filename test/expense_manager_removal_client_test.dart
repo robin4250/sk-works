@@ -33,7 +33,7 @@ void main(){
   test('uncertain send preserves exact command, new SID observes without re-send',()async{
     String? sid=id(4);final calls=<String>[];
     final command=ExpenseRemovalCommand.create(id(1),id(2),id(3),1,sid,'訂正');
-    final repo=ExpenseManagerRemovalRepository(actor:()=>id(1),session:()=>sid,rpc:(name,params)async{
+    final repo=ExpenseManagerRemovalRepository(invalidations:const Stream<void>.empty(),actor:()=>id(1),session:()=>sid,rpc:(name,params)async{
       calls.add(name);if(name=='expense_manager_remove')throw StateError('lost response');return saved(command,finalDocument:true);});
     await expectLater(repo.submit(command,ExpenseRemovalCapability(capability(sid),sid)),throwsStateError);
     expect((await repo.pending(id(2)))!.encoded,command.encoded);
@@ -44,7 +44,7 @@ void main(){
   });
   test('missing result remains unknown and blocks a new send',()async{
     final command=ExpenseRemovalCommand.create(id(1),id(2),id(3),1,id(4),'訂正');int mutations=0;
-    final repo=ExpenseManagerRemovalRepository(actor:()=>id(1),session:()=>id(4),rpc:(name,p)async{
+    final repo=ExpenseManagerRemovalRepository(invalidations:const Stream<void>.empty(),actor:()=>id(1),session:()=>id(4),rpc:(name,p)async{
       if(name=='expense_manager_remove'){mutations++;throw StateError('lost');}return null;});
     final cap=ExpenseRemovalCapability(capability(id(4)),id(4));
     await expectLater(repo.submit(command,cap),throwsStateError);expect(await repo.observe(command),null);
@@ -52,19 +52,19 @@ void main(){
   });
   test('mismatched response does not clear journal or claim success',()async{
     final c=ExpenseRemovalCommand.create(id(1),id(2),id(3),1,id(4),'訂正');
-    final repo=ExpenseManagerRemovalRepository(actor:()=>id(1),session:()=>id(4),rpc:(n,p)async=>{...saved(c),'claim_id':id(99)});
+    final repo=ExpenseManagerRemovalRepository(invalidations:const Stream<void>.empty(),actor:()=>id(1),session:()=>id(4),rpc:(n,p)async=>{...saved(c),'claim_id':id(99)});
     await expectLater(repo.submit(c,ExpenseRemovalCapability(capability(id(4)),id(4))),throwsFormatException);
     expect(await repo.pending(id(2)),isNotNull);
   });
   test('actor change after request cannot consume another account result',()async{
     String? actor=id(1);final c=ExpenseRemovalCommand.create(actor,id(2),id(3),1,id(4),'訂正');
-    final repo=ExpenseManagerRemovalRepository(actor:()=>actor,session:()=>id(4),rpc:(n,p)async{actor=id(9);return saved(c);});
+    final repo=ExpenseManagerRemovalRepository(invalidations:const Stream<void>.empty(),actor:()=>actor,session:()=>id(4),rpc:(n,p)async{actor=id(9);return saved(c);});
     await expectLater(repo.submit(c,ExpenseRemovalCapability(capability(id(4)),id(4))),throwsStateError);
     actor=id(1);expect(await repo.pending(id(2)),isNotNull);
   });
   test('no capability or new SID can dispatch an old command',()async{
     int calls=0;final c=ExpenseRemovalCommand.create(id(1),id(2),id(3),1,id(4),'訂正');
-    final repo=ExpenseManagerRemovalRepository(actor:()=>id(1),session:()=>id(5),rpc:(n,p)async{calls++;return saved(c);});
+    final repo=ExpenseManagerRemovalRepository(invalidations:const Stream<void>.empty(),actor:()=>id(1),session:()=>id(5),rpc:(n,p)async{calls++;return saved(c);});
     await expectLater(repo.submit(c,ExpenseRemovalCapability(capability(id(5)),id(5))),throwsStateError);
     expect(calls,0);
   });
@@ -108,7 +108,7 @@ void main(){
   test('journal readback failure makes zero mutation RPC calls',()async{
     final journal=Journal()..loseWrite=true;int calls=0;
     final c=ExpenseRemovalCommand.create(id(1),id(2),id(3),1,id(4),'訂正');
-    final repo=ExpenseManagerRemovalRepository(actor:()=>id(1),session:()=>id(4),journal:journal,rpc:(n,p)async{calls++;return saved(c);});addTearDown(repo.dispose);
+    final repo=ExpenseManagerRemovalRepository(invalidations:const Stream<void>.empty(),actor:()=>id(1),session:()=>id(4),journal:journal,rpc:(n,p)async{calls++;return saved(c);});addTearDown(repo.dispose);
     await expectLater(repo.submit(c,ExpenseRemovalCapability(capability(id(4)),id(4))),throwsStateError);expect(calls,0);
   });
   test('Auth change while clearing restores the journal and requires result observation',()async{
@@ -145,6 +145,16 @@ void main(){
     changed.value=ExpenseClaim(id:id(33),companyId:id(2),applicantId:id(9),applicantName:'本人',incurredOn:DateTime(2026,10,1),submittedAt:DateTime(2026,10,2),description:'別の経費',amountYen:500,approval:ExpenseApproval.pending,allocation:ExpenseAllocation(ExpenseCategory.unallocated));
     await tester.pumpAndSettle();expect(find.byType(TextField),findsNothing);expect(find.text('別の経費'),findsNothing);
     expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton,'削除を確定')).onPressed,null);expect(tester.takeException(),null);
+  });
+
+  test('a repository created without an Auth event source stays closed after identity becomes available',()async{
+    String? actor;String? session;int calls=0;final journal=Journal();
+    final repo=ExpenseManagerRemovalRepository(actor:()=>actor,session:()=>session,journal:journal,rpc:(n,p)async{calls++;return null;});addTearDown(repo.dispose);
+    actor=id(1);session=id(4);
+    final command=ExpenseRemovalCommand.create(actor,id(2),id(3),1,session,'訂正');
+    await expectLater(repo.submit(command,ExpenseRemovalCapability(capability(session),session)),throwsStateError);
+    await expectLater(repo.observe(command),throwsStateError);
+    expect(calls,0);expect(journal.values,isEmpty);
   });
 
 }

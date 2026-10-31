@@ -88,6 +88,7 @@ class ExpenseManagerRemovalRepository {
       _rpc=rpc??((name,params)=>SupabaseBackend.client.rpc(name,params:params)),
       _journal=journal??SharedExpenseRemovalJournal() {
     final events=invalidations ?? (SupabaseBackend.isInitialized ? SupabaseBackend.client.auth.onAuthStateChange.where((event)=>event.event!=AuthChangeEvent.initialSession).map((_) {}) : null);
+    _trackingAvailable=events!=null;
     _subscription=events?.listen((_) {_invalidate();},onError:(Object _){_invalidate();});
   }
   final ExpenseRemovalJournal _journal;
@@ -96,11 +97,12 @@ class ExpenseManagerRemovalRepository {
   Stream<void> get changes=>_changes.stream;
   int get epoch=>_epoch;
   void _invalidate(){_epoch++;if(!_changes.isClosed)_changes.add(null);}
+  late final bool _trackingAvailable;
   int _epoch=0;
   bool _disposed=false;
   void dispose(){_disposed=true;_epoch++;_subscription?.cancel();_changes.close();}
   void _same(int epoch,String expected,String? capturedSession){
-    if(_disposed || _epoch!=epoch || actor!=expected || session!=capturedSession)throw StateError('ログイン状態が変わりました。保存結果を照会してください。');
+    if(!_trackingAvailable || _disposed || _epoch!=epoch || actor!=expected || session!=capturedSession)throw StateError('ログイン状態が変わりました。保存結果を照会してください。');
   }
   final String? Function() _actor, _session;
   final ExpenseRpc _rpc;
@@ -114,7 +116,7 @@ class ExpenseManagerRemovalRepository {
     }catch(_){return null;}
   }
   String _key(String actor,String company)=>'sko.expense.manager-removal.v1.$actor.$company';
-  void _check(String expected){if(actor!=expected || !_uuid(session))throw StateError('ログイン情報が変わりました。');}
+  void _check(String expected){if(!_trackingAvailable || _disposed || actor!=expected || !_uuid(session))throw StateError('ログイン情報が変わりました。');}
   Future<ExpenseRemovalCommand?> pending(String company)async{
     final expected=actor;if(expected==null)throw StateError('ログインが必要です。');
     final epoch=_epoch;final capturedSession=session;
