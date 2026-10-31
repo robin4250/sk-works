@@ -92,16 +92,21 @@ class EmployeeInviteRepository {
     final generation = _generation;
     final captured = binding;
     if (session == null || captured == null) throw StateError('ログイン情報を確認してください。');
-    final Object raw = await _client.from('company_members').select('company_id,role')
-        .eq('user_id', captured.actorId)
-        .setHeader('Authorization', 'Bearer ${session.accessToken}').retry(enabled: false);
-    if (_disposed || _generation != generation || binding != captured || raw is! List || raw.length != 1 || raw.single is! Map) throw StateError('ログイン状態が変わりました。');
-    final rows = raw.whereType<Map>().where((r) => companyId == null || r['company_id'] == companyId).toList();
-    if (rows.length != 1 || !_uuid.hasMatch(rows.single['company_id']?.toString() ?? '') ||
-        !const {'owner','admin','manager','viewer'}.contains(rows.single['role'])) {
+    Map row;
+    try {
+      final Object raw = await _client.from('company_members').select('company_id,role')
+          .eq('user_id', captured.actorId)
+          .setHeader('Authorization', 'Bearer ${session.accessToken}').retry(enabled: false);
+      if (_disposed || _generation != generation || binding != captured ||
+          raw is! List || raw.length != 1 || raw.single is! Map) throw const FormatException();
+      row = raw.single as Map;
+      if ((companyId != null && row['company_id'] != companyId) ||
+          !_uuid.hasMatch(row['company_id']?.toString() ?? '') ||
+          !const {'owner','admin','manager','viewer'}.contains(row['role'])) throw const FormatException();
+    } catch (_) {
       throw StateError('対象会社を一意に確認できません。会社を選び直してください。');
     }
-    final request = EmployeeInviteRequest._(captured, rows.single['company_id'] as String,
+    final request = EmployeeInviteRequest._(captured, row['company_id'] as String,
       session.accessToken, () => !_disposed && _generation == generation && binding == captured);
     request.check();
     return request;

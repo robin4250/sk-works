@@ -132,7 +132,7 @@ void main() {
   });
 
   testWidgets('new employee page hides credentials immediately after same-user new SID', (tester) async {
-    final f = Fixture(); addTearDown(f.close); await tester.runAsync(f.login);
+    final f = Fixture(); addTearDown(() async { await tester.runAsync(f.close); }); await tester.runAsync(f.login);
     await tester.pumpWidget(MaterialApp(home: EmployeeInvitePage(repository: f.repository)));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).at(0), 'Synthetic Employee');
@@ -148,12 +148,13 @@ void main() {
   });
 
   testWidgets('existing worker page hides QR/password after same-user new SID', (tester) async {
-    final f = Fixture(); addTearDown(f.close); await tester.runAsync(f.login);
+    final f = Fixture(); addTearDown(() async { await tester.runAsync(f.close); }); await tester.runAsync(f.login);
     await tester.pumpWidget(MaterialApp(home: EmployeeInitialRegistrationPage(repository: f.repository)));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('送信'));
     await tester.runAsync(() async { await tester.tap(find.text('送信')); await Future<void>.delayed(Duration.zero); });
     await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('初期パスワード: $fixturePassword'), 200, maxScrolls: 20);
     expect(find.text('初期パスワード: $fixturePassword'), findsOneWidget);
     f.session = nextSid; await tester.runAsync(f.login); await tester.pumpAndSettle();
     expect(find.text('初期パスワード: $fixturePassword'), findsNothing);
