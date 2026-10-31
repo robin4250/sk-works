@@ -1,8 +1,14 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:printing/printing.dart';
+import 'package:crypto/crypto.dart' as crypto;
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import '../../domain/company_seal_snapshot.dart';
+import 'company_seal_pdf.dart';
 import '../../domain/trade_document_form_draft.dart';
 import 'trade_document_form_geometry.dart';
 
@@ -213,6 +219,14 @@ class _TouchEditorState extends State<TradeDocumentTouchEditorPage> with Widgets
       }
     } finally { if (mounted && !_revoked) setState(() => _busy = false); }
   }
+  // Pure preview guard: never schedule parent state changes from a child build.
+  void _verifySealPreview() {
+    if (!mounted || _revoked || _draft == null ||
+        WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
+      throw StateError('入力画面を開き直してください。');
+    }
+    widget.requireScope();
+  }
   void _tap(TapUpDetails details) {
     if (_gestureMoved || _busy || _revoked || _saveUncertain) return;
     final point = _transform.toScene(details.localPosition);
@@ -253,7 +267,7 @@ class _TouchEditorState extends State<TradeDocumentTouchEditorPage> with Widgets
             child: InteractiveViewer(key: const Key('trade-touch-viewport'),
               transformationController: _transform, constrained: false,
               minScale: .1, maxScale: 5, boundaryMargin: const EdgeInsets.all(200),
-              child: _Paper(draft: _draft!, size: _paper,
+              child: _Paper(draft: _draft!, size: _paper, requireScope: _verifySealPreview,
                 onTarget: (target) => unawaited(_open(target))))));
         })),
       ]),
@@ -375,11 +389,72 @@ String _shown(Object? value) {
   if (value is int) return value.toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => ',');
   return value.toString();
 }
+// A template token is replaced for display only. The actual stored draft and
+// its validation still require the user-entered date; never invent one here.
+String _shownInputValue(Map<String, dynamic> payload, String path) {
+  final value = _shown(_readPath(payload, path));
+  if (path != 'base.acceptance_text') return value;
+  final date = payload['order_date']?.toString().trim() ?? '';
+  return value.replaceAll('{order_date}', date.isEmpty ? '（注文書日を入力）' : date);
+}
+
+/// An input-surface preview of the exact saved issuer seal, not a counterparty
+/// approval stamp. PDF rendering and persisted seal metadata are unchanged.
+class _InputSealPreview extends StatefulWidget {
+  const _InputSealPreview({super.key, required this.snapshot,
+    required this.issuerName, required this.requireScope});
+  final Object? snapshot;
+  final String issuerName;
+  final VoidCallback requireScope;
+  @override State<_InputSealPreview> createState() => _InputSealPreviewState();
+}
+
+class _InputSealPreviewState extends State<_InputSealPreview> {
+  late final Future<Uint8List> _png = _render();
+  Future<Uint8List> _render() async {
+    widget.requireScope();
+    final seal = CompanySealSnapshot.fromJson(widget.snapshot);
+    if (seal.name.isEmpty || seal.name != widget.issuerName) {
+      throw StateError('登録角印の会社が一致しません。');
+    }
+    // Build the seal through the same font/style/hash-checked PDF component as
+    // the final form. No live company lookup, synthetic text stamp or network.
+    final font = await CompanySealPdf.loadStyleFont(seal.style);
+    widget.requireScope();
+    final fallback = await CompanySealPdf.loadFont();
+    widget.requireScope();
+    final document = pw.Document();
+    document.addPage(pw.Page(pageFormat: const PdfPageFormat(42, 42),
+      margin: pw.EdgeInsets.zero, build: (_) => CompanySealPdf.build(seal.name,
+        font: font, fallbackFont: fallback, companyId: seal.companyId,
+        uploadedPng: seal.uploadedPng, style: seal.style, size: 42)));
+    final bytes = await document.save();
+    widget.requireScope();
+    final raster = await Printing.raster(bytes, pages: const [0], dpi: 144).first
+        .timeout(const Duration(seconds: 10));
+    widget.requireScope();
+    final png = await raster.toPng();
+    widget.requireScope();
+    return png;
+  }
+  @override Widget build(BuildContext context) => FutureBuilder<Uint8List>(
+    future: _png, builder: (context, snapshot) {
+      if (snapshot.hasData) {
+        return Semantics(container: true, label: '自社登録角印のプレビュー・相手の承認印ではありません', image: true,
+          child: Image.memory(snapshot.data!, key: const Key('trade-input-own-seal'),
+            fit: BoxFit.contain, excludeFromSemantics: true));
+      }
+      return Text(snapshot.hasError ? '角印を確認できません' : '角印確認中',
+        key: const Key('trade-input-seal-status'), style: const TextStyle(fontSize: 6));
+    });
+}
+
 class _Paper extends StatelessWidget {
-  const _Paper({required this.draft, required this.size, required this.onTarget});
+  const _Paper({required this.draft, required this.size, required this.onTarget, required this.requireScope});
   final TradeDocumentFormDraft draft;
   final Size size;
   final ValueChanged<_Target> onTarget;
+  final VoidCallback requireScope;
   @override Widget build(BuildContext context) {
     final payload = draft.payload, targets = _targets(draft, size);
     Widget text(Rect rect, String value, {double font = 8, bool bold = false,
@@ -414,7 +489,7 @@ class _Paper extends StatelessWidget {
       } else if (target.id.startsWith('payment_')) {
         value = '${target.title}　${target.specs.map((s) => _shown(_readPath(payload, s.path))).where((s) => s.isNotEmpty).join('　')}';
       } else {
-        final values = target.specs.map((s) => _shown(_readPath(payload, s.path))).where((s) => s.isNotEmpty);
+        final values = target.specs.map((s) => _shownInputValue(payload, s.path)).where((s) => s.isNotEmpty);
         value = values.join('　');
         if (target.id == 'amount' && !draft.allowAmountEditing) {
           value = '${_shown(payload['total_amount_yen'])} 円（元書類の金額）';
@@ -422,9 +497,22 @@ class _Paper extends StatelessWidget {
       }
       if (!target.id.startsWith('row_') && !target.id.startsWith('payment_') &&
           !const ['cutoffs', 'ratios'].contains(target.id)) {
-        children.add(text(target.rect, value.isEmpty ? 'タップして入力' : value,
+        final showOwnSeal = target.company == 'issuer' && payload['company_seal_enabled'] == true;
+        final textRect = showOwnSeal ? Rect.fromLTRB(target.rect.left, target.rect.top, target.rect.right - 44, target.rect.bottom) : target.rect;
+        children.add(text(textRect, value.isEmpty ? 'タップして入力' : value,
           font: target.company != null ? 9 : 8, lines: target.company != null ? 6 : 3,
           bold: target.company != null, color: value.isEmpty ? Colors.blueGrey : Colors.black));
+      }
+      if (target.company == 'issuer' && payload['company_seal_enabled'] == true) {
+        children.add(Positioned(left: target.rect.right - 41, top: target.rect.top + 5, width: 38, height: 38,
+          child: IgnorePointer(child: _InputSealPreview(
+            // Digest the full immutable source so widget diagnostics never expose
+            // registered PNG bytes and a changed snapshot cannot reuse old output.
+            key: ValueKey(crypto.sha256.convert(utf8.encode(jsonEncode([
+              payload['company_seal_snapshot'], (payload['issuer'] as Map)['name'],
+            ]))).toString()),
+            snapshot: payload['company_seal_snapshot'], issuerName: (payload['issuer'] as Map)['name'].toString(),
+            requireScope: requireScope))));
       }
       children.add(Positioned.fromRect(rect: target.rect, child: Semantics(
         key: ValueKey('trade-touch-target-${target.id}'), label: target.title,
