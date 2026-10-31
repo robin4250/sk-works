@@ -1,0 +1,35 @@
+name: Employee retirement worker binding review
+on:
+  pull_request:
+    paths:
+      - 'tool/review/employee_retirement_worker_binding_20261101/**'
+      - '.github/workflows/employee-retirement-worker-binding-review.yml'
+permissions:
+  contents: read
+jobs:
+  native-isolated:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:17.6
+        env:
+          POSTGRES_PASSWORD: synthetic_retirement_fixture_only
+          POSTGRES_DB: retirement_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 3s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node tool/review/employee_retirement_worker_binding_20261101/native-test.mjs --environment-faults
+      - run: node tool/review/employee_retirement_worker_binding_20261101/native-test.mjs
+        env:
+          PGHOST: '127.0.0.1'
+          PGPORT: '5432'
+          PGUSER: postgres
+          PGPASSWORD: synthetic_retirement_fixture_only
+          PGDATABASE: retirement_fixture
