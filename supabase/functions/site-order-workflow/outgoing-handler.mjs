@@ -2,6 +2,7 @@
 const uuid=/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/;
 const identity=['site_id','document_id','local_id','trade_id','request_id'];
 const commands={
+ targets:{keys:['site_id','before','limit'],sql:'select site_order_outgoing_private.registered_targets($1,$2,$3) as result'},
  prepare:{keys:[...identity,'connection_fingerprint','body'],sql:'select site_order_outgoing_private.prepare_order($1,$2,$3,$4,$5,$6,$7::jsonb) as result'},
  status:{keys:identity,sql:'select site_order_outgoing_private.operation_status($1,$2,$3,$4,$5) as result'},
  retire:{keys:[...identity,'confirmed'],sql:'select site_order_outgoing_private.retire_prepare($1,$2,$3,$4,$5,$6) as result'},
@@ -21,7 +22,11 @@ async function read(req){
  if(!command||Object.keys(value).length!==command.keys.length+1
   ||Object.keys(value).some(key=>key!=='action'&&!command.keys.includes(key)))throw Error('invalid_request');
  for(const key of command.keys){const item=value[key];
-  if(key==='body'){
+  if(key==='before'){
+   if(item!==null&&(typeof item!=='string'||!uuid.test(item)))throw Error('invalid_request');
+  }else if(key==='limit'){
+   if(!Number.isInteger(item)||item<1||item>50)throw Error('invalid_request');
+  }else if(key==='body'){
    if(!item||typeof item!=='object'||Array.isArray(item)
     ||new TextEncoder().encode(JSON.stringify(item)).length>32768)throw Error('invalid_request');
   }else if(key==='connection_fingerprint'){

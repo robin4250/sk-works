@@ -11,6 +11,7 @@ import '../shared/trade_document_form_renderer.dart';
 import '../shared/trade_document_form_session.dart';
 import 'site_order_approval_journal.dart';
 import 'site_order_outgoing_journal.dart';
+import 'site_order_outgoing_entries.dart';
 
 String siteOrderRequestId() {
   final random = Random.secure();
@@ -79,6 +80,8 @@ abstract class SiteOrderWorkflowApi extends ChangeNotifier {
       throw StateError('注文の準備結果を確認できません。');
   Future<String> retireOutgoing(SiteOrderPendingPrepare entry, {required bool confirmed}) async =>
       throw StateError('注文の準備停止を確認できません。');
+  Future<List<SiteOrderRegisteredTarget>> registeredOutgoingTargets(String siteId) async =>
+      throw StateError('登録済み協力会社を確認できません。');
 }
 
 /// One captured SDK session/gateway lease. No automatic mutation retry or new
@@ -205,6 +208,45 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
     final entries = await _outgoingJournal.read(_actor, _company!, siteId);
     await verify();
     return entries;
+  }
+
+  @override
+  Future<List<SiteOrderRegisteredTarget>> registeredOutgoingTargets(String siteId) async {
+    if(!_savedId(siteId)) throw StateError('現場を確認してください。');
+    final targets=<SiteOrderRegisteredTarget>[], seen=<String>{};
+    String? cursor;
+    for(var page=0;page<200;page++) {
+      await verify();
+      final value=_map(_map(await _call({'action':'targets','site_id':siteId,'before':cursor,'limit':50},outgoing:true))['result']);
+      if(!_exactKeys(value,const {'contract_version','actor_id','session_id','company_id','site_id','entries','has_more','next_cursor','read_only','can_send'})||
+          value['contract_version']!=1||value['actor_id']!=_actor||value['session_id']!=_capturedSessionId||
+          _capturedSessionId==null||value['company_id']!=_company||value['site_id']!=siteId||
+          value['entries'] is! List||value['has_more'] is! bool||value['read_only']!=true||value['can_send']!=false) {
+        throw StateError('登録済み協力会社の状態を確認できません。');
+      }
+      final rows=value['entries'] as List;
+      if(rows.length>50) throw StateError('登録会社の件数を確認できません。');
+      String? last=cursor;
+      for(final raw in rows) {
+        final row=_map(raw);
+        if(!_exactKeys(row,const {'id','name'})||!_savedId(row['id'])||row['name'] is! String||
+            (row['name'] as String).trim().isEmpty||(row['name'] as String).runes.length>240||
+            !seen.add(row['id'] as String)||(last!=null&&(row['id'] as String).compareTo(last)<=0)) {
+          throw StateError('登録会社の識別情報を確認できません。');
+        }
+        last=row['id'] as String;targets.add(SiteOrderRegisteredTarget(id:last,name:row['name'] as String));
+      }
+      if(value['has_more']==false) {
+        if(value['next_cursor']!=null) throw StateError('登録会社の続き状態を確認できません。');
+        await verify();return List.unmodifiable(targets);
+      }
+      if(rows.length!=50||last==null||value['next_cursor']!=last) {
+        throw StateError('登録会社の続き状態を確認できません。');
+      }
+      cursor=last;
+    }
+    // Never return a truncated list as if it covered the company directory.
+    throw StateError('登録会社の全件を確認できません。画面を開き直してください。');
   }
 
   Future<String> _outgoingState(

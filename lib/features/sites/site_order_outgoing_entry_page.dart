@@ -38,14 +38,15 @@ class SiteOrderOutgoingEntryPage extends StatefulWidget {
     required this.api,
     required this.siteId,
     required this.issueDate,
-    required this.targets,
+    this.targets,
     this.initial = const {},
     this.previewBuilder,
     this.render,
   });
   final SiteOrderWorkflowApi api;
   final String siteId, issueDate;
-  final List<SiteOrderRegisteredTarget> targets;
+  @visibleForTesting
+  final List<SiteOrderRegisteredTarget>? targets;
   final Map<String, String> initial;
   @visibleForTesting
   final Widget Function(Uint8List)? previewBuilder;
@@ -60,7 +61,7 @@ class _SiteOrderOutgoingEntryPageState extends State<SiteOrderOutgoingEntryPage>
     with WidgetsBindingObserver {
   final _controllers = <String, TextEditingController>{};
   final _retirementChanges = ValueNotifier<int>(0);
-  late final List<SiteOrderRegisteredTarget> _targets;
+  List<SiteOrderRegisteredTarget> _targets = const [];
   final _document = siteOrderRequestId(),
       _local = siteOrderRequestId(),
       _request = siteOrderRequestId();
@@ -78,7 +79,7 @@ class _SiteOrderOutgoingEntryPageState extends State<SiteOrderOutgoingEntryPage>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     widget.api.addListener(_scopeChanged);
-    _targets = List.unmodifiable(widget.targets);
+    _targets = List.unmodifiable(widget.targets ?? const []);
     for (final key in SiteOrderOutgoingEntries.labels.keys) {
       _controllers[key] = TextEditingController(
         text:
@@ -94,14 +95,7 @@ class _SiteOrderOutgoingEntryPageState extends State<SiteOrderOutgoingEntryPage>
       if (!SiteOrderPendingPrepare.validId(widget.siteId)) {
         throw StateError('現場を確認してください。');
       }
-      final ids = <String>{};
-      for (final target in _targets) {
-        if (!SiteOrderPendingPrepare.validId(target.id) ||
-            target.name.trim().isEmpty ||
-            !ids.add(target.id)) {
-          throw StateError('登録会社を確認してください。');
-        }
-      }
+      _validateTargets(_targets);
       _admit();
     } catch (_) {
       _retire();
@@ -115,6 +109,18 @@ class _SiteOrderOutgoingEntryPageState extends State<SiteOrderOutgoingEntryPage>
       if (mounted) setState(() => _busy = false);
     } catch (_) {
       _retire();
+    }
+  }
+
+  void _validateTargets(List<SiteOrderRegisteredTarget> targets) {
+    final ids = <String>{};
+    for (final target in targets) {
+      if (!SiteOrderPendingPrepare.validId(target.id) ||
+          target.name.trim().isEmpty ||
+          target.name.runes.length > 240 ||
+          !ids.add(target.id)) {
+        throw StateError('登録会社を確認してください。');
+      }
     }
   }
 
@@ -175,8 +181,15 @@ class _SiteOrderOutgoingEntryPageState extends State<SiteOrderOutgoingEntryPage>
       FocusManager.instance.primaryFocus?.unfocus();
       await widget.api.verify();
       _require();
+      final targets = widget.targets == null
+          ? await widget.api.registeredOutgoingTargets(widget.siteId)
+          : _targets;
+      _require();
+      _validateTargets(targets);
       if (!mounted || generation != _generation) return;
       setState(() {
+        _targets = List.unmodifiable(targets);
+        if (!_targets.any((t) => t.id == _trade)) _trade = null;
         _entries = entry;
         _step = 1;
         _error = null;
@@ -540,6 +553,8 @@ class _SiteOrderOutgoingEntryPageState extends State<SiteOrderOutgoingEntryPage>
                     ? ListView(
                         padding: const EdgeInsets.all(16),
                         children: [
+                          if (_targets.isEmpty)
+                            const Text('共有先に使える連携済み協力会社はありません。'),
                           DropdownButtonFormField<String>(
                             initialValue: _trade,
                             decoration: const InputDecoration(

@@ -26,6 +26,8 @@ class _Api extends SiteOrderWorkflowApi {
   bool expired = false;
   bool admitted = false;
   int contexts = 0;
+  int targetReads = 0;
+  bool targetReadUnknown = false;
   Completer<void>? contextBarrier;
   @override
   bool get invalidated => expired;
@@ -39,6 +41,17 @@ class _Api extends SiteOrderWorkflowApi {
     if (expired) throw StateError('expired');
     admitted = true;
     requireCurrent();
+  }
+
+  @override
+  Future<List<SiteOrderRegisteredTarget>> registeredOutgoingTargets(
+    String siteId,
+  ) async {
+    requireCurrent();
+    targetReads++;
+    if (targetReadUnknown) throw StateError('synthetic target result unknown');
+    expect(siteId, _id(3));
+    return [SiteOrderRegisteredTarget(id: _id(7), name: '登録表示名')];
   }
 
   @override
@@ -404,6 +417,50 @@ void main() {
       expect(find.textContaining('正式な合成乙会社'), findsNothing);
       expect(find.textContaining('120円'), findsNothing);
       expect(find.text('画面を開き直してください。'), findsOneWidget);
+    },
+  );
+  testWidgets(
+    'normal route loads registered targets only after RAM input confirmation',
+    (tester) async {
+      final api = _Api();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SiteOrderOutgoingEntryPage(
+            api: api,
+            siteId: _id(3),
+            issueDate: '2026-10-31',
+            initial: _input(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(api.targetReads, 0);
+      expect(api.contexts, 0);
+      await _inputDone(tester);
+      expect(api.targetReads, 1);
+      expect(api.contexts, 0);
+      expect(find.byType(DropdownButtonFormField<String>), findsOneWidget);
+    },
+  );
+  testWidgets(
+    'unknown directory read preserves input and never reports an empty target list',
+    (tester) async {
+      final api = _Api()..targetReadUnknown = true;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SiteOrderOutgoingEntryPage(
+            api: api,
+            siteId: _id(3),
+            issueDate: '2026-10-31',
+            initial: _input(),
+          ),
+        ),
+      );
+      await _inputDone(tester);
+      expect(api.targetReads, 1);
+      expect(find.byType(DropdownButtonFormField<String>), findsNothing);
+      expect(find.text('共有先に使える連携済み協力会社はありません。'), findsNothing);
+      expect((await _inputField(tester, 'work_name')).controller!.text, '合成工事');
     },
   );
 }
