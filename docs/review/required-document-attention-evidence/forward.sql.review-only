@@ -32,6 +32,8 @@ declare
   v_worker_id uuid;
   v_missing_names text[];
   v_missing_count integer;
+  v_unknown_count integer;
+  v_unknown_names text[];
 begin
   if v_user_id is null then
     return jsonb_build_object(
@@ -58,52 +60,61 @@ begin
     );
   end if;
 
-  select
-    count(*)::integer,
-    coalesce(array_agg(dr.name order by dr.sort_order, dr.name), array[]::text[])
-  into v_missing_count, v_missing_names
-  from public.document_requirements dr
-  left join public.worker_document_statuses wds
-    on wds.requirement_id = dr.id
-   and wds.worker_id = v_worker_id
-   and wds.company_id = v_company_id
-  where dr.company_id = v_company_id
-    and dr.is_active
-    and dr.is_required
-    and not exists (select 1 from private.worker_document_exemptions e
-      where e.company_id=v_company_id and e.worker_id=v_worker_id
-        and e.requirement_id=dr.id and e.active)
-    and (
-      wds.id is null
-      or wds.status in ('not_submitted','missing','expired')
-      or (dr.name <> '銀行口座情報' and not (
-        case
-          when to_jsonb(wds)->'attachment_paths' is null
-            or to_jsonb(wds)->'attachment_paths' = 'null'::jsonb
-            or to_jsonb(wds)->'attachment_paths' = '[]'::jsonb
-          then nullif(btrim(wds.attachment_path), '') is not null
-          when jsonb_typeof(to_jsonb(wds)->'attachment_paths') = 'array' then
-            not exists (
-              select 1 from jsonb_array_elements(to_jsonb(wds)->'attachment_paths') photo
-              where jsonb_typeof(photo) <> 'string' or nullif(btrim(photo #>> '{}'), '') is null
-            ) and (
-              select count(*) = count(distinct photo #>> '{}')
-              from jsonb_array_elements(to_jsonb(wds)->'attachment_paths') photo
-            )
-          else false
-        end
-      ))
-      or (dr.name <> '銀行口座情報' and (
-        (dr.expiry_required and wds.expires_at is null)
-        or wds.expires_at < (current_timestamp at time zone 'Asia/Tokyo')::date
-      ))
-      or (dr.name = '銀行口座情報' and not exists (
-        select 1 from public.worker_private_bank_accounts ba
-        where ba.worker_id = v_worker_id and ba.company_id = v_company_id
-      ))
-    );
+  with evidence as (
+    select dr.id,dr.name,dr.sort_order,
+      case
+        when nullif(btrim(dr.name),'') is null then 'unknown'
+        when dr.name = '銀行口座情報' then case
+          when exists (select 1 from public.worker_private_bank_accounts ba
+            where ba.worker_id=v_worker_id and ba.company_id=v_company_id and ba.updated_at is not null)
+          then 'saved' when exists (select 1 from public.worker_private_bank_accounts ba
+            where ba.worker_id=v_worker_id and ba.company_id=v_company_id) then 'unknown' else 'missing' end
+        when statuses.row_count > 1 then 'unknown'
+        when statuses.row_count = 0 then 'missing'
+        when statuses.item->>'status' in ('not_submitted','missing','expired') then 'missing'
+        when statuses.item->>'status' not in ('submitted','verified')
+          or statuses.item->>'status' is null then 'unknown'
+        when photo.valid is null then 'unknown'
+        when not photo.valid then 'missing'
+        when dr.expiry_required is true and nullif(statuses.item->>'expires_at','') is null then 'missing'
+        when (statuses.item->>'expires_at')::date < (current_timestamp at time zone 'Asia/Tokyo')::date then 'missing'
+        else 'saved'
+      end as state
+    from public.document_requirements dr
+    left join lateral (
+      select count(*) row_count,(jsonb_agg(to_jsonb(wds)))->0 item
+      from public.worker_document_statuses wds
+      where wds.requirement_id=dr.id and wds.worker_id=v_worker_id and wds.company_id=v_company_id
+    ) statuses on true
+    left join lateral (
+      select case
+        when statuses.item->'attachment_paths' is null
+          or statuses.item->'attachment_paths'='null'::jsonb
+          or statuses.item->'attachment_paths'='[]'::jsonb
+        then nullif(btrim(statuses.item->>'attachment_path'),'') is not null
+        when jsonb_typeof(statuses.item->'attachment_paths')='array' then case
+          when exists (select 1 from jsonb_array_elements(statuses.item->'attachment_paths') photo
+            where jsonb_typeof(photo)<>'string' or nullif(btrim(photo #>> '{}'),'') is null)
+            or (select count(*)<>count(distinct photo #>> '{}')
+              from jsonb_array_elements(statuses.item->'attachment_paths') photo)
+          then null else true end
+        else null
+      end valid
+    ) photo on true
+    where dr.company_id=v_company_id and dr.is_active and dr.is_required
+      and not exists (select 1 from private.worker_document_exemptions e
+        where e.company_id=v_company_id and e.worker_id=v_worker_id and e.requirement_id=dr.id and e.active)
+  )
+  select count(*) filter(where state='missing')::integer,
+    coalesce(array_agg(name order by sort_order,name) filter(where state='missing'),array[]::text[]),
+    count(*) filter(where state='unknown')::integer,
+    coalesce(array_agg(name order by sort_order,name) filter(where state='unknown'),array[]::text[])
+  into v_missing_count,v_missing_names,v_unknown_count,v_unknown_names
+  from evidence;
 
   return jsonb_build_object(
+    'unknown_count',coalesce(v_unknown_count,0),
+    'unknown_names',to_jsonb(coalesce(v_unknown_names,array[]::text[])),
     'missing_count', coalesce(v_missing_count, 0),
     'missing_names', to_jsonb(coalesce(v_missing_names, array[]::text[])),
     'needs_license', exists (

@@ -1,10 +1,21 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
+import pg from 'pg';
 const root = new URL('./', import.meta.url);
 const original = await readFile(new URL('before.sql.review-only', root), 'utf8');
 const forward = await readFile(new URL('forward.sql.review-only', root), 'utf8');
-const db = new PGlite();
+let db;
+const fixtureUrl = process.env.SKO_ATTENTION_FIXTURE_URL;
+if (fixtureUrl) {
+ const endpoint = new URL(fixtureUrl);
+ assert.ok(['127.0.0.1','localhost'].includes(endpoint.hostname) && endpoint.pathname === '/sko_attention_fixture',
+   'Native runner accepts only the named local synthetic fixture');
+ const client = new pg.Client({connectionString: fixtureUrl, ssl: false});
+ await client.connect();
+ assert.match((await client.query('show server_version')).rows[0].server_version, /^17\.6(?:\s|$)/);
+ db = {query: (...args) => client.query(...args), exec: sql => client.query(sql), close: () => client.end()};
+} else { db = new PGlite(); }
 const user = '10000000-0000-0000-0000-000000000001';
 const worker = '10000000-0000-0000-0000-000000000002';
 const company = '10000000-0000-0000-0000-000000000003';
@@ -14,7 +25,7 @@ create function auth.uid() returns uuid language sql stable as $$ select nullif(
 create table workers(id uuid primary key,user_id uuid,company_id uuid,status text);
 create table document_requirements(id uuid primary key,company_id uuid,name text,sort_order int,is_active bool,is_required bool,expiry_required bool);
 create table worker_document_statuses(id uuid primary key,requirement_id uuid,worker_id uuid,company_id uuid,status text,expires_at date,attachment_path text,attachment_paths jsonb);
-create table worker_private_bank_accounts(worker_id uuid,company_id uuid);
+create table worker_private_bank_accounts(worker_id uuid,company_id uuid,updated_at timestamptz default now());
 create table private.worker_document_exemptions(company_id uuid,worker_id uuid,requirement_id uuid,active bool);
 insert into workers values('${worker}','${user}','${company}','active');
 insert into document_requirements values('${req}','${company}','synthetic document',1,true,true,false);
@@ -37,9 +48,16 @@ assert.deepEqual(await records(), beforeRecords, 'installation preserves documen
 let checks = 4;
 async function expectMissing(expected, label) { assert.equal((await row()).missing_count, expected, label); checks++; }
 await expectMissing(0, 'valid ordered multi-photo metadata');
+await db.exec("update worker_document_statuses set status='unrecognized'");
+assert.equal((await row()).unknown_count,1,'unknown status cannot become saved');checks++;
+await db.exec("update worker_document_statuses set status='submitted'");
+await db.exec(`insert into worker_document_statuses values('10000000-0000-0000-0000-000000000098','${req}','${worker}','${company}','submitted',null,'synthetic/extra',null)`);
+assert.equal((await row()).unknown_count,1,'duplicate statuses remain unknown');checks++;
+await db.exec("delete from worker_document_statuses where id='10000000-0000-0000-0000-000000000098'");
 for (const value of ['"invalid"', '[""]', '[1]', '["synthetic/a","synthetic/a"]']) {
  await db.query('update worker_document_statuses set attachment_paths=$1::jsonb,attachment_path=$2',[value,'synthetic/legacy']);
- await expectMissing(1,'malformed array cannot be rescued by legacy photo');
+ assert.equal((await row()).missing_count,0);
+ assert.equal((await row()).unknown_count,1,'malformed metadata is unknown, never complete or fabricated missing');checks++;
 }
 await db.exec("update worker_document_statuses set attachment_paths='[]',attachment_path='synthetic/legacy'");
 await expectMissing(0,'empty array retains legacy metadata');
@@ -61,8 +79,13 @@ await db.exec("update document_requirements set is_required=false");
 await expectMissing(0,'optional requirement is excluded');
 await db.exec("update document_requirements set is_required=true,name='銀行口座情報'");
 await expectMissing(1,'bank photo never replaces independent account evidence');
-await db.exec(`insert into worker_private_bank_accounts values('${worker}','${company}')`);
-await expectMissing(0,'existing bank account rule remains intact');
+await db.exec(`insert into worker_private_bank_accounts(worker_id,company_id) values('${worker}','${company}')`);
+await expectMissing(0,'saved bank evidence independent of attachment/status');
+await db.exec('delete from worker_document_statuses');
+await expectMissing(0,'saved bank evidence independent of missing document-status row');
+await db.exec('update worker_private_bank_accounts set updated_at=null');
+assert.equal((await row()).unknown_count,1,'bank row without saved metadata remains unknown');checks++;
+await db.exec(`insert into worker_document_statuses values('${req}','${req}','${worker}','${company}','submitted',null,'synthetic/legacy','[]')`);
 await db.exec("update document_requirements set name='synthetic document'");
 await db.exec("select set_config('fixture.user','',false)");
 await expectMissing(0,'unauthenticated contract remains unchanged');
@@ -73,5 +96,5 @@ const afterAttributes = await attributes();
 await assert.rejects(db.exec(forward),/Required-document attention source changed/);
 await db.exec('rollback');
 assert.deepEqual(await attributes(),afterAttributes,'second apply fails closed without changing function metadata');checks++;
-console.log(JSON.stringify({checks,synthetic_only:true,production_writes:0,real_auth:false,selected_company_boundary_complete:false,full_guide_attention_parity:false}));
+console.log(JSON.stringify({engine:fixtureUrl ? 'native-postgres-17.6' : 'pglite-0.3.14',checks,synthetic_only:true,production_writes:0,real_auth:false,selected_company_boundary_complete:false,full_guide_attention_parity:false}));
 await db.close();
