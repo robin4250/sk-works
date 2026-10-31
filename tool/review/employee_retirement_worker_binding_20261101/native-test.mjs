@@ -39,7 +39,7 @@ if(process.argv.includes('--environment-faults')) {
     if(failure) {assert.notEqual(r.status,0);checks++;return r;}
     assert.equal(r.status,0,r.stderr);return r.stdout.trim();
   }
-  const address=JSON.parse(sql("select json_build_object('db',current_database(),'addr',inet_server_addr()::text);") );
+  const address=JSON.parse(sql("select json_build_object('db',current_database(),'addr',host(inet_server_addr()));") );
   assert.equal(address.db,'retirement_fixture');assert.equal(address.addr,process.env.SKO_FIXTURE_SERVER_ADDR);checks++;
   sql(`create schema auth;
     create role authenticated;create role service_role;create role anon;
