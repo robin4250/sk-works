@@ -77,6 +77,7 @@ class Fixture {
             jsonEncode(memberships),
             200,
             headers: {'content-type': 'application/json'},
+            request: request,
           );
         }
         if (request.url.path ==
@@ -95,7 +96,12 @@ class Fixture {
         }
         if (request.url.path ==
             '/rest/v1/rpc/initial_registration_distribution_settings') {
-          return http.Response('{"testflight_url":""}', 200);
+          return http.Response(
+            '{"testflight_url":""}',
+            200,
+            headers: {'content-type': 'application/json'},
+            request: request,
+          );
         }
         if (request.url.path == '/functions/v1/create-employee-invite') {
           invokes++;
@@ -109,6 +115,7 @@ class Fixture {
                   jsonEncode(response),
                   200,
                   headers: {'content-type': 'application/json'},
+                  request: request,
                 ),
               ));
         }
@@ -148,6 +155,18 @@ void main() {
     final f = Fixture();
     addTearDown(f.close);
     await f.login();
+    try {
+      final probe = await f.client
+          .from('company_members')
+          .select('company_id,role')
+          .retry(enabled: false);
+      expect(probe.length, 1);
+      debugPrint('invite-sdk transport probe complete');
+    } catch (error, stack) {
+      debugPrint('invite-sdk transport type ${error.runtimeType}');
+      debugPrint(stack.toString().split('\n').take(4).join('\n'));
+      throw StateError('Synthetic membership transport did not complete');
+    }
     final context = await f.repository.beginRequest();
     final value = await f.repository.createInvite(
       name: 'Synthetic Employee',
@@ -269,6 +288,7 @@ void main() {
         jsonEncode(result()),
         200,
         headers: {'content-type': 'application/json'},
+        request: request,
       ),
     );
     await expectLater(creation, throwsStateError);
