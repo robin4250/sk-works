@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -14,6 +15,16 @@ import 'package:sk_works/features/invoices/invoice_cloud_page.dart';
 import 'package:sk_works/features/payroll/payment_certificate_repository.dart';
 import 'package:sk_works/features/payroll/payment_certificates_page.dart';
 import 'package:sk_works/features/shared/financial_preview_chrome.dart';
+
+class _Raster extends PdfRaster {
+  _Raster() : super(1, 1, Uint8List.fromList([255, 255, 255, 255]));
+  // Synthetic platform raster bytes, not a visual PDF-content proof. Avoid a
+  // native image encoder Future captured in FakeAsync when mounting real entry.
+  @override
+  Future<Uint8List> toPng() async => base64Decode(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4////fwAJ+wP9KobjigAAAABJRU5ErkJggg==',
+  );
+}
 
 class _Printer extends PrintingPlatform {
   LayoutCallback? layout;
@@ -45,7 +56,7 @@ class _Printer extends PrintingPlatform {
     double dpi,
   ) async* {
     expect(String.fromCharCodes(document.take(4)), '%PDF');
-    yield PdfRaster(1, 1, Uint8List.fromList([255, 255, 255, 255]));
+    yield _Raster();
   }
 
   @override
