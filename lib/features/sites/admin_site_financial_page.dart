@@ -5,9 +5,12 @@ import 'package:flutter/material.dart';
 import '../../domain/rate_formula_settings.dart';
 import '../notifications/notification_bell.dart';
 import 'admin_site_financial_repository.dart';
+import 'site_order_site_actions.dart';
 
 class AdminSiteFinancialPage extends StatefulWidget {
-  const AdminSiteFinancialPage({super.key, this.onOpenMap});
+  const AdminSiteFinancialPage({super.key, this.onOpenMap, this.repository});
+  @visibleForTesting
+  final AdminSiteFinancialRepository? repository;
   final Future<void> Function()? onOpenMap;
 
   @override
@@ -16,7 +19,7 @@ class AdminSiteFinancialPage extends StatefulWidget {
 }
 
 class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
-  final _repository = AdminSiteFinancialRepository.maybeCreate();
+  late final _repository = widget.repository ?? AdminSiteFinancialRepository.maybeCreate();
 
   List<AdminSiteFinancialRecord> _items = const [];
   bool _loading = true;
@@ -145,13 +148,13 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
                                       subtitle: Text(
                                         '請求方式 ${item.billingMethodLabel}',
                                       ),
-                                      trailing: Icon(
-                                        _canManage
-                                            ? Icons.chevron_right
-                                            : Icons.lock_outline,
+                                      trailing: IconButton(
+                                        tooltip: '金額設定',
+                                        icon: Icon(_canManage ? Icons.edit_outlined : Icons.lock_outline),
+                                        onPressed: _canManage ? () => _edit(item) : null,
                                       ),
                                       onTap:
-                                          _canManage ? () => _edit(item) : null,
+                                          _canManage ? () => _openSite(item) : null,
                                     ),
                                   );
                                 },
@@ -162,6 +165,12 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
         ),
       ),
     );
+  }
+
+  Future<void> _openSite(AdminSiteFinancialRecord record) async {
+    await Navigator.push<void>(context, MaterialPageRoute(
+      builder: (_) => SiteOrderSiteActionsPage(siteId: record.siteId, siteName: record.siteName),
+    ));
   }
 
   Future<void> _edit(AdminSiteFinancialRecord record) async {

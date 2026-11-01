@@ -10,6 +10,7 @@ import 'package:pdf/widgets.dart' as pw;
 import '../../domain/company_seal_snapshot.dart';
 import 'company_seal_pdf.dart';
 import '../../domain/trade_document_form_draft.dart';
+import '../../domain/trade_document_terms_snapshot.dart';
 import 'trade_document_form_geometry.dart';
 
 /// Input-only surface. Trusted identity and persistence belong to the caller.
@@ -39,6 +40,7 @@ class _TouchEditorState extends State<TradeDocumentTouchEditorPage> with Widgets
   Offset? _down;
   bool _gestureMoved = false, _busy = false, _revoked = false, _saveUncertain = false;
   int _generation = 0;
+  int _page = 0;
   String? _error;
   static const _paper = Size(595.2755905511812, 841.8897637795277);
 
@@ -228,7 +230,7 @@ class _TouchEditorState extends State<TradeDocumentTouchEditorPage> with Widgets
     widget.requireScope();
   }
   void _tap(TapUpDetails details) {
-    if (_gestureMoved || _busy || _revoked || _saveUncertain) return;
+    if (_page != 0 || _gestureMoved || _busy || _revoked || _saveUncertain) return;
     final point = _transform.toScene(details.localPosition);
     for (final target in _targets(_draft!, _paper)) {
       if (target.rect.contains(point)) { unawaited(_open(target)); return; }
@@ -247,6 +249,18 @@ class _TouchEditorState extends State<TradeDocumentTouchEditorPage> with Widgets
       body: Column(children: [
         const Padding(padding: EdgeInsets.symmetric(vertical: 6),
           child: Text('枠をタップして入力・指で拡大縮小できます', style: TextStyle(fontSize: 12))),
+        Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Row(children: [
+          for (final page in [0, 1]) Expanded(child: TextButton(
+            key: ValueKey('trade-touch-page-$page'),
+            onPressed: _busy ? null : () {
+              try { _check(); } catch (_) { _invalidate(); return; }
+              setState(() => _page = page);
+              WidgetsBinding.instance.addPostFrameCallback((_) => _fit());
+            },
+            child: Text(page == 0 ? '1 / 2 帳票' : '2 / 2 契約条項',
+              style: TextStyle(fontWeight: _page == page ? FontWeight.bold : FontWeight.normal)),
+          )),
+        ])),
         if (_error != null) Padding(padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
           child: Text(_error!, key: const Key('trade-touch-error'), style: const TextStyle(color: Colors.red))),
         Expanded(child: LayoutBuilder(builder: (context, constraints) {
@@ -267,8 +281,10 @@ class _TouchEditorState extends State<TradeDocumentTouchEditorPage> with Widgets
             child: InteractiveViewer(key: const Key('trade-touch-viewport'),
               transformationController: _transform, constrained: false,
               minScale: .1, maxScale: 5, boundaryMargin: const EdgeInsets.all(200),
-              child: _Paper(draft: _draft!, size: _paper, requireScope: _verifySealPreview,
-                onTarget: (target) => unawaited(_open(target))))));
+              child: _page == 0
+                ? _Paper(draft: _draft!, size: _paper, requireScope: _verifySealPreview,
+                    onTarget: (target) => unawaited(_open(target)))
+                : _TermsPaper(snapshot: _draft!.payload['contract_terms'], size: _paper))));
         })),
       ]),
       bottomNavigationBar: SafeArea(top: false, child: Padding(padding: const EdgeInsets.all(12),
@@ -449,6 +465,70 @@ class _InputSealPreviewState extends State<_InputSealPreview> {
     });
 }
 
+/// The immutable second page is available even before required front inputs.
+class _TermsPaper extends StatelessWidget {
+  const _TermsPaper({required this.snapshot, required this.size});
+  final Object? snapshot;
+  final Size size;
+  @override Widget build(BuildContext context) {
+    final terms = TradeDocumentTermsSnapshot.fromJson(snapshot);
+    final paragraphs = <String>[];
+    for (var i = 0; i < terms.articles.length; i++) {
+      final article = terms.articles[i];
+      paragraphs.add('（${article.$1}）');
+      for (var j = 0; j < article.$2.length; j++) {
+        paragraphs.add('${j == 0 ? '第${i + 1}条　' : '　　　　'}${article.$2[j]}');
+      }
+    }
+    return Container(key: const Key('trade-touch-terms-paper'), width: size.width,
+      height: size.height, color: Colors.white,
+      padding: const EdgeInsets.fromLTRB(34, 34, 34, 34),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text(TradeDocumentTermsSnapshot.title,
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        Expanded(child: FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.topLeft,
+          child: SizedBox(width: size.width - 68,
+            child: Text(paragraphs.join('\n'), key: const Key('trade-touch-terms-text'),
+              style: const TextStyle(fontSize: 6.5, height: 8.14 / 6.5, color: Colors.black)))),
+        ),
+      ]));
+  }
+}
+
+/// Keep the saved issuer stamp centered over the visible company-name end.
+class _InputCompanyName extends StatelessWidget {
+  const _InputCompanyName({required this.name, required this.enabled,
+    required this.snapshot, required this.requireScope});
+  final String name;
+  final bool enabled;
+  final Object? snapshot;
+  final VoidCallback requireScope;
+  @override Widget build(BuildContext context) => LayoutBuilder(builder: (context, constraints) {
+    const sealSize = 22.0;
+    final available = constraints.maxWidth;
+    final natural = TextPainter(text: TextSpan(text: name,
+      style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold)),
+      textDirection: TextDirection.ltr, textScaler: MediaQuery.textScalerOf(context))..layout();
+    final maximum = available - (enabled ? sealSize / 2 : 0);
+    final ratio = natural.width > maximum ? maximum / natural.width : 1.0;
+    final printed = natural.width * ratio;
+    final sealLeft = (printed - sealSize / 2).clamp(0.0, available - sealSize).toDouble();
+    natural.dispose();
+    return SizedBox(height: sealSize, child: Stack(clipBehavior: Clip.none, children: [
+      Positioned(left: 0, top: 0, width: printed, height: sealSize,
+        child: FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft,
+          child: Text(name, key: const Key('trade-input-issuer-name'),
+            style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold)))),
+      if (enabled) Positioned(left: sealLeft, top: 0, width: sealSize, height: sealSize,
+        child: IgnorePointer(key: const Key('trade-input-seal-position'),
+          child: _InputSealPreview(
+            key: ValueKey(crypto.sha256.convert(utf8.encode(jsonEncode([snapshot, name]))).toString()),
+            snapshot: snapshot, issuerName: name, requireScope: requireScope))),
+    ]));
+  });
+}
+
 class _Paper extends StatelessWidget {
   const _Paper({required this.draft, required this.size, required this.onTarget, required this.requireScope});
   final TradeDocumentFormDraft draft;
@@ -470,7 +550,7 @@ class _Paper extends StatelessWidget {
       String value;
       if (target.company != null) {
         final party = Map<String, dynamic>.from(payload[target.company] as Map);
-        value = '${target.title}\n${party['name'] ?? ''}\n${party['address'] ?? ''}\n${target.company=='issuer' ? (payload['form_fields'] as Map)['issuer_representative_title'] ?? '' : ''} ${party['representative_name'] ?? ''}';
+        value = '${target.title}\n\n${party['name'] ?? ''}\n${party['address'] ?? ''}\n${target.company=='issuer' ? (payload['form_fields'] as Map)['issuer_representative_title'] ?? '' : ''} ${party['representative_name'] ?? ''}';
         if (target.company == 'issuer') {
           value += '\nTEL ${party['phone'] ?? ''}　FAX ${party['fax'] ?? ''}';
         }
@@ -495,24 +575,29 @@ class _Paper extends StatelessWidget {
           value = '${_shown(payload['total_amount_yen'])} 円（元書類の金額）';
         }
       }
-      if (!target.id.startsWith('row_') && !target.id.startsWith('payment_') &&
+      if (target.company == 'issuer') {
+        final party = Map<String, dynamic>.from(payload['issuer'] as Map);
+        children.add(Positioned.fromRect(rect: target.rect.deflate(3),
+          child: Align(alignment: Alignment.centerLeft, child: FittedBox(
+            fit: BoxFit.scaleDown, alignment: Alignment.centerLeft,
+            child: SizedBox(width: target.rect.width - 6, child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(target.title, style: const TextStyle(fontSize: 9, height: 1.25, fontWeight: FontWeight.bold)),
+              const SizedBox(key: Key('trade-input-issuer-heading-gap'), height: 11.25),
+              _InputCompanyName(name: party['name']?.toString() ?? '',
+                enabled: payload['company_seal_enabled'] == true,
+                snapshot: payload['company_seal_snapshot'], requireScope: requireScope),
+              for (final line in [party['address']?.toString() ?? '',
+                '${(payload['form_fields'] as Map)['issuer_representative_title'] ?? ''} ${party['representative_name'] ?? ''}',
+                'TEL ${party['phone'] ?? ''}　FAX ${party['fax'] ?? ''}'])
+                Text(line, style: const TextStyle(fontSize: 9, height: 1.25, fontWeight: FontWeight.bold)),
+            ])),
+          ))));
+      } else if (!target.id.startsWith('row_') && !target.id.startsWith('payment_') &&
           !const ['cutoffs', 'ratios'].contains(target.id)) {
-        final showOwnSeal = target.company == 'issuer' && payload['company_seal_enabled'] == true;
-        final textRect = showOwnSeal ? Rect.fromLTRB(target.rect.left, target.rect.top, target.rect.right - 44, target.rect.bottom) : target.rect;
-        children.add(text(textRect, value.isEmpty ? 'タップして入力' : value,
+        children.add(text(target.rect, value.isEmpty ? 'タップして入力' : value,
           font: target.company != null ? 9 : 8, lines: target.company != null ? 6 : 3,
           bold: target.company != null, color: value.isEmpty ? Colors.blueGrey : Colors.black));
-      }
-      if (target.company == 'issuer' && payload['company_seal_enabled'] == true) {
-        children.add(Positioned(left: target.rect.right - 41, top: target.rect.top + 5, width: 38, height: 38,
-          child: IgnorePointer(child: _InputSealPreview(
-            // Digest the full immutable source so widget diagnostics never expose
-            // registered PNG bytes and a changed snapshot cannot reuse old output.
-            key: ValueKey(crypto.sha256.convert(utf8.encode(jsonEncode([
-              payload['company_seal_snapshot'], (payload['issuer'] as Map)['name'],
-            ]))).toString()),
-            snapshot: payload['company_seal_snapshot'], issuerName: (payload['issuer'] as Map)['name'].toString(),
-            requireScope: requireScope))));
       }
       children.add(Positioned.fromRect(rect: target.rect, child: Semantics(
         key: ValueKey('trade-touch-target-${target.id}'), label: target.title,

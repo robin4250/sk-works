@@ -15,6 +15,8 @@ import 'package:sk_works/features/shared/standalone_trade_document_page.dart';
 import 'package:sk_works/features/shared/standalone_trade_document_repository.dart';
 import 'package:sk_works/features/shared/trade_document_form_session.dart';
 import 'package:sk_works/features/shared/trade_document_touch_editor_page.dart';
+import 'package:sk_works/features/shared/trade_document_output_selector.dart';
+import 'package:sk_works/features/shared/trade_document_output_layout.dart';
 
 const _actor='10000000-0000-4000-8000-000000000001';
 const _company='10000000-0000-4000-8000-000000000002';
@@ -76,6 +78,18 @@ void main(){
  TestWidgetsFlutterBinding.ensureInitialized();late PrintingPlatform original;late _Printer printer;
  setUp((){original=PrintingPlatform.instance;printer=_Printer();PrintingPlatform.instance=printer;});
  tearDown((){if(printer.end?.isCompleted==false)printer.end!.complete(false);PrintingPlatform.instance=original;});
+ testWidgets('A4 and A3 PDF format can be selected before generating a new registration document',(t)async{
+  final f=_Fixture();try{
+   await f.mount(t);
+   expect(find.byType(PdfPreview),findsNothing);
+   final field=find.byType(DropdownButtonFormField<TradeDocumentOutputLayout>);
+   await t.ensureVisible(field);await t.tap(field);await t.pumpAndSettle();
+   await t.tap(find.text('A3横・見開き1枚（2ページを左右に配置）').last);await t.pumpAndSettle();
+   expect(t.widget<TradeDocumentOutputSelector>(find.byType(TradeDocumentOutputSelector)).value,TradeDocumentOutputLayout.a3Landscape);
+   expect(find.byType(PdfPreview),findsNothing);expect(printer.prints,0);
+   expect(t.takeException(),isNull);
+  }finally{await f.close(t);}
+ });
  testWidgets('absent optional gate retains existing registration-only path',(t)async{
   final f=_Fixture();try{await f.mount(t);expect(f.repo!.loads,1);expect(find.text('注文書の入力・設定'),findsOneWidget);expect(printer.prints,0);}
   finally{await f.close(t);}
