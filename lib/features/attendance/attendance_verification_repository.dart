@@ -767,6 +767,8 @@ class AttendanceVerificationRepository {
           );
     }
 
+    // Once a legacy INSERT starts, a missing reply cannot prove its photo is unused.
+    var legacyInsertStarted = false;
     try {
       _requireMutationActor(actor);
       final payload = <String, Object?>{
@@ -793,6 +795,7 @@ class AttendanceVerificationRepository {
         onCaptureDraftPrepared?.call(draft);
         return await submitCaptureDraft(draft);
       }
+      legacyInsertStarted = true;
       final row = await _client.from('attendance_verifications').insert(payload)
           .select()
           .single();
@@ -807,7 +810,9 @@ class AttendanceVerificationRepository {
         // An unknown insert result must never delete potentially saved evidence.
         rethrow;
       }
-      if (capture == null && storagePath != null && _client.auth.currentUser?.id == actor) {
+      // Post-start errors, including explicit rejections, retain evidence for
+      // separately verified unused-object cleanup instead of risking originals.
+      if (!legacyInsertStarted && capture == null && storagePath != null && _client.auth.currentUser?.id == actor) {
         try {
           await _client.storage.from(_bucket).remove([storagePath]);
         } catch (_) {
