@@ -137,14 +137,14 @@ class AppleOwnedSessionCoordinator with WidgetsBindingObserver {
 
   /// Interactive bootstrap for this NEW candidate client only. It does not
   /// replace/migrate an existing app session or bypass Google enrollment checks.
-  Future<void> signInWithPassword({required String email, required String password}) async {
+  Future<void> signInWithPassword({required String email, required String password, String? captchaToken}) async {
     _guard();
     if (_phase != AppleOwnedSessionPhase.signedOut || _lease != null) { throw _failure(); }
     final lease = _acquire(), epoch = _epoch;
     _phase = AppleOwnedSessionPhase.signingIn; _collectLoginEvents = true; _loginEvents.clear();
     try {
       final client = _owned();
-      final response = await _race(client.auth.signInWithPassword(email: email, password: password));
+      final response = await _race(client.auth.signInWithPassword(email: email, password: password, captchaToken: captchaToken));
       _check(lease, epoch, session: false);
       final session = response.session;
       if (session == null || session.isExpired || response.user?.id != session.user.id) { throw _failure(); }

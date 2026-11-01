@@ -3,13 +3,31 @@ set -euo pipefail
 
 echo "=== SKO tracked-secret scan ==="
 
+# A broken Git checkout must never be reported as a clean scan.
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
+  echo "Secret scan unavailable: a Git working tree is required." >&2
+  exit 2
+}
+git ls-files --error-unmatch tool/check_no_client_secrets.sh >/dev/null 2>&1 || {
+  echo "Secret scan unavailable: scanner is not tracked." >&2
+  exit 2
+}
+
 fail=0
 
 check_pattern() {
   local label="$1"
   local pattern="$2"
   local matches
-  matches="$(git grep -lEI "$pattern" --     ':!tool/check_no_client_secrets.sh' 2>/dev/null || true)"
+  if matches="$(git grep -lEI "$pattern" -- ':!tool/check_no_client_secrets.sh' 2>/dev/null)"; then
+    :
+  else
+    local scan_status=$?
+    if [[ "$scan_status" -ne 1 ]]; then
+      echo "Secret scan unavailable: tracked-file scan failed." >&2
+      exit 2
+    fi
+  fi
   if [[ -n "$matches" ]]; then
     echo "✗ $label"
     echo "  該当ファイル:"

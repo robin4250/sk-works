@@ -47,7 +47,7 @@ void main() {
       expect(() => standaloneTradeDocument(context: context(false), fields: fields()..[entry.key] = entry.value), throwsStateError);
     }
   });
-  test('standalone order and acceptance use existing single-page renderers', () async {
+  test('both registration generators produce a front and complete terms page', () async {
     final font = await CompanySealPdf.loadFont();
     for (final acceptance in [false, true]) {
       final result = standaloneTradeDocument(context: context(acceptance), fields: fields());
@@ -59,6 +59,7 @@ void main() {
       }
       final bytes = await doc.save();
       expect(bytes.length, greaterThan(1000));
+      expect(RegExp(r'/Type\s*/Page\b').allMatches(String.fromCharCodes(bytes)), hasLength(2));
       final output = Platform.environment['SKO_PDF_OUTPUT_DIR'];
       if (output != null) {
         Directory(output).createSync(recursive: true);

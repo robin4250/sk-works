@@ -1,0 +1,44 @@
+name: Site order site entry UI
+on:
+  pull_request:
+    paths:
+      - 'lib/features/sites/site_order_*.dart'
+      - 'lib/features/sites/admin_site_financial_page.dart'
+      - 'lib/features/notifications/notifications_page.dart'
+      - 'lib/features/notifications/app_notification_repository.dart'
+      - 'test/site_order*_test.dart'
+      - 'tool/canonical_renderer/synthetic-cases.json'
+      - 'tool/canonical_renderer/synthetic-evidence.json'
+      - '.github/workflows/site-order-site-entry-ui.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Analyze owned UI and retained typed contracts
+        run: flutter analyze lib/features/notifications/notifications_page.dart lib/features/notifications/app_notification_repository.dart lib/features/sites/site_order_*.dart lib/features/sites/admin_site_financial_page.dart test/site_order*_test.dart
+      - name: Verify complete owned site order UI closure
+        shell: bash
+        run: |
+          # This Native-only file requires separate SQL receipt artifacts. It is
+          # analyzed above, but its 3 cases are NOT executed by this UI job.
+          tests=()
+          for file in test/site_order*_test.dart; do
+            case "$file" in
+              test/site_order_outgoing_execution_repository_test.dart) continue ;;
+            esac
+            tests+=("$file")
+          done
+          test "${#tests[@]}" -eq 20
+          printf '%s\n' 'UNEXECUTED: Native execution 3. Native consent2/registered-target1 explicitly skip without artifacts.'
+          flutter test "${tests[@]}" --reporter expanded

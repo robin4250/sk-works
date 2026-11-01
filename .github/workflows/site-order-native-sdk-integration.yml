@@ -1,0 +1,109 @@
+name: Integrated site order Native SDK contracts
+on:
+  pull_request:
+    paths:
+      - 'lib/features/sites/**'
+      - 'test/site_order_*'
+      - '.github/workflows/site-order-native-sdk-integration.yml'
+permissions:
+  contents: read
+jobs:
+  native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      matrix:
+        fixture: [execution, targets]
+    services:
+      postgres:
+        image: postgres:17.6
+        env:
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_document_consent_fixture
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: 57623f15b91069b7e6affa76a43a77c808f20653, path: backend, persist-credentials: false}
+      - uses: actions/checkout@v4
+        if: matrix.fixture == 'execution'
+        with: {ref: 14cf77f4b166bcb86d0f5fef68080841ac89a27a, path: actual, persist-credentials: false}
+      - uses: actions/checkout@v4
+        if: matrix.fixture == 'execution'
+        with: {ref: 6a24114471a9c264fad1aeec5dd2222915ddbedf, path: c-source, persist-credentials: false}
+      - uses: actions/checkout@v4
+        if: matrix.fixture == 'execution'
+        with: {ref: de4d4bb018e8c8ca56b0c85bde09fadebca312a4, path: reply, persist-credentials: false}
+      - uses: actions/checkout@v4
+        if: matrix.fixture == 'execution'
+        with: {ref: f4c6da47e8c6bd894c920ab1d85399a4dc5da7bb, path: history, persist-credentials: false}
+      - uses: actions/checkout@v4
+        if: matrix.fixture == 'execution'
+        with: {ref: 8bd475b31f5b05788ea437f33e8825651ef54de0, path: auth-source, persist-credentials: false}
+      - uses: dart-lang/setup-dart@v1
+        with: {sdk: '3.13.7'}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22.21.0'}
+      - run: dart pub get --enforce-lockfile --directory=backend/tool/canonical_renderer
+      - run: npm ci --prefix backend/tool/security/fixture_dependencies --ignore-scripts
+      - run: npm ci --prefix backend/tool/site_order_edge_dependencies --ignore-scripts
+      - name: Generate synthetic Native receipts using fixed backend sources
+        working-directory: backend
+        env:
+          SKO_CONSENT_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_document_consent_fixture
+          FIXTURE: ${{ matrix.fixture }}
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/receipts"
+          export SKO_CANONICAL_DART="$(command -v dart)"
+          if [ "$FIXTURE" = execution ]; then
+            export SKO_OUTGOING_EXECUTION_REVIEW_HOOK=contract-v1
+            export SKO_EXECUTION_RECEIPT_PATH="$GITHUB_WORKSPACE/receipts/execution.json"
+            export SKO_CONSENT_RECEIPT_PATH="$GITHUB_WORKSPACE/receipts/consent.json"
+            export SKO_EXACT_EIGHT_SOURCE_ROOT="$GITHUB_WORKSPACE/actual"
+            export SKO_TRADE_C_SOURCE_ROOT="$GITHUB_WORKSPACE/c-source"
+            export SKO_SITE_REPLY_RECOVERY_SOURCE_ROOT="$GITHUB_WORKSPACE/reply"
+            export SKO_SITE_HISTORY_SOURCE_ROOT="$GITHUB_WORKSPACE/history"
+            export SKO_ACTUAL_AUTH_SOURCE_ROOT="$GITHUB_WORKSPACE/auth-source"
+            node docs/review/site-order-outgoing-consent/verify.mjs "file://$GITHUB_WORKSPACE/backend/tool/security/fixture_dependencies/node_modules/pg/lib/index.js" postgres
+          else
+            export SKO_CONFIRMED_TERMS_HOOK=content-v1
+            export SKO_MONTHLY_PAYMENT_REVIEW_HOOK=contract-v1
+            export SKO_TRADE_DOCUMENT_API_REVIEW_HOOK=contract-v1
+            export SKO_SITE_ORDER_ARTIFACT_REGISTRATION_HOOK=contract-v1
+            export SKO_TARGET_FIXTURE_RECEIPT_PATH="$GITHUB_WORKSPACE/receipts/targets.json"
+            node tool/verify_site_order_registered_targets.mjs "file://$GITHUB_WORKSPACE/backend/tool/security/fixture_dependencies/node_modules/pg/lib/index.js" postgres
+          fi
+      - working-directory: receipts
+        run: sha256sum *.json > checksums-${{ matrix.fixture }}.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: site-order-native-${{ matrix.fixture }}-${{ github.sha }}
+          path: receipts/*
+          if-no-files-found: error
+  sdk:
+    needs: native
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: site-order-native-*-${{ github.sha }}
+          path: receipts
+          merge-multiple: true
+      - working-directory: receipts
+        run: |
+          sha256sum --check checksums-execution.sha256
+          sha256sum --check checksums-targets.sha256
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: '3.47.5', channel: stable, cache: true}
+      - run: flutter pub get --enforce-lockfile
+      - name: Exercise all six previously optional receipt cases against current SDK
+        env:
+          SKO_EXECUTION_RECEIPT_PATH: ${{ github.workspace }}/receipts/execution.json
+          SKO_CONSENT_RECEIPT_PATH: ${{ github.workspace }}/receipts/consent.json
+          SKO_TARGET_FIXTURE_RECEIPT_PATH: ${{ github.workspace }}/receipts/targets.json
+        run: flutter test test/site_order_outgoing_execution_repository_test.dart test/site_order_outgoing_consent_repository_test.dart test/site_order_registered_targets_repository_test.dart --reporter expanded
+# Synthetic Auth/rows and pinned reconstructed backend only. No production,
+# hosted Edge, real GoTrue, counterparty, push delivery or device completion claim.

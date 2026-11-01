@@ -84,6 +84,8 @@ try{
  await allowed(users.owner.token);await allowed(users.own.token);
  await db.query('update private.storage_session_guard_rollout set enabled=true');
  await allowed(users.owner.token);await allowed(users.own.token);
+ await db.query("update auth.users set banned_until=now()+interval '1 hour' where id=$1",[users.own.id]);await denied(users.own.token);
+ await db.query('update auth.users set banned_until=null where id=$1',[users.own.id]);await allowed(users.own.token);
  await db.query(`update public.member_feature_permissions set can_manage_people=true where user_id=${q(users.manager.id)}`);await allowed(users.manager.token);
  await db.query(`update public.member_feature_permissions set can_manage_people=false where user_id=${q(users.manager.id)}`);await denied(users.manager.token);
  await db.query(`update public.member_feature_permissions set can_manage_people=true where user_id=${q(users.manager.id)}`);await allowed(users.manager.token);

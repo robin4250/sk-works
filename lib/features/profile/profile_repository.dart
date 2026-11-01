@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
 import '../auth/app_auth_mutation_gateway.dart';
+import 'avatar_upload_format.dart';
 
 class ProfileData {
   const ProfileData({
@@ -204,6 +205,8 @@ class ProfileRepository {
     final user = _client.auth.currentUser;
     if (user == null) throw StateError('ログインが必要です。');
 
+    final format = AvatarUploadFormat.inspect(bytes);
+
     final existing = await _client
         .from('user_profiles')
         .select('avatar_storage_path')
@@ -213,14 +216,14 @@ class ProfileRepository {
         ? null
         : existing.first['avatar_storage_path']?.toString();
 
-    final extension = _extension(filename);
+    final extension = format.extension;
     final path =
         '${user.id}/avatar-${DateTime.now().microsecondsSinceEpoch}$extension';
 
     await _client.storage.from(_bucket).uploadBinary(
           path,
           bytes,
-          fileOptions: const FileOptions(upsert: false),
+          fileOptions: FileOptions(upsert: false, contentType: format.mime),
         );
 
     try {
@@ -245,14 +248,6 @@ class ProfileRepository {
       }
       rethrow;
     }
-  }
-
-  String _extension(String filename) {
-    final index = filename.lastIndexOf('.');
-    if (index < 0 || index == filename.length - 1) return '.jpg';
-    final ext = filename.substring(index).toLowerCase();
-    if (!RegExp(r'^\.[a-z0-9]{2,5}$').hasMatch(ext)) return '.jpg';
-    return ext;
   }
 
   static String normalizeJapanesePhoneValue(String raw) {

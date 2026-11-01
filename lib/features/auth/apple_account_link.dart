@@ -111,7 +111,8 @@ class AppleAccountLink {
           client.auth.currentSession?.user.id != actor) {
         revoked = true;
       }
-    }, onError: (Object _) { revoked = true; });
+    }, onError: (Object _) { revoked = true; },
+      onDone: () { revoked = true; });
     void check() {
       if (revoked || client.auth.currentSession?.user.id != actor ||
           client.auth.currentSession?.accessToken != token ||
@@ -263,7 +264,8 @@ class AppleAccountLink {
               client.auth.currentSession?.accessToken != initial.accessToken))) {
         _revoked = true;
       }
-    }, onError: (Object _) { if (generation == _generation) _revoked = true; });
+    }, onError: (Object _) { if (generation == _generation) _revoked = true; },
+      onDone: () { if (generation == _generation) _revoked = true; });
     try {
       checkPreparation();
       final user = await _verifiedUser(generation);

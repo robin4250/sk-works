@@ -1,0 +1,23 @@
+name: Offline encrypted backup stream
+on:
+  pull_request:
+    paths:
+      - 'tool/security/backup/**'
+      - '.github/workflows/encrypted-backup-stream.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  synthetic-encryption:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install distribution-packaged age
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y age
+      - name: Real encryption, restoration and rejection with synthetic data only
+        run: python3 -m unittest discover -s tool/security/backup -p 'test_*.py' -v

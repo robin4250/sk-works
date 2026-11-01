@@ -29,7 +29,7 @@ class _Proofs extends OperationReauthenticationRepository {
   Map<String, dynamic>? target;
   @override
   Future<String> requestProof({required String password, required String operation,
-      required Map<String, dynamic> target}) async {
+      required Map<String, dynamic> target, String? captchaToken}) async {
     calls++;
     expectSync(password, 'synthetic-primary');
     expectSync(operation, 'master.feature.set');

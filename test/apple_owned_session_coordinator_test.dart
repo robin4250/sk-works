@@ -83,6 +83,7 @@ void main() {
       if(request.url.path.endsWith('/token')){
         expect(request.method,'POST');expect(request.url.queryParameters['grant_type'],'password');
         final sent=jsonDecode(request.body);
+        expect(sent['gotrue_meta_security'],{'captcha_token':'synthetic-challenge'});
         expect(sent['email'],'owner@fixture.invalid');expect(sent['password'],'synthetic-password');
         result=initialSession();
       }else if(request.url.path.endsWith('/user')){
@@ -106,7 +107,7 @@ void main() {
       acknowledgePossession:(request,bearer)=>acknowledge(request,bearer));
     coordinators.add(value);return value;
   }
-  Future<void> login(AppleOwnedSessionCoordinator value)=>value.signInWithPassword(email:'owner@fixture.invalid',password:'synthetic-password');
+  Future<void> login(AppleOwnedSessionCoordinator value)=>value.signInWithPassword(email:'owner@fixture.invalid',password:'synthetic-password',captchaToken:'synthetic-challenge');
   Future<void> enroll(AppleOwnedSessionCoordinator value,AppleSuccessorHttpsDelivery delivery)=>value.enrollAndAdopt(
     requestId:requestId,delivery:delivery,password:'synthetic-password',idToken:'synthetic-apple-token',rawNonce:'N'*43);
 
@@ -132,6 +133,7 @@ void main() {
     addTearDown(()=>directory.delete(recursive:true));
     final certificate=await Process.run('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-days','1',
       '-subj','/CN=localhost','-addext','subjectAltName=DNS:localhost,IP:127.0.0.1',
+      '-addext','extendedKeyUsage=serverAuth',
       '-keyout','${directory.path}/key.pem','-out','${directory.path}/cert.pem']);
     expect(certificate.exitCode,0);
     final serverContext=SecurityContext()..useCertificateChain('${directory.path}/cert.pem')..usePrivateKey('${directory.path}/key.pem');

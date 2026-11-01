@@ -35,7 +35,7 @@ void main() {
     certificates = await Directory.systemTemp.createTemp('sko-apple-delivery-fixture-');
     final result = await Process.run('openssl', ['req', '-x509', '-newkey', 'rsa:2048',
       '-nodes', '-days', '1', '-subj', '/CN=localhost', '-addext',
-      'subjectAltName=DNS:localhost,IP:127.0.0.1', '-keyout', '${certificates.path}/key.pem',
+      'subjectAltName=DNS:localhost,IP:127.0.0.1', '-addext', 'extendedKeyUsage=serverAuth', '-keyout', '${certificates.path}/key.pem',
       '-out', '${certificates.path}/cert.pem']);
     expect(result.exitCode, 0, reason: 'generate isolated TLS fixture');
     serverContext = SecurityContext()

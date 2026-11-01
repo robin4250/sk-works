@@ -1,0 +1,38 @@
+version: 2
+# Review proposals only. No automatic merge or production deployment.
+# Monthly proposals and one open version PR per ecosystem bound CI churn.
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+      timezone: Asia/Tokyo
+    open-pull-requests-limit: 1
+    groups:
+      actions-updates:
+        patterns: ['*']
+  - package-ecosystem: pub
+    directory: /
+    schedule:
+      interval: monthly
+      timezone: Asia/Tokyo
+    open-pull-requests-limit: 1
+    groups:
+      compatible-pub-updates:
+        update-types: [minor, patch]
+  - package-ecosystem: npm
+    directories:
+      - /tool/line_release_fixture_dependencies
+      - /tool/security/fixture_dependencies
+      - /tool/security/free-worker-candidate
+      - /tool/security/master_self_audit_fixture_dependencies
+    schedule:
+      interval: monthly
+      timezone: Asia/Tokyo
+    open-pull-requests-limit: 1
+    groups:
+      compatible-npm-updates:
+        update-types: [minor, patch]
+      npm-security-updates:
+        applies-to: security-updates
+        patterns: ['*']

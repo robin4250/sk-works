@@ -41,7 +41,7 @@ class _Transport extends OperationReauthenticationRepository {
   }
   @override
   Future<String> requestProof({required String password, required String operation,
-      required Map<String, dynamic> target}) async {
+      required Map<String, dynamic> target, String? captchaToken}) async {
     requests++; primary = password; this.operation = operation; this.target = target;
     if (failProof) throw StateError('synthetic denied');
     return pending == null ? 'synthetic-single-use-proof' : await pending!.future;

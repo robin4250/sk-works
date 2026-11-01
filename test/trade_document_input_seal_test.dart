@@ -65,12 +65,18 @@ void main() {
       final before = value['company_seal_snapshot'].toString();
       await fixture.mount(tester, payload: value);
       await _wait(tester, () => seal.evaluate().isNotEmpty);
+      final nameBox = tester.getRect(find.byKey(const Key('trade-input-issuer-name')));
+      final sealBox = tester.getRect(find.byKey(const Key('trade-input-seal-position')));
+      expect(sealBox.left, lessThan(nameBox.right));
+      expect(sealBox.right, greaterThan(nameBox.right));
+      expect((sealBox.center.dx - nameBox.right).abs(), lessThan(1));
+      expect((sealBox.center.dy - nameBox.center.dy).abs(), lessThan(1));
       expect(printing.rasterCalls, 1);
       expect(String.fromCharCodes(printing.pdf!.take(5)), '%PDF-');
       expect(value['company_seal_snapshot'].toString(), before);
       expect(find.bySemanticsLabel('自社登録角印のプレビュー・相手の承認印ではありません'), findsOneWidget);
       await tester.tap(fixture.target('issuer')); await tester.pumpAndSettle();
-      expect(find.text('自社の登録住所'), findsOneWidget);
+      expect(find.descendant(of: find.byType(BottomSheet), matching: find.text('自社の登録住所')), findsOneWidget);
       expect(tester.takeException(), isNull);
       } finally { semantics.dispose(); }
     });
@@ -92,7 +98,7 @@ void main() {
         buildPreview: (_) async => Uint8List(0), onSave: (_) async {}))));
     await _wait(tester, () => seal.evaluate().isNotEmpty);
     await tester.tap(fixture.target('issuer')); await tester.pumpAndSettle();
-    expect(find.text(name), findsOneWidget);
+    expect(find.descendant(of: find.byType(BottomSheet), matching: find.text(name)), findsOneWidget);
     expect(tester.takeException(), isNull);
     final close = find.byKey(const Key('trade-touch-company-close'));
     expect(tester.getBottomRight(close).dy, lessThanOrEqualTo(926));
@@ -148,7 +154,7 @@ void main() {
     await _wait(tester, () => find.text('角印を確認できません').evaluate().isNotEmpty);
     expect(seal, findsNothing);
     await tester.tap(fixture.target('issuer')); await tester.pumpAndSettle();
-    expect(find.text('自社の登録住所'), findsOneWidget);
+    expect(find.descendant(of: find.byType(BottomSheet), matching: find.text('自社の登録住所')), findsOneWidget);
   });
   testWidgets('scope retirement during native raster wait cannot publish retained stamp bytes', (tester) async {
     printing.pending = Completer<PdfRaster>();
