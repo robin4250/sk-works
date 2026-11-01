@@ -38,6 +38,14 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
+    - assets/fonts/web-ui/OFL.txt
     - assets/fonts/company-seal/
     - assets/images/company-seals/sumida-v1/
     - assets/fonts/company-seal/aoyagi-reisho/
+  fonts:
+    - family: SkoWebUI
+      fonts:
+        - asset: assets/fonts/web-ui/NotoSansJP-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/company-seal/NotoSansJP-Bold.ttf
+          weight: 700
