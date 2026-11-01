@@ -70,6 +70,8 @@ class EmployeeInviteRepository {
     try {
       _subscription = _authEvents?.listen(
         (event) => _observe(event.session),
+        onError: (Object _) => _retireTracking(),
+        onDone: _retireTracking,
       );
     } catch (_) {
       _retireTracking();
