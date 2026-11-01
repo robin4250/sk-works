@@ -8,7 +8,12 @@ const encoder = new TextEncoder();
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { "Content-Type": "application/json; charset=utf-8" },
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+      "Referrer-Policy": "no-referrer",
+    },
   });
 }
 
@@ -453,8 +458,8 @@ Deno.serve(async (req: Request) => {
           if (!smsSent) {
             deliveryMessage = "SMS送信サービスがエラーを返しました。";
           }
-        } catch (error) {
-          console.error("employee invite sms delivery failed", error);
+        } catch {
+          console.error("employee invite sms delivery failed");
           deliveryMessage = "SMS送信サービスへ接続できませんでした。";
         }
       }
