@@ -329,7 +329,7 @@ class SiteOrderNotificationReadScope extends ChangeNotifier {
     try {
       return !_closed && !_invalid && !api.invalidated && !api.uiRetired &&
           identical(_client.auth.currentSession, _captured) &&
-          (_currentCompany == null || _currentCompany!() == _expectedCompany);
+          (_currentCompany == null || _currentCompany() == _expectedCompany);
     } catch (_) { return false; }
   }
   void _changed() {
@@ -419,7 +419,7 @@ class SiteOrderNotificationReadScope extends ChangeNotifier {
     }
     _attempted = true;
     try {
-      final Object? rows = await _client.from('app_notifications')
+      final Object rows = await _client.from('app_notifications')
         .update({'read_at': DateTime.now().toUtc().toIso8601String()})
         .eq('id', notificationId).eq('company_id', _company!)
         .eq('recipient_user_id', _binding.actorId)

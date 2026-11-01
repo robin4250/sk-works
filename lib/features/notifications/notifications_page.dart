@@ -203,14 +203,23 @@ class _NotificationsPageState extends State<NotificationsPage> {
     StreamController<void>? orderChanges;
     StreamSubscription<void>? orderSessionChanges;
     VoidCallback? orderListener;
+    bool notificationTupleCurrent() {
+      if (saved == null) return item.actionKey == 'site_order_package' && item.actionId == packageId;
+      final currentIds = snapshot?.notificationIdsByItemKey[item.deduplicationKey] ?? const <String>[];
+      final current = snapshot?.notificationsById[saved.id];
+      return currentIds.isNotEmpty && currentIds.first == saved.id && current != null &&
+          current.id == saved.id && current.actionKey == 'site_order_package' &&
+          current.actionId == packageId;
+    }
     bool retirementQueued = false, flowClosed = false;
     bool flowCurrent() {
       bool current;
       try {
         current = !flowClosed && mounted && session.isCurrent && capturedLoad == _loadRequest &&
+          notificationTupleCurrent() &&
           (widget.currentCompany?.call() ?? widget.companyId) == company &&
           identical(_siteOrderApi, orderApi) && orderApi?.invalidated == false &&
-          orderApi?.uiRetired == false && (readScope == null || readScope!.isCurrent);
+          orderApi?.uiRetired == false && (readScope == null || readScope.isCurrent);
       } catch (_) { current = false; }
       if (!current && !retirementQueued) {
         retirementQueued = true;
@@ -242,12 +251,12 @@ class _NotificationsPageState extends State<NotificationsPage> {
           orderChanges = StreamController<void>.broadcast(sync: true);
           void emit() { if (orderChanges?.isClosed == false) orderChanges!.add(null); }
           orderListener = () { if (orderApi?.invalidated == true || orderApi?.uiRetired == true) emit(); };
-          orderApi!.addListener(orderListener);
+          orderApi.addListener(orderListener);
           orderSessionChanges = session.invalidations.listen((_) => emit());
           if (saved != null && saved.id.isNotEmpty) {
             final repository = _notifications;
             if (repository == null) throw const SiteOrderNotificationReadUnknown();
-            readScope = repository.openSiteOrderReadScope(api: orderApi!,
+            readScope = repository.openSiteOrderReadScope(api: orderApi,
               notificationId: saved.id, packageId: packageId,
               expectedCompanyId: company,
               currentCompany: company == null ? null : () => widget.currentCompany?.call() ?? widget.companyId);
@@ -255,7 +264,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
             readScope.addListener(emit);
             await readScope.verifyTarget();
           } else {
-            await verifySiteOrderNotificationTarget(orderApi!, packageId);
+            await verifySiteOrderNotificationTarget(orderApi, packageId);
           }
           requireFlow();
         } catch (error) {
@@ -268,6 +277,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
           return;
         }
       }
+      if (!mounted) return;
       await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) =>
         NotificationExplanationPage(item: item,
           isCurrent: orderNotice ? flowCurrent : () => session.isCurrent,
@@ -285,7 +295,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
               requireFlow();
               if (id != packageId || orderApi == null) return false;
               if (readScope != null) { await readScope.verifyTarget(); }
-              else { await verifySiteOrderNotificationTarget(orderApi!, id!); }
+              else { await verifySiteOrderNotificationTarget(orderApi, id!); }
               requireFlow();
               return true;
             }

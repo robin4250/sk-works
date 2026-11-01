@@ -87,7 +87,7 @@ class NoticeWire extends http.BaseClient {
           readAt = body['read_at'] as String;
           throw http.ClientException('synthetic unknown write result');
         }
-        if (mode == 'cas-zero') result = <Object>[];
+        if (mode == 'cas-zero') { result = <Object>[]; }
         else {
           readAt = body['read_at'] as String;
           result = [row()];
@@ -106,7 +106,7 @@ class NoticeWire extends http.BaseClient {
 }
 
 class NoticeApi extends SiteOrderWorkflowRepository {
-  NoticeApi(SupabaseClient client) : super(client);
+  NoticeApi(super.client);
   bool closed = false, missingBinding = false;
   ({String actorId, String companyId, String sessionId})? replacement;
   @override ({String actorId, String companyId, String sessionId})? get notificationReadBinding =>
@@ -171,10 +171,10 @@ void main() {
   for (final mode in ['actor','sid','company','missing']) {
     test('API binding $mode cannot substitute the captured SDK identity', () async {
       final f = await NoticeFixture.create();
-      if (mode == 'missing') f.api.missingBinding = true;
-      else f.api.replacement = (actorId: mode == 'actor' ? otherNoticeId : noticeActor,
+      if (mode == 'missing') { f.api.missingBinding = true; }
+      else { f.api.replacement = (actorId: mode == 'actor' ? otherNoticeId : noticeActor,
         companyId: mode == 'company' ? otherNoticeId : noticeCompany,
-        sessionId: mode == 'sid' ? otherNoticeId : noticeSid);
+        sessionId: mode == 'sid' ? otherNoticeId : noticeSid); }
       final scope = f.scope();
       try { await expectLater(scope.markRead(() {}), throwsA(anything)); expect(f.wire.patches, 0); }
       finally { scope.dispose(); await f.close(); }
