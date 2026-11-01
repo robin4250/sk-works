@@ -125,7 +125,7 @@ class _MergeState extends State<_MergeContent> {
     try {
       await repository.verifyGroups(widget.groupId, source);
       final target = await repository.load(widget.groupId, widget.month);
-      final incoming = await repository.load(source, widget.month);
+      final incoming = await repository.loadSource(source, widget.month);
       _requireWorkspace(target); _requireWorkspace(incoming);
       final preview = linePreviewSavedMonthlyMerge(month: widget.month,
         sourceGroupId: source, targetSources: _maps(target['source_messages']),
@@ -166,7 +166,7 @@ class _MergeState extends State<_MergeContent> {
     var sent = false;
     try {
       await repository.verifyGroups(widget.groupId, source);
-      final latestSource = await repository.load(source, widget.month);
+      final latestSource = await repository.loadSource(source, widget.month);
       _requireWorkspace(latestSource);
       if (latestSource['revision'] != _sourceWorkspace!['revision'] ||
           !_same(latestSource['source_messages'], _sourceWorkspace!['source_messages']) ||

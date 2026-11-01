@@ -72,6 +72,7 @@ class _Repository extends Fake implements LineSavedMonthlyMergeRepository {
       'source_kind': 'received', 'confirmed': false,
     };
   }
+  @override Future<Map<String, dynamic>> loadSource(String group, DateTime month) => load(group, month);
   @override Map<String, dynamic> saveCommand({required String groupId,
     required String target, required DateTime month, required int revision,
     required String sourceKind, required List<Map<String, dynamic>> sources,

@@ -33,6 +33,8 @@ class Fixture {
   bool enabled = true, wrongResult = false, loseAck = false;
   bool numericRoundtrip = false, rejectNextSave = false, revokeAfterSave = false;
   bool legacySource = false;
+  bool rawDenied = false;
+  final rawPosts = <Map<String, dynamic>>[];
   String kind = 'history';
   String? role = 'owner';
   int committed = 0;
@@ -60,6 +62,11 @@ class Fixture {
           case 'company_members':
             final member = {'company_id': company, 'user_id': actor, 'role': f.role};
             body = [member, if (f.duplicateMember) member];
+          case 'chat_messages':
+            if (f.rawDenied) {
+              return http.Response(jsonEncode({'code': '42501', 'message': 'denied'}), 403, headers: {'content-type': 'application/json'}, request: r);
+            }
+            body = f.rawPosts;
           case 'line_import_workspace': body = f.workspace();
           case 'line_history_destinations': body = [
             {'id': target, 'name': 'Synthetic receiving group'}, {'id': source, 'name': 'Synthetic saved group'}];
@@ -121,6 +128,63 @@ class PendingLogout implements AppLogoutPersistenceFence {
 }
 
 void main() {
+  test(
+    'raw-only saved group parses work month without source draft writes or upload',
+    () async {
+      final f = await Fixture.create();
+      addTearDown(f.close);
+      f.rawPosts.addAll([
+        {
+          'id': 'raw-oct',
+          'body': '2026/10/1\n現場A 山田\n現場A 定時',
+          'sent_at': '2026-11-01T09:00:00Z',
+          'sender_display_name': '担当者',
+        },
+        {
+          'id': 'raw-nov',
+          'body': '2026/11/1\n現場B 山田\n現場B 定時',
+          'sent_at': '2026-11-01T09:01:00Z',
+          'sender_display_name': '担当者',
+        },
+      ]);
+      final result = await f.repository.loadSource(source, month);
+      final rows = result['candidate_rows'] as List;
+      expect(rows, hasLength(1));
+      expect(rows.single['work_date'], '2026-10-01');
+      expect(rows.single['confirmed'], isFalse);
+      expect(rows.single['source_message_id'], 'raw-oct');
+      expect(f.committed, 0);
+      final request = f.requests.singleWhere(
+        (r) => r.url.path.endsWith('/chat_messages'),
+      );
+      expect(
+        request.url.queryParameters['communication_group_id'],
+        'eq.$source',
+      );
+      expect(request.url.queryParameters['origin'], 'eq.line');
+      expect(request.url.queryParameters.containsKey('sent_at'), isFalse);
+      expect(
+        request.headers['Authorization'],
+        'Bearer ${f.client.auth.currentSession!.accessToken}',
+      );
+    },
+  );
+
+  test(
+    'denied raw read fails closed instead of reporting empty source',
+    () async {
+      final f = await Fixture.create();
+      addTearDown(f.close);
+      f.rawDenied = true;
+      await expectLater(
+        f.repository.loadSource(source, month),
+        throwsA(isA<PostgrestException>()),
+      );
+      expect(f.committed, 0);
+    },
+  );
+
+
   test('actual SDK uses captured bearer and existing draft-only RPC without moving originals', () async {
     final f = await Fixture.create(); addTearDown(f.close);
     final bearer = 'Bearer ${f.client.auth.currentSession!.accessToken}';

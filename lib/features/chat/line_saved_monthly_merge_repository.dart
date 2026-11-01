@@ -8,6 +8,7 @@ import '../../data/supabase_backend.dart';
 import '../auth/app_auth_mutation_gateway.dart';
 import '../auth/secondary_reset_session_guard.dart';
 import 'line_import_repository.dart';
+import 'line_historical_monthly_import.dart';
 
 /// A session-bound adapter for the existing invoice draft RPCs. It never moves
 /// original messages, enables LINE, submits attendance or creates invoices.
@@ -190,6 +191,51 @@ class LineSavedMonthlyMergeRepository extends ChangeNotifier {
     await _scope(group);
     _loadedMonths[group] = _month(month);
     return result;
+  }
+
+  /// Read saved raw LINE posts when no monthly rows have been prepared yet.
+  /// This never saves or changes the source group's draft.
+  Future<Map<String, dynamic>> loadSource(String group, DateTime month) async {
+    final workspace = await load(group, month);
+    if ((workspace['candidate_rows'] as List).isNotEmpty) return workspace;
+    final sources = <Map<String, dynamic>>[
+      for (final source in workspace['source_messages'] as List)
+        Map<String, dynamic>.from(source as Map),
+    ];
+    // A saved raw-only draft is also readable without another upload. With no
+    // draft, read all saved posts: posting month is not the attendance month.
+    if (workspace['revision'] == 0) {
+      for (var offset = 0; ; offset += 1000) {
+        await _scope(group);
+        final batch = await _client
+            .from('chat_messages')
+            .select('id,body,sent_at,sender_display_name')
+            .eq('communication_group_id', group)
+            .eq('origin', 'line')
+            .order('sent_at')
+            .order('id')
+            .range(offset, offset + 999)
+            .setHeader('Authorization', 'Bearer ${_session!.accessToken}')
+            .timeout(const Duration(seconds: 30));
+        await _scope(group);
+        sources.addAll(
+          batch.map(
+            (post) => <String, dynamic>{...post, 'source_type': 'received'},
+          ),
+        );
+        if (batch.length < 1000) break;
+      }
+    }
+    final prepared = lineMonthlyCandidates(
+      lineMergeImportSources([], sources),
+      month,
+    );
+    await _scope(group);
+    return {
+      ...workspace,
+      'source_messages': prepared.sources,
+      'candidate_rows': prepared.rows,
+    };
   }
 
   Future<void> verifyGroups(String targetGroup, String sourceGroup) async {
