@@ -79,6 +79,7 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
   bool _basisSupported = false;
   bool _personalBirthSource = false;
   bool _companyBirthSource = false;
+  String? _loadedBirthDate;
   PayrollInsuranceBasisReference? _basisReference, _loadedBasisReference;
   int _basisEditorRevision = 0;
   bool _incomeConversionActive = false;
@@ -214,7 +215,8 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
     _incomeConversionActive = false; _incomeNeedsApplication = false; _incomeConversionError = null; _baseInputError = null;
     final value = row['value'] as Map;
     _month.text = (row['starts_on'] as String).substring(0, 7);
-    _birth.text = _companyBirthSource ? value['birth_date'] as String? ?? '' : '';
+    _loadedBirthDate = value['birth_date'] as String?;
+    _birth.text = _companyBirthSource ? _loadedBirthDate ?? '' : '';
     _basisReference = value['insurance_basis_reference'] == null ? null :
         PayrollInsuranceBasisReference.fromJson(value['insurance_basis_reference']);
     _loadedBasisReference = _basisReference;
@@ -240,6 +242,7 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
     _incomeConversionActive = false; _incomeNeedsApplication = false; _incomeConversionError = null; _baseInputError = null;
     _month.text = _targetMonth;
     _birth.clear();
+    _loadedBirthDate = null;
     _basisReference = null;
     _loadedBasisReference = null;
     _basisEditorRevision++;
@@ -379,7 +382,9 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
         for (final key in const ['dependents', 'non_taxable_yen', 'additional_social_deduction_yen']) key: int.parse(_amounts[key]!.text),
         if (_deductionOverrides.containsKey('income_tax')) 'deduction_overrides': {'income_tax': _deductionOverrides['income_tax']},
       } else ...{
-        'birth_date': _companyBirthSource && _birth.text.isNotEmpty ? _birth.text : null,
+        'birth_date': _personalBirthSource ? null
+            : _companyBirthSource ? (_birth.text.isEmpty ? null : _birth.text)
+            : _loadedBirthDate,
         if (_deductionOverrides.isNotEmpty) 'deduction_overrides': _deductionOverrides,
         ..._flags,
         for (final key in _amounts.keys) key: int.parse(_amounts[key]!.text),

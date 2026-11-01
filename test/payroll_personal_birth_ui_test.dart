@@ -35,7 +35,7 @@ void main(){
    return {'company_id':'company','worker_id':'worker','can_edit':true,'items':[{'starts_on':'2026-09-01','version':sent==null?1:2,'value':sent??({...conditions(),'insurance_mode':'fixed'})}]};
   })));await t.pumpAndSettle();
   await t.scrollUntilVisible(find.widgetWithText(FilledButton,'確認して保存'),500,scrollable:find.byType(Scrollable).first);await t.tap(find.widgetWithText(FilledButton,'確認して保存'));await t.pumpAndSettle();
-  await t.tap(find.widgetWithText(FilledButton,'確認して保存').last);await t.pumpAndSettle();expect(sent,isNotNull);expect(sent!['birth_date'],null);
+  await t.tap(find.widgetWithText(FilledButton,'確認して保存').last);await t.pumpAndSettle();expect(sent,isNotNull);expect(sent!['birth_date'],'1986-10-01');
  });
  testWidgets('unlinked company DOB remains editable and saves company date without profile import',(t)async{
   t.view.physicalSize=const Size(1000,2600);t.view.devicePixelRatio=1;addTearDown(t.view.resetPhysicalSize);addTearDown(t.view.resetDevicePixelRatio);
@@ -61,5 +61,18 @@ void main(){
   expect(t.widget<TextFormField>(birth).validator!(null),'生年月日を入力してください');
   await t.scrollUntilVisible(find.widgetWithText(FilledButton,'確認して保存'),500,scrollable:find.byType(Scrollable).first);await t.tap(find.widgetWithText(FilledButton,'確認して保存'));await t.pumpAndSettle();expect(writes,0);expect(find.byType(AlertDialog),findsNothing);
   expect(find.byKey(const ValueKey('insurance-base-input-error')),findsOneWidget);
+ });
+ testWidgets('missing marker unrelated fixed save preserves loaded company DOB without exposing editor',(t)async{
+  t.view.physicalSize=const Size(1000,2600);t.view.devicePixelRatio=1;addTearDown(t.view.resetPhysicalSize);addTearDown(t.view.resetDevicePixelRatio);
+  Map<String,dynamic>? sent;
+  final existing={...conditions(),'insurance_mode':'fixed','birth_date':'1978-04-05'};
+  await t.pumpWidget(MaterialApp(home:PayrollTaxConditionsPage(companyId:'company',workerId:'worker',rpc:(name,args)async{
+   if(name.startsWith('save_'))sent=Map.from(args['p_value'] as Map);
+   return {'company_id':'company','worker_id':'worker','can_edit':true,'items':[{'starts_on':'2026-09-01','version':sent==null?1:2,'value':sent??existing}]};
+  })));await t.pumpAndSettle();
+  expect(find.widgetWithText(TextFormField,'生年月日（YYYY-MM-DD）'),findsNothing);
+  await t.scrollUntilVisible(find.widgetWithText(FilledButton,'確認して保存'),500,scrollable:find.byType(Scrollable).first);await t.tap(find.widgetWithText(FilledButton,'確認して保存'));await t.pumpAndSettle();
+  await t.tap(find.widgetWithText(FilledButton,'確認して保存').last);await t.pumpAndSettle();
+  expect(sent,isNotNull);expect(sent!['birth_date'],'1978-04-05');expect(sent!['insurance_mode'],'fixed');
  });
 }
