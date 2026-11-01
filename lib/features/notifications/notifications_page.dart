@@ -204,8 +204,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
     StreamSubscription<void>? orderSessionChanges;
     VoidCallback? orderListener;
     bool notificationTupleCurrent() {
-      if (saved == null) return item.actionKey == 'site_order_package' && item.actionId == packageId;
       final currentIds = snapshot?.notificationIdsByItemKey[item.deduplicationKey] ?? const <String>[];
+      if (saved == null) return currentIds.isEmpty &&
+          item.actionKey == 'site_order_package' && item.actionId == packageId;
       final current = snapshot?.notificationsById[saved.id];
       return currentIds.isNotEmpty && currentIds.first == saved.id && current != null &&
           current.id == saved.id && current.actionKey == 'site_order_package' &&
@@ -273,7 +274,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
             Scaffold(appBar: AppBar(title: const Text('通知の注文書')),
               body: Center(child: Text(error is SiteOrderNotificationDenied
                 ? 'この注文書を閲覧する権限がありません。'
-                : '注文書の保存状態を確認できません。通知は残っています。')))));
+                : '注文書の保存状態を確認できません。通知一覧から確認してください。')))));
           return;
         }
       }
@@ -635,7 +636,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
                                   ),
                                 ),
                                 title: Text(
-                                  item.title,
+                                  _isSiteOrderItem(item) ? '注文・請書のお知らせ' : item.title,
                                   style: TextStyle(
                                     fontWeight: item.needsAction || !item.read
                                         ? FontWeight.w900
@@ -648,10 +649,13 @@ class _NotificationsPageState extends State<NotificationsPage> {
                                     if (unread(item))
                                       Text(SkoLanguageController.tr('未読'),
                                         style: const TextStyle(fontWeight: FontWeight.w900)),
-                                    if (item.body.isNotEmpty) Text(item.body),
-                                    if (item.state !=
-                                        AttentionCenterState.information)
-                                      Text(_businessDescription(item)),
+                                    if (_isSiteOrderItem(item))
+                                      const Text('保存書類と現在の閲覧権限を確認して開きます。')
+                                    else ...[
+                                      if (item.body.isNotEmpty) Text(item.body),
+                                      if (item.state != AttentionCenterState.information)
+                                        Text(_businessDescription(item)),
+                                    ],
                                     if (item.createdAt != null)
                                       Text(
                                         _formatDate(item.createdAt!),
@@ -678,6 +682,12 @@ class _NotificationsPageState extends State<NotificationsPage> {
         ),
       ),
     );
+  }
+
+  bool _isSiteOrderItem(AttentionCenterItem item) {
+    final ids = _data?.notificationIdsByItemKey[item.deduplicationKey] ?? const <String>[];
+    final record = ids.isEmpty ? null : _data?.notificationsById[ids.first];
+    return (record?.actionKey ?? item.actionKey) == 'site_order_package';
   }
 
   String _businessDescription(AttentionCenterItem item) {

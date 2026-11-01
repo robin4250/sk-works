@@ -297,7 +297,7 @@ class _SiteOrderSiteActionsPageState extends State<SiteOrderSiteActionsPage>
                   onPressed: () => _closeHost())),
                 body: Center(child: _busy ? const CircularProgressIndicator()
                   : Text(_notificationDenied ? 'この注文書を閲覧する権限がありません。'
-                    : '注文書の保存状態を確認できません。通知は残っています。')))
+                    : '注文書の保存状態を確認できません。通知一覧から確認してください。')))
             : Column(children: [
                 if (_readUnknown) const Text('既読の記録を確認できません。'),
                 Expanded(child: Navigator(key: _navigator,

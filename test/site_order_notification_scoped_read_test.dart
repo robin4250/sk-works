@@ -14,6 +14,9 @@ const noticePackage = '91000000-0000-4000-8000-000000000004';
 const noticeId = '91000000-0000-4000-8000-000000000005';
 const otherNoticeId = '91000000-0000-4000-8000-000000000006';
 
+Future<void> noticeStage(Completer<void> barrier, String stage) => barrier.future.timeout(
+  const Duration(seconds: 5), onTimeout: () => throw StateError('Fixture stage not reached: $stage'));
+
 class NoticeWire extends http.BaseClient {
   String mode = 'normal', company = noticeCompany, role = 'manager';
   String? readAt;
@@ -160,7 +163,7 @@ void main() {
     final scope = f.scope();
     try {
       final first = scope.markRead(() {});
-      await f.wire.detailStarted!.future;
+      await noticeStage(f.wire.detailStarted!, 'detail');
       await expectLater(scope.markRead(() {}), throwsA(isA<SiteOrderNotificationReadUnknown>()));
       expect(f.wire.patches, 0);
       f.wire.detailHold!.complete();
@@ -178,7 +181,10 @@ void main() {
     test('$mode cannot fall back to ordinary marking', () async {
       final f = await NoticeFixture.create(); f.wire.mode = mode;
       final scope = f.scope();
-      try { await expectLater(scope.markRead(() {}), throwsA(anything)); expect(f.wire.patches, 0); }
+      try { await expectLater(scope.markRead(() {}), throwsA(anything));
+        final reads = f.wire.details;
+        await expectLater(scope.markRead(() {}), throwsA(anything));
+        expect(f.wire.details, reads); expect(f.wire.patches, 0); }
       finally { scope.dispose(); await f.close(); }
     });
   }
@@ -213,7 +219,7 @@ void main() {
     final scope = f.scope();
     try {
       final pending = scope.markRead(() {});
-      await f.wire.detailStarted!.future; await f.changeSession();
+      await noticeStage(f.wire.detailStarted!, 'detail'); await f.changeSession();
       f.wire.detailHold!.complete();
       await expectLater(pending, throwsA(anything)); expect(f.wire.patches, 0);
     } finally { scope.dispose(); await f.close(); }
@@ -234,7 +240,7 @@ void main() {
     final scope = f.scope();
     try {
       final pending = scope.markRead(() {});
-      await f.wire.patchStarted!.future; await f.changeSession(); f.wire.patchHold!.complete();
+      await noticeStage(f.wire.patchStarted!, 'read PATCH'); await f.changeSession(); f.wire.patchHold!.complete();
       await expectLater(pending, throwsA(anything));
       expect(f.wire.readAt, isNotNull); expect(f.wire.patches, 1);
       await expectLater(scope.markRead(() {}), throwsA(anything)); expect(f.wire.patches, 1);

@@ -22,7 +22,7 @@ class _Attention implements AttentionCenterRepository {
     final record = _record();
     final item = AttentionCenterItem(id: fixture.noticeId, source: 'notifications',
       title: record.title, body: record.body, state: AttentionCenterState.pending,
-      actionKey: record.actionKey, actionId: record.actionId);
+      actionKey: record.actionKey, actionId: record.actionId, targetName: '一覧の非公開工事名');
     data = AttentionCenterData(snapshot: AttentionCenterSnapshot([item], now: DateTime(2026, 10, 31)),
       notificationsById: {record.id: record},
       notificationIdsByItemKey: {item.deduplicationKey: [record.id]}, unavailableSources: {});
@@ -60,7 +60,7 @@ Future<({fixture.NoticeFixture fixture, _Attention attention})> _mount(
   return (fixture: f, attention: attention);
 }
 Future<void> _explanation(WidgetTester tester) async {
-  await tester.tap(find.text('注文の通知'));
+  await tester.tap(find.text('注文・請書のお知らせ'));
   await _wait(tester, () => find.byType(NotificationExplanationPage).evaluate().isNotEmpty &&
     find.text('開く').evaluate().isNotEmpty);
 }
@@ -72,6 +72,8 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
   testWidgets('real notification entry authorizes a saved package without a local site or generation call', (tester) async {
     final f = (await _mount(tester)).fixture;
+    expect(find.text('開く前の非公開工事'), findsNothing);
+    expect(find.text('一覧の非公開工事名'), findsNothing);
     await _explanation(tester);
     expect(f.wire.patches, 0); // Reading the explanation is not target admission.
     await _openTarget(tester);
@@ -88,7 +90,7 @@ void main() {
   for (final mode in ['denied', 'wrong-package', 'unavailable', 'row-package']) {
     testWidgets('$mode keeps a generic state and the unread notification', (tester) async {
       final mounted = await _mount(tester, mode: mode), f = mounted.fixture;
-      await tester.tap(find.text('注文の通知'));
+      await tester.tap(find.text('注文・請書のお知らせ'));
       await _wait(tester, () => find.text('通知の注文書').evaluate().isNotEmpty);
       expect(find.byType(NotificationExplanationPage), findsNothing);
       expect(find.text('開く前の非公開工事'), findsNothing);
@@ -96,13 +98,13 @@ void main() {
       expect(f.wire.patches, 0); expect(f.wire.businessWrites, 0);
       expect(mounted.attention.data.notificationsById[fixture.noticeId]!.read, isFalse);
       await tester.binding.handlePopRoute(); await tester.pumpAndSettle();
-      expect(find.text('注文の通知'), findsOneWidget);
+      expect(find.text('注文・請書のお知らせ'), findsOneWidget);
     });
   }
   testWidgets('same-actor new SID during preflight never exposes the private body or starts read marking', (tester) async {
     final f = (await _mount(tester)).fixture;
     f.wire.holdDetail = true; f.wire.detailHold = Completer<void>(); f.wire.detailStarted = Completer<void>();
-    await tester.tap(find.text('注文の通知'));
+    await tester.tap(find.text('注文・請書のお知らせ'));
     await _wait(tester, () => f.wire.detailStarted!.isCompleted);
     await tester.runAsync(f.changeSession); f.wire.detailHold!.complete();
     await _wait(tester, () => find.text('通知の注文書').evaluate().isNotEmpty);

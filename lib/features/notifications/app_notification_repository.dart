@@ -349,7 +349,9 @@ class SiteOrderNotificationReadScope extends ChangeNotifier {
   Future<void> _verify() async {
     if (!isCurrent) throw const SiteOrderNotificationReadUnknown();
     await _session.ready();
-    requireCurrent();
+    // Admit the API's independent captured session before its synchronous guard.
+    if (!isCurrent) throw const SiteOrderNotificationReadUnknown();
+    _session.requireScope();
     await api.verify();
     requireCurrent();
     final binding = api.notificationReadBinding;
