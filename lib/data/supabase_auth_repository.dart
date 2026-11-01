@@ -17,10 +17,11 @@ class SupabaseAuthRepository implements AuthRepository {
   }
 
   @override
-  Future<AppUser> signIn({required String email, required String password}) async {
+  Future<AppUser> signIn({required String email, required String password, String? captchaToken}) async {
     final user = await AppAuthMutationGateway.forClient(_client).signInWithPassword(
       email: email,
       password: password,
+      captchaToken: captchaToken,
     );
     if (user == null) {
       throw StateError('Sign-in succeeded without a user record.');
