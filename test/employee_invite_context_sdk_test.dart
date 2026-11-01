@@ -51,7 +51,7 @@ class ObservedInviteRepository extends EmployeeInviteRepository {
   final refreshed = Completer<void>();
   int employeeLoads = 0, urlLoads = 0;
   void _loaded() {
-    if (employeeLoads >= 2 && urlLoads >= 2 && !refreshed.isCompleted) {
+    if (employeeLoads >= 2 && !refreshed.isCompleted) {
       refreshed.complete();
       debugPrint('invite-ui actual post-create refresh completed');
     }
@@ -524,3 +524,4 @@ void main() {
     },
   );
 }
+

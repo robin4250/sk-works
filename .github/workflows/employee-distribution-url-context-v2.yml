@@ -1,0 +1,58 @@
+name: Employee distribution URL context V2
+on:
+  pull_request:
+    paths:
+      - 'lib/features/people/employee_distribution_url_repository.dart'
+      - 'lib/features/people/employee_initial_registration_page.dart'
+      - 'test/employee_distribution_url_context_v2_sdk_test.dart'
+      - 'test/employee_invite_context_sdk_test.dart'
+      - 'docs/candidates/employee_distribution_url_context_v2_20261101/**'
+      - '.github/workflows/employee-distribution-url-context-v2.yml'
+permissions:
+  contents: read
+jobs:
+  sdk-context:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.47.5'
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: git diff --exit-code -- pubspec.lock
+      - run: dart format lib/features/people/employee_distribution_url_repository.dart lib/features/people/employee_initial_registration_page.dart test/employee_distribution_url_context_v2_sdk_test.dart test/employee_invite_context_sdk_test.dart
+      - run: flutter analyze lib/features/people/employee_distribution_url_repository.dart lib/features/people/employee_initial_registration_page.dart test/employee_distribution_url_context_v2_sdk_test.dart test/employee_invite_context_sdk_test.dart
+      - name: SDK CAS journal and affected invitation closures
+        timeout-minutes: 4
+        run: flutter test test/employee_distribution_url_context_v2_sdk_test.dart test/employee_invite_context_sdk_test.dart test/employee_invite_auth_tracking_test.dart test/employee_invite_delivery_message_test.dart --timeout 20s --reporter expanded
+  native-context:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17.6
+        env:
+          POSTGRES_PASSWORD: isolated-fixture-password
+          POSTGRES_DB: sko_distribution_url_fixture
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: isolated-fixture-password
+      PGDATABASE: sko_distribution_url_fixture
+      SKO_URL_PG_PACKAGE: /tmp/sko-url-pg
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --prefix /tmp/sko-url-pg --no-audit --no-fund pg@8.16.3
+      - run: node docs/candidates/employee_distribution_url_context_v2_20261101/verify-native.mjs

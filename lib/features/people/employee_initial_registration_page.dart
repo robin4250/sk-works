@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'employee_invite_repository.dart';
 import 'employee_invite_delivery_message.dart';
+import 'employee_distribution_url_repository.dart';
 import '../../data/supabase_backend.dart';
 import '../referrals/app_referral_page.dart';
 import '../referrals/app_referral_repository.dart';
@@ -19,9 +20,11 @@ class EmployeeInitialRegistrationPage extends StatefulWidget {
     super.key,
     this.selectedCompanyId,
     this.repository,
+    this.urlRepository,
   });
   final String? selectedCompanyId;
   final EmployeeInviteRepository? repository;
+  final EmployeeDistributionUrlRepository? urlRepository;
 
   @override
   State<EmployeeInitialRegistrationPage> createState() =>
@@ -32,6 +35,10 @@ class _EmployeeInitialRegistrationPageState
     extends State<EmployeeInitialRegistrationPage> {
   late final EmployeeInviteRepository? _repository;
   final _testFlightUrl = TextEditingController();
+  EmployeeDistributionUrlRepository? _urlRepository;
+  EmployeeDistributionUrlSnapshot? _urlBefore;
+  String? _urlError;
+  bool _urlInitialized = false;
   List<InitialRegistrationEmployee> _employees = const [];
   bool _loading = true;
   String? _busyWorkerId;
@@ -48,6 +55,7 @@ class _EmployeeInitialRegistrationPageState
     _testFlightUrl.clear();
     setState(() {
       _invalidated = true;
+      _urlBefore = null;
       _result = null;
       _employees = const [];
       _loadedActor = null;
@@ -66,6 +74,7 @@ class _EmployeeInitialRegistrationPageState
   void initState() {
     super.initState();
     _repository = widget.repository ?? EmployeeInviteRepository.maybeCreate();
+    _urlRepository = widget.urlRepository ?? EmployeeDistributionUrlRepository.maybeCreate();
     _authSubscription = _repository?.authChanges.listen((event) {
       _request?.observeSession(event.session);
       if (_request != null && !_request!.isCurrent) _invalidate();
@@ -89,10 +98,7 @@ class _EmployeeInitialRegistrationPageState
         companyId: widget.selectedCompanyId,
       );
       _request!.check();
-      final results = await Future.wait([
-        repository.loadRegisteredEmployees(request: _request),
-        repository.loadTestFlightUrl(request: _request),
-      ]);
+      final employees = await repository.loadRegisteredEmployees(request: _request);
       if (!mounted) return;
       if (!_current() || actor == null || repository.currentActorId != actor) {
         _testFlightUrl.clear();
@@ -105,14 +111,13 @@ class _EmployeeInitialRegistrationPageState
         return;
       }
       _loadedActor = actor;
-      final employees = results[0] as List<InitialRegistrationEmployee>;
-      _testFlightUrl.text = results[1] as String;
       if (!mounted) return;
       setState(() {
         _employees = employees;
         _loading = false;
         _error = null;
       });
+      await _loadUrl();
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -122,23 +127,90 @@ class _EmployeeInitialRegistrationPageState
     }
   }
 
+  Future<void> _loadUrl() async {
+    final repository = _urlRepository;
+    final request = _request;
+    if (repository == null || request == null || !_current()) {
+      if (mounted) {
+        setState(() => _urlError = 'URL設定を利用できません。');
+      }
+      return;
+    }
+    try {
+      if (!_urlInitialized) {
+        await repository.initialize(request);
+        _urlInitialized = true;
+      }
+      final before = await repository.read(request);
+      if (!mounted || !_current()) return;
+      setState(() {
+        _urlBefore = before;
+        // Never turn an unread or invalid response into an empty before-value.
+        if (!repository.hasUnknownResult) {
+          _testFlightUrl.text = before.url ?? '';
+        }
+        _urlError = repository.hasUnknownResult
+            ? '前の保存結果を確認してください。再保存はできません。'
+            : before.canSave ? null : 'URL設定の保存は停止中です。';
+      });
+    } catch (_) {
+      if (!mounted || !_current()) return;
+      setState(() {
+        _urlBefore = null;
+        _urlError = 'URL設定を確認できません。保存せず管理者に確認してください。';
+      });
+    }
+  }
+
   Future<void> _saveTestFlightUrl() async {
-    final repository = _repository;
-    if (repository == null || _savingUrl || !_current()) return;
+    final repository = _urlRepository;
+    final request = _request;
+    final before = _urlBefore;
+    if (repository == null || request == null || before == null ||
+        _savingUrl || !_current() || !before.canSave || repository.hasUnknownResult) {
+      return;
+    }
     setState(() => _savingUrl = true);
     try {
-      await repository.saveTestFlightUrl(
-        _testFlightUrl.text,
-        request: _request,
-      );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('TestFlight URLを保存しました')));
+      final status = await repository.save(request, before, _testFlightUrl.text);
+      if (!mounted || !_current()) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+        status == 'saved' ? 'TestFlight URLを保存しました' : '設定が変更されています。最新の値を確認してください。',
+      )));
+      await _loadUrl();
     } catch (error) {
-      if (!mounted) return;
-      setState(() => _error = error.toString().replaceFirst('Bad state: ', ''));
+      if (mounted && _current()) {
+        setState(() => _urlError = error.toString().replaceFirst('Bad state: ', ''));
+      }
     } finally {
-      if (mounted) setState(() => _savingUrl = false);
+      if (mounted) {
+        setState(() => _savingUrl = false);
+      }
+    }
+  }
+
+  Future<void> _inspectUrlResult() async {
+    final repository = _urlRepository;
+    final request = _request;
+    if (repository == null || request == null || !_current() || _savingUrl) {
+      return;
+    }
+    setState(() => _savingUrl = true);
+    try {
+      final status = await repository.inspectUnknownResult(request);
+      if (!mounted || !_current()) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+        status == 'saved' ? '保存結果を確認しました' : '設定競合で保存されていません。最新の値を確認してください。',
+      )));
+      await _loadUrl();
+    } catch (error) {
+      if (mounted && _current()) {
+        setState(() => _urlError = error.toString().replaceFirst('Bad state: ', ''));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _savingUrl = false);
+      }
     }
   }
 
@@ -294,6 +366,8 @@ class _EmployeeInitialRegistrationPageState
                           const SizedBox(height: 12),
                           TextField(
                             controller: _testFlightUrl,
+                            enabled: _current() && _urlBefore?.canSave == true &&
+                                _urlRepository?.hasUnknownResult == false && !_savingUrl,
                             keyboardType: TextInputType.url,
                             autocorrect: false,
                             decoration: const InputDecoration(
@@ -305,10 +379,17 @@ class _EmployeeInitialRegistrationPageState
                           ),
                           const SizedBox(height: 10),
                           FilledButton.icon(
-                            onPressed: _savingUrl ? null : _saveTestFlightUrl,
+                            onPressed: _savingUrl || !_current() ||
+                                _urlBefore?.canSave != true ||
+                                _urlRepository?.hasUnknownResult != false
+                                ? null : _saveTestFlightUrl,
                             icon: const Icon(Icons.save_outlined),
-                            label: Text(_savingUrl ? '保存中…' : 'URLを保存'),
+                            label: Text(_savingUrl ? '確認中…' : 'URLを保存'),
                           ),
+                          if (_urlError != null) Text(_urlError!),
+                          if (_urlRepository?.hasUnknownResult == true)
+                            TextButton(onPressed: _savingUrl || !_current() ? null : _inspectUrlResult,
+                              child: const Text('URLの保存結果を確認')),
                         ],
                       ),
                     ),
