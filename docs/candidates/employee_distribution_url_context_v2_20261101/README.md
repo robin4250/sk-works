@@ -1,0 +1,15 @@
+# Employee distribution URL V2 — review only
+
+This candidate has **no production authorization**. Its private control starts OFF. It neither changes nor stops the existing URL RPCs, Edge issuer, referral settings, master feature keys or company permissions. It does not configure a real participation URL or deliver an invitation.
+
+The initial-registration page reads employees separately from URL capability. If V2 is absent, OFF or malformed, URL saving remains unavailable. It never falls back to the legacy first-membership writer or turns an unread value into an empty saved setting. The existing invitation and company-link secondary authentication stays unchanged; this settings operation adds no new password scope.
+
+Read, save and result require a current live session, account access, exactly one membership in the selected company and a current owner/admin role. The nullable raw URL and database timestamp are compared before writing only `employee_testflight_url` and `updated_at`. This version supports setting a canonical participation URL; it has no clear operation. A global operation ID and immutable receipt are committed atomically with the setting update. Conflicts also receive receipts.
+
+Lock order is control → live account/session → membership → company → global operation. OFF rejects every save, including a duplicate save. Result lookup uses the current authorized session and separately verifies the receipt's original session and fingerprint; it remains available after OFF and after the old session expires. Missing receipts remain unresolved. The client persists only operation identity and hashes, never a bearer, password or URL payload, and never automatically resends an uncertain save.
+
+`session-baseline.fixture.sql` contains saved helper definitions in a synthetic Auth schema. Native verification uses PostgreSQL 17 and synthetic identities. Neither it nor SDK HTTP fixtures prove current production Auth, permissions, Edge content or TestFlight build availability.
+
+Before any production proposal, the owner must independently qualify the exact current helper definitions, schema/default privileges, required extension function, company columns, policies/triggers and the existing writer/Edge compatibility. The source guard is a minimum rejection barrier, not a completed production catalog qualification. Preserve a private before-value and dependency snapshot, use a specifically approved source hash, inspect the OFF state and object ACLs after installation, and obtain separate explicit approval before enabling this new writer or saving a real URL.
+
+Stopping new V2 writes means setting only its private control OFF. Result lookup and receipts remain available. Do not delete used receipts or change original sessions. Any unused-only removal plan must first prove zero receipts and exact current module definitions; no destructive rollback is included here. Legacy writers require their own coordinated adoption plan and are not stopped by this control.

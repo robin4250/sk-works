@@ -131,7 +131,9 @@ class _EmployeeInitialRegistrationPageState
     final repository = _urlRepository;
     final request = _request;
     if (repository == null || request == null || !_current()) {
-      if (mounted) setState(() => _urlError = 'URL設定を利用できません。');
+      if (mounted) {
+        setState(() => _urlError = 'URL設定を利用できません。');
+      }
       return;
     }
     try {
@@ -163,7 +165,9 @@ class _EmployeeInitialRegistrationPageState
     final request = _request;
     final before = _urlBefore;
     if (repository == null || request == null || before == null ||
-        _savingUrl || !_current() || !before.canSave || repository.hasUnknownResult) return;
+        _savingUrl || !_current() || !before.canSave || repository.hasUnknownResult) {
+      return;
+    }
     setState(() => _savingUrl = true);
     try {
       final status = await repository.save(request, before, _testFlightUrl.text);
@@ -177,14 +181,18 @@ class _EmployeeInitialRegistrationPageState
         setState(() => _urlError = error.toString().replaceFirst('Bad state: ', ''));
       }
     } finally {
-      if (mounted) setState(() => _savingUrl = false);
+      if (mounted) {
+        setState(() => _savingUrl = false);
+      }
     }
   }
 
   Future<void> _inspectUrlResult() async {
     final repository = _urlRepository;
     final request = _request;
-    if (repository == null || request == null || !_current() || _savingUrl) return;
+    if (repository == null || request == null || !_current() || _savingUrl) {
+      return;
+    }
     setState(() => _savingUrl = true);
     try {
       final status = await repository.inspectUnknownResult(request);
@@ -198,7 +206,9 @@ class _EmployeeInitialRegistrationPageState
         setState(() => _urlError = error.toString().replaceFirst('Bad state: ', ''));
       }
     } finally {
-      if (mounted) setState(() => _savingUrl = false);
+      if (mounted) {
+        setState(() => _savingUrl = false);
+      }
     }
   }
 

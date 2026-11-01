@@ -112,7 +112,9 @@ class EmployeeDistributionUrlRepository {
       EmployeeDistributionUrlSnapshot before, String value) async {
     request.check();
     final url = employeeInviteTestFlightUrl(value);
-    if (url == null || !before.canSave) throw StateError('URLを保存できません。設定状態と参加URLを確認してください。');
+    if (url == null || !before.canSave) {
+      throw StateError('URLを保存できません。設定状態と参加URLを確認してください。');
+    }
     if (_preferences == null) throw StateError('URL設定の準備ができていません。');
     await _preferences!.reload();
     request.check();
@@ -134,7 +136,7 @@ class EmployeeDistributionUrlRepository {
       final raw = await _call(request, 'save', operation: operation, payload: {
         'before_url': before.url, 'before_updated_at': before.updatedAt, 'url': url,
       });
-      return _accept(request, raw);
+      return await _accept(request, raw);
     } finally {
       _active.remove(key);
     }
