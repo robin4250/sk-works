@@ -146,7 +146,9 @@ void main() {
         expect(find.text(credential), findsOneWidget);
         await tester.runAsync(() async {
           if (failure == 'error') { events.addError(StateError('synthetic tracking failure')); }
-          else { await events.close(); }
+          // UI listeners run in the widget zone. Pump that zone before waiting
+          // for close completion; awaiting it inside runAsync deadlocks delivery.
+          else { unawaited(events.close()); }
           await Future<void>.delayed(Duration.zero);
         });
         await tester.pumpAndSettle();
