@@ -150,12 +150,16 @@ void main() {
         final shareLabel = initialPage ? 'LINE・メッセージ等で共有' : 'SMS・メッセージなどで共有';
         await tester.scrollUntilVisible(find.text(shareLabel), 200,
             maxScrolls: 30, scrollable: scrollable);
-        await tester.tap(find.text(shareLabel));
+        await tester.pumpAndSettle();
+        expect(find.text(shareLabel).hitTestable(), findsOneWidget);
+        await tester.tap(find.text(shareLabel).hitTestable());
         await tester.pumpAndSettle();
         final smsLabel = initialPage ? 'この従業員へSMSを作成' : 'SMS送信';
         await tester.scrollUntilVisible(find.text(smsLabel), -200,
             maxScrolls: 30, scrollable: scrollable);
-        await tester.tap(find.text(smsLabel));
+        await tester.pumpAndSettle();
+        expect(find.text(smsLabel).hitTestable(), findsOneWidget);
+        await tester.tap(find.text(smsLabel).hitTestable());
         await tester.pumpAndSettle();
         final expected = employeeInviteDeliveryMessage(
           name: 'Synthetic Employee',
