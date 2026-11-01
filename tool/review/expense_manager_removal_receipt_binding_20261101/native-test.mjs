@@ -66,7 +66,7 @@ try{
  const observer=new Client({...config,connectionTimeoutMillis:5000,query_timeout:17000});clients.push(observer);await observer.connect();
  await observer.query("set statement_timeout='15s';set lock_timeout='4s'");
  assert.equal((await observer.query('select current_user role')).rows[0].role,'postgres');
- async function waitForLock(pid,blocker){for(let i=0;i<100;i++){await observer.query('select pg_stat_clear_snapshot()');const a=(await observer.query('select wait_event_type,pg_blocking_pids(pid) blockers from pg_stat_activity where pid=$1',[pid])).rows[0];if(a?.wait_event_type==='Lock'&&a.blockers.includes(blocker))return true;await new Promise(r=>setTimeout(r,10));}throw Error('Expected competing transaction lock not observed');}
+ async function waitForLock(pid,blocker){for(let i=0;i<100;i++){await observer.query('select pg_stat_clear_snapshot()');const a=(await observer.query('select wait_event_type,pg_blocking_pids(pid) blockers from pg_stat_activity where pid=$1',[pid])).rows[0];if(a?.wait_event_type==='Lock'&&a.blockers.includes(blocker)){console.log(JSON.stringify({observed_pid:pid,expected_blocker:blocker,actual_blockers:a.blockers,wait_event_type:a.wait_event_type,observer_role:'postgres'}));return true;}await new Promise(r=>setTimeout(r,10));}throw Error('Expected competing transaction lock not observed');}
  const pid=(await c.query('select pg_backend_pid() pid')).rows[0].pid;
  const dpid=(await d.query('select pg_backend_pid() pid')).rows[0].pid;
  // Reservation wins: old prepare passed validation, its INSERT holds new guard lock.
@@ -78,7 +78,7 @@ try{
  // Removal wins: a legacy prepare's earlier validation cannot bypass INSERT guard.
  const late=await claim(106,null);await actor(info.manager,info.sid);await c.query('begin');
  await c.query('select public.expense_manager_remove($1,$2,$3,1,$4,$5)',[id(1106),info.company,late.claim,info.sid,'race']);
- assert.equal((await c.query('select current_user role')).rows[0].role,'authenticated');
+ const businessRole=(await c.query('select current_user role')).rows[0].role;assert.equal(businessRole,'authenticated');console.log(JSON.stringify({removal_business_role:businessRole}));
  const dp=(await d.query('select pg_backend_pid() pid')).rows[0].pid;
  const inserting=d.query(`insert into private.expense_receipts(claim_id,company_id,applicant_id,created_by,object_path,sha256,size_bytes,mime_type)
  values($1,$2,$3,$4,$5,$6,4,'image/jpeg')`,[late.claim,info.company,info.worker,info.applicant,'after-validation.jpg','d'.repeat(64)]).then(()=>({ok:true}),error=>({error}));
