@@ -19,7 +19,7 @@ function runAsActor(query){
 }
 function reply(res,status,value){res.writeHead(status,{'Content-Type':'application/json'});res.end(JSON.stringify(value));}
 function uuidLiteral(value){assert.match(value,/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i);return "'"+value+"'::uuid";}
-async function body(req){let b='';for await(const c of req){b+=c;assert.ok(Buffer.byteLength(b)<1024);}const value=JSON.parse(b||'{}');assert.ok(value&&!Array.isArray(value)&&typeof value==='object');return value;}
+async function body(req){let b='';for await(const c of req){b+=c;assert.ok(Buffer.byteLength(b)<1024);}const value=JSON.parse(b||'{}');assert.ok(value===null||(!Array.isArray(value)&&typeof value==='object'));return value;}
 const server=http.createServer(async(req,res)=>{
  try{
   assert.equal(req.socket.remoteAddress,'127.0.0.1');
@@ -31,7 +31,7 @@ const server=http.createServer(async(req,res)=>{
   }
   const rpc=/^\/rest\/v1\/rpc\/(ensure_current_user_worker|current_feature_permissions)$/.exec(url.pathname);
   if(req.method==='POST'&&rpc){
-   assert.deepEqual(await body(req),{});assert.equal([...url.searchParams].length,0);
+   assert.deepEqual((await body(req))??{},{});assert.equal([...url.searchParams].length,0);
    const result=runAsActor(`select to_json(public.${rpc[1]}())`);
    trace.push({phase,kind:'rpc',name:rpc[1]});return reply(res,200,result);
   }

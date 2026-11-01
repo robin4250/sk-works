@@ -72,11 +72,11 @@ export function prepare(){
  ('${info.worker}','${info.company}','${info.actor}','employee','Existing retired person','inactive'),
  ('30000000-0000-0000-0000-000000000002','${info.company}','10000000-0000-0000-0000-000000000002','employee','Other person','active'),
  ('30000000-0000-0000-0000-000000000003','20000000-0000-0000-0000-000000000003','10000000-0000-0000-0000-000000000003','employee','Foreign company','active');
- insert into qualification_master(id,company_id,name,issuer,expiry_required,is_active,is_company_custom) values('${info.master}','${info.company}','Synthetic qualification','Synthetic issuer',true,true,false);
+ insert into qualification_master(id,company_id,name,issuer,expiry_required,is_active,is_company_custom) values('${info.master}','${info.company}','Synthetic qualification','Synthetic issuer',true,true,false),('40000000-0000-0000-0000-000000000003','20000000-0000-0000-0000-000000000003','Foreign qualification','Synthetic issuer',true,true,false);
  insert into worker_qualifications values
  ('${info.qualification}','${info.company}','${info.worker}','${info.master}','KEPT-123','2025-01-01','2030-01-01','Synthetic issuer','${info.company}/${info.worker}/front.jpg','${info.company}/${info.worker}/back.jpg',array['${info.company}/${info.worker}/extra.jpg'],'preserved notes','2026-01-01T00:00:00Z','2026-01-02T00:00:00Z'),
  ('50000000-0000-0000-0000-000000000002','${info.company}','30000000-0000-0000-0000-000000000002','${info.master}','OTHER-PERSON',null,null,null,'other-person.jpg',null,array[]::text[],null,now(),now()),
- ('50000000-0000-0000-0000-000000000003','20000000-0000-0000-0000-000000000003','30000000-0000-0000-0000-000000000003','${info.master}','OTHER-COMPANY',null,null,null,'other-company.jpg',null,array[]::text[],null,now(),now());
+ ('50000000-0000-0000-0000-000000000003','20000000-0000-0000-0000-000000000003','30000000-0000-0000-0000-000000000003','40000000-0000-0000-0000-000000000003','OTHER-COMPANY',null,null,null,'other-company.jpg',null,array[]::text[],null,now(),now());
  alter table company_members enable row level security;alter table workers enable row level security;alter table qualification_master enable row level security;alter table worker_qualifications enable row level security;
  ${selectedPolicy(core,'company_members_self_read')}
  ${selectedPolicy(core,'"company members can read workers"')}
