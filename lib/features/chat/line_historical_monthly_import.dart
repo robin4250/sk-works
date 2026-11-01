@@ -3,6 +3,7 @@ import 'line_history_parser.dart';
 import 'line_import_draft.dart';
 import 'line_reading_rules.dart';
 import 'line_reading_rule_application.dart';
+import 'line_saved_monthly_merge.dart';
 
 /// The supplied history ends in September 2026: 33 editable months.
 List<DateTime> lineHistoricalMonths() => List.unmodifiable(
@@ -37,7 +38,7 @@ lineMonthlyCandidates(List<Map<String, dynamic>> history, DateTime month,
   final extracted = LineImportDraft.extract(
     lineCanonicalImportPosts(history, previous: previous), month, previous: previous, readingLabels: readingRules.where((r) =>
       r.kind != LineReadingKind.site && r.kind != LineReadingKind.worker).map((r) => r.phrase));
-  final rows = [for (final row in extracted.rows) Map<String, dynamic>.from(row)];
+  var rows = [for (final row in extracted.rows) Map<String, dynamic>.from(row)];
   // Interpret every worker against the same original names before any aliases.
   final readingRows = [for (final row in rows) Map<String, dynamic>.from(row)];
   // A saved row may contain an older explicit correction without a marker.
@@ -77,8 +78,7 @@ lineMonthlyCandidates(List<Map<String, dynamic>> history, DateTime month,
   // Recheck after resolving names to IDs: an old edited row has an ID,
   // while a newly imported copy initially has only the worker's name.
   final counts = <String, int>{};
-  String workerDay(Map<String, dynamic> row) =>
-    '${row['work_date']}:${row['worker_id'] ?? row['worker_name']}';
+  String workerDay(Map<String, dynamic> row) => lineWorkRecordIdentity(row);
   for (final row in rows.where((row) => row['excluded'] != true)) {
     final key = workerDay(row);
     counts[key] = (counts[key] ?? 0) + 1;
@@ -86,9 +86,10 @@ lineMonthlyCandidates(List<Map<String, dynamic>> history, DateTime month,
   for (final row in rows.where((row) => row['excluded'] != true)) {
     if ((counts[workerDay(row)] ?? 0) > 1) {
       row['confirmed'] = false;
-      row['review_reason'] = '同日の作業員が複数行あります。重複・複数現場を確認してください。';
+      row['review_reason'] = '同日の同じ勤務が複数行あります。重複・訂正を確認してください。';
     }
   }
+  rows = lineReconcileSavedMonthlyRows(rows, previous);
   final used = <dynamic>{for (final row in rows) row['source_message_id'],
     for (final row in rows) if (row['completion_source_message_id'] != null) row['completion_source_message_id']};
   final sources = history.where((source) {

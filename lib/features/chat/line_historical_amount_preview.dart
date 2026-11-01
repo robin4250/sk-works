@@ -11,9 +11,13 @@ int lineHistoricalDefaultDayRate(String category) => switch (category) {
 /// A local estimate only: never marks a candidate confirmed or writes an invoice.
 /// Rounds category lines, then welfare and tax per site, like the invoice bridge.
 class LineHistoricalAmountPreview {
-  const LineHistoricalAmountPreview(this.sites, this.pendingRows, this.incompleteRows, this.calculations);
+  const LineHistoricalAmountPreview(this.sites, this.pendingRows, this.incompleteRows, this.calculations,
+      {this.workDates = const [], this.includedRows = 0});
   final List<({String name, int base, int welfare, int tax, int total})> sites;
   final int pendingRows, incompleteRows;
+  /// Dates of exactly the rows included in the reference calculation below.
+  final List<String> workDates;
+  final int includedRows;
   final List<SiteInvoiceCalculation> calculations;
   InvoiceCalculationResult invoice(DateTime month) => InvoiceEngine.calculate(
     customerId: '取引先未確認（参考）', billingPeriod: '${month.year}年${month.month}月',
@@ -27,7 +31,8 @@ class LineHistoricalAmountPreview {
 LineHistoricalAmountPreview lineHistoricalAmountPreview(List<Map<String, dynamic>> rows) {
   const formula = RateFormulaSettings();
   final groups = <String, ({String site, String name, String category, List<double> quantities, Map<String, int> allowances})>{};
-  var pending = 0, incomplete = 0;
+  var pending = 0, incomplete = 0, included = 0;
+  final dates = <String>{};
   for (final row in rows.where((row) => row['excluded'] != true)) {
     if (row['confirmed'] != true) pending++;
     double? quantity(String key) {
@@ -51,6 +56,9 @@ LineHistoricalAmountPreview lineHistoricalAmountPreview(List<Map<String, dynamic
       incomplete++;
       continue;
     }
+    included++;
+    final date = row['work_date'];
+    if (date is String) dates.add(date);
     final group = groups.putIfAbsent('$site:$category', () => (
       site: site, name: name != null && name.isNotEmpty ? name : original,
       category: category!, quantities: [0.0, 0.0, 0.0], allowances: <String, int>{}));
@@ -84,5 +92,6 @@ LineHistoricalAmountPreview lineHistoricalAmountPreview(List<Map<String, dynamic
       detailMode: InvoiceDetailMode.siteBreakdownOnInvoice, sites: [site], taxRateBps: 1000).taxYen,
     total: InvoiceEngine.calculate(customerId: '参考', billingPeriod: '参考',
       detailMode: InvoiceDetailMode.siteBreakdownOnInvoice, sites: [site], taxRateBps: 1000).grandTotalYen,
-  )], pending, incomplete, calculations);
+  )], pending, incomplete, calculations,
+    workDates: List.unmodifiable(dates.toList()..sort()), includedRows: included);
 }

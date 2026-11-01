@@ -1,0 +1,41 @@
+name: LINE saved monthly merge
+on:
+  pull_request:
+    paths:
+      - 'lib/features/chat/line_*'
+      - 'test/line_*'
+      - '.github/workflows/line-saved-monthly-merge.yml'
+permissions:
+  contents: read
+jobs:
+  saved-monthly-merge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: '3.47.5', channel: stable, cache: true}
+      - run: flutter pub get --enforce-lockfile
+      - run: >-
+          flutter analyze lib/features/chat/line_saved_monthly_merge.dart
+          lib/features/chat/line_saved_monthly_merge_page.dart
+          lib/features/chat/line_saved_monthly_merge_repository.dart
+          lib/features/chat/line_historical_invoice_page.dart
+          lib/features/chat/line_historical_monthly_import.dart
+          lib/features/chat/line_historical_amount_preview.dart
+          lib/features/chat/line_import_draft.dart
+          test/line_saved_monthly_merge_test.dart
+          test/line_saved_monthly_merge_page_test.dart
+          test/line_saved_monthly_merge_repository_test.dart
+          test/line_saved_monthly_merge_integration_test.dart
+      - run: >-
+          flutter test test/line_saved_monthly_merge_test.dart
+          test/line_saved_monthly_merge_page_test.dart
+          test/line_saved_monthly_merge_repository_test.dart
+          test/line_saved_monthly_merge_integration_test.dart
+          test/line_historical_monthly_import_test.dart
+          test/line_historical_amount_preview_test.dart
+          test/line_import_draft_test.dart
+          test/line_monthly_table_page_test.dart
+          --reporter expanded

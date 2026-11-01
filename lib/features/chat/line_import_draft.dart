@@ -10,6 +10,14 @@ String lineSourceFingerprint(Map<String, dynamic> source) => sha256.convert(utf8
   source['id'], source['body'], source['sent_at'], source['sender_display_name'],
 ]))).toString();
 
+/// Distinct sites and shifts on one day are separate work records.
+String lineWorkRecordIdentity(Map<String, dynamic> row) => jsonEncode([
+  row['work_date'], row['worker_id'] ?? row['worker_name'],
+  row['site_id'] ?? row['site_name'], row['work_category'],
+  row['shift_id'], row['shift_start'], row['shift_end'],
+  row['start_time'], row['end_time'],
+]);
+
 class LineImportDraft {
   const LineImportDraft(this.rows, this.unreadableSourceIds);
   final List<Map<String, dynamic>> rows;
@@ -38,6 +46,12 @@ class LineImportDraft {
       final matches = <Map<String, dynamic>>[];
       for (var next = i + 1; next < ordered.length; next++) {
         final candidate = ordered[next].value;
+        // A copied group's reporter is not the destination reporter, even if
+        // their display names match. Keep completion evidence in its origin.
+        if ((source['saved_source_origin_group_id'] ?? source['saved_source_group_id']) !=
+            (candidate['saved_source_origin_group_id'] ?? candidate['saved_source_group_id'])) {
+          continue;
+        }
         if (candidate['sender_display_name'] != sender) continue;
         final report = candidate['body'];
         if (report is! String) continue;
@@ -135,15 +149,15 @@ class LineImportDraft {
     }
     result.sort((a, b) => '${a['work_date']}:${a['worker_name']}:${a['row_id']}'.compareTo('${b['work_date']}:${b['worker_name']}:${b['row_id']}'));
     final keys = <String, int>{};
-    for (final row in result) {
-      final key = '${row['work_date']}:${row['worker_id'] ?? row['worker_name']}';
+    for (final row in result.where((row) => row['excluded'] != true)) {
+      final key = lineWorkRecordIdentity(row);
       keys[key] = (keys[key] ?? 0) + 1;
     }
-    for (final row in result) {
-      final key = '${row['work_date']}:${row['worker_id'] ?? row['worker_name']}';
+    for (final row in result.where((row) => row['excluded'] != true)) {
+      final key = lineWorkRecordIdentity(row);
       if (keys[key]! > 1) {
         row['confirmed'] = false;
-        row['review_reason'] = '同日の作業員が複数行あります。重複・複数現場を確認してください。';
+        row['review_reason'] = '同日の同じ勤務が複数行あります。重複・訂正を確認してください。';
       }
     }
     return LineImportDraft(List.unmodifiable(result), List.unmodifiable(unreadable));

@@ -6,6 +6,16 @@ void main() {
   Map<String, dynamic> source(String body, [String id = 'post-one']) => {
     'id': id, 'body': body, 'sent_at': '2026-10-01T00:00:00Z', 'sender_display_name': '投稿者',
   };
+  test('January reports of December work retain the work year and explicit years', () {
+    final post = {...source('12月31日\n現場A 山田\n現場A 定時'),
+      'sent_at': '2027-01-02T00:00:00Z'};
+    expect(LineImportDraft.extract([post], DateTime(2026, 12)).rows.single['work_date'],
+      '2026-12-31');
+    expect(LineImportDraft.extract([post], DateTime(2027, 1)).rows, isEmpty);
+    final explicit = {...post, 'body': '2027年12月31日\n現場A 山田\n現場A 定時'};
+    expect(LineImportDraft.extract([explicit], DateTime(2027, 12)).rows.single['work_date'],
+      '2027-12-31');
+  });
   test('extracts explicit date/site/workers and status without automatically confirming identities', () {
     final result = LineImportDraft.extract([source('10月1日\n現場A 山田、佐藤\n現場A 定時 残業1 早出0.5 鉄骨')], month);
     expect(result.rows, hasLength(2));
@@ -70,11 +80,11 @@ void main() {
       expect(result.unreadableSourceIds, ['post-one']);
     }
   });
-  test('worker-day duplicates remain visible for review rather than silently merging work', () {
+  test('different sites on one day remain distinct without a false duplicate warning', () {
     final result = LineImportDraft.extract([source('10月1日\n現場A 山田\n現場A 定時'), source('10月1日\n現場B 山田\n現場B 定時', 'post-two')], month);
     expect(result.rows, hasLength(2));
     expect(result.rows.every((row) => row['confirmed'] == false), isTrue);
-    expect(result.rows.every((row) => row['review_reason'].toString().contains('同日')), isTrue);
+    expect(result.rows.any((row) => row['review_reason'].toString().contains('複数行')), isFalse);
   });
   test('selected month only and unreadable messages are reported', () {
     final result = LineImportDraft.extract([source('9月30日\n現場A 山田\n現場A 定時'), source('おはようございます', 'greeting')], month);

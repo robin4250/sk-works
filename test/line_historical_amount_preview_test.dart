@@ -9,6 +9,18 @@ void main() {
     'overtime_hours': ot, 'early_hours': 0, 'allowance_names': <String>[],
     'confirmed': false,
   };
+  test('calculated dates and count use precisely the reference amount rows', () {
+    final result = lineHistoricalAmountPreview([
+      {...row(), 'work_date': '2026-10-01'},
+      {...row(), 'work_date': '2026-10-20'},
+      {...row(site: 'B'), 'work_date': '2026-10-20'},
+      {...row(), 'work_date': '2026-10-30', 'excluded': true},
+      {...row(), 'work_date': '2026-10-07', 'man_days': null},
+    ]);
+    expect(result.workDates, ['2026-10-01', '2026-10-20']);
+    expect(result.includedRows, 3);
+    expect(result.incompleteRows, 1);
+  });
   test('specified daily overtime and allowances produce per-site invoice estimate', () {
     final result = lineHistoricalAmountPreview([
       {...row(ot: 2), 'allowance_names': ['PC', 'PC手当', '鉄骨手当']},
