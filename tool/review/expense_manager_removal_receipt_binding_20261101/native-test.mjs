@@ -63,7 +63,10 @@ try{
  pass('post-removal legacy INSERT rejected; prior validation is not admission');
  const d=new Client({...config,connectionTimeoutMillis:5000,query_timeout:17000});clients.push(d);await d.connect();
  await d.query("set statement_timeout='15s';set lock_timeout='4s'");
- async function waitForLock(pid,blocker){for(let i=0;i<100;i++){await d.query('select pg_stat_clear_snapshot()');const a=(await d.query('select wait_event_type,pg_blocking_pids(pid) blockers from pg_stat_activity where pid=$1',[pid])).rows[0];if(a?.wait_event_type==='Lock'&&a.blockers.includes(blocker))return;await new Promise(r=>setTimeout(r,10));}throw Error('Expected competing transaction lock not observed');}
+ const observer=new Client({...config,connectionTimeoutMillis:5000,query_timeout:17000});clients.push(observer);await observer.connect();
+ await observer.query("set statement_timeout='15s';set lock_timeout='4s'");
+ assert.equal((await observer.query('select current_user role')).rows[0].role,'postgres');
+ async function waitForLock(pid,blocker){for(let i=0;i<100;i++){await observer.query('select pg_stat_clear_snapshot()');const a=(await observer.query('select wait_event_type,pg_blocking_pids(pid) blockers from pg_stat_activity where pid=$1',[pid])).rows[0];if(a?.wait_event_type==='Lock'&&a.blockers.includes(blocker))return true;await new Promise(r=>setTimeout(r,10));}throw Error('Expected competing transaction lock not observed');}
  const pid=(await c.query('select pg_backend_pid() pid')).rows[0].pid;
  const dpid=(await d.query('select pg_backend_pid() pid')).rows[0].pid;
  // Reservation wins: old prepare passed validation, its INSERT holds new guard lock.
@@ -75,10 +78,11 @@ try{
  // Removal wins: a legacy prepare's earlier validation cannot bypass INSERT guard.
  const late=await claim(106,null);await actor(info.manager,info.sid);await c.query('begin');
  await c.query('select public.expense_manager_remove($1,$2,$3,1,$4,$5)',[id(1106),info.company,late.claim,info.sid,'race']);
+ assert.equal((await c.query('select current_user role')).rows[0].role,'authenticated');
  const dp=(await d.query('select pg_backend_pid() pid')).rows[0].pid;
  const inserting=d.query(`insert into private.expense_receipts(claim_id,company_id,applicant_id,created_by,object_path,sha256,size_bytes,mime_type)
  values($1,$2,$3,$4,$5,$6,4,'image/jpeg')`,[late.claim,info.company,info.worker,info.applicant,'after-validation.jpg','d'.repeat(64)]).then(()=>({ok:true}),error=>({error}));
- let blocked=false;for(let i=0;i<100;i++){await c.query('select pg_stat_clear_snapshot()');const waiting=(await c.query('select wait_event_type,pg_blocking_pids(pid) blockers from pg_stat_activity where pid=$1',[dp])).rows[0];if(waiting?.wait_event_type==='Lock'&&waiting.blockers.includes(pid)){blocked=true;break;}await new Promise(r=>setTimeout(r,10));}
+ const blocked=await waitForLock(dp,pid);
  assert.equal(blocked,true);await c.query('commit');assert.equal((await inserting).error?.code,'55000');pass('two connections: removal-first legacy reservation waits then rejects');
  console.log(JSON.stringify({checks,deployable:false,realStorage:false,realGoTrue:false,financialReaderQualified:false}));
 }finally{await Promise.allSettled(clients.map(x=>x.end()));}
