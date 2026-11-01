@@ -60,9 +60,9 @@ void main(){
       await tester.pumpWidget(MaterialApp(home:TradeDocumentOutputPage(payload:payload,canonicalBytes:canonical,requireScope:(){checks++;})));
       await tester.pumpAndSettle();
       final sequence=<TradeDocumentOutputLayout,String>{
-        TradeDocumentOutputLayout.a3Landscape:'A3横 1枚（表面左・条項右）',
+        TradeDocumentOutputLayout.a3Landscape:'A3横・見開き1枚（2ページを左右に配置）',
         TradeDocumentOutputLayout.a4Duplex:'A4 表裏1枚（長辺とじ推奨）',
-        TradeDocumentOutputLayout.a4TwoPages:'A4縦 2枚（表面・条項）',
+        TradeDocumentOutputLayout.a4TwoPages:'A4縦・2ページ（帳票＋契約条項）',
       };
       final actualOrder=<TradeDocumentOutputLayout>[];
       for(final choice in sequence.entries){
