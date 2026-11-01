@@ -5,6 +5,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../auth/auth_error_message.dart';
+import '../auth/secondary_reset_session_guard.dart';
+import '../auth/app_auth_mutation_gateway.dart';
 import '../account_deletion/account_deletion_page.dart';
 import '../help/manual_content.dart';
 import '../help/manual_library_page.dart';
@@ -15,7 +17,7 @@ import '../people/own_document_registration_page.dart';
 import '../qualifications/own_qualification_registration_page.dart';
 import 'profile_repository.dart';
 import '../../data/supabase_backend.dart';
-import 'profile_own_bank_entry.dart';
+import 'personal_details_page.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({
@@ -55,6 +57,8 @@ class _ProfilePageState extends State<ProfilePage> {
   bool _loading = true;
   bool _saving = false;
   String? _error;
+  String? _personnelError;
+  int _loadRevision = 0;
 
   @override
   void initState() {
@@ -79,14 +83,6 @@ class _ProfilePageState extends State<ProfilePage> {
     super.dispose();
   }
 
-  ProfileOwnBankScope? _ownBankScope() {
-    if (!mounted || _loading || !SupabaseBackend.isInitialized) return null;
-    final session = SupabaseBackend.client.auth.currentSession;
-    final worker = _workerId, company = _data?.companyId;
-    if (session == null || worker == null || company == null) return null;
-    return ProfileOwnBankScope(session: session, workerId: worker, companyId: company);
-  }
-
   Future<void> _load() async {
     final repository = _repository;
     if (repository == null) {
@@ -102,14 +98,28 @@ class _ProfilePageState extends State<ProfilePage> {
       _error = null;
     });
 
+    final revision = ++_loadRevision;
+    final client = SupabaseBackend.client;
+    final initialIdentity = SecondaryResetSessionGuard.identityOf(client.auth.currentSession);
+    SecondaryResetSessionGuard? guard;
+    final owner = AppAuthMutationGateway.forClient(client);
     try {
-      final values = await Future.wait([
-        repository.load(),
-        repository.loadPersonnelProfile(),
-      ]);
-      final data = values[0] as ProfileData;
-      final personnel = values[1] as Map<String, dynamic>?;
-      if (!mounted) return;
+      guard = SecondaryResetSessionGuard(currentSession: () => client.auth.currentSession,
+        changes: client.auth.onAuthStateChange);
+      final epoch = await owner.externalFlowAdmission();
+      if (epoch == null) throw StateError('ログイン状態を確認してください。');
+      final data = await repository.load();
+      Map<String, dynamic>? personnel;
+      String? personnelError;
+      if (data.companyAvailable && data.companyId.isNotEmpty) {
+        try { personnel = await repository.loadPersonnelProfile(); }
+        catch (_) { personnelError = '会社の従業員情報を取得できません。個人情報とは別に再読み込みしてください。'; }
+      } else if (!data.companyAvailable) {
+        personnelError = '会社情報を取得できません。個人情報は引き続き利用できます。';
+      }
+      await guard.checkAfterQueuedEvents();
+      if (!mounted || revision != _loadRevision || !owner.isExternalFlowCurrent(epoch) ||
+          initialIdentity != SecondaryResetSessionGuard.identityOf(client.auth.currentSession)) {return;}
       _name.text = data.displayName;
       _phone.text = ProfileRepository.domesticJapanesePhoneValue(data.phone);
       _personalSkoId.text = data.personalSkoId;
@@ -150,15 +160,16 @@ class _ProfilePageState extends State<ProfilePage> {
           : <EditableFamilyMember>[];
       setState(() {
         _data = data;
+        _personnelError = personnelError;
         _loading = false;
       });
-    } catch (error) {
-      if (!mounted) return;
+    } catch (_) {
+      if (!mounted || revision != _loadRevision) return;
       setState(() {
         _loading = false;
-        _error = error.toString();
+        _error = 'プロフィールを取得できません。ログイン状態を確認して再読み込みしてください。';
       });
-    }
+    } finally { await guard?.close(); }
   }
 
   Future<void> _changePersonalSkoId() async {
@@ -563,7 +574,16 @@ class _ProfilePageState extends State<ProfilePage> {
         actions: const [SkoNotificationBell()],
       ),
       body: SafeArea(
-        child: _loading
+        child: Column(children: [
+          ListTile(key: const Key('profile-personal-details-entry'),
+            leading: const Icon(Icons.person_outline),
+            title: const Text('個人プロフィール（本人の誕生日・個人口座）'),
+            subtitle: const Text('所属会社や会社書類とは別の本人情報'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+              builder: (_) => const PersonalDetailsPage())),
+          ),
+          Expanded(child: _loading
             ? const Center(child: CircularProgressIndicator())
             : _error != null
                 ? Center(
@@ -586,6 +606,10 @@ class _ProfilePageState extends State<ProfilePage> {
                 : ListView(
                     padding: const EdgeInsets.all(16),
                     children: [
+                      if (_personnelError != null) Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Text(_personnelError!, key: const Key('profile-company-unavailable')),
+                      ),
                       Center(
                         child: Stack(
                           children: [
@@ -876,13 +900,6 @@ class _ProfilePageState extends State<ProfilePage> {
                       Card(
                         child: Column(
                           children: [
-                            ProfileOwnBankEntry(
-                              workerId: _workerId,
-                              companyId: data?.companyId,
-                              currentScope: _ownBankScope,
-                              onReturned: _load,
-                            ),
-                            const Divider(height: 1),
                             ListTile(
                               leading: const CircleAvatar(
                                 child: Icon(Icons.badge_outlined),
@@ -962,7 +979,8 @@ class _ProfilePageState extends State<ProfilePage> {
                         label: Text(SkoLanguageController.isEnglish ? (_saving ? 'Saving...' : 'Save Profile') : (_saving ? '保存中...' : 'プロフィールを保存')),
                       ),
                     ],
-                  ),
+                  )),
+        ]),
       ),
     );
   }

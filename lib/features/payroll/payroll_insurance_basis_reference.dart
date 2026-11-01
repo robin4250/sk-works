@@ -100,6 +100,18 @@ class PayrollInsuranceIncomeHistory {
   }
 }
 
+/// Server declares the canonical personal UID birthday source, never raw DOB.
+/// Missing support is preparation, unknown declarations are errors.
+String? payrollBirthSource(Map raw) {
+  if (!raw.containsKey('birth_source')) return null;
+  final source = raw['birth_source'];
+  if (source != 'personal_uid_v1' && source != 'company_worker_unlinked_v1') {
+    throw const FormatException('誕生日の参照元を確認できません');
+  }
+  return source as String;
+}
+bool payrollUsesPersonalBirthSource(Map raw) => payrollBirthSource(raw) == 'personal_uid_v1';
+
 typedef PayrollInsuranceBasisRpc = Future<dynamic> Function(
   String name, Map<String, dynamic> parameters);
 
@@ -113,12 +125,17 @@ Future<dynamic> readPayrollTaxConditionsWithInsuranceReference(
       result['company_id'] == scope['p_company_id'] &&
       result['worker_id'] == scope['p_worker_id'];
   if (!matches(raw)) throw const FormatException('本人・会社の計算条件が一致しません');
-  if ((raw as Map)['insurance_basis_reference_contract_version'] != 1) return raw;
+  final source = payrollBirthSource(raw as Map);
+  if (raw['insurance_basis_reference_contract_version'] != 1) return raw;
   final full = await rpc('read_worker_payroll_tax_conditions_with_insurance_reference', scope);
   if (!matches(full) || full is! Map || full['insurance_basis_reference_contract_version'] != 1) {
     throw const FormatException('保存済みの対象期間・平均月収を確認できません');
   }
-  return full;
+  final fullSource = payrollBirthSource(full);
+  if (full.containsKey('birth_source') && fullSource != source) {
+    throw const FormatException('誕生日の参照元が一致しません');
+  }
+  return source != null ? {...full, 'birth_source': source} : full;
 }
 
 /// Uses the authenticated bounded reader; no service credential or direct table read.

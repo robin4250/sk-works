@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
+import 'own_draft_bank_admission.dart';
 
 class PayrollStatementRecord {
   const PayrollStatementRecord({
@@ -18,8 +19,14 @@ class PayrollStatementRecord {
     this.reviewedAt,
     this.workflowState,
     this.revision,
+    this.ownDraftBankPurpose = false,
+    this.ownDraftBankAdmission,
+    this.managementBankHidden = false,
   });
 
+  final bool managementBankHidden;
+  final bool ownDraftBankPurpose;
+  final OwnDraftBankAdmission? ownDraftBankAdmission;
   final int? revision;
   final String? workflowState;
   bool get isDraft => workflowState == 'draft';
@@ -75,10 +82,10 @@ class PayrollStatementRepository {
     return [
       for (final raw in (rows as List<dynamic>))
         if (raw is Map)
-          payrollStatementFromRow(
+          asOwnDraftStatement(payrollStatementFromRow(
             Map<String, dynamic>.from(raw),
             statusById[raw['id']?.toString() ?? ''],
-          ),
+          )),
     ];
   }
 
@@ -94,8 +101,9 @@ String savedPayrollCompanyName(Map<String, dynamic> row,
 
 PayrollStatementRecord payrollStatementFromRow(
   Map<String, dynamic> row,
-  Map<String, dynamic>? review,
-) {
+  Map<String, dynamic>? review, {
+  bool managementBankHidden = false,
+}) {
   final detail = row['detail'] is Map
       ? Map<String, dynamic>.from(row['detail'] as Map)
       : const <String, dynamic>{};
@@ -116,7 +124,8 @@ PayrollStatementRecord payrollStatementFromRow(
     grossPay: (row['gross_pay'] as num?)?.toInt() ?? 0,
     deductions: (row['deductions'] as num?)?.toInt() ?? 0,
     netPay: (row['net_pay'] as num?)?.toInt() ?? 0,
-    detail: detail,
+    detail: managementBankHidden ? {...sanitizeOwnDraftBank(detail),'bank_account':<String,dynamic>{}} : detail,
+    managementBankHidden: managementBankHidden,
     issuedAt: DateTime.tryParse(row['issued_at']?.toString() ?? '')?.toLocal(),
     reviewedAt: DateTime.tryParse(row['reviewed_at']?.toString() ??
         detail['reviewed_at']?.toString() ?? ''),
@@ -152,7 +161,29 @@ PayrollStatementRecord payrollStatementWithDraftReview(
     reviewedAt: original.reviewedAt,
     revision: original.revision,
     workflowState: original.workflowState,
+    managementBankHidden: original.managementBankHidden,
+    ownDraftBankPurpose: original.ownDraftBankPurpose,
+    ownDraftBankAdmission: original.ownDraftBankAdmission,
   );
 }
 
 int? strictPayrollRevision(dynamic raw) => raw is int && raw > 0 ? raw : null;
+
+/// Marks ONLY the authenticated self-reader path. Managers/frozen rows retain their original model.
+PayrollStatementRecord asOwnDraftStatement(PayrollStatementRecord source,{OwnDraftBankAdmission? admission}) {
+ if(!source.isDraft)return source;
+ final detail=sanitizeOwnDraftBank(source.detail);
+ if(admission!=null&&admission.permits(source.id,source.revision))detail['bank_account']=admission.bankFor(source.id,source.revision);
+ return PayrollStatementRecord(id:source.id,companyName:source.companyName,workerName:source.workerName,
+  periodStart:source.periodStart,periodEnd:source.periodEnd,grossPay:source.grossPay,deductions:source.deductions,netPay:source.netPay,
+  detail:detail,issuedAt:source.issuedAt,reviewConfirmed:source.reviewConfirmed,reviewedAt:source.reviewedAt,
+  revision:source.revision,workflowState:source.workflowState,ownDraftBankPurpose:true,ownDraftBankAdmission:admission);
+}
+
+/// Explicit manager purpose, never an assertion that the employee has no bank.
+PayrollStatementRecord asManagementBankHiddenStatement(PayrollStatementRecord source) => PayrollStatementRecord(
+ id:source.id,companyName:source.companyName,workerName:source.workerName,periodStart:source.periodStart,periodEnd:source.periodEnd,
+ grossPay:source.grossPay,deductions:source.deductions,netPay:source.netPay,
+ detail:{...sanitizeOwnDraftBank(source.detail),'bank_account':<String,dynamic>{}},issuedAt:source.issuedAt,
+ reviewConfirmed:source.reviewConfirmed,reviewedAt:source.reviewedAt,revision:source.revision,workflowState:source.workflowState,
+ managementBankHidden:true);

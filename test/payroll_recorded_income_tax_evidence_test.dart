@@ -42,6 +42,17 @@ void main() {
     expect(recordedPayrollIncomeTaxEvidence(detail, month: '2026-09-01', displayedAmount: 8000)
         .calculationLines.last, contains('乙欄・従たる給与の申告扶養2人'));
   });
+  test('personal UID producer preserves saved income evidence and never needs raw DOB', () {
+    final detail=saved();
+    final expected=recordedPayrollIncomeTaxEvidence(detail,month:'2026-09-01',displayedAmount:7020);
+    final tax=detail['tax_calculation'] as Map;
+    tax['calculator_version']='payroll-tax-personal-uid-v1';
+    tax['personal_details_basis']={'source_kind':'personal_uid_v1','revision':2,'binding_sha256':'a'*64};
+    final before=jsonEncode(detail);
+    final actual=recordedPayrollIncomeTaxEvidence(detail,month:'2026-09-01',displayedAmount:7020);
+    expect(actual.summary,expected.summary);expect(actual.calculationLines,expected.calculationLines);
+    expect(jsonEncode(detail),before);expect((tax['conditions'] as Map).containsKey('birth_date'),false);
+  });
   test('missing saved operands never invent an actual formula', () {
     for (final key in ['gross_with_adjustments', 'social_yen', 'income_tax_base_yen']) {
       final detail = saved();

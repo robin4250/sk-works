@@ -8,6 +8,7 @@ const recordedPayrollInsuranceNames = <String>[
 const _recordedPayrollTaxCalculators = {
   'payroll-tax-20261010-v1',
   'payroll-tax-20261014-overrides-v1',
+  'payroll-tax-personal-uid-v1',
 };
 
 int? _yen(Object? value) => value is num && value.isFinite &&

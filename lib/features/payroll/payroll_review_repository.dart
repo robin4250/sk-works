@@ -180,7 +180,7 @@ class PayrollReviewRepository {
   PayrollReviewItem _item(Map<String, dynamic> row) {
     return PayrollReviewItem(
       workerId: _payrollWorkerId(row['worker_id']),
-      statement: payrollStatementFromRow(row, null),
+      statement: payrollStatementFromRow(row, null, managementBankHidden:true),
       revision: (row['revision'] as num?)?.toInt() ?? 1,
       reviewChecked: row['review_checked'] == true,
       reviewConfirmed: row['review_confirmed'] == true,

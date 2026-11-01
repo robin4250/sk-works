@@ -15,7 +15,7 @@ void main() {
   };
 
   for (final calculatorVersion in const [
-    'payroll-tax-20261010-v1', 'payroll-tax-20261014-overrides-v1',
+    'payroll-tax-20261010-v1', 'payroll-tax-20261014-overrides-v1', 'payroll-tax-personal-uid-v1',
   ]) {
     test('reads persisted producer premiums when named display fields are absent without mutating data ($calculatorVersion)', () {
       final detail = calculated(calculatorVersion: calculatorVersion);
