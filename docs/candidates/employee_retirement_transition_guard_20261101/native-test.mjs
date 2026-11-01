@@ -77,16 +77,18 @@ sql('drop trigger fixture_before_status on workers;drop function private.fixture
 sql(`update workers set status='inactive' where id='${w}';`);
 sql(actor()+`select set_config('private.allow_reinstatement','true',false);update workers set status='active' where id='${w}';`,{deny:true});
 function child(){const p=spawn('psql',args,{env:process.env});let out='',err='';p.stdout.on('data',b=>out+=b);p.stderr.on('data',b=>err+=b);const done=new Promise(resolve=>p.on('close',code=>resolve({code,out,err})));return {p,done,get out(){return out;}};}
-const a=child();let b;try {a.p.stdin.write(`begin;set application_name='retirement_guard_locker';update workers set status='inactive' where id='${w}';\\echo LOCKED\n`);
+const raceUser='10000000-0000-0000-0000-000000000003',raceWorker='30000000-0000-0000-0000-000000000003';
+sql(`insert into company_members values('${c}','${raceUser}','viewer');insert into workers(id,company_id,user_id,name,status)values('${raceWorker}','${c}','${raceUser}','race-active','active');`);
+const a=child();let b;try {a.p.stdin.write(`begin;set application_name='retirement_guard_locker';update workers set status='inactive' where id='${raceWorker}';\\echo LOCKED\n`);
 const deadline=Date.now()+12000;
 while(!a.out.includes('LOCKED')){assert.ok(Date.now()<deadline,'locker did not acknowledge');await new Promise(r=>setTimeout(r,25));}
 // Temporarily use exact old body again so the existing-frame update attempts reactivation.
 sql(baseline+';');
-b=child();b.p.stdin.end(actor()+`set application_name='retirement_guard_old_ensure';select public.ensure_current_user_worker();`);
+b=child();b.p.stdin.end(actor(raceUser)+`set application_name='retirement_guard_old_ensure';select public.ensure_current_user_worker();`);
 let blocked=false;
 while(Date.now()<deadline){if(sql("select exists(select 1 from pg_stat_activity b join pg_stat_activity a on a.pid=any(pg_blocking_pids(b.pid))where b.application_name='retirement_guard_old_ensure' and a.application_name='retirement_guard_locker');")==='t'){blocked=true;break;}await new Promise(r=>setTimeout(r,25));}
 assert.ok(blocked,'real old ensure wait not observed');
-a.p.stdin.end('commit;');const [ar,br]=await Promise.all([a.done,b.done]);assert.equal(ar.code,0,ar.err);assert.notEqual(br.code,0);assert.match(br.err,/explicit reinstatement is required/);assert.equal(sql(`select status from workers where id='${w}'`),'inactive');checks++;
+a.p.stdin.end('commit;');const [ar,br]=await Promise.all([a.done,b.done]);assert.equal(ar.code,0,ar.err);assert.notEqual(br.code,0);assert.match(br.err,/explicit reinstatement is required/);assert.equal(sql(`select status from workers where id='${raceWorker}'`),'inactive');checks++;
 assert.equal(sql('select md5(payload::text) from fixture_originals'),originals);checks++;
 } finally {for(const x of [a,b]){if(x&&!x.p.killed){x.p.stdin.destroy();x.p.kill('SIGTERM');}}}
 console.log(`Native transition guard: ${checks} checks passed; old ensure wait observed; production admission/install drain unproven; deployable:false`);
