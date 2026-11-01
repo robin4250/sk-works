@@ -81,8 +81,10 @@ void main() {
     expect(repository, contains(".eq('worker_id', workerId)"));
     expect(repository, contains(".eq('company_id', companyId)"));
     expect(preview, contains('ownPhotoAttachments(rows.single)'));
-    expect(preview, contains('currentUserId != actor'));
-    expect(preview, contains('createSignedUrl'));
+    expect(preview, contains('await scope.verify(worker: worker)'));
+    expect(preview, contains('scope.validatePhotoPath(storagePath, fresh.single)'));
+    expect(preview, isNot(contains('currentWorker()')));
+    expect(preview, contains('scope.signPhoto(storagePath, rows.single)'));
     expect(preview, isNot(contains('upload')));
     expect(preview, isNot(contains('.remove(')));
     final page = File(

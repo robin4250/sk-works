@@ -1,0 +1,5 @@
+# Retired qualification front read closure
+
+Candidate only; no deployment SQL. The fixture derives from frozen PR1738 ec4c6f23c7dfcda7ba1f1a591a3256f899067008 and retains its exact pinned legacy initializer, selected SQL read policies and synthetic minimal schema. The new SDK front path must return the existing inactive own UUID and stored qualification rows without invoking that initializer. Qualification row hashes and paths remain unchanged.
+
+The bridge only adds bounded limit 2 needed by direct unique lookup. Status is validated after fetching every matching company/user row, so an unknown-status duplicate cannot hide behind a status filter. PostgreSQL17.6 is disposable, loopback-only and synthetic. This is not real GoTrue, PostgREST, live SID, deployed full RLS catalog, Storage bytes or iPhone proof. Existing shared currentWorker/new-registration still uses the legacy initializer and remains dependent on separate server retirement repair. Manager authority and Storage RLS remain server-enforced. Revalidation is not an atomic server snapshot and cannot prove arbitrary role ABA or external current-company UI signal changes.

@@ -2,6 +2,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
 import '../auth/app_auth_mutation_gateway.dart';
+import 'qualification_document_read_scope.dart';
 
 class QualificationCloudRepository {
   QualificationCloudRepository._(this._client);
@@ -78,68 +79,62 @@ class QualificationCloudRepository {
   }
 
   Future<Map<String, dynamic>> loadAll() async {
-    final companyId = await _companyId();
-    final canManage = await canManageWorkerQualifications();
-
-    String? ownWorkerId;
-    if (!canManage) {
-      final value = await _client.rpc('ensure_current_user_worker');
-      ownWorkerId = value?.toString();
-    }
-
-    final masters = await _client
+    final scope = await QualificationDocumentReadScope.capture(_client);
+    final companyId = scope.companyId;
+    final canManage = const ['owner', 'admin', 'manager'].contains(scope.role);
+    final own = canManage ? null : await scope.ownWorker();
+    final ownWorkerId = own?['id'] as String?;
+    final masters = List<Map<String, dynamic>>.from(await scope.read(() => _client
         .from('qualification_master')
-        .select(
-          'id, name, category, issuer, expiry_required, notes, is_active, source_name, source_reference, source_updated_at, external_source_id, is_company_custom',
-        )
-        .eq('company_id', companyId)
-        .order('name');
-
-    if (!canManage && (ownWorkerId == null || ownWorkerId.isEmpty)) {
-      return {
-        'masters': List<Map<String, dynamic>>.from(masters),
-        'workers': const <Map<String, dynamic>>[],
-        'qualifications': const <Map<String, dynamic>>[],
-      };
+        .select('id, company_id, name, category, issuer, expiry_required, notes, is_active, source_name, source_reference, source_updated_at, external_source_id, is_company_custom')
+        .eq('company_id', companyId).order('name')
+        .setHeader('Authorization', 'Bearer ${scope.token}')));
+    if (masters.any((row) => !QualificationDocumentReadScope.uuid(row['id']) ||
+        row['company_id'] != companyId) ||
+        masters.map((row) => row['id']).toSet().length != masters.length) {
+      throw StateError('所属会社の資格項目を確認できません。');
     }
-
-    var workersQuery = _client
-        .from('workers')
-        .select('id, company_id, name, affiliation, status')
-        .eq('company_id', companyId);
-    if (!canManage && ownWorkerId != null && ownWorkerId.isNotEmpty) {
-      workersQuery = workersQuery.eq('id', ownWorkerId);
+    final List<Map<String, dynamic>> workers;
+    if (canManage) {
+      workers = List<Map<String, dynamic>>.from(await scope.read(() => _client
+          .from('workers').select('id, company_id, name, affiliation, status')
+          .eq('company_id', companyId).order('name')
+          .setHeader('Authorization', 'Bearer ${scope.token}')));
+      scope.validateWorkers(workers);
+    } else {
+      workers = [Map<String, dynamic>.from(own!)..remove('user_id')];
     }
-    final workers = await workersQuery.order('name');
-
     const baseFields =
-      'id, company_id, worker_id, qualification_master_id, certificate_number, issued_at, expires_at, issuer, attachment_path, notes, created_at, updated_at';
+        'id, company_id, worker_id, qualification_master_id, certificate_number, issued_at, expires_at, issuer, attachment_path, notes, created_at, updated_at';
     final optionalFields = <String>{'attachment_back_path', 'attachment_extra_paths'};
     late List<Map<String, dynamic>> qualifications;
     for (;;) {
       try {
-        var qualificationsQuery = _client.from('worker_qualifications')
-          .select([baseFields, ...optionalFields].join(', '))
-          .eq('company_id', companyId);
-        if (!canManage && ownWorkerId != null && ownWorkerId.isNotEmpty) {
-          qualificationsQuery = qualificationsQuery.eq('worker_id', ownWorkerId);
-        }
-        qualifications = List<Map<String, dynamic>>.from(
-          await qualificationsQuery.order('created_at', ascending: false));
+        qualifications = List<Map<String, dynamic>>.from(await scope.read(() {
+          var query = _client.from('worker_qualifications')
+              .select([baseFields, ...optionalFields].join(', '))
+              .eq('company_id', companyId);
+          if (!canManage) query = query.eq('worker_id', ownWorkerId!);
+          return query.order('created_at', ascending: false)
+              .setHeader('Authorization', 'Bearer ${scope.token}');
+        }));
         break;
       } on PostgrestException catch (error) {
+        scope.check();
         final missing = optionalFields.where(
-          (column) => isMissingOwnPhotoColumn(error, column)).toList();
+            (column) => isMissingOwnPhotoColumn(error, column)).toList();
         if (missing.length != 1) rethrow;
         optionalFields.remove(missing.single);
       }
     }
-
-    return {
-      'masters': List<Map<String, dynamic>>.from(masters),
-      'workers': List<Map<String, dynamic>>.from(workers),
-      'qualifications': List<Map<String, dynamic>>.from(qualifications),
-    };
+    scope.validateQualifications(qualifications, ownWorkerId: ownWorkerId);
+    final workerIds = workers.map((row) => row['id']).toSet();
+    if (qualifications.any((row) => !workerIds.contains(row['worker_id']))) {
+      throw StateError('資格書類の対象社員を確認できません。');
+    }
+    await scope.verify(worker: own);
+    for (final row in masters) { row.remove('company_id'); }
+    return {'masters': masters, 'workers': workers, 'qualifications': qualifications};
   }
 
   Future<Map<String, dynamic>> insertMaster({
@@ -272,27 +267,22 @@ class QualificationCloudRepository {
     required String qualificationId,
     required String storagePath,
   }) async {
-    final actor = currentUserId;
-    if (actor == null) throw StateError('ログインを確認してください。');
-    final worker = await currentWorker();
-    if (currentUserId != actor) throw StateError('ログイン状態が変わりました。');
-    final companyId = await _companyId();
-    if (currentUserId != actor) throw StateError('ログイン状態が変わりました。');
-    final rows = await _loadOwnPhotoRows(
-      companyId: companyId,
-      workerId: worker.workerId,
-      qualificationId: qualificationId,
-    );
-    if (currentUserId != actor ||
-        rows.length != 1 ||
-        !ownPhotoAttachments(rows.single)
-            .any((photo) => photo.path == storagePath)) {
+    final scope = await QualificationDocumentReadScope.capture(_client);
+    final worker = await scope.ownWorker();
+    final rows = await scope.photoRows(workerId: worker['id'] as String,
+        qualificationId: qualificationId);
+    if (rows.length != 1 ||
+        !ownPhotoAttachments(rows.single).any((photo) => photo.path == storagePath)) {
       throw StateError('本人の資格証写真を確認できませんでした。');
     }
-    final url = await _client.storage
-        .from('qualification-certificates')
-        .createSignedUrl(storagePath, 60 * 10);
-    if (currentUserId != actor) throw StateError('ログイン状態が変わりました。');
+    scope.validatePhotoPath(storagePath, rows.single);
+    await scope.verify(worker: worker);
+    final url = await scope.signPhoto(storagePath, rows.single);
+    final fresh = await scope.photoRows(workerId: worker['id'] as String,
+        qualificationId: qualificationId);
+    if (fresh.length != 1) throw StateError('資格証写真が変更されました。');
+    scope.validatePhotoPath(storagePath, fresh.single);
+    await scope.verify(worker: worker);
     return url;
   }
 

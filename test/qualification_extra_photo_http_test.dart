@@ -53,7 +53,7 @@ class _Fixture {
       String encode(Object value) =>
           base64Url.encode(utf8.encode(jsonEncode(value))).replaceAll('=', '');
       final token =
-          '${encode({'alg': 'HS256', 'typ': 'JWT'})}.${encode({'sub': _actor, 'exp': DateTime.now().millisecondsSinceEpoch ~/ 1000 + 3600})}.c3ludGhldGlj';
+          '${encode({'alg': 'HS256', 'typ': 'JWT'})}.${encode({'sub': _actor, 'session_id': '60000000-0000-0000-0000-000000000001', 'exp': DateTime.now().millisecondsSinceEpoch ~/ 1000 + 3600})}.c3ludGhldGlj';
       response = {
         'access_token': token,
         'refresh_token': 'synthetic-refresh',
@@ -73,21 +73,23 @@ class _Fixture {
       response = {'can_manage_people': true};
     } else if (path == '/rest/v1/company_members') {
       response = [
-        {'company_id': _company},
+        {'company_id': _company, 'role': 'admin'},
       ];
     } else if (path == '/rest/v1/qualification_master') {
       response = [
-        {'id': _status, 'name': 'synthetic qualification'},
+        {'id': _status, 'company_id': _company, 'name': 'synthetic qualification'},
       ];
     } else if (path == '/rest/v1/workers') {
       response = [
-        {'id': _worker, 'name': 'synthetic worker'},
+        {'id': _worker, 'company_id': _company, 'status': 'active', 'name': 'synthetic worker'},
       ];
     } else if (path == '/rest/v1/worker_qualifications') {
       if (request.method == 'GET') {
         final row = {
           'id': _status,
           'worker_id': _worker,
+          'company_id': _company,
+          'qualification_master_id': _status,
           'attachment_path': 'front.jpg',
           'attachment_back_path': 'back.jpg',
           'attachment_extra_paths': ['extra.jpg'],
@@ -135,6 +137,8 @@ class _Fixture {
         response = {
           'id': _status,
           'worker_id': _worker,
+          'company_id': _company,
+          'qualification_master_id': _status,
           'attachment_path': 'front.jpg',
           'attachment_back_path': 'back.jpg',
           ...jsonDecode(utf8.decode(body)) as Map<String, dynamic>,

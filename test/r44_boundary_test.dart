@@ -13,8 +13,10 @@ import 'package:sk_works/features/qualifications/qualification_certificate_repos
 const actor='00000000-0000-0000-0000-000000000001';
 const worker='00000000-0000-0000-0000-000000000002';
 const company='00000000-0000-0000-0000-000000000003';
+const master='00000000-0000-0000-0000-000000000005';
+const qualification='00000000-0000-0000-0000-000000000006';
 http.Response jsonResponse(Object body,http.Request request)=>http.Response(jsonEncode(body),200,request:request,headers:{'content-type':'application/json'});
-String token([String userId=actor])=>['{"alg":"HS256"}',jsonEncode({'sub':userId,'role':'authenticated','exp':DateTime.now().millisecondsSinceEpoch~/1000+3600}),'signature'].map((x)=>base64Url.encode(utf8.encode(x)).replaceAll('=','')).join('.');
+String token([String userId=actor])=>['{"alg":"HS256"}',jsonEncode({'sub':userId,'session_id':'00000000-0000-0000-0000-000000000007','role':'authenticated','exp':DateTime.now().millisecondsSinceEpoch~/1000+3600}),'signature'].map((x)=>base64Url.encode(utf8.encode(x)).replaceAll('=','')).join('.');
 
 class Fixture {
   String activeActor=actor;
@@ -40,9 +42,9 @@ class Fixture {
       if(waitForPermission)await permission.future;
       return jsonResponse({'can_manage_people':true},request);
     }
-    if(path.endsWith('/company_members'))return jsonResponse([{'company_id':company}],request);
-    if(path.endsWith('/qualification_master'))return jsonResponse([{'id':'master','name':'Private qualification'}],request);
-    if(path.endsWith('/workers'))return jsonResponse([{'id':worker,'name':'Private worker'}],request);
+    if(path.endsWith('/company_members'))return jsonResponse([{'company_id':company,'role':'admin'}],request);
+    if(path.endsWith('/qualification_master'))return jsonResponse([{'id':master,'company_id':company,'name':'Private qualification'}],request);
+    if(path.endsWith('/workers'))return jsonResponse([{'id':worker,'company_id':company,'status':'active','name':'Private worker'}],request);
     if(path.endsWith('/worker_qualifications') && request.method=='PATCH'){
       mutations.add('database');return jsonResponse({'id':'qualification','worker_id':worker,...(jsonDecode(request.body) as Map<String,dynamic>)},request);
     }
@@ -55,7 +57,7 @@ class Fixture {
     if(path.endsWith('/worker_qualifications')){
       if(!rowStarted.isCompleted)rowStarted.complete();
       await rows.future;
-      return jsonResponse([{'id':'qualification','worker_id':worker,'qualification_master_id':'master','certificate_number':'PRIVATE-CERT','attachment_path':'$company/$worker/front.jpg'}],request);
+      return jsonResponse([{'id':qualification,'company_id':company,'worker_id':worker,'qualification_master_id':master,'certificate_number':'PRIVATE-CERT','attachment_path':'$company/$worker/front.jpg'}],request);
     }
     if(path.contains('/object/sign/')){
       if(!signStarted.isCompleted)signStarted.complete();
@@ -115,17 +117,20 @@ void main(){
     expect(f.calls.length,before);expect(tester.takeException(),isNull);
   },timeout:const Timeout(Duration(seconds:45)));
 
-  testWidgets('same actor reauthentication preserves the legitimate delayed list',(tester)async{
+  testWidgets('same actor new session discards the old read and a fresh route can reload',(tester)async{
     final f=Fixture();addTearDown(f.close);await tester.runAsync(f.login);
     await tester.pumpWidget(MaterialApp(home:QualificationCertificatePage(repository:QualificationCertificateRepository.forTesting(f.client))));
     await tester.pump();await tester.pump();expect(f.rowStarted.isCompleted,true);
     await tester.runAsync(f.login);await tester.pump();f.rows.complete();await tester.pump();await tester.pump();
+    expect(find.text('Private qualification'),findsNothing);
+    await tester.pumpWidget(MaterialApp(home:QualificationCertificatePage(key:const ValueKey('reauth-fresh'),repository:QualificationCertificateRepository.forTesting(f.client))));
+    await tester.pump();await tester.pump();
     expect(find.text('Private qualification'),findsOneWidget);
   },timeout:const Timeout(Duration(seconds:45)));
 
   test('signed URL result is refused after actual SDK logout',()async{
     final f=Fixture();addTearDown(f.close);await f.login();
-    final repository=QualificationCertificateRepository.forTesting(f.client);
+    final repository=QualificationCertificateRepository.forTesting(f.client);f.rows.complete();
     final future=repository.createSignedUrl('$company/$worker/front.jpg');
     await f.signStarted.future;final checked=expectLater(future,throwsStateError);
     await f.client.auth.signOut(scope:SignOutScope.local);f.signed.complete();await checked;
@@ -143,6 +148,7 @@ void main(){
 
   test('logout and same-actor return does not revive an old pending URL',()async{
     final f=Fixture();addTearDown(f.close);await f.login();
+    f.rows.complete();
     final future=QualificationCertificateRepository.forTesting(f.client).createSignedUrl('$company/$worker/front.jpg');
     await f.signStarted.future;final checked=expectLater(future,throwsStateError);
     await f.client.auth.signOut(scope:SignOutScope.local);await f.login();
