@@ -346,7 +346,7 @@ class CompanyLinkBoundContext {
         _retire();
       }
       if (next != _binding) _retire();
-    });
+    }, onError: (Object _) => _retireTracking(), onDone: _retireTracking);
     } catch (_) {
       _retireTracking();
     }

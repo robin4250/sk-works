@@ -57,7 +57,8 @@ void main() {
       else { await events.close(); }
       await Future<void>.delayed(Duration.zero);
       f.pending!.complete(http.Response(jsonEncode(f.envelope(f.saved!, {'state': 'committed', 'enabled': true})), 200,
-        headers: {'content-type': 'application/json'}));
+        headers: {'content-type': 'application/json'},
+        request: f.requests.firstWhere((r) => r.url.path.endsWith('company_link_bound_v1'))));
       await rejected;
       expect(context.hasUnknownResult, true);
       final prefs = await SharedPreferences.getInstance();
