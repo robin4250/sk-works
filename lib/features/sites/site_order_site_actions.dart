@@ -72,7 +72,7 @@ class _SiteOrderSiteActionsPageState extends State<SiteOrderSiteActionsPage>
   late final String? _packageId;
   bool _notificationAdmitted = false, _readInvoked = false;
   bool _notificationDenied = false, _readUnknown = false;
-  bool _busy = true, _retired = false, _canCreate = false;
+  bool _busy = true, _retired = false, _canCreate = false, _available = false;
   bool _closing = false, _handlingBack = false;
   int _generation = 0;
   String? _error;
@@ -120,6 +120,7 @@ class _SiteOrderSiteActionsPageState extends State<SiteOrderSiteActionsPage>
     _retired = true;
     _generation++;
     _canCreate = false;
+    _available = false;
     _api?.retireUiScope();
     FocusManager.instance.primaryFocus?.unfocus();
     if (mounted) _update(() {});
@@ -136,6 +137,11 @@ class _SiteOrderSiteActionsPageState extends State<SiteOrderSiteActionsPage>
       if (api == null) {
         throw StateError('現場・ログイン状態を確認してください。');
       }
+      if (!await api.canUseWorkflow()) {
+        throw StateError('現場の注文・請書機能は準備中です。');
+      }
+      _require();
+      _available = true;
       if (_packageId != null) {
         await verifySiteOrderNotificationTarget(api, _packageId);
         _require();
@@ -176,6 +182,11 @@ class _SiteOrderSiteActionsPageState extends State<SiteOrderSiteActionsPage>
     _update(() => _busy = true);
     try {
       await api.verify();
+      _require();
+      if (!await api.canUseWorkflow()) {
+        if (mounted) _update(() { _available = false; _canCreate = false; _error = '現場の注文・請書機能は準備中です。'; });
+        return;
+      }
       _require();
       if (action == 'create' && !await api.canCreateOutgoing()) {
         _require();
@@ -272,17 +283,17 @@ class _SiteOrderSiteActionsPageState extends State<SiteOrderSiteActionsPage>
     body: ListView(padding: const EdgeInsets.all(16), children: [
       if (_busy) const LinearProgressIndicator(),
       if (_error != null) Text(_error!),
-      OutlinedButton(onPressed: _busy ? null : () => _open('view'),
+      OutlinedButton(onPressed: _busy || !_available ? null : () => _open('view'),
         child: const Text('注文書を見る')),
       const Text('工事名称と工期を確認して、保存済みの原本を選択します。'),
       FilledButton(onPressed: _busy || !_canCreate ? null : () => _open('create'),
         child: const Text('注文書を作る')),
-      if (!_busy && !_canCreate) const Text('現在、新規作成は利用できません。'),
-      OutlinedButton.icon(onPressed: _busy ? null : () => _open('warehouse'),
+      if (!_busy && !_canCreate) const Text('現場の注文・請書機能は準備中です。'),
+      OutlinedButton.icon(onPressed: _busy || !_available ? null : () => _open('warehouse'),
         icon: const Icon(Icons.inventory_2_outlined),
         label: const Text('管理倉庫（注文書・請書）')),
       const Text('この現場の注文書と、相手会社から返送された請書を取引ごとに確認・PDF保存・印刷できます。'),
-      OutlinedButton(onPressed: _busy ? null : () => _open('history'),
+      OutlinedButton(onPressed: _busy || !_available ? null : () => _open('history'),
         child: const Text('過去の注文書')),
     ]),
   );

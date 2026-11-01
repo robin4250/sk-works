@@ -1,0 +1,23 @@
+{
+  "artifact_version": 1,
+  "function_slug": "reauthenticate-operation",
+  "entrypoint": "index.ts",
+  "verify_jwt": false,
+  "base_deployed_version": 1,
+  "base_handler_sha256": "4751253ed0f8e3739d43bac8fa97930d28873389d32516ba169e1177a49dfd05",
+  "handler_sha256": "63604d3c5f1cee657e38708875dc9d5b3fd6f96867300f1d78507ac991eb317f",
+  "index_sha256": "8a8c489cd420c074469210e24807396fd48e018a1bc12ab0f559af0d40be6fa6",
+  "scope_delta": [
+    "master.feature.set target.feature_key permits site_order_documents"
+  ],
+  "unqualified_repo_extensions_excluded": [
+    "master.security_collector.read",
+    "employee.bank.initial",
+    "captcha_token"
+  ],
+  "deployment_performed": false,
+  "notes": [
+    "Retain deployed verify_jwt=false; handler self-authenticates exact Bearer at real Auth/user.",
+    "Shared master_feature rollout false\u2192true is separate reviewed ON dependency affecting master operations for existing six keys, not their enabled values."
+  ]
+}

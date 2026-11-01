@@ -120,3 +120,29 @@ test('known secondary password change uses secondary verifier and exact existing
  const denied=fixture({secondaryResult:false});assert.equal((await denied.invoke({operation:'secondary_password.change',password:'synthetic-wrong',target})).status,403);assert.equal(denied.issued,undefined);
 });
 
+
+// The site control uses the same verified-actor/SID proof protocol as existing keys.
+test('site document master proof binds both values and cleans the temporary session first',async()=>{
+ for(const enabled of [true,false]) {
+  const f=fixture();const target={feature_key:'site_order_documents',enabled};
+  const response=await f.invoke({operation:'master.feature.set',password:'synthetic-password',target});
+  assert.equal(response.status,200);const result=await response.json();
+  assert.deepEqual(result.target,target);assert.deepEqual(f.issued.p_target,target);
+  assert.equal(f.issued.p_actor,actor);assert.equal(f.issued.p_session,session);
+  assert.equal(f.issued.p_operation,'master.feature.set');
+  const cleanup=f.calls.findIndex(x=>x.path.includes('/auth/v1/logout'));
+  const issue=f.calls.findIndex(x=>x.path.endsWith('/issue_reauthentication_proof'));
+  assert.ok(cleanup>=0&&issue>cleanup);
+  assert.equal(f.calls[cleanup].options.headers.Authorization,'Bearer '+f.temporaryAccessToken);
+  assert.equal(response.headers.get('cache-control'),'no-store');
+ }
+});
+test('site document master proof rejects malformed target before password authentication',async()=>{
+ for(const target of [{feature_key:'site_order_documents',enabled:'true'},
+  {feature_key:'site_order_documents',enabled:true,extra:true},
+  {feature_key:'site_order_documents'}]) {
+  const f=fixture();const response=await f.invoke({operation:'master.feature.set',password:'synthetic-password',target});
+  assert.equal(response.status,400);assert.equal(f.issued,undefined);
+  assert.equal(f.calls.some(x=>x.path.includes('grant_type')),false);
+ }
+});

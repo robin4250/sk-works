@@ -251,7 +251,7 @@ class _MasterFeatureControlsPageState extends State<MasterFeatureControlsPage>
                                   label: '注文・請書', current: availability.tradeDocuments),
                             title: const Text('注文・請書', style: TextStyle(fontWeight: FontWeight.w900)),
                             subtitle: Text(availability.tradeDocumentsSupported
-                              ? '新規生成・共有・注文承認と請書返信を制御。保存済み書類は保持\n現在: ${availability.tradeDocuments ? 'ON' : 'OFF'}'
+                              ? '単独作成を制御。現場送信は対応確認後に利用可能。保存済み書類は保持\n現在: ${availability.tradeDocuments ? 'ON' : 'OFF'}'
                               : '初期OFF。サーバー側の接続が完了するまで変更できません。'),
                           )),
                           const SizedBox(height: 10),

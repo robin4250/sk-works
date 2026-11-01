@@ -8,6 +8,7 @@ on:
       - 'supabase/functions/reauthenticate-operation/handler.mjs'
       - 'tool/security/verify_seal_master_gate.mjs'
       - 'tool/security/reauthentication_handler_test.mjs'
+      - 'tool/staged/trade-document-reauthentication/**'
       - '.github/workflows/company-seal-master-feature.yml'
 permissions:
   contents: read
@@ -40,3 +41,4 @@ jobs:
       - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts
       - run: node tool/security/verify_seal_master_gate.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
       - run: node --test tool/security/reauthentication_handler_test.mjs
+      - run: node --test tool/staged/trade-document-reauthentication/handler_test.mjs

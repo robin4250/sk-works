@@ -1,3 +1,4 @@
+import 'site_workflow_capability_fixture.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -47,6 +48,9 @@ class _Wire extends http.BaseClient {
   };
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    if (request.url.path == '/rest/v1/rpc/site_order_workflow_capabilities') {
+      return supportedSiteWorkflowCapability(request, actor: actor, company: company, session: sid, role: role);
+    }
     if (request.url.path == '/rest/v1/company_members') {
       return http.StreamedResponse(
         Stream.value(
