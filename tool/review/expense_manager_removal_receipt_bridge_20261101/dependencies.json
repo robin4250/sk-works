@@ -1,0 +1,7 @@
+{
+  "base": "72ef978d1b5a1e3be05500ee01f6173980981795",
+  "product_source": "46773dd404a6bf9c8f1733280d639db84c07ca3f",
+  "canonical_sql_sha256": "90abf05911bfbe0866cdb1bdfea256358d43f9704076a5139da6df08222cc6d6",
+  "frozen_backend_sha256": "b2584677c81e50fa44cfbbc544de9fb6a4377e089875b5db09701f26953252e2",
+  "deployable": false
+}
