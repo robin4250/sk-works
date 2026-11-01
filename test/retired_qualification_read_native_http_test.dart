@@ -14,6 +14,16 @@ void main() {
   test('actual existing qualification repositories read preserved retired records after exact1713 repair', () async {
     await HttpOverrides.runWithHttpOverrides(() async {
       final config = jsonDecode(File(contextPath!).readAsStringSync()) as Map;
+      if (config['url'] != 'http://127.0.0.1:55443' ||
+          config['apikey'] != 'fixture-only' ||
+          config['actor'] != '10000000-0000-0000-0000-000000000001' ||
+          config['company'] != '20000000-0000-0000-0000-000000000001' ||
+          config['worker'] != '30000000-0000-0000-0000-000000000001' ||
+          config['token'] is! String ||
+          !(config['token'] as String).endsWith('.synthetic')) {
+        // Never include rejected key/token values in a test failure.
+        throw StateError('isolated loopback fixture context required');
+      }
       final headers = <String, String>{
         'apikey': config['apikey'] as String,
         'Authorization': 'Bearer ${config['token']}',
