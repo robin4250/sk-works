@@ -39,6 +39,6 @@ jobs:
             esac
             tests+=("$file")
           done
-          test "${#tests[@]}" -eq 19
+          test "${#tests[@]}" -eq 20
           printf '%s\n' 'UNEXECUTED: Native execution 3. Native consent2/registered-target1 explicitly skip without artifacts.'
           flutter test "${tests[@]}" --reporter expanded

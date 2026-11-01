@@ -15,6 +15,7 @@ try{
  await db.exec(`create role anon;create role authenticated;create role service_role;create schema auth;create schema private;create schema storage;
  create function auth.jwt() returns jsonb language sql stable as $$select coalesce(nullif(current_setting('request.jwt.claims',true),''),'{}')::jsonb$$;
  create function auth.uid() returns uuid language sql stable as $$select (auth.jwt()->>'sub')::uuid$$;
+ create table auth.users(id uuid,banned_until timestamptz);
  create table auth.sessions(id uuid,user_id uuid,not_after timestamptz);
  create table private.account_deletion_access_restrictions(user_id uuid);
  create function private.account_access_allowed() returns boolean language sql stable security definer set search_path='' as $$select auth.uid() is not null and not exists(select 1 from private.account_deletion_access_restrictions where user_id=auth.uid())$$;
@@ -23,12 +24,16 @@ try{
  grant usage on schema auth,private,storage to anon,authenticated;grant select on storage.objects to anon,authenticated;
  create policy fixture_existing_read on storage.objects for select to authenticated using(true);
  insert into storage.objects values('worker-documents','fixture','unchanged'),('unrelated-fixture','other','unchanged');
+ insert into auth.users values('${actor}',null);
  insert into auth.sessions values('${session}','${actor}',null);`);
  const valid={sub:actor,role:'authenticated',session_id:session};const before=(await db.query('select * from storage.objects order by bucket_id')).rows;
  const authAcl=(await db.query("select relacl::text a from pg_class where oid='auth.sessions'::regclass")).rows;
  await db.exec(fs.readFileSync(path.join(here,'storage_session_guard.sql.review-only'),'utf8'));
  await read({sub:actor,role:'authenticated'},1);
  await db.exec('update private.storage_session_guard_rollout set enabled=true');
+ await db.exec("update auth.users set banned_until=now()+interval '1 hour'");await read(valid,0);
+ await db.exec("update auth.users set banned_until=now()-interval '1 second'");await read(valid,1);
+ await db.exec('update auth.users set banned_until=null');
  await read(valid,1);await read({sub:actor,role:'authenticated'},0);await read({...valid,session_id:'malformed'},0);
  await read({...valid,session_id:other},0);await read({...valid,sub:other},0);await read({...valid,role:'anon'},0);
  await read({},0,'worker-documents','anon');await read({sub:actor,role:'authenticated'},1,'unrelated-fixture');

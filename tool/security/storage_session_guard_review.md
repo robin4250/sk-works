@@ -12,7 +12,7 @@ The new private rollout row defaults OFF, has RLS, and grants no client/table
 access. There is no public setter/RPC. When ON, the private boolean-only helper
 requires an authenticated actor, permitted account, correctly shaped session ID,
 and the exact matching `auth.sessions(id,user_id)` with null/future `not_after`.
-Missing/malformed/mismatched/deleted/expired sessions fail closed. A missing gate
+Missing/malformed/mismatched/deleted/expired sessions fail closed. The matching Auth user must also exist and must not have a future banned_until. A missing gate
 row also fails closed. The function has fixed empty search_path, private placement
 and authenticated-only execution. It returns no session metadata and grants no
 new client access to `auth.sessions`. Company IDs, membership roles, users and

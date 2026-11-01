@@ -7,6 +7,7 @@ import '../shared/pdf_pinch_pages.dart';
 import '../shared/standalone_trade_document_print_scope.dart';
 import '../shared/trade_document_form_renderer.dart';
 import '../shared/trade_document_output_layout.dart';
+import '../shared/trade_document_output_selector.dart';
 import 'site_order_workflow_repository.dart';
 
 /// Original bytes only. Derivatives use the same frozen server payload; a
@@ -19,11 +20,19 @@ class SiteOrderWorkflowPdfPage extends StatefulWidget {
     required this.title,
     this.kind = 'order',
     this.previewBuilder,
+    this.outputBuilder,
   });
   final SiteOrderWorkflowApi api;
   final String packageId, title, kind;
   @visibleForTesting
   final Widget Function(Uint8List)? previewBuilder;
+  @visibleForTesting
+  final Future<Uint8List> Function(
+    Map<String, dynamic>,
+    TradeDocumentOutputLayout,
+    Uint8List,
+  )?
+  outputBuilder;
   @override
   State<SiteOrderWorkflowPdfPage> createState() =>
       _SiteOrderWorkflowPdfPageState();
@@ -31,7 +40,9 @@ class SiteOrderWorkflowPdfPage extends StatefulWidget {
 
 class _SiteOrderWorkflowPdfPageState extends State<SiteOrderWorkflowPdfPage>
     with WidgetsBindingObserver {
-  Uint8List? _bytes, _exportBytes;
+  Uint8List? _bytes, _previewBytes, _exportBytes;
+  TradeDocumentOutputLayout _layout = TradeDocumentOutputLayout.a4TwoPages;
+  int _layoutGeneration = 0;
   Map<String, dynamic>? _payload;
   bool _busy = false, _disposing = false, _viewRetired = false;
   String? _error;
@@ -54,7 +65,9 @@ class _SiteOrderWorkflowPdfPageState extends State<SiteOrderWorkflowPdfPage>
   }
 
   void _clear() {
+    _layoutGeneration++;
     _bytes = null;
+    _previewBytes = null;
     _exportBytes = null;
     _payload = null;
     _viewRetired = true;
@@ -69,7 +82,10 @@ class _SiteOrderWorkflowPdfPageState extends State<SiteOrderWorkflowPdfPage>
     try {
       final bytes = await widget.api.original(widget.packageId, widget.kind);
       if (mounted && !widget.api.invalidated && !_viewRetired) {
-        setState(() => _bytes = bytes);
+        setState(() {
+          _bytes = bytes;
+          _previewBytes = bytes;
+        });
       }
     } catch (_) {
       if (mounted) setState(() => _error = '保存済み原本を確認できません。閉じて開き直してください。');
@@ -91,50 +107,67 @@ class _SiteOrderWorkflowPdfPageState extends State<SiteOrderWorkflowPdfPage>
     }
   }
 
-  Future<void> _output(bool share) async {
+  Future<void> _selectLayout(TradeDocumentOutputLayout layout) async {
     final original = _bytes;
-    if (_busy || original == null) return;
-    final layout = await showModalBottomSheet<TradeDocumentOutputLayout>(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final entry in <(TradeDocumentOutputLayout, String)>[
-              (TradeDocumentOutputLayout.a4TwoPages, 'A4・2枚'),
-              (TradeDocumentOutputLayout.a3Landscape, 'A3・1枚'),
-              (TradeDocumentOutputLayout.a4Duplex, 'A4・表裏1枚'),
-            ])
-              ListTile(
-                title: Text(entry.$2),
-                onTap: () => Navigator.pop(context, entry.$1),
-              ),
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('閉じる'),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (!mounted || layout == null) return;
+    if (_busy || original == null || layout == _layout) return;
+    final generation = ++_layoutGeneration;
     setState(() => _busy = true);
     try {
       await widget.api.verify();
       Uint8List output = original;
       if (layout != TradeDocumentOutputLayout.a4TwoPages) {
-        _payload ??= await widget.api.originalPayload(
-          widget.packageId,
-          widget.kind,
-        );
-        output = await TradeDocumentFormRenderer.output(
-          _payload!,
-          layout: layout,
-          canonicalBytes: original,
-        );
+        final payload =
+            _payload ??
+            await widget.api.originalPayload(widget.packageId, widget.kind);
+        await widget.api.verify();
+        if (!mounted ||
+            _viewRetired ||
+            generation != _layoutGeneration ||
+            !identical(_bytes, original)) {
+          return;
+        }
+        _payload = payload;
+        output = widget.outputBuilder != null
+            ? await widget.outputBuilder!(_payload!, layout, original)
+            : await TradeDocumentFormRenderer.output(
+                _payload!,
+                layout: layout,
+                canonicalBytes: original,
+              );
       }
       await widget.api.verify();
-      if (!mounted || !identical(_bytes, original)) {
+      if (!mounted ||
+          _viewRetired ||
+          generation != _layoutGeneration ||
+          !identical(_bytes, original)) {
+        return;
+      }
+      setState(() {
+        _layout = layout;
+        _previewBytes = output;
+      });
+    } catch (_) {
+      if (mounted && !_viewRetired) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('選んだ形式を確認できません。A4原本を選ぶか、原本を開き直してください。')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _output(bool share) async {
+    final original = _bytes;
+    final output = _previewBytes;
+    if (_busy || original == null || output == null) return;
+    setState(() => _busy = true);
+    try {
+      await widget.api.verify();
+      if (!mounted ||
+          _viewRetired ||
+          !identical(_bytes, original) ||
+          !identical(_previewBytes, output)) {
         throw StateError('原本が変わりました。');
       }
       _exportBytes = output;
@@ -176,6 +209,7 @@ class _SiteOrderWorkflowPdfPageState extends State<SiteOrderWorkflowPdfPage>
     WidgetsBinding.instance.removeObserver(this);
     _print.invalidate();
     _bytes = null;
+    _previewBytes = null;
     _payload = null;
     _exportBytes = null;
     super.dispose();
@@ -209,18 +243,37 @@ class _SiteOrderWorkflowPdfPageState extends State<SiteOrderWorkflowPdfPage>
         ? Center(child: Text(_error!))
         : _bytes == null
         ? const Center(child: CircularProgressIndicator())
-        : widget.previewBuilder?.call(_bytes!) ??
-              PdfPreview.builder(
-                build: (_) async {
-                  widget.api.requireCurrent();
-                  return _bytes!;
-                },
-                allowPrinting: false,
-                allowSharing: false,
-                canChangeOrientation: false,
-                canChangePageFormat: false,
-                canDebug: false,
-                pagesBuilder: (context, pages) => PdfPinchPages(pages: pages),
+        : Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(12),
+                child: TradeDocumentOutputSelector(
+                  key: ValueKey((_layout, _layoutGeneration)),
+                  value: _layout,
+                  enabled: !_busy,
+                  onChanged: _selectLayout,
+                ),
               ),
+              if (_busy) const LinearProgressIndicator(),
+              Expanded(
+                child:
+                    widget.previewBuilder?.call(_previewBytes!) ??
+                    PdfPreview.builder(
+                      key: ValueKey(_layout),
+                      build: (_) async {
+                        widget.api.requireCurrent();
+                        return _previewBytes!;
+                      },
+                      allowPrinting: false,
+                      allowSharing: false,
+                      canChangeOrientation: false,
+                      canChangePageFormat: false,
+                      canDebug: false,
+                      pagesBuilder: (context, pages) =>
+                          PdfPinchPages(pages: pages),
+                    ),
+              ),
+            ],
+          ),
   );
 }

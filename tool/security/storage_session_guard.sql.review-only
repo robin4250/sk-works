@@ -23,7 +23,9 @@ begin
  if session_text is null or session_text !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then return false;end if;
  session_uuid:=session_text::uuid;
  return exists(select 1 from auth.sessions s where s.id=session_uuid
- and s.user_id=auth.uid() and (s.not_after is null or s.not_after>statement_timestamp()));
+ and s.user_id=auth.uid() and (s.not_after is null or s.not_after>statement_timestamp())
+ and exists(select 1 from auth.users u where u.id=s.user_id
+ and (u.banned_until is null or u.banned_until<=statement_timestamp())));
 end $$;
 revoke all on function private.worker_storage_session_allowed() from public,anon,authenticated,service_role;
 grant execute on function private.worker_storage_session_allowed() to authenticated;
