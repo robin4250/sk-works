@@ -56,6 +56,47 @@ Future<void> pinch(WidgetTester t,Offset center)async{
  await t.pump(const Duration(milliseconds:16));await a.up();await b.up();await t.pumpAndSettle();
 }
 void main(){
+ for(final kind in ['order','acceptance']){
+  testWidgets('$kind separates both registration headings from company names by one line',(t)async{
+   final payload=body()..['kind']=kind;
+   if(kind=='acceptance')payload['acceptance_text']='承諾します。';
+   await mount(t,payload:payload);
+   final gap=t.widget<SizedBox>(find.byKey(const Key('trade-input-issuer-heading-gap')));
+   expect(gap.height,11.25);
+   final heading=kind=='order'?'受注者の登録情報':'注文者の登録情報';
+   expect(find.textContaining('$heading\n\n登録相手'),findsOneWidget);
+  });
+ }
+
+ for (final kind in ['order','acceptance']) {
+  testWidgets('$kind second page has the same complete immutable terms before front input', (t) async {
+   final payload=body()..['kind']=kind..['issue_date']=''..['work_name']='';
+   if(kind=='acceptance')payload['acceptance_text']='承諾します。';
+   final original=payload['contract_terms'].toString();
+   final h=await mount(t,payload:payload);
+   await t.tap(find.byKey(const ValueKey('trade-touch-page-1')));await t.pumpAndSettle();
+   expect(find.byKey(const Key('trade-touch-terms-paper')),findsOneWidget);
+   final shown=t.widget<Text>(find.byKey(const Key('trade-touch-terms-text'))).data!;
+   final terms=TradeDocumentTermsSnapshot.fromJson(payload['contract_terms']);
+   for(final article in terms.articles){
+    expect(shown,contains(article.$1));
+    for(final paragraph in article.$2){expect(shown,contains(paragraph));}
+   }
+   expect(h.saves,isEmpty);expect(payload['contract_terms'].toString(),original);
+   expect(target('work_name'),findsNothing);
+   await t.tap(find.byKey(const ValueKey('trade-touch-page-0')));await t.pumpAndSettle();
+   expect(target('work_name'),findsOneWidget);expect(h.saves,isEmpty);
+  });
+ }
+ testWidgets('scope revocation removes second-page terms and cannot revive them', (t) async {
+  final h=await mount(t);
+  await t.tap(find.byKey(const ValueKey('trade-touch-page-1')));await t.pumpAndSettle();
+  expect(find.byKey(const Key('trade-touch-terms-text')),findsOneWidget);
+  h.scope.revoke();await t.pumpAndSettle();h.scope.restore();await t.pumpAndSettle();
+  expect(find.byKey(const Key('trade-touch-terms-text')),findsNothing);
+  expect(find.textContaining('入力を停止'),findsOneWidget);expect(h.saves,isEmpty);
+ });
+
  testWidgets('month-end selection stays distinct from numeric 31 and saves only on explicit confirm',(t)async{
   final h=await mount(t,extended:true);
   await t.tap(target('cutoffs'));await t.pumpAndSettle();
@@ -76,7 +117,7 @@ void main(){
   final h=await mount(t);
   for(var i=0;i<9;i++){expect(target('row_$i'),findsOneWidget);}
   await t.tap(target('issuer'));await t.pumpAndSettle();
-  expect(find.byType(TextField),findsNothing);expect(find.text('自社の登録住所'),findsOneWidget);
+  expect(find.byType(TextField),findsNothing);expect(find.descendant(of: find.byType(BottomSheet), matching: find.text('自社の登録住所')),findsOneWidget);
   await t.tap(find.text('会社情報の画面を開く'));await t.pumpAndSettle();
   expect(h.companyEdits,1);expect(h.saves,isEmpty);
  });
