@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../international/language_controller.dart';
 import 'employee_invite_repository.dart';
+import '../referrals/app_installation_invitation.dart';
 
 class EmployeeInvitePage extends StatefulWidget {
   const EmployeeInvitePage({super.key, this.canAssignManagementRole = false});
@@ -204,16 +205,21 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
     }
   }
 
-  String _shareText(EmployeeInviteResult result) =>
-      SkoLanguageController.isEnglish
-      ? 'An SKO employee registration has been created.\n'
-            'Phone: ${result.phone}\n'
-            'Temporary password: ${result.temporaryPassword}\n'
-            'Open the SKO app and sign in with the temporary password. Set your permanent password after the first sign-in.'
-      : 'SKOの従業員登録が作成されました。\n'
-            '電話番号: ${result.phone}\n'
-            '初期パスワード: ${result.temporaryPassword}\n'
-            'SKOアプリを開き、初期パスワードでログインしてください。初回ログイン後に本パスワードを設定します。';
+  String _shareText(
+    EmployeeInviteResult result,
+  ) => appendSkoInstallationInvitation(
+    SkoLanguageController.isEnglish
+        ? 'An SKO employee registration has been created.\n'
+              'Phone: ${result.phone}\n'
+              'Temporary password: ${result.temporaryPassword}\n'
+              'Open the SKO app and sign in with the temporary password. Set your permanent password after the first sign-in.'
+        : 'SKOの従業員登録が作成されました。\n'
+              '電話番号: ${result.phone}\n'
+              '初期パスワード: ${result.temporaryPassword}\n'
+              'SKOアプリを開き、初期パスワードでログインしてください。初回ログイン後に本パスワードを設定します。',
+    guideUrl: 'https://skojapan.com/install/employee/',
+    english: SkoLanguageController.isEnglish,
+  );
 
   Future<void> _share(EmployeeInviteResult result) async {
     await SharePlus.instance.share(ShareParams(text: _shareText(result)));
@@ -222,13 +228,13 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
   Future<void> _sendEmployeeSms(EmployeeInviteResult result) async {
     final phone = result.phone.trim();
     if (phone.isEmpty) return;
-    final body =
-        '【SKOアプリ 従業員登録のご案内】\n\n'
-        '登録電話番号: $phone\n'
-        '初期パスワード: ${result.temporaryPassword}\n\n'
-        'インストール・利用開始案内:\n'
-        'https://skojapan.com/install/employee/\n\n'
-        '初回ログイン後にパスワードを変更してください。';
+    final body = appendSkoInstallationInvitation(
+      '【SKOアプリ 従業員登録のご案内】\n\n'
+      '登録電話番号: $phone\n'
+      '初期パスワード: ${result.temporaryPassword}\n\n'
+      '初回ログイン後にパスワードを変更してください。',
+      guideUrl: 'https://skojapan.com/install/employee/',
+    );
     final uri = Uri(
       scheme: 'sms',
       path: phone,

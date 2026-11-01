@@ -76,7 +76,8 @@ export function createReauthenticationHandler({baseUrl,publicKey,serviceKey,fetc
    payload=await boundedJson(req);
   }catch{return reply(400,{error:'invalid_request'});}
   const {user,session}=verifiedAccess;
-  if(!payload||typeof payload!=='object'||Array.isArray(payload)||Object.keys(payload).sort().join(',')!=='operation,password,target'||!scopes.has(payload.operation)||typeof payload.password!=='string'||payload.password.length===0||payload.password.length>1024)return reply(400,{error:'invalid_request'});
+  if(!payload||typeof payload!=='object'||Array.isArray(payload)||!['operation,password,target','captcha_token,operation,password,target'].includes(Object.keys(payload).sort().join(','))||!scopes.has(payload.operation)||typeof payload.password!=='string'||payload.password.length===0||payload.password.length>1024)return reply(400,{error:'invalid_request'});
+  if(Object.hasOwn(payload,'captcha_token')&&(typeof payload.captcha_token!=='string'||payload.captcha_token.length===0||payload.captcha_token.length>2048||payload.captcha_token.trim()!==payload.captcha_token))return reply(400,{error:'invalid_request'});
   const target=payload.target;
   if(!target||typeof target!=='object'||Array.isArray(target))return reply(400,{error:'invalid_request'});
   if(payload.operation==='employee.bank.initial'&&(Object.keys(target).sort().join(',')!=='company_id,input_sha256,worker_id'||!uuid.test(target.company_id??'')||target.company_id!==target.company_id.toLowerCase()||!uuid.test(target.worker_id??'')||target.worker_id!==target.worker_id.toLowerCase()||!/^[0-9a-f]{64}$/.test(target.input_sha256??'')))return reply(400,{error:'invalid_request'});
@@ -109,7 +110,7 @@ export function createReauthenticationHandler({baseUrl,publicKey,serviceKey,fetc
    // The identifier comes from the authenticated user, never the request body.
    const identity=user.phone?{phone:user.phone}:user.email?{email:user.email}:null;
    if(!identity)return reply(403,{error:'reauthentication_failed'});
-   const result=await request('/auth/v1/token?grant_type=password',{method:'POST',headers:{apikey:publicKey,'Content-Type':'application/json'},body:JSON.stringify({...identity,password:payload.password})});
+   const result=await request('/auth/v1/token?grant_type=password',{method:'POST',headers:{apikey:publicKey,'Content-Type':'application/json'},body:JSON.stringify({...identity,password:payload.password,...(payload.captcha_token===undefined?{}:{gotrue_meta_security:{captcha_token:payload.captcha_token}})})});
    if(!result.ok)return reply(result.status===429?429:result.status>=500?503:403,{error:'reauthentication_failed'});
    const verified=await result.json();
    temporaryAccess=typeof verified.access_token==='string'?verified.access_token:null;

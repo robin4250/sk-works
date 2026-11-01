@@ -71,7 +71,7 @@ void main() {
         authChanges: shared.onAuthStateChange,
         createClient: () => temporary,
       );
-      final result = verifier.verify('synthetic-password');
+      final result = verifier.verify('synthetic-password', captchaToken: 'synthetic-challenge');
       await received.future;
       await shared.setInitialSession(jsonEncode(_session(_user('new-actor'))));
       final newSession = shared.currentSession;
@@ -79,6 +79,7 @@ void main() {
       expect(await result, isFalse);
       expect(identical(shared.currentSession, newSession), isTrue);
       expect(shared.currentUser!.id, 'new-actor');
+      expect(submitted!['gotrue_meta_security'], {'captcha_token': 'synthetic-challenge'});
       expect(submitted!['phone'], original.phone);
       expect(submitted!['email'], isNull);
       expect(requests.last.path, '/auth/v1/logout');

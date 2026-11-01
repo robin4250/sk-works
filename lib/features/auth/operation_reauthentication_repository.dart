@@ -52,7 +52,7 @@ class OperationReauthenticationRepository {
   }
 
   Future<String> requestProof({required String password,
-      required String operation, required Map<String, dynamic> target}) async {
+      required String operation, required Map<String, dynamic> target, String? captchaToken}) async {
     final session = _client.auth.currentSession;
     final actor = session?.user.id;
     final originalSession = session == null ? null : _sessionId(session.accessToken);
@@ -81,7 +81,7 @@ class OperationReauthenticationRepository {
       check();
       final response = await _client.functions.invoke('reauthenticate-operation',
         headers: {'Authorization': 'Bearer ${session.accessToken}'},
-        body: {'password': password, 'operation': operation, 'target': target})
+        body: {'password': password, 'operation': operation, 'target': target, if (captchaToken != null) 'captcha_token': captchaToken})
           .timeout(const Duration(seconds: 30));
       check();
       final data = response.data;

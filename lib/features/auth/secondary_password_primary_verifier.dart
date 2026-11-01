@@ -30,7 +30,7 @@ class SecondaryPasswordPrimaryVerifier {
     autoRefreshToken: false,
   );
 
-  Future<bool> verify(String password) async {
+  Future<bool> verify(String password, {String? captchaToken}) async {
     final user = currentUser();
     if (user == null) return false;
     final phone = user.phone;
@@ -57,6 +57,7 @@ class SecondaryPasswordPrimaryVerifier {
           phone: phone != null && phone.isNotEmpty ? phone : null,
           email: phone != null && phone.isNotEmpty ? null : email,
           password: password,
+          captchaToken: captchaToken,
         );
         final temporaryKey = SecondaryResetSessionGuard.identityOf(response.session);
         distinctTemporarySession = temporaryKey != null && temporaryKey != originalKey;
