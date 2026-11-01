@@ -1,3 +1,5 @@
+import 'app_installation_invitation.dart';
+
 enum AppReferralComposeOutcome {
   recorded,
   busy,
@@ -97,8 +99,8 @@ class AppReferralComposer {
         }
         _key = key;
         _invitationId = id;
-        final body = guideUrl.isNotEmpty && !message.contains(guideUrl)
-            ? '$message\n\nご利用開始のご案内:\n$guideUrl'
+        final body = guideUrl.isNotEmpty
+            ? appendSkoInstallationInvitation(message, guideUrl: guideUrl)
             : message;
         _uri = Uri(
           scheme: 'sms',
