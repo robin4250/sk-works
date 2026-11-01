@@ -1,0 +1,29 @@
+name: Employee invite Auth tracking
+on:
+  pull_request:
+    paths:
+      - 'lib/features/people/employee_invite_repository.dart'
+      - 'lib/features/people/employee_invite_page.dart'
+      - 'lib/features/people/employee_initial_registration_page.dart'
+      - 'test/employee_invite_auth_tracking_test.dart'
+      - 'test/employee_invite_context_sdk_test.dart'
+      - '.github/workflows/employee-invite-auth-tracking.yml'
+permissions:
+  contents: read
+jobs:
+  tracking-sdk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.47.5'
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: git diff --exit-code -- pubspec.lock
+      - run: flutter analyze lib/features/people/employee_invite_repository.dart test/employee_invite_auth_tracking_test.dart
+      - name: Actual SDK tracking and retained context regression
+        timeout-minutes: 3
+        run: flutter test test/employee_invite_auth_tracking_test.dart test/employee_invite_context_sdk_test.dart --timeout 20s --reporter expanded
