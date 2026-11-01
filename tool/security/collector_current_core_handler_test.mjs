@@ -137,3 +137,27 @@ test('collector wrong credentials cannot issue a read proof',async()=>{
 });
 
 test('collector operation retains reviewed legacy Bearer/new secret header and redirect rules',async()=>{for(const serviceKey of ['legacy-fixture-jwt', 'sb_'+'secret_'+'fixture-only']){const f=fixture({serviceKey});assert.equal((await f.invoke({operation:'master.security_collector.read',password:'synthetic-password',target:{scope:'decoy_collector'}})).status,200);const c=f.calls.find(x=>x.path.endsWith('/issue_reauthentication_proof'));assert.equal(c.options.headers.apikey,serviceKey);assert.equal(c.options.headers.Authorization,serviceKey.startsWith('sb_secret_')?undefined:'Bearer '+serviceKey);assert.ok(f.calls.every(x=>x.options.redirect==='error'));}});
+
+test('per-attempt CAPTCHA token reaches Auth only and is never a proof',async()=>{
+ const f=fixture();const token='synthetic-challenge';
+ const r=await f.invoke({operation:'secondary_password.replace',password:'synthetic-password',target,captcha_token:token});
+ assert.equal(r.status,200);
+ const sent=JSON.parse(f.calls.find(x=>x.path.includes('grant_type=password')).options.body);
+ assert.deepEqual(sent.gotrue_meta_security,{captcha_token:token});
+ assert.equal(JSON.stringify(await r.json()).includes(token),false);
+ assert.equal(JSON.stringify(f.issued).includes(token),false);
+});
+test('invalid CAPTCHA tokens refuse before password verification',async()=>{
+ for(const captcha_token of ['',null,false,{},'x'.repeat(2049),' padded ']){
+  const f=fixture();assert.equal((await f.invoke({operation:'secondary_password.replace',password:'synthetic-password',target,captcha_token})).status,400);
+  assert.equal(f.calls.some(x=>x.path.includes('grant_type=password')),false);
+  assert.equal(f.issued,undefined);
+ }
+});
+test('CAPTCHA failure never issues proof or retries the password request',async()=>{
+ const f=fixture({passwordStatus:400});
+ const r=await f.invoke({operation:'secondary_password.replace',password:'synthetic-password',target,captcha_token:'expired-challenge'});
+ assert.equal(r.status,403);assert.equal(f.issued,undefined);
+ assert.equal(f.calls.filter(x=>x.path.includes('grant_type=password')).length,1);
+ assert.equal(JSON.stringify(await r.json()).includes('expired-challenge'),false);
+});
