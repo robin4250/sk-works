@@ -4,6 +4,37 @@ import 'site_order_outgoing_compose_page.dart';
 import 'site_order_workflow_page.dart';
 import 'site_order_workflow_repository.dart';
 
+class SiteOrderNotificationDenied implements Exception {
+  const SiteOrderNotificationDenied();
+}
+
+/// Checks a saved package, never a guessed local site. No generation gate or
+/// mutation is called; current server read authorization remains mandatory.
+Future<void> verifySiteOrderNotificationTarget(
+    SiteOrderWorkflowApi api, String packageId) async {
+  if (!RegExp(r'^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$').hasMatch(packageId)) {
+    throw StateError('通知の対象を確認できません。');
+  }
+  void requireCurrent() {
+    if (api.uiRetired || api.invalidated) throw StateError('通知を開き直してください。');
+    api.requireCurrent();
+  }
+  requireCurrent();
+  await api.verify();
+  requireCurrent();
+  final detail = await api.detail(packageId);
+  requireCurrent();
+  await api.verify();
+  requireCurrent();
+  if (detail['package_id'] != packageId) throw const SiteOrderNotificationDenied();
+  if (detail['is_sender'] is! bool || detail['is_recipient'] is! bool) {
+    throw StateError('通知の保存対象を確認できません。');
+  }
+  if (detail['is_sender'] == false && detail['is_recipient'] == false) {
+    throw const SiteOrderNotificationDenied();
+  }
+}
+
 /// Owns only this site's order routes. Retiring it never cancels server work or
 /// deletes a journal; an uncertain operation must be reconciled on reopening.
 class SiteOrderSiteActionsPage extends StatefulWidget {
@@ -12,8 +43,16 @@ class SiteOrderSiteActionsPage extends StatefulWidget {
     required this.siteId,
     required this.siteName,
     this.api,
-  });
+  }) : packageId = null, onNotificationRead = null;
+  const SiteOrderSiteActionsPage.notification({
+    super.key,
+    required String this.packageId,
+    this.api,
+    this.onNotificationRead,
+  }) : siteId = '', siteName = '';
   final String siteId, siteName;
+  final String? packageId;
+  final Future<void> Function(VoidCallback requireOwnedScope)? onNotificationRead;
   @visibleForTesting
   final SiteOrderWorkflowApi? api;
 
@@ -28,6 +67,9 @@ class _SiteOrderSiteActionsPageState extends State<SiteOrderSiteActionsPage>
   late final SiteOrderWorkflowApi? _api;
   late final bool _ownsApi;
   late final String _siteId, _siteName;
+  late final String? _packageId;
+  bool _notificationAdmitted = false, _readInvoked = false;
+  bool _notificationDenied = false, _readUnknown = false;
   bool _busy = true, _retired = false, _canCreate = false;
   bool _closing = false, _handlingBack = false;
   int _generation = 0;
@@ -41,6 +83,7 @@ class _SiteOrderSiteActionsPageState extends State<SiteOrderSiteActionsPage>
     WidgetsBinding.instance.addObserver(this);
     _siteId = widget.siteId;
     _siteName = widget.siteName;
+    _packageId = widget.packageId;
     _ownsApi = widget.api == null;
     _api = widget.api ?? SiteOrderWorkflowRepository.maybeCreate();
     _api?.addListener(_changed);
@@ -84,12 +127,26 @@ class _SiteOrderSiteActionsPageState extends State<SiteOrderSiteActionsPage>
     final generation = ++_generation;
     final api = _api;
     try {
-      if (!RegExp(r'^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$').hasMatch(_siteId)) {
+      if (!RegExp(r'^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$').hasMatch(_packageId ?? _siteId)) {
         _retire();
         return;
       }
       if (api == null) {
         throw StateError('現場・ログイン状態を確認してください。');
+      }
+      if (_packageId != null) {
+        await verifySiteOrderNotificationTarget(api, _packageId);
+        _require();
+        final read = widget.onNotificationRead;
+        if (read != null && !_readInvoked) {
+          _readInvoked = true;
+          try { await read(_require); }
+          catch (_) { _readUnknown = true; }
+          _require();
+        }
+        if (!mounted || generation != _generation) return;
+        _update(() { _notificationAdmitted = true; _error = null; });
+        return;
       }
       await api.verify();
       _require();
@@ -97,6 +154,10 @@ class _SiteOrderSiteActionsPageState extends State<SiteOrderSiteActionsPage>
       _require();
       if (!mounted || generation != _generation) return;
       _update(() { _canCreate = allowed; _error = null; });
+    } on SiteOrderNotificationDenied {
+      if (mounted && !_retired && generation == _generation) {
+        _update(() { _notificationDenied = true; _error = 'この注文書を閲覧する権限がありません。'; });
+      }
     } catch (_) {
       if (mounted && !_retired && generation == _generation) {
         _update(() => _error = '注文書の利用状態を確認できません。保存状態から確認してください。');
@@ -179,7 +240,9 @@ class _SiteOrderSiteActionsPageState extends State<SiteOrderSiteActionsPage>
   void didUpdateWidget(covariant SiteOrderSiteActionsPage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.api != widget.api || oldWidget.siteId != widget.siteId ||
-        oldWidget.siteName != widget.siteName) {
+        oldWidget.siteName != widget.siteName ||
+        oldWidget.packageId != widget.packageId ||
+        oldWidget.onNotificationRead != widget.onNotificationRead) {
       _retire();
     }
   }
@@ -226,8 +289,21 @@ class _SiteOrderSiteActionsPageState extends State<SiteOrderSiteActionsPage>
             leading: IconButton(tooltip: '閉じる', icon: const Icon(Icons.close),
               onPressed: () => _closeHost())),
             body: const Center(child: Text('ログイン・会社・現場の状態が変わりました。開き直してください。')))
-        : Navigator(key: _navigator, onGenerateRoute: (_) => MaterialPageRoute<void>(
-            builder: (_) => AnimatedBuilder(animation: _changes,
-              builder: (_, __) => _menu()))),
+        : _packageId != null && !_notificationAdmitted
+            ? Scaffold(appBar: AppBar(title: const Text('通知の注文書'),
+                leading: IconButton(tooltip: '閉じる', icon: const Icon(Icons.close),
+                  onPressed: () => _closeHost())),
+                body: Center(child: _busy ? const CircularProgressIndicator()
+                  : Text(_notificationDenied ? 'この注文書を閲覧する権限がありません。'
+                    : '注文書の保存状態を確認できません。通知は残っています。')))
+            : Column(children: [
+                if (_readUnknown) const Text('既読の記録を確認できません。'),
+                Expanded(child: Navigator(key: _navigator,
+                  onGenerateRoute: (_) => MaterialPageRoute<void>(builder: (_) =>
+                    _packageId != null
+                      ? SiteOrderWorkflowPage(api: _api, initialPackageId: _packageId)
+                      : AnimatedBuilder(animation: _changes,
+                          builder: (_, __) => _menu())))),
+              ]),
   );
 }

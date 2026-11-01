@@ -40,6 +40,10 @@ abstract class SiteOrderWorkflowApi extends ChangeNotifier {
     _uiRetired = true;
     notifyListeners();
   }
+  /// Read-only context for an opt-in notification read receipt. Unknown until
+  /// current membership verification succeeds; never exposes an access token.
+  ({String actorId, String companyId, String sessionId})? get notificationReadBinding => null;
+  bool isNotificationReadClient(Object client) => false;
   bool get invalidated;
   void requireCurrent();
   Future<Map<String, dynamic>> detail(String packageId);
@@ -175,6 +179,15 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
     super.retireUiScope();
     _invalidate();
   }
+  @override
+  ({String actorId, String companyId, String sessionId})? get notificationReadBinding {
+    requireCurrent();
+    final company = _company, sid = _capturedSessionId;
+    if (company == null || sid == null || _role == null) return null;
+    return (actorId: _actor, companyId: company, sessionId: sid);
+  }
+  @override
+  bool isNotificationReadClient(Object client) => identical(client, _client);
   @override
   bool get invalidated => _invalid || uiRetired;
   void _scopeChanged() {
