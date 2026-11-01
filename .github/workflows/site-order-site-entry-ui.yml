@@ -15,8 +15,6 @@ permissions:
   contents: read
 jobs:
   verify:
-    # New notification source awaits independent review.
-    if: ${{ false }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
