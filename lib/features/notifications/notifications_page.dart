@@ -205,8 +205,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
     VoidCallback? orderListener;
     bool notificationTupleCurrent() {
       final currentIds = snapshot?.notificationIdsByItemKey[item.deduplicationKey] ?? const <String>[];
-      if (saved == null) return currentIds.isEmpty &&
-          item.actionKey == 'site_order_package' && item.actionId == packageId;
+      if (saved == null) {
+        return currentIds.isEmpty && item.actionKey == 'site_order_package' && item.actionId == packageId;
+      }
       final current = snapshot?.notificationsById[saved.id];
       return currentIds.isNotEmpty && currentIds.first == saved.id && current != null &&
           current.id == saved.id && current.actionKey == 'site_order_package' &&
