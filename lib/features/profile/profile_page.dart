@@ -14,6 +14,8 @@ import '../people/personnel_family_member.dart';
 import '../people/own_document_registration_page.dart';
 import '../qualifications/own_qualification_registration_page.dart';
 import 'profile_repository.dart';
+import '../../data/supabase_backend.dart';
+import 'profile_own_bank_entry.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({
@@ -75,6 +77,14 @@ class _ProfilePageState extends State<ProfilePage> {
     _emergencyAddress.dispose();
     _familyComposition.dispose();
     super.dispose();
+  }
+
+  ProfileOwnBankScope? _ownBankScope() {
+    if (!mounted || _loading || !SupabaseBackend.isInitialized) return null;
+    final session = SupabaseBackend.client.auth.currentSession;
+    final worker = _workerId, company = _data?.companyId;
+    if (session == null || worker == null || company == null) return null;
+    return ProfileOwnBankScope(session: session, workerId: worker, companyId: company);
   }
 
   Future<void> _load() async {
@@ -866,6 +876,13 @@ class _ProfilePageState extends State<ProfilePage> {
                       Card(
                         child: Column(
                           children: [
+                            ProfileOwnBankEntry(
+                              workerId: _workerId,
+                              companyId: data?.companyId,
+                              currentScope: _ownBankScope,
+                              onReturned: _load,
+                            ),
+                            const Divider(height: 1),
                             ListTile(
                               leading: const CircleAvatar(
                                 child: Icon(Icons.badge_outlined),
