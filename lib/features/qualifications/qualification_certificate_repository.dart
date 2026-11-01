@@ -7,6 +7,7 @@ import 'dart:typed_data';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
+import 'qualification_document_read_scope.dart';
 
 class QualificationCertificateRepository {
   QualificationCertificateRepository._(this._client);
@@ -74,78 +75,62 @@ class QualificationCertificateRepository {
   }
 
   Future<Map<String, dynamic>> loadAll() async {
-    final companyId = await _companyId();
-    final canManage = await canManageCertificates();
-
-    String? ownWorkerId;
-    if (!canManage) {
-      final value = await _client.rpc('ensure_current_user_worker');
-      ownWorkerId = value?.toString();
+    final scope = await QualificationDocumentReadScope.capture(_client);
+    final companyId = scope.companyId;
+    final canManage = await scope.peoplePermission();
+    final own = canManage ? null : await scope.ownWorker();
+    final ownWorkerId = own?['id'] as String?;
+    final masters = List<Map<String, dynamic>>.from(await scope.read(() => _client
+        .from('qualification_master').select('id, company_id, name, issuer')
+        .eq('company_id', companyId).order('name')
+        .setHeader('Authorization', 'Bearer ${scope.token}')));
+    if (masters.any((row) => !QualificationDocumentReadScope.uuid(row['id']) ||
+        row['company_id'] != companyId) ||
+        masters.map((row) => row['id']).toSet().length != masters.length) {
+      throw StateError('所属会社の資格項目を確認できません。');
     }
-
-    final masters = await _client
-        .from('qualification_master')
-        .select('id, name, issuer')
-        .eq('company_id', companyId)
-        .order('name');
-
-    if (!canManage && (ownWorkerId == null || ownWorkerId.isEmpty)) {
-      return {
-        'masters': List<Map<String, dynamic>>.from(masters),
-        'workers': const <Map<String, dynamic>>[],
-        'qualifications': const <Map<String, dynamic>>[],
-      };
+    final List<Map<String, dynamic>> workers;
+    if (canManage) {
+      workers = List<Map<String, dynamic>>.from(await scope.read(() => _client
+          .from('workers').select('id, company_id, name, affiliation, status')
+          .eq('company_id', companyId).order('name')
+          .setHeader('Authorization', 'Bearer ${scope.token}')));
+      scope.validateWorkers(workers);
+    } else {
+      workers = [Map<String, dynamic>.from(own!)..remove('user_id')];
     }
-
-    var workersQuery = _client
-        .from('workers')
-        .select('id, name, affiliation, status')
-        .eq('company_id', companyId);
-    if (!canManage && ownWorkerId != null && ownWorkerId.isNotEmpty) {
-      workersQuery = workersQuery.eq('id', ownWorkerId);
-    }
-    final workers = await workersQuery.order('name');
-
-    Future<List<Map<String, dynamic>>> readQualifications({
-      required bool extras,
-    }) async {
-      var qualificationsQuery = _client
-          .from('worker_qualifications')
-          .select(
-            'id, worker_id, qualification_master_id, certificate_number, expires_at, '
+    Future<List<Map<String, dynamic>>> readQualifications({required bool extras}) async {
+      final rows = await scope.read(() {
+        var query = _client.from('worker_qualifications').select(
+            'id, company_id, worker_id, qualification_master_id, certificate_number, expires_at, '
             'attachment_path, attachment_back_path, '
-            '${extras ? 'attachment_extra_paths, ' : ''}notes',
-          )
-          .eq('company_id', companyId);
-      if (!canManage && ownWorkerId != null && ownWorkerId.isNotEmpty) {
-        qualificationsQuery = qualificationsQuery.eq('worker_id', ownWorkerId);
-      }
-      final rows = await qualificationsQuery.order(
-        'created_at',
-        ascending: false,
-      );
+            '${extras ? 'attachment_extra_paths, ' : ''}notes')
+            .eq('company_id', companyId);
+        if (!canManage) query = query.eq('worker_id', ownWorkerId!);
+        return query.order('created_at', ascending: false)
+            .setHeader('Authorization', 'Bearer ${scope.token}');
+      });
       return List<Map<String, dynamic>>.from(rows);
     }
-
     var supportsExtraPhotos = true;
     List<Map<String, dynamic>> qualifications;
     try {
       qualifications = await readQualifications(extras: true);
     } on PostgrestException catch (error) {
-      if (!{'42703', 'PGRST204'}.contains(error.code) ||
-          !error.message.contains('attachment_extra_paths')) {
-        rethrow;
-      }
+      scope.check();
+      if (!QualificationDocumentReadScope.missingPhotoColumn(error, 'attachment_extra_paths')) rethrow;
       supportsExtraPhotos = false;
       qualifications = await readQualifications(extras: false);
     }
-
-    return {
-      'masters': List<Map<String, dynamic>>.from(masters),
-      'workers': List<Map<String, dynamic>>.from(workers),
-      'qualifications': qualifications,
-      'supports_extra_photos': supportsExtraPhotos,
-    };
+    scope.validateQualifications(qualifications, ownWorkerId: ownWorkerId);
+    final workerIds = workers.map((row) => row['id']).toSet();
+    if (qualifications.any((row) => !workerIds.contains(row['worker_id']))) {
+      throw StateError('資格書類の対象社員を確認できません。');
+    }
+    await scope.verify(worker: own, peoplePermission: canManage);
+    for (final row in [...masters, ...workers, ...qualifications]) { row.remove('company_id'); }
+    return {'masters': masters, 'workers': workers, 'qualifications': qualifications,
+      'supports_extra_photos': supportsExtraPhotos};
   }
 
   Future<Map<String, dynamic>> uploadCertificate({
@@ -293,21 +278,27 @@ class QualificationCertificateRepository {
   });
 
   Future<String> createSignedUrl(String storagePath) async {
-    final actor = currentUserId;
-    if (actor == null) throw StateError('SKOへのログインが必要です。');
-    var revoked = false;
-    final subscription = authChanges.listen((state) {
-      if (state.session?.user.id != actor) revoked = true;
-    }, onError: (Object error) => revoked = true);
-    try {
-      final url = await _client.storage.from(_bucket).createSignedUrl(storagePath, 60 * 10);
-      if (revoked || currentUserId != actor) {
-        throw StateError('ログイン状態が変わりました。');
-      }
-      return url;
-    } finally {
-      await subscription.cancel();
+    final scope = await QualificationDocumentReadScope.capture(_client);
+    final canManage = await scope.peoplePermission();
+    final own = canManage ? null : await scope.ownWorker();
+    final rows = await scope.photoRows(workerId: own?['id'] as String?);
+    final matches = rows.where((row) => QualificationDocumentReadScope.photoPaths(row)
+        .contains(storagePath)).toList();
+    if (matches.length != 1) throw StateError('保存済み資格証写真を一意に確認できません。');
+    final row = matches.single;
+    final target = canManage ? await scope.visibleWorker(row['worker_id'] as String) : own!;
+    scope.validatePhotoPath(storagePath, row);
+    await scope.verify(worker: own, peoplePermission: canManage);
+    final url = await scope.signPhoto(storagePath, row);
+    final fresh = await scope.photoRows(workerId: row['worker_id'] as String,
+        qualificationId: row['id'] as String);
+    if (fresh.length != 1) throw StateError('資格証写真が変更されました。');
+    scope.validatePhotoPath(storagePath, fresh.single);
+    if (canManage && (await scope.visibleWorker(row['worker_id'] as String))['status'] != target['status']) {
+      throw StateError('対象社員の在籍状態が変更されました。');
     }
+    await scope.verify(worker: own, peoplePermission: canManage);
+    return url;
   }
 
   Future<Map<String, dynamic>> removeCertificate({
