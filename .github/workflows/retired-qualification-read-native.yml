@@ -1,0 +1,79 @@
+name: Retired qualification actual SDK isolated read
+on:
+  pull_request:
+    paths:
+      - 'docs/candidates/retired_qualification_read_20261101/**'
+      - 'test/retired_qualification_read_native_http_test.dart'
+      - '.github/workflows/retired-qualification-read-native.yml'
+permissions:
+  contents: read
+concurrency:
+  group: retired-qualification-read-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  native-sdk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17.6
+        env:
+          POSTGRES_PASSWORD: synthetic_qualification_fixture_only
+          POSTGRES_DB: retirement_fixture
+        ports: ['55442:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d retirement_fixture"
+          --health-interval 2s --health-timeout 3s --health-retries 30
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/checkout@v4
+        with:
+          ref: a63656f7f7b71abdaf8412dbf5d296a6ce22a1c5
+          path: build/retired-qualification-source
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with: {node-version: '24'}
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: '3.47.5', channel: stable, cache: true}
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze test/retired_qualification_read_native_http_test.dart
+      - run: node docs/candidates/retired_qualification_read_20261101/server.mjs --environment-faults
+      - name: Bind exact disposable service and start loopback bridge
+        env:
+          RETIREMENT_POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+          PGHOST: '127.0.0.1'
+          PGPORT: '55442'
+          PGUSER: postgres
+          PGPASSWORD: synthetic_qualification_fixture_only
+          PGDATABASE: retirement_fixture
+        run: |
+          python3 - <<'PY'
+          import ipaddress, json, os, subprocess
+          inspected = json.loads(subprocess.check_output(['docker','inspect',os.environ['RETIREMENT_POSTGRES_CONTAINER']],text=True))
+          assert len(inspected) == 1 and inspected[0]['Config']['Image'] == 'postgres:17.6'
+          addresses = [network['IPAddress'] for network in inspected[0]['NetworkSettings']['Networks'].values()]
+          assert len(addresses) == 1 and ipaddress.ip_address(addresses[0]).is_private
+          with open(os.environ['GITHUB_ENV'],'a') as output:
+              output.write('SKO_QUALIFICATION_FIXTURE_SERVER_ADDR=' + addresses[0] + '\n')
+          with open(os.environ['RUNNER_TEMP']+'/retired-qualification-address','w') as output:
+              output.write(addresses[0])
+          PY
+          export SKO_QUALIFICATION_FIXTURE_SERVER_ADDR="$(cat "$RUNNER_TEMP/retired-qualification-address")"
+          node docs/candidates/retired_qualification_read_20261101/server.mjs > "$RUNNER_TEMP/retired-qualification-bridge.log" 2>&1 &
+          echo "$!" > "$RUNNER_TEMP/retired-qualification-bridge.pid"
+          for attempt in $(seq 1 30); do
+            if test -s build/retired-qualification-context.json; then exit 0; fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/retired-qualification-bridge.log"
+          exit 1
+      - name: Existing repository SDK reads against the repaired isolated database
+        env:
+          SKO_RETIRED_QUALIFICATION_HTTP_CONTEXT: build/retired-qualification-context.json
+        run: flutter test test/retired_qualification_read_native_http_test.dart --reporter expanded
+      - name: Close synthetic bridge
+        if: always()
+        run: |
+          if test -f "$RUNNER_TEMP/retired-qualification-bridge.log"; then cat "$RUNNER_TEMP/retired-qualification-bridge.log"; fi
+          if test -f "$RUNNER_TEMP/retired-qualification-bridge.pid"; then kill "$(cat "$RUNNER_TEMP/retired-qualification-bridge.pid")" 2>/dev/null || true; fi
