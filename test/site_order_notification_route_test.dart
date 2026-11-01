@@ -32,32 +32,37 @@ class _Attention implements AttentionCenterRepository {
       String? companyId, String? Function()? currentCompany}) async => data;
   @override dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
-Future<void> _wait(WidgetTester tester, bool Function() ready) async {
+Future<void> _wait(WidgetTester tester, bool Function() ready, {VoidCallback? onFailure}) async {
   for (var index = 0; index < 250 && !ready(); index++) {
     await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 10)));
     await tester.pump(const Duration(milliseconds: 10));
   }
+  if (!ready()) onFailure?.call();
   expect(ready(), isTrue, reason: 'Expected route stage did not complete');
 }
 Future<void> _cleanup(WidgetTester tester, fixture.NoticeFixture f) async {
   await tester.pumpWidget(const SizedBox.shrink()); await tester.pump();
   await tester.runAsync(f.close);
 }
-Future<({fixture.NoticeFixture fixture, _Attention attention})> _mount(
-    WidgetTester tester, {String mode = 'normal', String? Function()? currentCompany}) async {
+Future<({fixture.NoticeFixture fixture, _Attention attention, GlobalKey<NavigatorState> navigator})> _mount(
+    WidgetTester tester, {String mode = 'normal', String? Function()? currentCompany,
+      ValueNotifier<bool>? parentVisible}) async {
   tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
   // SDK construction, initialization and teardown use the real zone. HTTP and
   // identities remain synthetic; no GoTrue, RLS or hosted-delivery proof.
   final f = (await tester.runAsync(fixture.NoticeFixture.create))!;
   f.wire.mode = mode;
-  final attention = _Attention();
-  await tester.pumpWidget(MaterialApp(home: NotificationsPage(
-    companyId: fixture.noticeCompany, currentCompany: currentCompany,
+  final attention = _Attention(), navigator = GlobalKey<NavigatorState>();
+  final page = NotificationsPage(companyId: fixture.noticeCompany, currentCompany: currentCompany,
     attentionRepository: attention, notificationRepository: f.notifications,
-    notificationClient: f.client, siteOrderApiFactory: () => f.api)));
+    notificationClient: f.client, siteOrderApiFactory: () => f.api);
+  await tester.pumpWidget(MaterialApp(navigatorKey: navigator,
+    home: parentVisible == null ? page : ValueListenableBuilder<bool>(
+      valueListenable: parentVisible, child: page,
+      builder: (_, visible, child) => visible ? child! : const Scaffold(body: Text('親画面を閉じました')))));
   await tester.pumpAndSettle();
   addTearDown(() => _cleanup(tester, f));
-  return (fixture: f, attention: attention);
+  return (fixture: f, attention: attention, navigator: navigator);
 }
 Future<void> _explanation(WidgetTester tester) async {
   await tester.tap(find.text('注文・請書のお知らせ'));
@@ -133,16 +138,42 @@ void main() {
     expect(f.wire.patches, 0); expect(f.wire.businessWrites, 0);
     expect(find.text('権限確認後の工事'), findsNothing);
   });
+  testWidgets('parent removal retires an open package without popping an unrelated root modal', (tester) async {
+    final visible = ValueNotifier(true); addTearDown(visible.dispose);
+    final mounted = await _mount(tester, parentVisible: visible), f = mounted.fixture;
+    await _explanation(tester); await _openTarget(tester);
+    await _wait(tester, () => find.text('権限確認後の工事').evaluate().isNotEmpty);
+    unawaited(showDialog<void>(context: mounted.navigator.currentContext!,
+      builder: (_) => const AlertDialog(title: Text('無関係な確認'))));
+    await tester.pumpAndSettle();
+    visible.value = false; await tester.pumpAndSettle();
+    expect(find.text('無関係な確認'), findsOneWidget);
+    expect(find.text('権限確認後の工事'), findsNothing);
+    expect(f.wire.patches, 1); expect(f.wire.businessWrites, 0);
+    mounted.navigator.currentState!.pop(); await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('physical back returns package then explanation without replaying the read', (tester) async {
+    final f = (await _mount(tester)).fixture;
+    await _explanation(tester); await _openTarget(tester);
+    await _wait(tester, () => find.text('権限確認後の工事').evaluate().isNotEmpty);
+    await tester.binding.handlePopRoute(); await tester.pumpAndSettle();
+    expect(find.byType(SiteOrderSiteActionsPage), findsNothing);
+    await tester.binding.handlePopRoute(); await tester.pumpAndSettle();
+    expect(find.text('注文・請書のお知らせ'), findsOneWidget);
+    expect(f.wire.patches, 1); expect(f.wire.businessWrites, 0);
+    expect(tester.takeException(), isNull);
+  });
   testWidgets('package identity replacement permanently retires the owned read-only route', (tester) async {
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     final f = (await tester.runAsync(fixture.NoticeFixture.create))!;
     addTearDown(() => _cleanup(tester, f));
     await tester.pumpWidget(MaterialApp(home: notificationDestination(_record(), siteOrderApi: f.api)!));
+    void stage() => debugPrint('pure package stage: details=${f.wire.details}; memberships=${f.wire.memberships}; invalid=${f.api.invalidated}; retired=${f.api.uiRetired}; workflow=${find.byType(SiteOrderWorkflowPage).evaluate().length}; progress=${find.byType(CircularProgressIndicator).evaluate().length}; lifecycle=${tester.binding.lifecycleState}');
     await _wait(tester, () => find.text('権限確認後の工事').evaluate().isNotEmpty ||
-      find.textContaining('保存状態を確認できません').evaluate().isNotEmpty);
-    if (find.text('権限確認後の工事').evaluate().isEmpty) {
-      debugPrint('pure package admission stage: details=${f.wire.details}; invalid=${f.api.invalidated}; lifecycle=${tester.binding.lifecycleState}');
-    }
+      f.api.invalidated || find.textContaining('保存状態を確認できません').evaluate().isNotEmpty,
+      onFailure: stage);
+    if (find.text('権限確認後の工事').evaluate().isEmpty) stage();
     expect(find.text('権限確認後の工事'), findsOneWidget);
     await tester.pumpWidget(MaterialApp(home: notificationDestination(
       _record(packageId: fixture.otherNoticeId), siteOrderApi: f.api)!));

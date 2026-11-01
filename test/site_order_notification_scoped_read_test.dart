@@ -20,7 +20,7 @@ Future<void> noticeStage(Completer<void> barrier, String stage) => barrier.futur
 class NoticeWire extends http.BaseClient {
   String mode = 'normal', company = noticeCompany, role = 'manager';
   String? readAt;
-  int patches = 0, unsafePatches = 0, details = 0, businessWrites = 0;
+  int patches = 0, unsafePatches = 0, details = 0, memberships = 0, businessWrites = 0;
   bool holdDetail = false;
   Completer<void>? detailHold, detailStarted, patchHold, patchStarted;
   bool commitBeforeHold = false;
@@ -48,6 +48,7 @@ class NoticeWire extends http.BaseClient {
     var status = 200;
     final path = request.url.path;
     if (path == '/rest/v1/company_members') {
+      memberships++;
       result = [{'company_id': company, 'role': role}];
     } else if (path == '/functions/v1/site-order-workflow') {
       final command = jsonDecode((request as http.Request).body) as Map;
