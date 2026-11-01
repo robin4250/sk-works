@@ -14,6 +14,20 @@ export async function prepare(Client){
  assert.equal((await c.query("select count(*)::int n from pg_namespace where nspname in ('private','auth','storage')")).rows[0].n,0);
  const db={exec:sql=>c.query(sql),query:(sql,p)=>c.query(sql,p)};
  await setupExpenseCostFixture(db);
+ // Minimal synthetic dependency, not the deployed relation's schema/RLS proof.
+ await c.query('create table private.account_deletion_access_restrictions(user_id uuid primary key)');
+ await c.query(`CREATE OR REPLACE FUNCTION private.account_access_allowed()
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+ select auth.uid() is not null and not exists(
+  select 1 from private.account_deletion_access_restrictions where user_id=auth.uid())
+$function$
+`);
+ assert.equal((await c.query("select md5(prosrc) value from pg_proc where oid='private.account_access_allowed()'::regprocedure")).rows[0].value,
+  'aeca25db212c043c472334026bd98724');
  for(const file of ['20261012142138_expense_document_original_costs.sql','20261012163343_expense_settlement_application_month.sql','20261012170840_expense_atomic_review_flow.sql'])
   await c.query(fs.readFileSync('supabase/migrations/'+file,'utf8'));
  await c.query(`create table if not exists auth.users(id uuid primary key);

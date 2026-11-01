@@ -36,6 +36,11 @@ try{
  const original=history.find(v=>v.id===x.claim);assert.equal(original.manager_deleted,true);assert.equal(original.receipt_object_path,photo==='attached'?x.reservation.object_path:null);
  pass(state+' original JSON + canonical receipt + exact notice + actual wrappers');
  }
+ const restricted=await claim(108,null);await c.query('reset role');
+ await c.query('insert into private.account_deletion_access_restrictions(user_id) values($1)',[info.manager]);
+ await assert.rejects(remove(restricted.claim,id(1108)),e=>e.code==='42501');await c.query('reset role');
+ assert.equal((await c.query('select count(*)::int n from private.expense_manager_removals where claim_id=$1',[restricted.claim])).rows[0].n,0);
+ await c.query('delete from private.account_deletion_access_restrictions where user_id=$1',[info.manager]);pass('captured account access body rejects restricted actor');
  const invalid=await claim(107,null);await actor(info.manager,info.sid);
  for(const reason of ['', ' '])await assert.rejects(c.query('select public.expense_manager_remove($1,$2,$3,1,$4,$5)',[id(1107),info.company,invalid.claim,info.sid,reason]),e=>e.code==='22023');
  pass('empty and whitespace reasons reject before mutation');
