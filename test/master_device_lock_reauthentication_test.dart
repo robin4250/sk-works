@@ -25,7 +25,7 @@ class _Proofs extends OperationReauthenticationRepository {
   Map<String, dynamic>? target;
   @override
   Future<String> requestProof({required String password, required String operation,
-      required Map<String, dynamic> target}) async {
+      required Map<String, dynamic> target, String? captchaToken}) async {
     requests++;expectSync(operation, 'master.device.lock');expectSync(password, 'synthetic-primary');
     this.target = target;if (fail) throw StateError('synthetic denied');
     return pending == null ? 'synthetic-single-use-proof' : await pending!.future;
