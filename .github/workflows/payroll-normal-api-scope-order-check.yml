@@ -12,8 +12,8 @@ jobs:
   pglite:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with: {node-version: '24'}
       - run: npm install --prefix "$RUNNER_TEMP/sko-scope" --no-save --ignore-scripts @electric-sql/pglite@0.3.14
       - run: node --test tool/payroll_normal_api_pg17_database_guard.test.mjs
@@ -31,8 +31,8 @@ jobs:
     env:
       SKO_PAYROLL_NORMAL_API_FIXTURE_URL: postgresql://postgres:fixture-only-password@127.0.0.1:5432/sko_payroll_normal_api_fixture
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with: {node-version: '24'}
       - run: npm install --prefix "$RUNNER_TEMP/sko-scope" --no-save --ignore-scripts pg@8.16.3
       - run: node tool/verify_payroll_normal_api_scope_order.mjs "file://$PWD/tool/payroll_normal_api_native_pg17_runtime.mjs" "$RUNNER_TEMP/sko-scope/node_modules/pg/lib/index.js"

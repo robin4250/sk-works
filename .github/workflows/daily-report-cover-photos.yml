@@ -16,7 +16,7 @@ jobs:
       SKO_PDF_FONT_PATH: build/pdf-fixtures/NotoSansJP-Regular.ttf
       SKO_PDF_OUTPUT_DIR: build/pdf-fixtures
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
         with: {flutter-version: '3.47.5', channel: stable, cache: true}
       - run: |
@@ -26,6 +26,6 @@ jobs:
       - run: flutter analyze lib/features/daily_reports/daily_report_page.dart lib/features/daily_reports/daily_report_zoom_pages.dart lib/features/daily_reports/daily_report_photo_hit_target.dart lib/features/daily_reports/daily_report_cover_layout.dart lib/features/daily_reports/daily_report_pdf_service.dart lib/features/daily_reports/daily_report_photo_preview.dart test/daily_report_cover_pdf_test.dart test/daily_report_evidence_pdf_test.dart test/daily_report_photo_preview_test.dart
       - run: flutter test --reporter expanded test/daily_report_cover_pdf_test.dart test/daily_report_evidence_pdf_test.dart test/daily_report_photo_preview_test.dart
       - run: git diff --exit-code -- pubspec.yaml pubspec.lock
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with: {name: daily-report-cover-photo-renders, path: build/pdf-fixtures/, if-no-files-found: warn}

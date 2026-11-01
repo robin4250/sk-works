@@ -12,8 +12,8 @@ jobs:
   sql:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
       - run: npm install --prefix /tmp/sko-unit-sql --no-save --ignore-scripts @electric-sql/pglite@0.3.14
@@ -35,8 +35,8 @@ jobs:
           --health-timeout 5s
           --health-retries 12
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
       - run: npm install --prefix /tmp/sko-unit-pg --no-save --ignore-scripts pg@8.16.3

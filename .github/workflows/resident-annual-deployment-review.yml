@@ -36,10 +36,10 @@ jobs:
     env:
       SKO_RESIDENT_ANNUAL_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_resident_annual_fixture
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
       - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund

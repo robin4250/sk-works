@@ -35,8 +35,8 @@ jobs:
       SKO_INSURANCE_E2E_DIR: build/insurance-single-input-proof
       SKO_PDF_FONT_PATH: build/pdf-fixtures/NotoSansJP-Regular.ttf
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
       - uses: subosito/flutter-action@v2
@@ -62,7 +62,7 @@ jobs:
         run: flutter test --reporter expanded test/payroll_insurance_single_input_pdf_test.dart
       - name: Preserve synthetic JSON, PDF and rendered image proof
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: insurance-single-input-payroll-pdf-proof
           path: build/insurance-single-input-proof

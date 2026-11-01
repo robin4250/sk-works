@@ -19,8 +19,8 @@ jobs:
   proof:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
       - run: npm install --prefix "$RUNNER_TEMP/sko-label-runtime" @electric-sql/pglite@0.3.14
@@ -57,7 +57,7 @@ jobs:
                   for index,page in enumerate(document):
                       page.get_pixmap(matrix=fitz.Matrix(2,2)).save(path.with_name(f'{path.stem}_{index}.png'))
           PY
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: agreement-confirmed-label-proof
           path: build/agreement-label-proof/
