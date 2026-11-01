@@ -1,0 +1,127 @@
+-- Isolated successor to frozen 77dc. NOT a production installer. deployable:false.
+-- Original claim JSON and real receipt metadata/objects/financial originals remain unchanged.
+begin;
+do $scope$ begin
+ if current_database()<>'sko_expense_manager_removal_fixture' then raise exception 'Production HOLD';end if;
+ if to_regclass('private.expense_receipts') is null then raise exception 'Canonical receipt schema required';end if;
+ if exists(select 1 from information_schema.columns where table_schema='private' and table_name='expense_claims' and column_name='receipt_object_path') then raise exception 'Artificial claim receipt column prohibited';end if;
+ if exists(select 1 from private.expense_manager_removals) then raise exception 'Fresh isolated ledger required';end if;
+if (select md5(prosrc) from pg_proc where oid=to_regprocedure('private.expense_manager_remove(uuid,uuid,uuid,integer,uuid,text)')) is distinct from 'f87f9df2ffde0a69d2863003f79fe540' then raise exception 'Frozen source differs';end if;
+if (select md5(prosrc) from pg_proc where oid=to_regprocedure('private.expense_manager_removal_workspace(uuid,date)')) is distinct from 'b6a852413ce17ef1ecf1abf7d99749f5' then raise exception 'Frozen source differs';end if;
+end $scope$;
+alter table private.expense_manager_removals
+ add column receipt_snapshot jsonb,
+ add column receipt_state text not null check(receipt_state in ('attached_metadata_only','reserved_not_attached','unrecorded')),
+ add constraint expense_removal_receipt_snapshot_shape check(
+  (receipt_state='unrecorded' and receipt_snapshot is null) or
+  (receipt_state<>'unrecorded' and receipt_snapshot is not null and jsonb_typeof(receipt_snapshot)='object'));
+create function private.expense_removal_receipt_insert_guard() returns trigger
+language plpgsql security definer set search_path='' as $$
+begin
+ perform pg_advisory_xact_lock(hashtextextended('expense-removal-receipt:'||new.claim_id::text,0));
+ if exists(select 1 from private.expense_manager_removals where claim_id=new.claim_id) then
+  raise exception 'Removed expense cannot reserve a receipt' using errcode='55000';end if;
+ return new;
+end $$;
+revoke all on function private.expense_removal_receipt_insert_guard() from public,anon,authenticated,service_role;
+create trigger expense_removal_receipt_insert_guard before insert on private.expense_receipts
+ for each row execute function private.expense_removal_receipt_insert_guard();
+
+create or replace function private.expense_manager_remove(p_command uuid,p_company uuid,p_claim uuid,p_revision integer,p_session uuid,p_reason text)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare sid uuid; claim private.expense_claims%rowtype; old private.expense_manager_removals%rowtype;
+ command jsonb:=jsonb_build_object('company',p_company,'claim',p_claim,'revision',p_revision,'session',p_session,'reason',p_reason);
+ receipt private.expense_receipts%rowtype; receipt_state text; receipt_snapshot jsonb; original jsonb; original_settlement jsonb; result jsonb; notice uuid; consumed boolean; selected uuid[];
+begin
+ sid:=private.expense_manager_removal_access(p_company,false);
+ if p_command is null or p_claim is null or p_revision is null or p_revision<1
+  or p_session is null or p_reason is null or length(btrim(p_reason))=0 or p_reason<>btrim(p_reason) or length(p_reason)>1000 then
+  raise exception 'Invalid expense removal command' using errcode='22023';end if;
+ select * into old from private.expense_manager_removals where command_id=p_command;
+ if found then
+  if old.company_id is distinct from p_company or old.actor_id is distinct from auth.uid() or old.command is distinct from command then
+   raise exception 'Fixed expense removal differs' using errcode='23505';end if;
+  return old.result; -- Result-only replay remains available after OFF or a new authorized SID.
+ end if;
+ perform private.expense_manager_removal_access(p_company,true);
+ if sid is distinct from p_session then raise exception 'New login cannot start an old deletion' using errcode='42501';end if;
+ perform pg_advisory_xact_lock(hashtextextended('expense-removal-receipt:'||p_claim::text,0));
+ -- Canonical submit locks receipt before claim; retain that order.
+ select * into receipt from private.expense_receipts where claim_id=p_claim for share;
+ if not found then receipt_state:='unrecorded';receipt_snapshot:=null;
+ else receipt_snapshot:=to_jsonb(receipt);
+  receipt_state:=case when receipt.attached then 'attached_metadata_only' else 'reserved_not_attached' end;
+ end if;
+ select * into claim from private.expense_claims where id=p_claim and company_id=p_company for update;
+ if not found then raise exception 'Expense removal access unavailable' using errcode='42501';end if;
+ select * into old from private.expense_manager_removals where command_id=p_command;
+ if found then
+  if old.actor_id is distinct from auth.uid() or old.command is distinct from command then
+   raise exception 'Fixed expense removal differs' using errcode='23505';end if;
+  return old.result;
+ end if;
+ if exists(select 1 from private.expense_manager_removals where claim_id=p_claim)
+  or claim.withdrawn then raise exception 'Expense already removed' using errcode='22023';end if;
+ if claim.revision is distinct from p_revision then raise exception 'Expense changed; reload' using errcode='40001';end if;
+ if exists(select 1 from private.expense_claim_events where command_id=p_command)
+  or exists(select 1 from private.expense_personal_changes where command_id=p_command)
+  or exists(select 1 from private.expense_review_confirmations where command_id=p_command)
+  or exists(select 1 from private.expense_settlement_events where command_id=p_command)
+  or exists(select 1 from private.expense_cost_allocation_events where command_id=p_command) then
+  raise exception 'New expense removal command required' using errcode='23505';end if;
+ select approver_ids into selected from private.expense_approval_settings where company_id=p_company;
+ if claim.created_by=auth.uid() and cardinality(selected)>1 then
+  raise exception 'Another selected approver must remove own claim' using errcode='42501';end if;
+ if not exists(select 1 from public.company_members m join auth.users u on u.id=m.user_id
+  where m.company_id=p_company and m.user_id=claim.created_by and u.deleted_at is null) then
+  raise exception 'Applicant notification unavailable; expense unchanged' using errcode='42501';end if;
+ if receipt_snapshot is not null and
+  (receipt.company_id,receipt.applicant_id,receipt.created_by) is distinct from
+  (claim.company_id,claim.applicant_id,claim.created_by) then
+  raise exception 'Receipt binding differs; expense unchanged' using errcode='40001';end if;
+ -- This metadata snapshot does not attest to Storage object existence or bytes.
+ original:=to_jsonb(claim);
+ select to_jsonb(s) into original_settlement from private.expense_settlement_choices s where claim_id=p_claim;
+ perform private.expense_cost_scope_lock(claim.company_id,claim.allocation,claim.counterparty_id,claim.incurred_on);
+ consumed:=exists(select 1 from private.expense_amount_consumptions where claim_id=p_claim);
+ if not consumed then
+  -- Existing cost/withdrawal guards and existing draft-refresh triggers are preserved.
+  update private.expense_claims set withdrawn=true,approval='rejected',allocation='unallocated',
+   counterparty_id=null,counterparty_name=null,revision=revision+1 where id=p_claim;
+ end if;
+ if private.expense_manager_removal_access(p_company,true) is distinct from sid then
+  raise exception 'Expense removal context changed' using errcode='42501';end if;
+ notice:=private.enqueue_notification(p_company,claim.created_by,'info','経費が削除されました',
+  case when consumed then '管理者が経費を削除しました。確定済み帳票の原本は保持され、金額の訂正は別途必要です。'
+   else '管理者が経費を削除しました。経費の履歴から内容を確認してください。' end,
+  'expense_manager_deleted',p_command);
+ if notice is null then raise exception 'Applicant notification was not stored';end if;
+ result:=jsonb_build_object('command_id',p_command,'company_id',p_company,'claim_id',p_claim,
+  'requested_revision',p_revision,'manager_deleted',true,'deleted_by',auth.uid(),'deleted_at',clock_timestamp(),
+  'financial_state',case when consumed then 'finalized_original_retained' else 'withdrawn_unfinalized' end,
+  'correction_required',consumed,'notification_id',notice,'notification_state','stored');
+ insert into private.expense_manager_removals(command_id,company_id,claim_id,actor_id,session_id,command,before_row,before_settlement,result,notification_id,receipt_snapshot,receipt_state)
+ values(p_command,p_company,p_claim,auth.uid(),sid,command,original,original_settlement,result,notice,receipt_snapshot,receipt_state);
+ return result;
+end $$;
+create or replace function private.expense_manager_removal_workspace(p_company uuid,p_month date) returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare result jsonb; removed jsonb; sid uuid; enabled boolean;
+begin
+ result:=private.expense_review_flow_workspace(p_company,p_month);
+ select s.enabled into enabled from private.expense_manager_removal_state s where singleton;
+ if coalesce(enabled,false) and coalesce((result->>'can_review')::boolean,false)
+  and exists(select 1 from public.company_members where company_id=p_company and user_id=auth.uid()
+   and role::text in ('owner','admin','manager')) then
+  sid:=private.expense_manager_removal_access(p_company,false);
+ end if;
+ select coalesce(jsonb_agg(r.before_row||jsonb_build_object('receipt_object_path',case when r.receipt_state='attached_metadata_only' then r.receipt_snapshot->'object_path' else null end,
+  'receipt_preservation_state',r.receipt_state,'manager_deleted',true,
+  'financial_state',r.result->'financial_state','correction_required',r.result->'correction_required')
+  order by r.created_at,r.command_id),'[]'::jsonb) into removed from private.expense_manager_removals r
+  where company_id=p_company and (r.before_row->>'incurred_on')::date>=date_trunc('month',p_month)::date
+   and (r.before_row->>'incurred_on')::date<(date_trunc('month',p_month)+interval '1 month')::date;
+ return result||jsonb_build_object('manager_removal_version',1,'manager_removal_enabled',coalesce(enabled,false),
+  'manager_removal_session',sid,'can_manager_remove',sid is not null,'claims',(result->'claims')||removed);
+end $$;
+commit;
