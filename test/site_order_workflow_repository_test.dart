@@ -164,7 +164,7 @@ void main() {
   };
   test('UI retirement discards a late context and preserves prepared journal bytes', () async {
     final entry = SiteOrderPendingPrepare(siteId: package, documentId: package,
-      localId: sid, tradeId: package, requestId: sid, sessionId: sid);
+      localId: sid, tradeId: package, requestId: '40000000-0000-0000-0000-000000000001', sessionId: sid);
     final journal = SiteOrderOutgoingJournal();
     await journal.begin(actor, company, entry);
     final wire = _Wire()..functionJson = {'result': outgoingSource()}

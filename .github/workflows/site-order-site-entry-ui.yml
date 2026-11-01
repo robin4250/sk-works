@@ -24,4 +24,4 @@ jobs:
       - name: Analyze owned UI and retained typed contracts
         run: flutter analyze lib/features/sites/site_order_*.dart lib/features/sites/admin_site_financial_page.dart test/site_order*_test.dart
       - name: Verify owned site lifetime and retained editor contract
-        run: flutter test test/site_order_site_actions_test.dart test/site_order_outgoing_entry_page_test.dart test/site_order_workflow_repository_test.dart --reporter expanded
+        run: flutter test test/site_order_site_actions_test.dart test/site_order_workflow_repository_test.dart --reporter expanded

@@ -220,7 +220,8 @@ void main() {
   });
   testWidgets('stale close cannot pop a root dialog opened before the frame', (tester) async {
     final api = _Api(); final host = await _mount(tester, api);
-    final close = tester.widget<IconButton>(find.byTooltip('閉じる')).onPressed!;
+    final close = tester.widget<IconButton>(find.byWidgetPredicate((widget) =>
+      widget is IconButton && widget.tooltip == '閉じる')).onPressed!;
     close();
     unawaited(showDialog<void>(context: host.navigator.currentContext!,
       builder: (_) => const AlertDialog(title: Text('ルート側の確認'))));
