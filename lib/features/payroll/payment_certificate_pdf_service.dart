@@ -59,7 +59,7 @@ class PaymentCertificatePdfService {
     );
 
     document.addPage(
-      pw.Page(
+      pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.fromLTRB(
           12 * PdfPageFormat.mm,
@@ -67,6 +67,8 @@ class PaymentCertificatePdfService {
           12 * PdfPageFormat.mm,
           10 * PdfPageFormat.mm,
         ),
+        header: (context) => _pageHeader(record, context),
+        footer: (_) => _pageFooter(record),
         build: (_) => _sheet(record, sealFont, regular),
       ),
     );
@@ -106,7 +108,7 @@ class PaymentCertificatePdfService {
     );
   }
 
-  static pw.Widget _sheet(
+  static List<pw.Widget> _sheet(
     PaymentCertificateRecord record,
     pw.Font sealFont,
     pw.Font fallbackFont,
@@ -139,24 +141,9 @@ class PaymentCertificatePdfService {
         ),
     ];
 
-    return pw.Column(
-      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-      children: [
-        pw.Row(
-          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-          children: [
-            pw.Expanded(child: pw.Text(
-              'From:${record.companySealSnapshot.registeredName(record.payerCompanyName)}',
-              style: const pw.TextStyle(fontSize: 7),
-            )),
-            pw.SizedBox(width: 8),
-            pw.Text(record.payerPhone, style: const pw.TextStyle(fontSize: 7)),
-            pw.SizedBox(width: 12),
-            pw.Text('P.001/001', style: const pw.TextStyle(fontSize: 7)),
-          ],
-        ),
+    return [
         pw.SizedBox(height: 22),
-        pw.Text(
+        pw.Center(child: pw.Text(
           '工事代金支払明細書',
           textAlign: pw.TextAlign.center,
           style: pw.TextStyle(
@@ -164,7 +151,7 @@ class PaymentCertificatePdfService {
             fontWeight: pw.FontWeight.bold,
             decoration: pw.TextDecoration.underline,
           ),
-        ),
+        )),
         pw.SizedBox(height: 16),
         pw.Row(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -265,6 +252,7 @@ class PaymentCertificatePdfService {
           },
           children: [
             pw.TableRow(
+              repeat: true,
               children: [
                 _cell('作　業　所　名', center: true, bold: true),
                 _cell('工　事　内　容', center: true, bold: true),
@@ -325,8 +313,24 @@ class PaymentCertificatePdfService {
         if (record.lines.isEmpty && record.grossAmount != 0) pw.Text(
           '※福利厚生費・消費税の内訳は保存されていません。保存済みの支払金額を表示しています。',
           style: const pw.TextStyle(fontSize: 7)),
-        pw.Spacer(),
-        pw.Row(
+    ];
+  }
+
+  static pw.Widget _pageHeader(PaymentCertificateRecord record, pw.Context context) => pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          children: [
+            pw.Expanded(child: pw.Text(
+              'From:${record.companySealSnapshot.registeredName(record.payerCompanyName)}',
+              style: const pw.TextStyle(fontSize: 7),
+            )),
+            pw.SizedBox(width: 8),
+            pw.Text(record.payerPhone, style: const pw.TextStyle(fontSize: 7)),
+            pw.SizedBox(width: 12),
+            pw.Text('P.${context.pageNumber.toString().padLeft(3, '0')}/${context.pagesCount.toString().padLeft(3, '0')}', style: const pw.TextStyle(fontSize: 7)),
+          ],
+        );
+
+  static pw.Widget _pageFooter(PaymentCertificateRecord record) => pw.Row(
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
           children: [
             pw.Text(
@@ -344,10 +348,7 @@ class PaymentCertificatePdfService {
               style: const pw.TextStyle(fontSize: 7),
             ),
           ],
-        ),
-      ],
-    );
-  }
+        );
 
   static pw.Widget _issuerDetail(String value) => pw.Text(
     value,

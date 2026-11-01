@@ -72,15 +72,20 @@ jobs:
       - name: Verify page order and render PDFs
         run: |
           python - <<'PY'
-          import fitz
+          import fitz,re
           from pathlib import Path
+          def first_page_without_count(doc):
+              raw=doc[0].get_text()
+              page_number=r'(?m)^P\.001/[0-9]{3}$'
+              assert re.findall(page_number,raw)==[f'P.001/{len(doc):03}'], (len(doc),re.findall(page_number,raw))
+              return ''.join(re.sub(page_number,'P.001/PAGES',raw,count=1).split())
           with fitz.open('build/payment-order-proof/payment-legacy.pdf') as baseline:
-              first_page_text=''.join(baseline[0].get_text().split())
+              first_page_text=first_page_without_count(baseline)
           for path in Path('build/payment-order-proof').glob('*.pdf'):
               with fitz.open(path) as doc:
                   assert len(doc)==(1 if path.stem=='payment-legacy' else 3 if path.stem in ('payment-expenses','payment-automatic') else 2), (path,len(doc))
                   assert '工事代金支払明細書' in ''.join(doc[0].get_text().split()),path
-                  assert ''.join(doc[0].get_text().split())==first_page_text,path
+                  assert first_page_without_count(doc)==first_page_text,path
                   if len(doc)>=2:
                       text=''.join(doc[1].get_text().split())
                       for expected in ['注文書','2026-10','110,000','10,000']+(['注文者','受注者'] if path.stem=='payment-automatic' else ['甲・発注者','乙・受注者']):
