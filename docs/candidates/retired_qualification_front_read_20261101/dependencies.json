@@ -9,7 +9,7 @@
     "supabase/migrations/20260922031000_cache_auth_uid_in_core_rls.sql": "d7a46fb872bcf86816ff984796203d4d246eab6c2ca63ec7067c757d7c7a43da",
     "supabase/migrations/20260919024500_harden_qualification_rls.sql": "b959c38ea1fc1f0710ef430efac352ff2bf6991af7c528a1364bada408e4c071",
     "supabase/migrations/20260920205500_restrict_worker_private_documents.sql": "576526d36b29d7aa8d30ad565b4b901ee0e290f6068ae88d4071e8f387087a8e",
-    "lib/features/qualifications/qualification_document_read_scope.dart": "3c1e5183ea57ef26c218d047c3e1815f40ed80ea716676e1714869c52d4d9f30"
+    "lib/features/qualifications/qualification_document_read_scope.dart": "81e7b9babfbc4bd178275c4a54c981e03fb57bf7381e1201f77cbcf83591d7e8"
   },
   "retirement_files": {
     "tool/review/employee_retirement_worker_binding_20261101/production-observed-baseline.sql": "e70287a0ff7cfe89e91af2e243dd4c4a38bedabe6b08c37d23a9c4731c94b824",

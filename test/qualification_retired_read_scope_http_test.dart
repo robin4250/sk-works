@@ -153,7 +153,7 @@ void main() {
       expect((await f.read(kind))['workers'], hasLength(2));
       expect(f.requests.where((r) => r.url.path.endsWith('/workers')).every((r) => !r.url.queryParameters.containsKey('status')), true);
     });
-    for (final fault in ['missing', 'duplicate', 'foreign-person', 'foreign-company', 'invalid-id', 'unknown-status']) {
+    for (final fault in ['missing', 'duplicate', 'foreign-person', 'foreign-company', 'invalid-id', 'unknown-status', 'mixed-unknown-duplicate']) {
       test('$kind own identity $fault refuses private qualification reads', () async {
         final f = await _Fixture.create(); addTearDown(f.close); f.ignoreWorkerFilters = true;
         switch (fault) {
@@ -163,6 +163,7 @@ void main() {
           case 'foreign-company': f.workers.single['company_id'] = otherCompany;
           case 'invalid-id': f.workers.single['id'] = 'invalid';
           case 'unknown-status': f.workers.single['status'] = 'unknown';
+          case 'mixed-unknown-duplicate': f.workers.add({...f.workers.single, 'id': otherWorker, 'status': 'unknown'});
         }
         await expectLater(f.read(kind), throwsStateError);
         expect(f.qualificationReads, 0);

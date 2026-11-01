@@ -103,7 +103,7 @@ class QualificationDocumentReadScope {
     final rows = await read(() => client.from('workers')
         .select('id, company_id, user_id, name, affiliation, status')
         .eq('company_id', companyId).eq('user_id', actor)
-        .inFilter('status', ['active', 'inactive']).limit(2)
+        .limit(2)
         .setHeader('Authorization', 'Bearer $token'));
     if (rows.length != 1 || !uuid(rows.single['id']) ||
         rows.single['company_id'] != companyId || rows.single['user_id'] != actor ||

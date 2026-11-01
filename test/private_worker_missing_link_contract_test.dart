@@ -15,7 +15,9 @@ void main() {
     }
     final scope = File('lib/features/qualifications/qualification_document_read_scope.dart').readAsStringSync();
     expect(scope, contains(".eq('company_id', companyId).eq('user_id', actor)"));
-    expect(scope, contains(".inFilter('status', ['active', 'inactive']).limit(2)"));
+    expect(scope, contains('.limit(2)'));
+    expect(scope, isNot(contains(".inFilter('status'")));
+    expect(scope, contains("!const ['active', 'inactive'].contains(rows.single['status'])"));
     expect(scope, contains('rows.length != 1'));
     expect(scope, contains("rows.single['user_id'] != actor"));
     expect(scope, isNot(contains("rpc('ensure_current_user_worker')")));

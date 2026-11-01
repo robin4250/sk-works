@@ -45,7 +45,6 @@ const server=http.createServer(async(req,res)=>{
     const m=/^(name|created_at)\.(asc|desc)(?:\.(nullsfirst|nullslast))?$/.exec(value);assert.ok(m);assert.ok(columns[table].includes(m[1]));order=` order by ${m[1]} ${m[2]}`;continue;
    }
    if(key==='limit'){assert.ok(['1','2'].includes(value));limit=' limit '+value;continue;}
-   if(key==='status'){assert.equal(table,'workers');assert.equal(value,'in.("active","inactive")');where.push("status in ('active','inactive')");continue;}
    assert.ok(['id','company_id','user_id','worker_id'].includes(key)&&columns[table].includes(key));assert.ok(value.startsWith('eq.'));
    where.push(key+'='+uuidLiteral(value.slice(3)));
   }
