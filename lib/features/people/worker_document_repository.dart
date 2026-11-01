@@ -174,19 +174,25 @@ class WorkerDocumentRepository {
       'id, company_id, name, scope, upstream_name, company_template_id, is_required, expiry_required, renewal_reminder_days, is_active, sort_order, created_at, updated_at';
 
   Future<List<Map<String, dynamic>>> _readRequirementRows(
-    String companyId, {bool includeHidden = false, bool includeArchived = false}
+    String companyId, {bool includeHidden = false, bool includeArchived = false,
+      String? readToken, void Function()? requireReadScope}
   ) async {
     var archiveSupported = true;
     while (true) {
+      requireReadScope?.call();
       try {
         var query = _client.from('document_requirements')
             .select('$_requirementColumns${archiveSupported ? ', archived_at' : ''}')
             .eq('company_id', companyId);
         if (!includeHidden) query = query.eq('is_active', true);
-        final rows = await query.order('sort_order').order('name');
+        final ordered = query.order('sort_order').order('name');
+        final rows = await (readToken == null ? ordered :
+            ordered.setHeader('Authorization', 'Bearer $readToken'));
+        requireReadScope?.call();
         return List<Map<String, dynamic>>.from(rows)
             .where((row) => includeArchived || row['archived_at'] == null).toList();
       } on PostgrestException catch (error) {
+        requireReadScope?.call();
         if (!archiveSupported ||
             !const ['42703', 'PGRST204'].contains(error.code) ||
             !RegExp(r'(?<![A-Za-z0-9_])archived_at(?![A-Za-z0-9_])')
@@ -203,13 +209,19 @@ class WorkerDocumentRepository {
   bool _exemptionEditingAvailable = false;
   bool get exemptionEditingAvailable => _exemptionEditingAvailable;
 
-  Future<List<Map<String, dynamic>>> _loadExemptions(String companyId) async {
+  Future<List<Map<String, dynamic>>> _loadExemptions(String companyId, {
+    String? readToken, void Function()? requireReadScope,
+  }) async {
     final actor = actorId;
     final token = _client.auth.currentSession?.accessToken;
     try {
-      final raw = await _client.rpc('worker_document_exemption', params: {
+      requireReadScope?.call();
+      final query = _client.rpc('worker_document_exemption', params: {
         'p_action': 'list', 'p_data': {'company_id': companyId},
       });
+      final raw = await (readToken == null ? query :
+          query.setHeader('Authorization', 'Bearer $readToken'));
+      requireReadScope?.call();
       if (actor == null || actor != actorId ||
           token != _client.auth.currentSession?.accessToken || raw is! Map ||
           raw['capability_version'] != 1 || raw['items'] is! List) {
@@ -226,6 +238,7 @@ class WorkerDocumentRepository {
       _exemptionEditingAvailable = raw['can_manage'] == true;
       return rows;
     } on PostgrestException catch (error) {
+        requireReadScope?.call();
       // Only a confirmed absent candidate endpoint is compatible with the old
       // backend. Authorization/network/data errors must not erase known state.
       if (error.code != 'PGRST202' ||
@@ -384,69 +397,127 @@ class WorkerDocumentRepository {
 
   Future<Map<String, List<Map<String, dynamic>>>> loadAll({bool includeHiddenRequirements = false}) async {
     final session = _client.auth.currentSession;
+    final actor = actorId;
     final current = await captureAttachmentReadScope();
+    final token = session?.accessToken;
+    bool uuid(Object? value) => value is String && RegExp(
+        r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+        caseSensitive: false).hasMatch(value);
     void check() {
-      if (!current() || !identical(session, _client.auth.currentSession)) {
+      if (!current() || actor == null || actorId != actor || token == null ||
+          !identical(session, _client.auth.currentSession)) {
         throw StateError('ログイン情報が変更されました。再読み込みしてください。');
       }
     }
     check();
-    final companyId = await _companyId();
-    final canManage = await canManageStatuses();
-    final exemptions = await _loadExemptions(companyId);
+    if (!uuid(actor)) throw StateError('本人を確認できません。');
+    Future<({String companyId, String role})> readMembership() async {
+      check();
+      final rows = await _client.from('company_members').select('company_id, role')
+          .eq('user_id', actor!).limit(2)
+          .setHeader('Authorization', 'Bearer $token');
+      check();
+      if (rows.length != 1 || !uuid(rows.single['company_id']) ||
+          !const ['owner', 'admin', 'manager', 'viewer'].contains(rows.single['role'])) {
+        throw StateError('所属会社と権限を確認できません。');
+      }
+      return (companyId: rows.single['company_id'] as String,
+          role: rows.single['role'] as String);
+    }
+    final initialMembership = await readMembership();
+    final companyId = initialMembership.companyId;
+    final canManage = initialMembership.role != 'viewer';
 
-    String? ownWorkerId;
-    if (!canManage) {
-      final value = await _client.rpc('ensure_current_user_worker');
-      ownWorkerId = value?.toString();
+    // A history read must not invoke the legacy initializer, which can reactivate
+    // an existing inactive worker. Resolve the existing identity without writes.
+    Future<List<Map<String, dynamic>>> readOwnWorker() async {
+      check();
+      final rows = await _client.from('workers')
+          .select('id, company_id, user_id, name, affiliation, status')
+          .eq('company_id', companyId).eq('user_id', actor!)
+          .inFilter('status', ['active', 'inactive']).limit(2)
+          .setHeader('Authorization', 'Bearer $token');
+      check();
+      if (rows.length != 1 || !uuid(rows.single['id']) ||
+          rows.single['company_id'] != companyId || rows.single['user_id'] != actor ||
+          !const ['active', 'inactive'].contains(rows.single['status'])) {
+        throw StateError('本人の保存済み書類を確認できません。');
+      }
+      return List<Map<String, dynamic>>.from(rows);
     }
 
+    final List<Map<String, dynamic>> workers;
+    String? ownWorkerId;
+    if (canManage) {
+      workers = List<Map<String, dynamic>>.from(await _client.from('workers')
+          .select('id, company_id, name, affiliation, status')
+          .eq('company_id', companyId).eq('status', 'active').order('name')
+          .setHeader('Authorization', 'Bearer $token'));
+      check();
+    } else {
+      workers = await readOwnWorker();
+      ownWorkerId = workers.single['id'] as String;
+    }
+    final exemptions = await _loadExemptions(companyId,
+        readToken: token, requireReadScope: check);
+    check();
+    if (!canManage && exemptions.any((row) => row['worker_id'] != ownWorkerId ||
+        !uuid(row['requirement_id']))) {
+      throw StateError('本人の書類免除を確認できません。');
+    }
     final retainedRequirements = await _readRequirementRows(companyId,
-        includeHidden: canManage, includeArchived: canManage);
+        includeHidden: canManage, includeArchived: canManage,
+        readToken: token, requireReadScope: check);
+    check();
+    if (!canManage && (retainedRequirements.any((row) => !uuid(row['id']) ||
+        row['company_id'] != companyId) || retainedRequirements.map((row) => row['id'])
+        .toSet().length != retainedRequirements.length)) {
+      throw StateError('本人の必要書類項目を確認できません。');
+    }
     final requirements = retainedRequirements.where((row) =>
         row['archived_at'] == null &&
         ((includeHiddenRequirements && canManage) || row['is_active'] == true)).toList();
-
-    if (!canManage && (ownWorkerId == null || ownWorkerId.isEmpty)) {
-      return {
-        'workers': const <Map<String, dynamic>>[],
-        'requirements': List<Map<String, dynamic>>.from(requirements),
-      'retained_requirements': retainedRequirements,
-        'statuses': const <Map<String, dynamic>>[],
-      };
-    }
-
-    var workersQuery = _client
-        .from('workers')
-        .select('id, company_id, name, affiliation, status')
-        .eq('company_id', companyId)
-        .eq('status', 'active');
-    if (!canManage && ownWorkerId != null && ownWorkerId.isNotEmpty) {
-      workersQuery = workersQuery.eq('id', ownWorkerId);
-    }
-    final workers = await workersQuery.order('name');
     final statuses = await _readPhotoStatuses((photos) async {
-      var statusesQuery = _client
-          .from('worker_document_statuses')
-          .select(_statusColumns(photos))
-          .eq('company_id', companyId);
-      if (!canManage && ownWorkerId != null && ownWorkerId.isNotEmpty) {
-        statusesQuery = statusesQuery.eq('worker_id', ownWorkerId);
-      }
-      return await statusesQuery;
+      check();
+      var statusesQuery = _client.from('worker_document_statuses')
+          .select(_statusColumns(photos)).eq('company_id', companyId);
+      if (!canManage) statusesQuery = statusesQuery.eq('worker_id', ownWorkerId!);
+      final result = await statusesQuery.setHeader('Authorization', 'Bearer $token');
+      check();
+      return result;
     });
-    for (final row in statuses) {
-      workerDocumentPaths(row);
+    if (!canManage && (statuses.any((row) => !uuid(row['id']) ||
+        row['company_id'] != companyId || row['worker_id'] != ownWorkerId ||
+        !uuid(row['requirement_id'])) ||
+        statuses.map((row) => row['id']).toSet().length != statuses.length ||
+        statuses.map((row) => row['requirement_id']).toSet().length != statuses.length)) {
+      throw StateError('本人の保存済み書類を確認できません。');
     }
-
+    for (final row in statuses) { workerDocumentPaths(row); }
     check();
-    final bankMetadata = requirements.any((row) => row['name'] == '銀行口座情報')
-        ? await _bankRegistrationMetadata(companyId, List<Map<String, dynamic>>.from(workers))
+    // The existing bank metadata reader remains active-only. An inactive own
+    // history read has no bank proof; [] must remain unknown, not registered.
+    final bankMetadata = requirements.any((row) => row['name'] == '銀行口座情報') &&
+        (canManage || workers.single['status'] == 'active')
+        ? await _bankRegistrationMetadata(companyId, workers)
         : <Map<String, dynamic>>[];
     check();
+    if (!canManage) {
+      final verified = await readOwnWorker();
+      if (verified.single['id'] != ownWorkerId ||
+          verified.single['status'] != workers.single['status']) {
+        throw StateError('本人の在籍状態が変更されました。再読み込みしてください。');
+      }
+      workers.single.remove('user_id');
+    }
+    final finalMembership = await readMembership();
+    check();
+    if (finalMembership != initialMembership) {
+      throw StateError('所属会社または権限が変更されました。再読み込みしてください。');
+    }
     return {
       'bank_account_metadata': bankMetadata,
-      'workers': List<Map<String, dynamic>>.from(workers),
+      'workers': workers,
       'requirements': List<Map<String, dynamic>>.from(requirements),
       'retained_requirements': retainedRequirements,
       'statuses': List<Map<String, dynamic>>.from(statuses),
