@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -9,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sk_works/features/people/employee_distribution_url_repository.dart';
 import 'package:sk_works/features/people/employee_invite_repository.dart';
+import 'package:sk_works/features/people/employee_initial_registration_page.dart';
 import 'employee_invite_context_sdk_test.dart' as fixture;
 
 const join = 'https://testflight.apple.com/join/AbC123xy';
@@ -28,6 +30,9 @@ class UrlFixture {
               'created_at': stamp, 'app_metadata': {}, 'user_metadata': {}}};
         } else if (request.url.path == '/rest/v1/company_members') {
           body = [{'company_id': fixture.company, 'role': 'owner'}];
+        } else if (request.url.path == '/rest/v1/rpc/initial_registration_employee_rows') {
+          body = [{'id': fixture.worker, 'name': 'Synthetic Employee',
+            'phone': '07000000000', 'user_id': null}];
         } else if (request.url.path == '/rest/v1/rpc/employee_distribution_url_context_v2') {
           final p = jsonDecode(request.body) as Map<String, dynamic>;
           final command = p['p_command'];
@@ -45,6 +50,7 @@ class UrlFixture {
             receipt = {'state': 'committed', 'operation_id': p['p_operation'],
               'original_session_id': session, 'fingerprint': fingerprint,
               'result': conflict ? {'status': 'conflict'} : {'status': 'saved', 'url': join, 'updated_at': stamp}};
+            if (!conflict) before = join;
             if (barrier != null) await barrier!.future;
             if (loseAck) throw http.ClientException('synthetic ACK lost');
             body = {...envelope, ...receipt!};
@@ -82,6 +88,23 @@ class UrlFixture {
     await invites.dispose();
     if (!events.isClosed) await events.close();
     await client.dispose();
+  }
+}
+
+class ObservedUrlRepository extends EmployeeDistributionUrlRepository {
+  ObservedUrlRepository(super.client);
+  final loaded = Completer<void>();
+  final refreshed = Completer<void>();
+  int reads = 0;
+  @override
+  Future<EmployeeDistributionUrlSnapshot> read(EmployeeInviteRequest request) async {
+    try {
+      return await super.read(request);
+    } finally {
+      reads++;
+      if (!loaded.isCompleted) loaded.complete();
+      if (reads >= 2 && !refreshed.isCompleted) refreshed.complete();
+    }
   }
 }
 
@@ -130,6 +153,20 @@ void main() {
     expect(await f.urls.inspectUnknownResult(r), 'saved');
     expect(f.saves, 1); expect(f.urls.hasUnknownResult, false);
   });
+  test('new live SDK session recovers old-session receipt without reviving the old save', () async {
+    final f = UrlFixture()..loseAck = true; addTearDown(f.close);
+    await f.login(); final original = await f.open(); final before = await f.urls.read(original);
+    await expectLater(f.urls.save(original, before, join), throwsA(isA<http.ClientException>()));
+    f.session = fixture.nextSid; await f.login();
+    f.urls = EmployeeDistributionUrlRepository(f.client);
+    final current = await f.open();
+    expect(original.isCurrent, false);
+    expect(current.sessionId, fixture.nextSid);
+    expect(f.receipt!['original_session_id'], fixture.sid);
+    expect(await f.urls.inspectUnknownResult(current), 'saved');
+    expect(f.saves, 1);
+    await expectLater(f.urls.save(original, before, join), throwsStateError);
+  });
   for (final terminal in ['error', 'done', 'SID ABA']) {
     test('late receipt after $terminal keeps durable unknown and never resends', () async {
       final f = UrlFixture()..barrier = Completer<void>(); addTearDown(f.close);
@@ -152,4 +189,43 @@ void main() {
     expect(await f.urls.save(r, before, join), 'conflict');
     expect(f.urls.hasUnknownResult, false); expect(f.saves, 1);
   });
+  for (final invalidResponse in [false, true]) {
+    testWidgets('initial page keeps employee list and bounds URL editing: invalid=$invalidResponse', (tester) async {
+      final f = (await tester.runAsync(() async => UrlFixture()))!;
+      addTearDown(() async => tester.runAsync(f.close));
+      f.wrongCompany = invalidResponse;
+      await tester.runAsync(f.login);
+      final observed = (await tester.runAsync(() async => ObservedUrlRepository(f.client)))!;
+      await tester.pumpWidget(MaterialApp(home: EmployeeInitialRegistrationPage(
+        repository: f.invites, urlRepository: observed,
+      )));
+      await tester.runAsync(() => observed.loaded.future.timeout(const Duration(seconds: 5)));
+      await tester.pumpAndSettle();
+      final scrollable = find.descendant(of: find.byType(ListView).first, matching: find.byType(Scrollable)).first;
+      await tester.scrollUntilVisible(find.text('Synthetic Employee'), 200, maxScrolls: 20, scrollable: scrollable);
+      await tester.pumpAndSettle();
+      expect(find.text('Synthetic Employee'), findsOneWidget);
+      final save = find.widgetWithText(FilledButton, 'URLを保存');
+      await tester.scrollUntilVisible(save, -200, maxScrolls: 20, scrollable: scrollable);
+      await tester.pumpAndSettle();
+      if (invalidResponse) {
+        expect(tester.widget<FilledButton>(save).onPressed, null);
+        expect(f.saves, 0);
+      } else {
+        await tester.enterText(find.byType(TextField).first, join);
+        await tester.ensureVisible(save);
+        await tester.pumpAndSettle();
+        expect(save.hitTestable(), findsOneWidget);
+        await tester.runAsync(() async {
+          await tester.tap(save.hitTestable());
+          await observed.refreshed.future.timeout(const Duration(seconds: 5));
+        });
+        await tester.pumpAndSettle();
+        expect(f.saves, 1);
+        expect(find.text('TestFlight URLを保存しました'), findsOneWidget);
+        expect(find.widgetWithText(TextField, join), findsOneWidget);
+      }
+      expect(f.requests.where((r) => r.url.path.contains('save_initial_registration_distribution_settings')), isEmpty);
+    });
+  }
 }

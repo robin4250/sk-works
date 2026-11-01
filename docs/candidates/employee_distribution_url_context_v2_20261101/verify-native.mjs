@@ -43,7 +43,13 @@ try {
  insert into public.company_members values('${company}','${actor}','owner');`);
  await db.query(await fs.readFile(new URL('session-baseline.fixture.sql',dir),'utf8'));
  const legacy=await db.query("select pg_get_functiondef('private.require_reauthentication_session()'::regprocedure) a,pg_get_functiondef('private.account_access_allowed()'::regprocedure) b");
- await db.query(await fs.readFile(new URL('context.sql.review-only',dir),'utf8'));
+ const install=await fs.readFile(new URL('context.sql.review-only',dir),'utf8');
+ await db.query('create role unknown_fixture;alter default privileges in schema private grant execute on functions to unknown_fixture');
+ await rejects(()=>db.query(install),'unexpected inherited role ACL aborts entire installation');
+ await db.query('rollback');
+ assert.equal((await db.query("select to_regclass('private.employee_distribution_url_v2_control') v")).rows[0].v,null);
+ await db.query('alter default privileges in schema private revoke execute on functions from unknown_fixture');
+ await db.query(install);
  const before=await invoke('read');assert.equal(before.url,null);assert.equal(before.can_save,false);pass('initial OFF retains nullable read');
  const payload={before_url:before.url,before_updated_at:before.updated_at,url};
  await rejects(()=>invoke('save',payload,id(10)),'OFF rejects new save');
@@ -92,6 +98,7 @@ try {
   const pending=contender.query('select public.employee_distribution_url_context_v2($1,$2,$3,$4,$5) v',[company,nextSid,'save',id(90),{before_url:fresh.url,before_updated_at:fresh.updated_at,url}]);
   let waiting=false;
   for(let attempt=0;attempt<100;attempt++) {
+   await db.query('select pg_stat_clear_snapshot()');
    const row=(await db.query('select wait_event_type from pg_stat_activity where pid=$1',[pid])).rows[0];
    if(row?.wait_event_type==='Lock'){waiting=true;break;}
    await new Promise(resolve=>setTimeout(resolve,20));
