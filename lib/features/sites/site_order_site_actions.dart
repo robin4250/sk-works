@@ -208,7 +208,7 @@ class _SiteOrderSiteActionsPageState extends State<SiteOrderSiteActionsPage>
       if (_error != null) Text(_error!),
       OutlinedButton(onPressed: _busy ? null : () => _open('view'),
         child: const Text('注文書を見る')),
-      const Text('保存済みの原本を一覧から選びます。最新の注文を推測して開くことはありません。'),
+      const Text('工事名称と工期を確認して、保存済みの原本を選択します。'),
       FilledButton(onPressed: _busy || !_canCreate ? null : () => _open('create'),
         child: const Text('注文書を作る')),
       if (!_busy && !_canCreate) const Text('現在、新規作成は利用できません。'),
