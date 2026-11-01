@@ -6,6 +6,7 @@ import 'package:local_auth/local_auth.dart';
 
 import '../auth/secure_onboarding_repository.dart';
 import 'master_recovery_repository.dart';
+import 'master_device_platform.dart';
 
 class MasterEmergencyRecoveryPage extends StatefulWidget {
   const MasterEmergencyRecoveryPage({super.key});
@@ -130,10 +131,12 @@ class _MasterEmergencyRecoveryPageState
         throw StateError('2つの復旧コード確認が完了していません。');
       }
 
+      final device = await MasterDevicePlatform.detect();
+      if (!mounted) return;
       await repository.consumeRecoveryChallenge(
         challengeId: challengeId,
-        deviceName: _deviceName(),
-        deviceType: _deviceType(),
+        deviceName: device.name,
+        deviceType: device.type,
         platform: Platform.operatingSystem,
       );
 
@@ -152,18 +155,6 @@ class _MasterEmergencyRecoveryPageState
       });
     }
   }
-
-  String _deviceName() => Platform.isIOS
-      ? 'SKO Master iOS'
-      : Platform.isMacOS
-          ? 'SKO Master Mac'
-          : 'SKO Master Device';
-
-  String _deviceType() => Platform.isIOS
-      ? 'iphone'
-      : Platform.isMacOS
-          ? 'mac'
-          : 'other';
 
   String _friendlyError(Object error) {
     final text = error.toString();

@@ -234,25 +234,25 @@ class AppAuthMutationGateway {
     }
   }
 
-  Future<User?> signInWithPassword({String? email, String? phone, required String password}) =>
+  Future<User?> signInWithPassword({String? email, String? phone, required String password, String? captchaToken}) =>
       _run((_) async {
-        final response = await _client.auth.signInWithPassword(email: email, phone: phone, password: password);
+        final response = await _client.auth.signInWithPassword(email: email, phone: phone, password: password, captchaToken: captchaToken);
         if (response.session == null) throw StateError('Sign-in did not establish a session.');
         return _Result(response.user, _binding(response.session),
             event: AuthChangeEvent.signedIn, eventSession: response.session);
       });
 
-  Future<bool> signUp({required String phone, required String password, required Map<String, dynamic> data}) =>
+  Future<bool> signUp({required String phone, required String password, required Map<String, dynamic> data, String? captchaToken}) =>
       _run((before) async {
         final response = await _client.auth.signUp(phone: phone, password: password,
-            channel: OtpChannel.sms, data: data);
+            channel: OtpChannel.sms, data: data, captchaToken: captchaToken);
         return _Result(response.session != null, response.session == null ? before : _binding(response.session),
             event: response.session == null ? null : AuthChangeEvent.signedIn, eventSession: response.session);
       });
 
-  Future<void> verifySmsCode({required String phone, required String token}) =>
+  Future<void> verifySmsCode({required String phone, required String token, String? captchaToken}) =>
       _run<void>((before) async {
-        final response = await _client.auth.verifyOTP(type: OtpType.sms, phone: phone, token: token);
+        final response = await _client.auth.verifyOTP(type: OtpType.sms, phone: phone, token: token, captchaToken: captchaToken);
         return _Result(null, response.session == null ? before : _binding(response.session),
             event: response.session == null ? null : AuthChangeEvent.signedIn, eventSession: response.session);
       });

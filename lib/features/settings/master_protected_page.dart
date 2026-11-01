@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../data/supabase_backend.dart';
 import '../auth/secure_onboarding_repository.dart';
 import 'master_device_repository.dart';
+import 'master_device_platform.dart';
 import 'master_password_protected_page.dart';
 import 'master_password_entry_repository.dart';
 import 'master_emergency_recovery_page.dart';
@@ -202,7 +203,9 @@ class _MasterProtectedPageState extends State<MasterProtectedPage>
       if (!_same(generation, actor, token)) return;
       if (current['trusted'] != true) {
         if (before['can_bootstrap'] != true || current['can_bootstrap'] != true) throw StateError('信頼済み端末の状態が変わりました。');
-        await deviceRepository.bootstrapFirstDevice(deviceKey: deviceKey, deviceName: _deviceName(), deviceType: _deviceType(), platform: Platform.operatingSystem, accessToken: token);
+        final device = await MasterDevicePlatform.detect();
+        if (!_same(generation, actor, token)) return;
+        await deviceRepository.bootstrapFirstDevice(deviceKey: deviceKey, deviceName: device.name, deviceType: device.type, platform: Platform.operatingSystem, accessToken: token);
         if (!_same(generation, actor, token)) return;
         final registered = await deviceRepository.currentDeviceStatus(deviceKey, accessToken: token);
         if (!_same(generation, actor, token)) return;
@@ -249,18 +252,6 @@ class _MasterProtectedPageState extends State<MasterProtectedPage>
     });
     await _load();
   }
-
-  String _deviceName() => Platform.isIOS
-      ? 'SKO Master iOS'
-      : Platform.isMacOS
-          ? 'SKO Master Mac'
-          : 'SKO Master Device';
-
-  String _deviceType() => Platform.isIOS
-      ? 'iphone'
-      : Platform.isMacOS
-          ? 'mac'
-          : 'other';
 
   void _lock() {
     _generation++;

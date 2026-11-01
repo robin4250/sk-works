@@ -68,6 +68,20 @@ void main() {
     expect(w.calls.where((r)=>r.url.path.endsWith('/token')),hasLength(2));
     expect(jsonDecode(w.calls.last.body)['phone'],'+819012345678');
   });
+  test('onboarding forwards each challenge to Auth once and never reuses it implicitly', () async {
+    final tokens = ['email-challenge', 'phone-challenge', 'signup-challenge', 'verify-challenge'];
+    await w.onboarding.signInWithEmail(email: 'fixture@example.invalid', password: 'synthetic', captchaToken: tokens[0]);
+    await w.onboarding.signInWithPhone(phone: '09012345678', password: 'synthetic', captchaToken: tokens[1]);
+    await w.onboarding.registerAdmin(phone: '09012345678', password: 'synthetic', captchaToken: tokens[2]);
+    await w.onboarding.verifySmsCode(phone: '09012345678', code: '123456', captchaToken: tokens[3]);
+    final authCalls = w.calls.where((r) => r.url.path.endsWith('/token') || r.url.path.endsWith('/signup') || r.url.path.endsWith('/verify')).toList();
+    expect(authCalls, hasLength(4));
+    for (var index = 0; index < tokens.length; index++) {
+      expect(jsonDecode(authCalls[index].body)['gotrue_meta_security']['captcha_token'], tokens[index]);
+    }
+    await w.onboarding.signInWithEmail(email: 'fixture@example.invalid', password: 'synthetic');
+    expect(jsonDecode(w.calls.last.body)['gotrue_meta_security']['captcha_token'], isNull);
+  });
   test('different repository instances reject overlapping SDK writes',() async {
     final delayed = Completer<http.Response>();
     w.respond = (_) => delayed.future;

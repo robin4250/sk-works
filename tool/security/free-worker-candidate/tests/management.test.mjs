@@ -6,7 +6,7 @@ import {join,resolve} from 'node:path';
 import {tmpdir} from 'node:os';
 import {Miniflare,Log,LogLevel} from 'miniflare';
 const root=resolve(import.meta.dirname,'..'),zero='0'.repeat(64);
-function keys(){const p=generateKeyPairSync('ed25519');return {private:p.privateKey,jwk:p.publicKey.export({format:'jwk'}),privateJwk:p.privateKey.export({format:'jwk'})};}
+function keys(){const p=generateKeyPairSync('ed25519'),j=p.publicKey.export({format:'jwk'});return {private:p.privateKey,jwk:{kty:j.kty,crv:j.crv,x:j.x},privateJwk:p.privateKey.export({format:'jwk'})};}
 function signature(key,domain,payload){return sign(null,Buffer.from(domain+'\n'+JSON.stringify(payload)),key).toString('hex');}
 async function fixture(t){
  const manager=keys(),recovery=keys(),audit=keys(),anchor=keys(),dir=await mkdtemp(join(tmpdir(),'sko-management-'));
@@ -43,6 +43,12 @@ test('independently signed anchor detects durable rollback after workerd restart
 });
 test('independent recovery key rotates manager key only while leaving admission OFF and old key rejected',async t=>{
  const f=await fixture(t),old=await f.command('release'),next=keys();
+ // Sign only the protocol's canonical JWK order; raw Node export bytes differ.
+ const rawOrder={crv:next.jwk.crv,x:next.jwk.x,kty:next.jwk.kty};
+ const noncanonical=await f.command('recover_manager',{kind:'recovery',key_id:f.config.recoveryKeyId,key_version:1,reason:'recovery_lost_key',new_manager:{key_id:'manager_2',version:2,jwk:rawOrder}},f.recovery.private);
+ const before=await f.snapshot();
+ assert.equal((await f.call('/command',noncanonical)).status,409);
+ assert.deepEqual(await f.snapshot(),before);
  const recovery=await f.command('recover_manager',{kind:'recovery',key_id:f.config.recoveryKeyId,key_version:1,reason:'recovery_lost_key',new_manager:{key_id:'manager_2',version:2,jwk:next.jwk}},f.recovery.private);
  assert.equal((await f.call('/command',recovery)).status,200);let s=await f.snapshot();assert.equal(s.policy.enabled,0);assert.equal(s.security.manager_version,2);assert.equal(s.security.trust_revision,2);
  assert.equal((await f.call('/command',old)).status,409);assert.equal((await f.call('/command',await f.command('quarantine',{},f.manager.private))).status,409);

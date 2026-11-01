@@ -132,6 +132,7 @@ void main() {
     addTearDown(()=>directory.delete(recursive:true));
     final certificate=await Process.run('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-days','1',
       '-subj','/CN=localhost','-addext','subjectAltName=DNS:localhost,IP:127.0.0.1',
+      '-addext','extendedKeyUsage=serverAuth',
       '-keyout','${directory.path}/key.pem','-out','${directory.path}/cert.pem']);
     expect(certificate.exitCode,0);
     final serverContext=SecurityContext()..useCertificateChain('${directory.path}/cert.pem')..usePrivateKey('${directory.path}/key.pem');

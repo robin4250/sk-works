@@ -9,12 +9,13 @@ test('Invite failures preserve existing employees and omit raw upstream/cleanup 
  const markers=['synthetic-person@example.invalid','synthetic-private-phone','synthetic-token-value','synthetic-password-value'];
  let handler,scenario,existingRow,newRow,bodyReads=0;const logs=[],calls=[];
  const initialRow={id:worker,name:'Synthetic Employee',phone:'07000000000',user_id:null,company_id:company,status:'inactive',unrelated_field:'preserve'};
- globalThis.Deno={env:{get:name=>({SUPABASE_URL:'https://fixture.invalid',SUPABASE_SERVICE_ROLE_KEY:'fixture-service-key'}[name])},serve:value=>{handler=value;}};
+ globalThis.Deno={env:{get:name=>({SUPABASE_URL:'https://fixture.invalid',SUPABASE_SERVICE_ROLE_KEY:'fixture-service-key',SKO_EMPLOYEE_INVITE_SMS_WEBHOOK:'https://sms.fixture.invalid/deliver'}[name])},serve:value=>{handler=value;}};
  console.error=(...args)=>logs.push(args);
  function failure(status=409){const response=new Response(JSON.stringify({code:'23505',details:markers.join(' ')}),{status});const text=response.text.bind(response);response.text=async()=>{bodyReads++;return text();};return response;}
  function invalidJson(){const response=Response.json({});response.json=async()=>{throw Error(markers.join(' '));};return response;}
  globalThis.fetch=async(url,options={})=>{
   const u=new URL(url),method=options.method??'GET',body=options.body?JSON.parse(options.body):null;calls.push({path:u.pathname,query:u.searchParams,method,body});
+  if(u.hostname==='sms.fixture.invalid')throw Error(markers.join(' ')+JSON.stringify(body));
   if(u.pathname==='/auth/v1/settings')return Response.json({external:{phone:true}});
   if(u.pathname==='/auth/v1/user')return Response.json({id:actor});
   if(u.pathname==='/rest/v1/rpc/account_server_access_allowed')return Response.json(true);
@@ -78,6 +79,9 @@ test('Invite failures preserve existing employees and omit raw upstream/cleanup 
    logs.length=0;calls.length=0;existingRow=structuredClone(initialRow);newRow=null;
    const payload=scenario.existing?{workerId:worker}:{name:'Synthetic Employee',phone:'07000000000'};
    const response=await handler(new Request('https://fixture.invalid/invite',{method:'POST',headers:{authorization:'Bearer fixture-user'},body:JSON.stringify(payload)}));
+   assert.equal(response.headers.get('cache-control'),'no-store');
+   assert.equal(response.headers.get('x-content-type-options'),'nosniff');
+   assert.equal(response.headers.get('referrer-policy'),'no-referrer');
    assert.equal(response.status,500,JSON.stringify(scenario));assert.deepEqual(await response.json(),{error:'従業員登録を保存できませんでした。'});
    assert.deepEqual(logs[0],['employee invite persistence failed',scenario.fail.startsWith('worker')?'worker':'invite',scenario.fail.endsWith('http')?409:null]);
    for(const marker of markers)assert.equal(JSON.stringify(logs).includes(marker),false);
@@ -100,15 +104,22 @@ test('Invite failures preserve existing employees and omit raw upstream/cleanup 
    if(scenario.cleanup){assert.equal(logs.length,2);assert.equal(logs[1][0],'employee invite '+(scenario.cleanup.startsWith('worker')?'worker':'auth')+' cleanup failed');}
    else assert.equal(logs.length,1);
   }
-  for(const existing of [false,true]){
-   scenario={existing,fail:'none'};logs.length=0;calls.length=0;existingRow=structuredClone(initialRow);newRow=null;
-   const payload=existing?{workerId:worker}:{name:'Synthetic Employee',phone:'07000000000'};
+  for(const existing of [false,true])for(const sms of [false,true]){
+   scenario={existing,fail:'none',sms};logs.length=0;calls.length=0;existingRow=structuredClone(initialRow);newRow=null;
+   const payload=existing?{workerId:worker,deliverSms:sms}:{name:'Synthetic Employee',phone:'07000000000',deliverSms:sms};
    const response=await handler(new Request('https://fixture.invalid/invite',{method:'POST',headers:{authorization:'Bearer fixture-user'},body:JSON.stringify(payload)}));
+   assert.equal(response.headers.get('cache-control'),'no-store');
    assert.equal(response.status,200);const result=await response.json();
+   assert.equal(result.smsSent,false);
+   if(sms)assert.equal(result.deliveryMessage,'SMS送信サービスへ接続できませんでした。');
    assert.equal(result.phone,'+817000000000');
    assert.equal(JSON.parse(result.qrPayload).type,'sko_employee_invite');
    assert.equal(JSON.parse(result.qrPayload).inviteId,result.inviteId);
-   assert.deepEqual(logs,[]);assert.equal(calls.some(x=>x.method==='DELETE'),false);
+   assert.deepEqual(logs,sms?[['employee invite sms delivery failed']]:[]);
+   for(const marker of markers)assert.equal(JSON.stringify(logs).includes(marker),false);
+   assert.equal(JSON.stringify(logs).includes(result.temporaryPassword),false);
+   assert.equal(JSON.stringify(logs).includes(result.qrPayload),false);
+   assert.equal(calls.some(x=>x.method==='DELETE'),false);
    assert.equal(calls.filter(x=>x.path==='/rest/v1/rpc/finish_account_server_activity').length,1);
    if(existing)assert.equal(existingRow.user_id,authUser);else assert.equal(newRow.user_id,authUser);
   }

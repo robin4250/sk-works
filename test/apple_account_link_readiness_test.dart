@@ -236,4 +236,19 @@ void main() {
     expect(await pending, AppleLinkReadiness.unavailable);
     noAuthMutation(original.accessToken);
   });
+  test('closed auth tracking invalidates pending readiness without identity writes', () async {
+    final events = StreamController<AuthState>();
+    holdProvider = Completer<void>(); reachedProvider = Completer<void>();
+    source = ReadinessEventAppleLink(client, events.stream, providerCheck: () async {
+      reachedProvider!.complete(); await holdProvider!.future; return true;
+    });
+    final original = client.auth.currentSession!.accessToken;
+    final pending = source.readiness();
+    await reachedProvider!.future;
+    await events.close();
+    holdProvider!.complete();
+    expect(await pending, AppleLinkReadiness.unavailable);
+    noAuthMutation(original);
+  });
+
 }
