@@ -352,6 +352,7 @@ import UserNotifications
   private var skoQRRegistrationJournalChannel: SKOQRRegistrationJournalChannel?
   private var skoQRScannerKeyChannel: SKOQRScannerKeyChannel?
   private var skoAppleCredentialChannel: SKOAppleCredentialChannel?
+  private var skoDevicePlatformChannel: FlutterMethodChannel?
   private var skoMapChannel: FlutterMethodChannel?
   private var skoCaptureChannel: FlutterMethodChannel?
   private var skoNotificationChannel: FlutterMethodChannel?
@@ -363,6 +364,19 @@ import UserNotifications
   ) -> Bool {
     GeneratedPluginRegistrant.register(with: self)
     let launched = super.application(application, didFinishLaunchingWithOptions: launchOptions)
+
+    if let registrar = self.registrar(forPlugin: "SkoDevicePlatform") {
+      let channel = FlutterMethodChannel(name: "sko.device_platform", binaryMessenger: registrar.messenger())
+      channel.setMethodCallHandler { call, result in
+        guard call.method == "deviceType" else { result(FlutterMethodNotImplemented); return }
+        switch UIDevice.current.userInterfaceIdiom {
+        case .pad: result("ipad")
+        case .phone: result("iphone")
+        default: result(FlutterError(code: "unsupported_device", message: "Device type unavailable", details: nil))
+        }
+      }
+      skoDevicePlatformChannel = channel
+    }
 
     if let registrar = self.registrar(forPlugin: "SkoInvoicePdfView") {
       registrar.register(SkoInvoicePdfViewFactory(messenger: registrar.messenger()), withId: "sko.invoice_pdf_view")
