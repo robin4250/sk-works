@@ -96,6 +96,10 @@ class QualificationTests(unittest.TestCase):
         (self.root / 'link').symlink_to('/etc/passwd')
         with self.assertRaises(q.Rejected):
             q.read_path(self.root, 'link')
+        alias = self.root / 'root-alias'
+        alias.symlink_to(self.root, target_is_directory=True)
+        with self.assertRaises(q.Rejected):
+            q.read_path(alias, 'link')
 
     def test_manifest_unknown_fields_refuse(self):
         self.manifest['deployable'] = True

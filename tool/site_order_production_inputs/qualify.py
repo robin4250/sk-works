@@ -37,6 +37,9 @@ def exact_keys(value, expected):
         raise Rejected('unexpected_shape')
 
 def read_path(root, relative):
+    root = Path(root).absolute()
+    if any(p.is_symlink() for p in [root, *root.parents]):
+        raise Rejected('symlink_root')
     if not isinstance(relative, str) or not relative or '\\' in relative or any(ord(c) < 32 for c in relative):
         raise Rejected('unsafe_path')
     part = PurePosixPath(relative)
