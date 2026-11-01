@@ -1,0 +1,35 @@
+name: Worker document retired own read
+on:
+  pull_request:
+    paths:
+      - 'lib/features/people/worker_document_repository.dart'
+      - 'test/worker_document_retired_own_read_http_test.dart'
+      - 'test/worker_document_bank_metadata_http_test.dart'
+      - 'test/worker_document_company_admission_test.dart'
+      - 'test/worker_document_own_save_http_test.dart'
+      - 'test/private_worker_missing_link_contract_test.dart'
+      - 'test/private_worker_documents_contract_test.dart'
+      - '.github/workflows/worker-document-retired-own-read.yml'
+permissions:
+  contents: read
+jobs:
+  scoped-own-history:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: '3.47.5', channel: stable, cache: true}
+      - run: flutter pub get --enforce-lockfile
+      - run: >-
+          flutter analyze lib/features/people/worker_document_repository.dart
+          test/worker_document_retired_own_read_http_test.dart
+      - run: >-
+          flutter test test/worker_document_retired_own_read_http_test.dart
+          test/worker_document_bank_metadata_http_test.dart
+          test/worker_document_company_admission_test.dart
+          test/worker_document_own_save_http_test.dart
+          test/private_worker_missing_link_contract_test.dart
+          test/private_worker_documents_contract_test.dart
+          --reporter expanded
