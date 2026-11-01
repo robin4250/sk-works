@@ -1,0 +1,27 @@
+name: Company link Auth tracking
+on:
+  pull_request:
+    paths:
+      - 'lib/features/companies/trade_company_repository.dart'
+      - 'test/company_link_auth_tracking_test.dart'
+      - 'test/company_link_bound_sdk_test.dart'
+      - '.github/workflows/company-link-auth-tracking.yml'
+permissions:
+  contents: read
+jobs:
+  tracking-sdk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.47.5'
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: git diff --exit-code -- pubspec.lock
+      - run: flutter analyze lib/features/companies/trade_company_repository.dart test/company_link_auth_tracking_test.dart
+      - name: Actual SDK tracking and retained context regression
+        timeout-minutes: 3
+        run: flutter test test/company_link_auth_tracking_test.dart test/company_link_bound_sdk_test.dart --timeout 20s --reporter expanded
