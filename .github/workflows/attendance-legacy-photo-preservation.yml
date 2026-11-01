@@ -1,0 +1,27 @@
+name: Attendance legacy photo preservation
+on:
+  pull_request:
+    paths:
+      - 'lib/features/attendance/attendance_verification_repository.dart'
+      - 'test/attendance_legacy_photo_unknown_ack_http_test.dart'
+      - '.github/workflows/attendance-legacy-photo-preservation.yml'
+permissions:
+  contents: read
+jobs:
+  photo-preservation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: '3.47.5', channel: stable, cache: true}
+      - run: flutter pub get --enforce-lockfile
+      - run: >-
+          flutter analyze lib/features/attendance/attendance_verification_repository.dart
+          test/attendance_legacy_photo_unknown_ack_http_test.dart
+      - run: >-
+          flutter test test/attendance_legacy_photo_unknown_ack_http_test.dart
+          test/capture_verification_draft_test.dart
+          test/archived_attendance_capture_http_test.dart
+          --reporter expanded
