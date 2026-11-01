@@ -19,7 +19,9 @@ Future<void> verifySiteOrderNotificationTarget(
     if (api.uiRetired || api.invalidated) throw StateError('通知を開き直してください。');
     api.requireCurrent();
   }
-  requireCurrent();
+  // A fresh repository's captured gateway epoch is admitted by verify().
+  // Do not call its synchronous requireCurrent before that admission.
+  if (api.uiRetired || api.invalidated) throw StateError('通知を開き直してください。');
   await api.verify();
   requireCurrent();
   final detail = await api.detail(packageId);
