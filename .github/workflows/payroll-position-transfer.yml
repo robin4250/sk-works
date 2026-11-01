@@ -21,7 +21,7 @@ jobs:
       SKO_PDF_FONT_PATH: build/pdf-fixtures/NotoSansJP-Regular.ttf
       SKO_PDF_OUTPUT_DIR: build/pdf-fixtures
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.47.5'
@@ -34,7 +34,7 @@ jobs:
       - run: flutter analyze lib/features/payroll/payroll_position_transfer.dart lib/features/payroll/payroll_pdf_service.dart test/payroll_position_transfer_test.dart test/payroll_position_transfer_non_daily_test.dart test/payroll_position_transfer_pdf_test.dart
       - run: flutter test --reporter expanded test/payroll_position_transfer_test.dart test/payroll_position_transfer_non_daily_test.dart test/payroll_position_transfer_pdf_test.dart test/payroll_recorded_unit_evidence_test.dart
       - if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: payroll-position-transfer-pdf
           path: build/pdf-fixtures/payroll_position_transfer.pdf*
@@ -51,7 +51,7 @@ jobs:
           --health-cmd pg_isready --health-interval 5s
           --health-timeout 5s --health-retries 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Compare actual functions using synthetic data
         env:
           PGPASSWORD: synthetic_only
@@ -75,7 +75,7 @@ jobs:
       SKO_TRANSFER_CONNECTED_JSON: build/pdf-fixtures/payroll_transfer_connected.json
       PGPASSWORD: synthetic_only
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.47.5'
@@ -96,7 +96,7 @@ jobs:
       - run: flutter analyze tool/tests/payroll_position_transfer_connected_test.dart tool/tests/payroll_position_transfer_non_daily_pdf_test.dart
       - run: flutter test --reporter expanded tool/tests/payroll_position_transfer_connected_test.dart tool/tests/payroll_position_transfer_non_daily_pdf_test.dart
       - if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: payroll-position-transfer-connected-evidence
           path: |

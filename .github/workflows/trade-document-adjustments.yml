@@ -17,7 +17,7 @@ jobs:
   flutter:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.47.5'
@@ -31,7 +31,7 @@ jobs:
         env:
           SKO_PDF_FONT_PATH: assets/fonts/company-seal/NotoSansJP-Bold.ttf
           SKO_PDF_OUTPUT_DIR: build/adjustment-pdf-proof
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: trade-document-adjustment-pdf-proof
@@ -39,8 +39,8 @@ jobs:
   isolated-sql:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
       - run: npm install --prefix "$RUNNER_TEMP/sko-adjustment" --no-save --ignore-scripts @electric-sql/pglite@0.5.8
@@ -63,8 +63,8 @@ jobs:
           --health-timeout 5s
           --health-retries 12
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
       - run: npm install --no-save --ignore-scripts pg@8.16.3
@@ -88,8 +88,8 @@ jobs:
           --health-timeout 5s
           --health-retries 12
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
       - run: cmp tool/trade_document_adjustment_guards/product-input.sql.review-only supabase/review/document_adjustment_install.incomplete.sql

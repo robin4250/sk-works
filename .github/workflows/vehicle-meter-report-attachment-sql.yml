@@ -24,13 +24,13 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Immutable reviewed #764 dependency, including vehicle lock-order fix.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: '3662a29171a8a3e947780165a674c4134ea46f37'
           path: dependency-sql
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
       - name: Verify actual scoped attachment RPC and draft compatibility

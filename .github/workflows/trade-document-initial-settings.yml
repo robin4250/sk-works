@@ -9,9 +9,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: {persist-credentials: false}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: {node-version: '22'}
       - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts
       - run: node tool/verify_trade_document_initial_settings.mjs "$PWD/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
@@ -29,9 +29,9 @@ jobs:
     env:
       SKO_TRADE_FIXTURE_URL: postgres://postgres:fixture-only@127.0.0.1:5432/sko_trade_fixture
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: {persist-credentials: false}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: {node-version: '22'}
       - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts
       - run: node tool/verify_trade_document_initial_settings.mjs "$PWD/tool/trade_document_pg_adapter.mjs"

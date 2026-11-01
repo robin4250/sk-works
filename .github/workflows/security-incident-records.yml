@@ -18,8 +18,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
       - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
@@ -51,8 +51,8 @@ jobs:
       SKO_INCIDENT_FIXTURE_URL: postgres://postgres:fixture-only@127.0.0.1:5432/sko_incident_fixture
       SKO_INCIDENT_POSTGREST_URL: http://127.0.0.1:3000
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
       - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies

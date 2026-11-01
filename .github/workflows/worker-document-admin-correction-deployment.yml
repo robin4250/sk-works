@@ -12,7 +12,7 @@ jobs:
   guide-known-delta:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: {persist-credentials: false}
       - run: python3 docs/review/worker-document-admin-correction-deployment/test_guide_delta.py
   guarded-pglite:
@@ -24,9 +24,9 @@ jobs:
     env:
       SKO_DOCUMENT_ADMIN_WITH_LEGACY: ${{ matrix.legacy }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: {persist-credentials: false}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: {node-version: '24'}
       - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
       - run: node docs/review/worker-document-admin-correction-deployment/verify.mjs "$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
@@ -47,9 +47,9 @@ jobs:
           --health-cmd "pg_isready -U postgres -d sko_document_admin_fixture"
           --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: {persist-credentials: false}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: {node-version: '24'}
       - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
       - run: node docs/review/worker-document-admin-correction-deployment/verify.mjs "$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"

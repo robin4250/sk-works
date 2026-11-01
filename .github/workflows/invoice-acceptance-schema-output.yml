@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
         with: {flutter-version: '3.47.5', channel: stable, cache: true}
       - run: flutter pub get --enforce-lockfile
@@ -55,7 +55,7 @@ jobs:
               assert saved[page].get_pixmap().samples==expected
           print('Fresh capability-dependent form and unchanged legacy original distinguished; all invoice pages retained')
           PY
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with: {name: invoice-schema-output, path: /tmp/invoice-schema-output}
       - run: git diff --exit-code -- pubspec.yaml pubspec.lock

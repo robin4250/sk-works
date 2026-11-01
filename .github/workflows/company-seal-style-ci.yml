@@ -37,8 +37,8 @@ jobs:
   contracts:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
       - run: npm install --prefix "$RUNNER_TEMP/sko-seal-runtime" @electric-sql/pglite@0.3.14
@@ -74,7 +74,7 @@ jobs:
                       text = ''.join(page.get_text() for page in document)
                       assert '株式会社変更後' not in text, path
           PY
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: company-seal-reisho-proof
           path: build/company-seal-proof/

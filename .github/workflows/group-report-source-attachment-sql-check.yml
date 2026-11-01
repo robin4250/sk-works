@@ -24,13 +24,13 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Checkout immutable staged proxy checkout dependency
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: fa44c2badcecddb501c5637d7ca6656b13b84b36
           path: rollout-fixtures/group
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
       - name: Verify scoped source/report attachment with real staged proxy RPCs

@@ -27,11 +27,11 @@ jobs:
         options: >-
           --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
       - uses: subosito/flutter-action@v2
@@ -58,7 +58,7 @@ jobs:
         run: timeout 240s flutter test --reporter expanded --timeout 60s test/trade_document_confirmation_pdf_test.dart
       - run: python3 -m pip install PyMuPDF==1.26.6
       - run: python3 tool/verify_trade_confirmation_pdf.py build/trade-confirmation-pdf-proof
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: trade-confirmation-actual-sql-pdf

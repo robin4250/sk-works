@@ -28,7 +28,7 @@ jobs:
       PGUSER: postgres
       PGDATABASE: postgres
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: |
           psql -v ON_ERROR_STOP=1 -f docs/review/shift-draft-candidate/shift-fixture.sql
           psql -v ON_ERROR_STOP=1 -f docs/review/shift-draft-candidate/require-session.fixture.sql
