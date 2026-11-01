@@ -233,6 +233,13 @@ class PayrollPdfService {
     );
     final light = PdfColor.fromHex('#83CBEA');
     final companyText = text(seal.registeredName(statement.companyName), size: 10, bold: true);
+    final savedBankBasis = detail['personal_bank_basis'];
+    final companyBankCaption = statement.isDraft || statement.managementBankHidden || savedBankBasis is! Map
+        ? null : switch(savedBankBasis['source_kind']) {
+          'company_worker_unlinked_v1' => '会社登録の口座',
+          'company_worker_inactive_v1' => '会社保管の\n精算口座',
+          _ => null,
+        };
     final bank = detail['bank_account'] is Map
         ? Map<String, dynamic>.from(detail['bank_account'] as Map)
         : detail;
@@ -667,11 +674,16 @@ class PayrollPdfService {
               child: pw.Row(
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
-                  text('振込先', size: 8.5),
+                  companyBankCaption == null
+                      ? text('振込先', size: 8.5)
+                      : pw.SizedBox(width: 36, child: pw.Column(
+                          crossAxisAlignment: pw.CrossAxisAlignment.start,
+                          children: [text('振込先', size: 8.5), pw.SizedBox(height: 2), text(companyBankCaption, size: 4.5)],
+                        )),
                   pw.SizedBox(width: 20),
                   pw.Expanded(
                     child: bankFields.every((field) => field[1].isEmpty)
-                        ? text(statement.managementBankHidden ? '管理者向けでは口座を表示しません' : '未登録', size: 9, color: statement.managementBankHidden ? PdfColors.black : PdfColors.red)
+                        ? text(statement.managementBankHidden ? '管理者向けでは口座を表示しません' : companyBankCaption != null ? '会社の口座情報は未登録' : '未登録', size: 9, color: statement.managementBankHidden ? PdfColors.black : PdfColors.red)
                         : pw.Column(
                             crossAxisAlignment: pw.CrossAxisAlignment.start,
                             children: [

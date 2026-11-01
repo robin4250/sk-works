@@ -105,7 +105,7 @@ class PayrollInsuranceIncomeHistory {
 String? payrollBirthSource(Map raw) {
   if (!raw.containsKey('birth_source')) return null;
   final source = raw['birth_source'];
-  if (source != 'personal_uid_v1' && source != 'company_worker_unlinked_v1') {
+  if (source != 'personal_uid_v1' && source != 'company_worker_unlinked_v1' && source != 'company_worker_inactive_v1') {
     throw const FormatException('誕生日の参照元を確認できません');
   }
   return source as String;

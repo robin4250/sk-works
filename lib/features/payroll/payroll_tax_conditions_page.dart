@@ -79,6 +79,7 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
   bool _basisSupported = false;
   bool _personalBirthSource = false;
   bool _companyBirthSource = false;
+  bool _inactiveCompanySource = false;
   String? _loadedBirthDate;
   PayrollInsuranceBasisReference? _basisReference, _loadedBasisReference;
   int _basisEditorRevision = 0;
@@ -205,7 +206,8 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
     _manualSupported = raw['manual_insurance_contract_version'] == 1;
     _basisSupported = raw['insurance_basis_reference_contract_version'] == 1;
     _personalBirthSource = payrollUsesPersonalBirthSource(raw);
-    _companyBirthSource = payrollBirthSource(raw) == 'company_worker_unlinked_v1';
+    _inactiveCompanySource = payrollBirthSource(raw) == 'company_worker_inactive_v1';
+    _companyBirthSource = _inactiveCompanySource || payrollBirthSource(raw) == 'company_worker_unlinked_v1';
     _canEdit = raw['can_edit'] == true &&
         (_manualSupported || !items.any((row) => (row['value'] as Map)['insurance_mode'] == 'manual')) &&
         (_basisSupported || !items.any((row) => (row['value'] as Map)['insurance_basis_reference'] != null));
@@ -822,12 +824,12 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
                     ],
                   ),
                 ],
-                  Text(_companyBirthSource ? '誕生日の参照元：会社の未連携従業員登録' : _personalBirthSource
+                  Text(_inactiveCompanySource ? '誕生日の参照元：会社管理の精算情報' : _companyBirthSource ? '誕生日の参照元：会社の未連携従業員登録' : _personalBirthSource
                     ? '本人プロフィールの誕生日で判定します。ここでは誕生日を表示・変更しません。'
                     : '本人プロフィールの誕生日連携は準備中です。料率による介護保険の設定は保存できません。',
                     key: const ValueKey('payroll-personal-birth-source')),
                   if (_companyBirthSource) ...[
-                    const Text('SKO未連携の従業員は会社が登録した生年月日で判定します。個人プロフィールには転用しません。'),
+                    Text(_inactiveCompanySource ? '会社管理の精算情報として登録した生年月日で判定します。本人の現在の個人プロフィールは取得しません。' : 'SKO未連携の従業員は会社が登録した生年月日で判定します。個人プロフィールには転用しません。'),
                     Offstage(offstage: (_insurance != 'rates' || !_flags['nursing']!) && _birth.text.trim().isEmpty, child: TextFormField(
                       controller: _birth,
                       enabled: _canEdit && !_busy && !_uncertain,

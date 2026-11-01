@@ -75,4 +75,29 @@ void main(){
   await t.tap(find.widgetWithText(FilledButton,'確認して保存').last);await t.pumpAndSettle();
   expect(sent,isNotNull);expect(sent!['birth_date'],'1978-04-05');expect(sent!['insurance_mode'],'fixed');
  });
+ testWidgets('inactive company settlement DOB remains editable without personal profile import',(t)async{
+  t.view.physicalSize=const Size(1000,2600);t.view.devicePixelRatio=1;addTearDown(t.view.resetPhysicalSize);addTearDown(t.view.resetDevicePixelRatio);
+  Map<String,dynamic>? sent;
+  await t.pumpWidget(MaterialApp(home:PayrollTaxConditionsPage(companyId:'company',workerId:'worker',rpc:(name,args)async{
+   if(name.startsWith('save_'))sent=Map.from(args['p_value'] as Map);
+   return {'company_id':'company','worker_id':'worker','can_edit':true,'birth_source':'company_worker_inactive_v1','items':[{'starts_on':'2026-09-01','version':sent==null?1:2,'value':sent??conditions()}]};
+  })));await t.pumpAndSettle();
+  final birth=find.widgetWithText(TextFormField,'生年月日（YYYY-MM-DD）');expect(birth,findsOneWidget);
+  expect(t.widget<TextFormField>(birth).controller!.text,'1986-10-01');
+  await t.scrollUntilVisible(birth,400,scrollable:find.byType(Scrollable).first);await t.enterText(birth,'1985-03-02');t.testTextInput.hide();await t.pumpAndSettle();
+  await t.scrollUntilVisible(find.widgetWithText(FilledButton,'確認して保存'),500,scrollable:find.byType(Scrollable).first);await t.tap(find.widgetWithText(FilledButton,'確認して保存'));await t.pumpAndSettle();
+  await t.tap(find.widgetWithText(FilledButton,'確認して保存').last);await t.pumpAndSettle();expect(sent!['birth_date'],'1985-03-02');expect(sent!['nursing'],true);
+ });
+ testWidgets('inactive requested nursing requires company settlement DOB',(t)async{
+  t.view.physicalSize=const Size(1000,2600);t.view.devicePixelRatio=1;addTearDown(t.view.resetPhysicalSize);addTearDown(t.view.resetDevicePixelRatio);
+  var writes=0;
+  await t.pumpWidget(MaterialApp(home:PayrollTaxConditionsPage(companyId:'company',workerId:'worker',rpc:(name,args)async{
+   if(name.startsWith('save_'))writes++;
+   return {'company_id':'company','worker_id':'worker','can_edit':true,'birth_source':'company_worker_inactive_v1','items':[{'starts_on':'2026-09-01','version':1,'value':{...conditions(),'birth_date':null}}]};
+  })));await t.pumpAndSettle();
+  final birth=find.widgetWithText(TextFormField,'生年月日（YYYY-MM-DD）');
+  expect(t.widget<TextFormField>(birth).validator!(null),'生年月日を入力してください');
+  await t.scrollUntilVisible(find.widgetWithText(FilledButton,'確認して保存'),500,scrollable:find.byType(Scrollable).first);await t.tap(find.widgetWithText(FilledButton,'確認して保存'));await t.pumpAndSettle();expect(writes,0);expect(find.byType(AlertDialog),findsNothing);
+  expect(find.byKey(const ValueKey('insurance-base-input-error')),findsOneWidget);
+ });
 }

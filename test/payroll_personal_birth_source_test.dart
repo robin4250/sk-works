@@ -27,4 +27,11 @@ void main(){
   expect(payrollBirthSource(result),'company_worker_unlinked_v1');expect(payrollUsesPersonalBirthSource(result),false);
   await expectLater(readPayrollTaxConditionsWithInsuranceReference((name,_)async=>name=='read_worker_payroll_tax_conditions'?raw:{...full,'birth_source':'personal_uid_v1'},scope),throwsFormatException);
  });
+ test('inactive source is explicit company settlement and never personal or missing fallback',()async{
+  final raw={...state(),'insurance_basis_reference_contract_version':1,'birth_source':'company_worker_inactive_v1'};
+  final full={...state(),'insurance_basis_reference_contract_version':1};
+  final result=await readPayrollTaxConditionsWithInsuranceReference((name,_)async=>name=='read_worker_payroll_tax_conditions'?raw:full,scope);
+  expect(payrollBirthSource(result),'company_worker_inactive_v1');expect(payrollUsesPersonalBirthSource(result),false);
+  await expectLater(readPayrollTaxConditionsWithInsuranceReference((name,_)async=>name=='read_worker_payroll_tax_conditions'?raw:{...full,'birth_source':'personal_uid_v1'},scope),throwsFormatException);
+ });
 }
