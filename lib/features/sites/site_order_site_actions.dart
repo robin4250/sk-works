@@ -60,10 +60,10 @@ class _SiteOrderSiteActionsPageState extends State<SiteOrderSiteActionsPage>
   }
 
   void _require() {
-    if (_retired || _closing || _api == null || _api!.uiRetired) {
+    if (_retired || _closing || _api == null || _api.uiRetired) {
       throw StateError('現場を開き直してください。');
     }
-    _api!.requireCurrent();
+    _api.requireCurrent();
   }
 
   void _changed() {
@@ -139,24 +139,24 @@ class _SiteOrderSiteActionsPageState extends State<SiteOrderSiteActionsPage>
     }
   }
 
-  void _closeHost([bool editFinancial = false]) {
-    if (editFinancial && (_retired || _api?.invalidated != false)) return;
+  void _closeHost() {
     final owner = _ownerNavigator, route = _ownerRoute;
     if (_closing || owner == null || route == null || !owner.mounted ||
         !identical(ModalRoute.of(context), route) ||
-        !identical(Navigator.of(context), owner) || !route.isCurrent || !owner.canPop()) return;
+        !identical(Navigator.of(context), owner) || !route.isCurrent || !owner.canPop()) {
+      return;
+    }
     _update(() => _closing = true);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // A root dialog can appear between the button and this frame. Never pop
       // whichever unrelated route happens to be on top at that time.
       if (!mounted || !owner.mounted ||
-          (editFinancial && (_retired || _api?.invalidated != false)) ||
           !identical(ModalRoute.of(context), route) ||
           !identical(Navigator.of(context), owner) || !route.isCurrent || !owner.canPop()) {
         if (mounted) _update(() => _closing = false);
         return;
       }
-      owner.pop(editFinancial);
+      owner.pop();
     });
   }
 
@@ -179,7 +179,9 @@ class _SiteOrderSiteActionsPageState extends State<SiteOrderSiteActionsPage>
   void didUpdateWidget(covariant SiteOrderSiteActionsPage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.api != widget.api || oldWidget.siteId != widget.siteId ||
-        oldWidget.siteName != widget.siteName) _retire();
+        oldWidget.siteName != widget.siteName) {
+      _retire();
+    }
   }
 
   @override
@@ -212,9 +214,6 @@ class _SiteOrderSiteActionsPageState extends State<SiteOrderSiteActionsPage>
       if (!_busy && !_canCreate) const Text('現在、新規作成は利用できません。'),
       OutlinedButton(onPressed: _busy ? null : () => _open('history'),
         child: const Text('過去の注文書')),
-      const Divider(),
-      OutlinedButton(onPressed: _busy ? null : () => _closeHost(true),
-        child: const Text('現場の金額設定')),
     ]),
   );
 
