@@ -56,11 +56,13 @@ class SecureOnboardingRepository {
   Future<bool> registerAdmin({
     required String phone,
     required String password,
+    String? captchaToken,
   }) async {
     final normalized = normalizeJapanesePhone(phone);
     final established = await _auth.signUp(
       phone: normalized,
       password: password,
+      captchaToken: captchaToken,
       data: const {
         'sko_registration_type': 'admin',
       },
@@ -68,20 +70,23 @@ class SecureOnboardingRepository {
     return established;
   }
 
-  Future<void> resendSmsCode({required String phone}) async {
+  Future<void> resendSmsCode({required String phone, String? captchaToken}) async {
     await _client.auth.resend(
       type: OtpType.sms,
       phone: normalizeJapanesePhone(phone),
+      captchaToken: captchaToken,
     );
   }
 
   Future<void> verifySmsCode({
     required String phone,
     required String code,
+    String? captchaToken,
   }) async {
     await _auth.verifySmsCode(
       phone: normalizeJapanesePhone(phone),
       token: code.trim(),
+      captchaToken: captchaToken,
     );
   }
 
@@ -89,6 +94,7 @@ class SecureOnboardingRepository {
   Future<void> signInWithEmail({
     required String email,
     required String password,
+    String? captchaToken,
   }) async {
     final normalized = email.trim();
     if (!isSupportedEmailValue(normalized)) {
@@ -97,6 +103,7 @@ class SecureOnboardingRepository {
     await _auth.signInWithPassword(
       email: normalized,
       password: password,
+      captchaToken: captchaToken,
     );
   }
 
@@ -106,10 +113,12 @@ class SecureOnboardingRepository {
   Future<void> signInWithPhone({
     required String phone,
     required String password,
+    String? captchaToken,
   }) async {
     await _auth.signInWithPassword(
       phone: normalizeJapanesePhone(phone),
       password: password,
+      captchaToken: captchaToken,
     );
   }
 
