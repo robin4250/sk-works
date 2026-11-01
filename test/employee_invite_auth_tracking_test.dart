@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+import 'package:qr_flutter/qr_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sk_works/features/people/employee_invite_repository.dart';
 import 'package:sk_works/features/people/employee_invite_page.dart';
@@ -144,6 +145,7 @@ void main() {
             scrollable: find.descendant(of: find.byType(ListView).first, matching: find.byType(Scrollable)).first);
         }
         expect(find.text(credential), findsOneWidget);
+        expect(find.byType(QrImageView), findsOneWidget);
         await tester.runAsync(() async {
           if (failure == 'error') { events.addError(StateError('synthetic tracking failure')); }
           // UI listeners run in the widget zone. Pump that zone before waiting
@@ -153,6 +155,7 @@ void main() {
         });
         await tester.pumpAndSettle();
         expect(find.text(credential), findsNothing);
+        expect(find.byType(QrImageView), findsNothing);
         expect(find.text('ログイン状態または会社が変わりました。画面を開き直してください。'), findsOneWidget);
         expect(f.invokes, 1);
         await tester.pumpWidget(const SizedBox.shrink());
