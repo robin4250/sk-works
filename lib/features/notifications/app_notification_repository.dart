@@ -405,6 +405,7 @@ class SiteOrderNotificationReadScope extends ChangeNotifier {
   }
   Future<void> markRead(VoidCallback requireOwnedScope) async {
     if (_attempted) throw const SiteOrderNotificationReadUnknown();
+    _attempted = true; // Reserve synchronously before any async admission.
     requireOwnedScope();
     await verifyTarget();
     requireOwnedScope(); requireCurrent();
@@ -417,7 +418,6 @@ class SiteOrderNotificationReadScope extends ChangeNotifier {
       requireOwnedScope(); requireCurrent();
       return;
     }
-    _attempted = true;
     try {
       final Object rows = await _client.from('app_notifications')
         .update({'read_at': DateTime.now().toUtc().toIso8601String()})

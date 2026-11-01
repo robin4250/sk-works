@@ -154,6 +154,20 @@ void main() {
       expect(f.wire.patches, 1);
     } finally { scope.dispose(); await f.close(); }
   });
+  test('concurrent callbacks reserve one read attempt before asynchronous admission', () async {
+    final f = await NoticeFixture.create();
+    f.wire.holdDetail = true; f.wire.detailHold = Completer<void>(); f.wire.detailStarted = Completer<void>();
+    final scope = f.scope();
+    try {
+      final first = scope.markRead(() {});
+      await f.wire.detailStarted!.future;
+      await expectLater(scope.markRead(() {}), throwsA(isA<SiteOrderNotificationReadUnknown>()));
+      expect(f.wire.patches, 0);
+      f.wire.detailHold!.complete();
+      await first;
+      expect(f.wire.patches, 1);
+    } finally { scope.dispose(); await f.close(); }
+  });
   test('already-read exact row is verified without another update', () async {
     final f = await NoticeFixture.create(); f.wire.readAt = '2026-10-31T00:00:00Z';
     final scope = f.scope();
