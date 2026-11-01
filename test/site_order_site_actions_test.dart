@@ -54,10 +54,10 @@ class _Input {
 }
 Future<({GlobalKey<NavigatorState> navigator, ValueNotifier<_Input> input,
     List<bool?> results})> _mount(WidgetTester tester, _Api api,
-    {TextScaler textScaler = TextScaler.noScaling}) async {
+    {TextScaler textScaler = TextScaler.noScaling, String siteId = site}) async {
   tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
   final navigator = GlobalKey<NavigatorState>();
-  final input = ValueNotifier(_Input(api));
+  final input = ValueNotifier(_Input(api, siteId));
   final results = <bool?>[];
   await tester.pumpWidget(MaterialApp(navigatorKey: navigator,
     builder: (context, child) => MediaQuery(data: MediaQuery.of(context).copyWith(textScaler: textScaler), child: child!),
@@ -130,6 +130,31 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+  testWidgets('invalid initial UUID never admits an order route', (tester) async {
+    final api = _Api(); await _mount(tester, api, siteId: 'not-a-site');
+    expect(api.admissions, 0); expect(api.writes, 0);
+    expect(find.text('注文書を見る'), findsNothing);
+    expect(api.uiRetired, isTrue);
+  });
+  testWidgets('capability loss immediately before creation never opens compose', (tester) async {
+    final api = _Api()..allowed = true; await _mount(tester, api);
+    api.allowed = false;
+    await tester.tap(find.text('注文書を作る')); await tester.pumpAndSettle();
+    expect(find.byType(SiteOrderOutgoingComposePage), findsNothing);
+    expect(api.writes, 0);
+  });
+  testWidgets('removing the host disposes an owned refusal dialog without sending', (tester) async {
+    final api = _Api(); await _mount(tester, api);
+    await _history(tester);
+    await tester.tap(find.text('保存された工事')); await tester.pumpAndSettle();
+    await tester.tap(find.text('注文を辞退')); await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsOneWidget);
+    await tester.pumpWidget(const MaterialApp(home: Text('外側の画面')));
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(api.uiRetired, isTrue); expect(api.writes, 0);
+    expect(tester.takeException(), isNull);
+  });
   testWidgets('owned refusal dialog retires without popping unrelated root modal', (tester) async {
     final api = _Api(); final host = await _mount(tester, api);
     final hosted = tester.widget<SiteOrderSiteActionsPage>(find.byType(SiteOrderSiteActionsPage)).api as _Api;

@@ -11,8 +11,6 @@ permissions:
   contents: read
 jobs:
   verify:
-    # New nested site UI awaits independent source review before execution.
-    if: ${{ false }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -25,5 +23,5 @@ jobs:
       - run: flutter pub get
       - name: Analyze owned UI and retained typed contracts
         run: flutter analyze lib/features/sites/site_order_*.dart lib/features/sites/admin_site_financial_page.dart test/site_order*_test.dart
-      - name: Verify current editor-return fixture before expanding the UI
-        run: flutter test test/site_order_outgoing_entry_page_test.dart --reporter expanded
+      - name: Verify owned site lifetime and retained editor contract
+        run: flutter test test/site_order_site_actions_test.dart test/site_order_outgoing_entry_page_test.dart test/site_order_workflow_repository_test.dart --reporter expanded

@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sk_works/features/sites/site_order_workflow_repository.dart';
 import 'package:sk_works/features/sites/site_order_approval_journal.dart';
+import 'package:sk_works/features/sites/site_order_outgoing_journal.dart';
 
 const actor = '10000000-0000-0000-0000-000000000001';
 const company = '10000000-0000-0000-0000-000000000002';
@@ -161,6 +162,29 @@ void main() {
       'body_hash': 'a' * 64, 'may_request_fresh_preview': true, 'reuses_previous_consent': false,
     },
   };
+  test('UI retirement discards a late context and preserves prepared journal bytes', () async {
+    final entry = SiteOrderPendingPrepare(siteId: package, documentId: package,
+      localId: sid, tradeId: package, requestId: sid, sessionId: sid);
+    final journal = SiteOrderOutgoingJournal();
+    await journal.begin(actor, company, entry);
+    final wire = _Wire()..functionJson = {'result': outgoingSource()}
+      ..hold = Completer<void>()..started = Completer<void>();
+    final f = await _fixture(wire);
+    addTearDown(f.$2.dispose); addTearDown(f.$1.dispose);
+    expect(await f.$2.pendingOutgoing(package), hasLength(1));
+    final preferences = await SharedPreferences.getInstance();
+    final before = {for (final key in preferences.getKeys()) key: preferences.get(key)};
+    final pendingContext = f.$2.outgoingContext(package, package);
+    await wire.started!.future;
+    f.$2.retireUiScope();
+    wire.hold!.complete();
+    await expectLater(pendingContext, throwsA(anything));
+    expect(f.$2.invalidated, isTrue);
+    await expectLater(f.$2.pendingOutgoing(package), throwsStateError);
+    expect(wire.functions, 1);
+    expect(await journal.read(actor, company, package), hasLength(1));
+    expect({for (final key in preferences.getKeys()) key: preferences.get(key)}, before);
+  });
   test('outgoing context uses registered scoped facts without granting send or persisting body', () async {
     final wire = _Wire()..functionJson = {'result': outgoingSource()};
     final f = await _fixture(wire);
