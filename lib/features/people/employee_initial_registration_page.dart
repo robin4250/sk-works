@@ -7,6 +7,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'employee_invite_repository.dart';
+import 'employee_invite_delivery_message.dart';
 import '../../data/supabase_backend.dart';
 import '../referrals/app_referral_page.dart';
 import '../referrals/app_referral_repository.dart';
@@ -193,20 +194,14 @@ class _EmployeeInitialRegistrationPageState
     );
   }
 
-  String _shareText(EmployeeInviteResult result) {
-    final buffer = StringBuffer()
-      ..writeln('SKO初回登録のご案内')
-      ..writeln('氏名: ${result.name}');
-    final testFlight = result.testFlightUrl?.trim() ?? '';
-    if (testFlight.isNotEmpty) {
-      buffer.writeln('TestFlight: $testFlight');
-    }
-    buffer
-      ..writeln('電話番号: ${result.phone}')
-      ..writeln('初期パスワード: ${result.temporaryPassword}')
-      ..writeln('SKOをインストール後、初回ログインQRまたは上記情報でログインしてください。');
-    return buffer.toString();
-  }
+  String _shareText(EmployeeInviteResult result) =>
+      employeeInviteDeliveryMessage(
+        name: result.name,
+        phone: result.phone,
+        temporaryPassword: result.temporaryPassword,
+        testFlightUrl: result.testFlightUrl,
+        english: SkoLanguageController.isEnglish,
+      );
 
   Future<void> _share(EmployeeInviteResult result) async {
     if (!_current() || !identical(result, _result)) {
@@ -303,7 +298,7 @@ class _EmployeeInitialRegistrationPageState
                             autocorrect: false,
                             decoration: const InputDecoration(
                               labelText: 'TestFlight URL',
-                              hintText: 'https://testflight.apple.com/join/...',
+                              hintText: 'App Store Connectからコピーした参加URL',
                               border: OutlineInputBorder(),
                               prefixIcon: Icon(Icons.link),
                             ),
@@ -407,7 +402,7 @@ class _ResultCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final testFlight = result.testFlightUrl?.trim() ?? '';
+    final testFlight = employeeInviteTestFlightUrl(result.testFlightUrl);
     return Card(
       color: Theme.of(context).colorScheme.primaryContainer,
       child: Padding(
@@ -427,9 +422,12 @@ class _ResultCard extends StatelessWidget {
                     : 'SMS自動送信設定が未接続のため、共有ボタンから送れます。',
               ),
             ],
-            if (testFlight.isNotEmpty) ...[
+            if (testFlight != null) ...[
               const SizedBox(height: 8),
               SelectableText('TestFlight: $testFlight'),
+            ] else ...[
+              const SizedBox(height: 8),
+              const Text('TestFlight参加URLは未設定、または利用できない形式です。管理者に確認してください。'),
             ],
             const SizedBox(height: 10),
             const Text(
@@ -482,4 +480,5 @@ class _ResultCard extends StatelessWidget {
     );
   }
 }
+
 
