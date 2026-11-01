@@ -174,7 +174,7 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
   final _refusalJournal = SiteOrderRefusalJournal();
   String get _actor => _client.auth.currentUser!.id;
   String? _company, _role;
-  bool _invalid = false;
+  bool _invalid = false, _disposed = false;
   bool Function()? _notificationUiContext;
   @override
   bool bindNotificationUiContext(bool Function() current) {
@@ -189,7 +189,7 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
     bool allowed;
     try { allowed = current(); } catch (_) { allowed = false; }
     if (!allowed) {
-      _invalidate();
+      _invalidate(deferNotification: true);
       throw StateError('通知一覧から開き直してください。');
     }
   }
@@ -214,11 +214,17 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
     if (!_session.isCurrent) _invalidate();
   }
 
-  void _invalidate() {
+  void _invalidate({bool deferNotification = false}) {
     if (_invalid) return;
     _invalid = true;
     if (!_retired.isCompleted) _retired.complete();
-    notifyListeners();
+    if (deferNotification) {
+      // A child's initState may discover parent-context retirement while its
+      // route is being built. Deny now, notify surviving siblings after build.
+      scheduleMicrotask(() { if (!_disposed) notifyListeners(); });
+    } else {
+      notifyListeners();
+    }
   }
 
   @override
@@ -1147,6 +1153,7 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
 
   @override
   void dispose() {
+    _disposed = true;
     _invalidate();
     _session.removeListener(_scopeChanged);
     if (!_retired.isCompleted) _retired.complete();
