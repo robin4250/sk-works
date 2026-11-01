@@ -14,13 +14,14 @@ const site = '70000000-0000-4000-8000-000000000001';
 const otherSite = '70000000-0000-4000-8000-000000000002';
 const package = '70000000-0000-4000-8000-000000000003';
 class _Api extends SiteOrderWorkflowApi {
-  bool allowed = false, expired = false, gateError = false;
+  bool allowed = false, expired = false, gateError = false, supported = true;
   int admissions = 0, writes = 0;
   final siteReads = <String>[];
   Completer<List<Map<String, dynamic>>>? historyHold;
   @override bool get invalidated => expired || uiRetired;
   @override void requireCurrent() { if (invalidated) throw StateError('retired'); }
   @override Future<void> verify() async => requireCurrent();
+  @override Future<bool> canUseWorkflow() async { requireCurrent(); return supported; }
   @override Future<bool> canCreateOutgoing() async {
     requireCurrent(); admissions++;
     if (gateError) throw StateError('unsupported capability');
@@ -92,6 +93,17 @@ Future<void> _history(WidgetTester tester) async {
   expect(find.byType(SiteOrderWorkflowPage), findsOneWidget);
 }
 void main() {
+  testWidgets('missing backend disables all site module actions without a read or write', (tester) async {
+    final api = _Api()..supported = false;
+    await _mount(tester, api);
+    expect(api.siteReads, isEmpty); expect(api.writes, 0);
+    for (final label in ['注文書を見る', '管理倉庫（注文書・請書）', '過去の注文書']) {
+      final button = tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, label));
+      expect(button.onPressed, isNull);
+    }
+    expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, '注文書を作る')).onPressed, isNull);
+    await tester.pumpWidget(const SizedBox.shrink()); await tester.pump();
+  });
   testWidgets('site warehouse uses exact site and groups saved orders and replies without a write', (tester) async {
     final api = _Api(); await _mount(tester, api);
     await tester.tap(find.text('管理倉庫（注文書・請書）')); await tester.pumpAndSettle();

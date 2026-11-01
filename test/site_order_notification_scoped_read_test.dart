@@ -1,3 +1,4 @@
+import 'site_workflow_capability_fixture.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -47,6 +48,9 @@ class NoticeWire extends http.BaseClient {
     Object? result;
     var status = 200;
     final path = request.url.path;
+    if (request.url.path == '/rest/v1/rpc/site_order_workflow_capabilities') {
+      return supportedSiteWorkflowCapability(request, actor: noticeActor, company: company, session: noticeSid, role: role);
+    }
     if (path == '/rest/v1/company_members') {
       memberships++;
       result = [{'company_id': company, 'role': role}];

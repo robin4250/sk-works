@@ -99,6 +99,7 @@ abstract class SiteOrderWorkflowApi extends ChangeNotifier {
       throw StateError('注文の準備結果を確認できません。');
   Future<String> retireOutgoing(SiteOrderPendingPrepare entry, {required bool confirmed}) async =>
       throw StateError('注文の準備停止を確認できません。');
+  Future<bool> canUseWorkflow() async => false;
   Future<bool> canCreateOutgoing() async => false;
   Future<void> prepareUnsignedOutgoing(SiteOrderPendingPrepare entry,
       Map<String, dynamic> body, String connectionFingerprint) async =>
@@ -263,9 +264,72 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
     }
   }
 
+  // Distinct from standalone generation. Never infer site send/reply support
+  // from standalone's eight-field receipt. No capability is cached across calls.
+  Future<bool> _workflowCapability({
+    bool creating = false,
+    bool mutating = false,
+  }) async {
+    await verify();
+    try {
+      final raw = await _session.rpc('site_order_workflow_capabilities', {});
+      await verify();
+      if (raw is! Map) return false;
+      final value = Map<String, dynamic>.from(raw);
+      return _exactKeys(value, const {
+            'contract_version',
+            'workflow_contract_version',
+            'actor_id',
+            'session_id',
+            'company_id',
+            'role',
+            'master_enabled',
+            'can_read',
+            'can_create',
+            'can_mutate',
+          }) &&
+          value['contract_version'] is int &&
+          value['contract_version'] == 1 &&
+          value['workflow_contract_version'] is int &&
+          value['workflow_contract_version'] == 1 &&
+          value['actor_id'] == _actor &&
+          value['session_id'] == _capturedSessionId &&
+          _capturedSessionId != null &&
+          value['company_id'] == _company &&
+          value['role'] == _role &&
+          value['master_enabled'] == true &&
+          value['can_read'] == true &&
+          value['can_create'] is bool &&
+          value['can_mutate'] is bool &&
+          (!creating ||
+              (value['can_create'] == true && value['can_mutate'] == true)) &&
+          (!mutating || value['can_mutate'] == true);
+    } catch (_) {
+      // Includes missing RPC, unknown contract and stale actor/session/company.
+      // verify() retires changed scopes; it must never restore an old receipt.
+      await verify();
+      return false;
+    }
+  }
+
+  Future<void> _requireWorkflowCapability({
+    bool creating = false,
+    bool mutating = true,
+  }) async {
+    if (!await _workflowCapability(creating: creating, mutating: mutating)) {
+      throw StateError('現場の注文・請書機能は準備中です。');
+    }
+    requireCurrent();
+  }
+
+  @override
+  Future<bool> canUseWorkflow() => _workflowCapability();
+
   Future<Object?> _call(Map<String, dynamic> body, {bool write = false, bool outgoing = false}) async {
     await verify();
     requireCurrent();
+    // Recheck backend support for reads and permission for each write.
+    await _requireWorkflowCapability(creating: write && body['action'] == 'prepare', mutating: write);
     try {
       final response = await _client.functions
           .invoke(
@@ -320,7 +384,8 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
         value['contract_version'] == 1 && value['context_contract_version'] == 1 &&
         value['actor_id'] == _actor && value['company_id'] == _company &&
         value['session_id'] == _capturedSessionId && _capturedSessionId != null &&
-        value['role'] == _role && value['master_enabled'] == true && value['can_generate'] == true;
+        value['role'] == _role && value['master_enabled'] == true && value['can_generate'] == true &&
+        await _workflowCapability(creating: true);
     } catch (_) {
       await verify();
       return false;
@@ -340,6 +405,7 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
         utf8.encode(jsonEncode(immutable)).length > 32768) {
       throw StateError('注文の入力元が変わりました。');
     }
+    await _requireWorkflowCapability(creating: true);
     await _outgoingJournal.begin(_actor, _company!, entry);
     await verify();
     final value = _map(_map(await _call({...entry.command('prepare'),
@@ -400,6 +466,7 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
       throw StateError('ログイン状態が変わりました。結果照会を先に行ってください。');
     }
     // Persist only IDs/digest before the first mutation; unknown results retain it.
+    await _requireWorkflowCapability();
     if (!await _consentJournal.save(_actor, _company!, reference)) {
       throw StateError('確認中の注文があります。再送せず保存結果を照会してください。');
     }
@@ -427,6 +494,7 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
     // Fresh server observation is mandatory even when a local marker exists.
     final observation=await inspectOutgoingExecution(reference,jobId:jobId,recipientCompanyId:recipientCompanyId);
     await verify();
+    await _requireWorkflowCapability();
     final result=await _deliveryJournal.record(_actor,_company!,reference,observation,verifyScope:verify);
     await verify();return result;
   }
@@ -497,6 +565,7 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
         !SiteOrderPendingPrepare.validId(recipientCompanyId)) {
       throw StateError('注文の原本・共有先を確認できません。');
     }
+    await _requireWorkflowCapability();
     if (!await _executionJournal.begin(_actor, _company!, reference, stage)) {
       throw StateError('保存・共有を確認中です。再送せず状態を照会してください。');
     }
@@ -890,6 +959,7 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
         !_savedId(requestId)) {
       throw StateError('請書の再確認情報が変わりました。');
     }
+    await _requireWorkflowCapability();
     await _replyJournal.begin(
       _actor,
       _company!,
@@ -1030,6 +1100,7 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
     if (await hasPendingApproval(id as String) || await hasPendingRefusal(id)) {
       throw const SiteOrderResultUnknown();
     }
+    await _requireWorkflowCapability();
     await _approvalJournal.begin(
       _actor,
       _company!,
@@ -1102,6 +1173,7 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
         await hasPendingRefusal(packageId)) {
       throw const SiteOrderResultUnknown();
     }
+    await _requireWorkflowCapability();
     await _refusalJournal.begin(_actor, _company!, packageId, requestId);
     try {
       final result = _map(
