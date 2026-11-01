@@ -10,8 +10,8 @@ import 'package:sk_works/features/people/employee_initial_registration_page.dart
 import 'employee_invite_context_sdk_test.dart' as fixture;
 
 class TrackingInviteRepository extends EmployeeInviteRepository {
-  TrackingInviteRepository(SupabaseClient client, Stream<AuthState> events)
-    : super.forTesting(client, authEvents: events);
+  TrackingInviteRepository(super.client, Stream<AuthState> events)
+    : super.forTesting(authEvents: events);
   final completed = Completer<void>();
   final refreshed = Completer<void>();
   int employeeLoads = 0, urlLoads = 0;
