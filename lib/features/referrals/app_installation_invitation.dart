@@ -6,9 +6,10 @@ String appendSkoInstallationInvitation(
   String message, {
   required String guideUrl,
   bool english = false,
+  bool includeTestFlight = true,
 }) {
   final parts = <String>[message];
-  if (!message.contains(skoTestFlightInvitationUrl)) {
+  if (includeTestFlight && !message.contains(skoTestFlightInvitationUrl)) {
     parts.add('iPhone / iPad TestFlight:\n$skoTestFlightInvitationUrl');
   }
   if (guideUrl.isNotEmpty && !message.contains(guideUrl)) {

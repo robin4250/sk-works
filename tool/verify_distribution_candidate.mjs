@@ -60,8 +60,8 @@ try{
  await q(flags,[true,false,true]);
  const tfInvite=await scalar(prepare,['Fixture','+81 90-1234-5678','testflight','employee']);
  eq(tfInvite.phone,'09012345678');eq(tfInvite.message.includes(tf),true);
- await deny(prepare,['Fixture','09012345678','testflight','friend']);
- await deny(prepare,['Fixture','09012345678','web','friend']);
+ const betaFriend=await scalar(prepare,['Fixture','09012345678','testflight','friend']);eq(betaFriend.message.includes(tf),true);
+ const webFriend=await scalar(prepare,['Fixture','09012345678','web','friend']);eq(webFriend.message.includes(web),true);
  await deny(prepare,['Fixture','09012345678','public','friend']);
  const webInvite=await scalar(prepare,['Fixture','09012345678','web','company']);eq(webInvite.message.includes(web),true);
  await deny(prepare,['Fixture','09012345678','unknown','app']);
@@ -86,7 +86,7 @@ try{
  eq(snap.distribution_channels.map(c=>c.ready),[false,false,true]);
  eq(snap.invitations[0].registered_user_id,null);eq(snap.invitations[0].points,null);
  await db.exec("set test.allowed='false'");await deny(snapshot,[false]);await deny(prepare,['Fixture','09012345678','public','friend']);
- await as(owner,true);snap=await scalar(snapshot,[true]);eq(snap.invitations.length,3);eq(snap.attribution_connected,false);
+ await as(owner,true);snap=await scalar(snapshot,[true]);eq(snap.invitations.length,5);eq(snap.attribution_connected,false);
  eq(snap.invitations.find(r=>r.id===tfInvite.id).distribution_label,'TestFlight版');
  // Legacy callers cannot bypass the new public-only friend path or leak an
  // internal TestFlight URL through the old generic invitation method.
@@ -103,10 +103,10 @@ try{
  await q(flags,[false,false,true]);
  await db.exec('reset role;set role anon');await deny(snapshot,[false]);await deny(save,[tf,web,guide]);
  await db.exec('reset role;set role service_role');await deny(prepare,['Fixture','09012345678','public','friend']);
- await db.exec('reset role');eq(await scalar('select count(*)::integer from private.app_referral_invitations'),3);
+ await db.exec('reset role');eq(await scalar('select count(*)::integer from private.app_referral_invitations'),5);
  eq(await scalar('select not enabled and not public_enabled from private.app_referral_settings where id'),true);
  await assert.rejects(()=>db.exec(candidate),/legacy referral dispatcher drift/);assertions++;
  await db.exec('rollback');
- eq(await scalar('select count(*)::integer from private.app_referral_invitations'),3);
+ eq(await scalar('select count(*)::integer from private.app_referral_invitations'),5);
  console.log(JSON.stringify({pass:true,assertions,production_changed:false,messages_sent:0,proof_of_real_delivery:false}));
 }finally{await db.close();}

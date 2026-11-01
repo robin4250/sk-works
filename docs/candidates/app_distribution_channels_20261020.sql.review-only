@@ -146,7 +146,6 @@ begin
   if channel is null or channel not in ('testflight','web','public') or kind is null or kind not in ('app','employee','company','friend') then raise exception 'invalid invitation channel';end if;
   if settings.enabled is not true or not (coalesce(admin,false) or master or settings.public_enabled) then
    raise exception 'invitation disabled' using errcode='42501';end if;
-  if kind='friend' and channel<>'public' then raise exception 'friend invitation requires public channel' using errcode='42501';end if;
   if channel in ('testflight','web') and not (coalesce(admin,false) or master) then
    raise exception 'internal distribution requires company administrator' using errcode='42501';end if;
   if channel='public' and settings.public_enabled is not true then raise exception 'public invitation disabled' using errcode='42501';end if;

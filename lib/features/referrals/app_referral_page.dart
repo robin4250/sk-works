@@ -130,10 +130,9 @@ class _AppReferralPageState extends State<AppReferralPage> {
           _guide.text = links['public']?.toString() ?? '';
         }
         if (!_channelInitialized && data['distribution_channels'] is List) {
-          _channel = widget.friendInvite ? 'public' : 'testflight';
+          _channel = 'testflight';
           final channels = data['distribution_channels'] as List;
-          if (!widget.friendInvite &&
-              !channels.any(
+          if (!channels.any(
                 (c) => c is Map && c['key'] == _channel && c['ready'] == true,
               )) {
             final ready = channels.whereType<Map>().where(
@@ -271,9 +270,7 @@ class _AppReferralPageState extends State<AppReferralPage> {
     final channels = (data?['distribution_channels'] as List? ?? const [])
         .whereType<Map>()
         .where(
-          (c) => widget.friendInvite
-              ? c['key'] == 'public'
-              : c['key'] != 'public' || c['ready'] == true,
+          (c) => c['key'] != 'public' || c['ready'] == true,
         )
         .toList();
     final channelReady = _usesDistribution
@@ -296,7 +293,7 @@ class _AppReferralPageState extends State<AppReferralPage> {
               builder: (context) => AlertDialog(
                 title: const Text('SKOアプリ招待の使い方'),
                 content: const Text(
-                  '配布先の種類を選び、後からWEB版URLだけ追加送信できます。公開前の友達招待は送れません。URL追加送信ではログイン情報を再発行しません。ホーム・メニューの「SKO招待」から名前・電話番号を入力できます。取引会社登録・協力会社登録の一覧上部の「招待」では登録会社を選ぶか電話番号を直接入力します。代表者の電話番号を引き継ぎ、送信前に変更できます。招待の送信だけで社員所属・友達承認・会社連携が成立することはありません。本人の招待と紹介履歴は「設定」→「SKOアプリ招待・自分の紹介履歴」から開きます。会社owner/adminは招待機能ON、一般利用者は一般公開もONの場合に利用できます。OFFや権限不足は入口に表示し、開く直前にも利用状態を再確認します。配布URL未登録でも自分の履歴は確認できますが、SMS作成はできません。Masterは「設定」→「Master 機能設定」→「SKOアプリ招待・紹介管理」から設定・全体履歴を確認できます。機能と一般公開は初期OFFです。正式な配布URLを登録し、機能ONでMasterの招待入口が表示されます。名前・電話番号を入力して送信を押すとSMS作成画面が開きます。送信・配達は確認できません。社員の初回登録とは別の紹介機能です。紹介元確定とポイント付与はまだ接続されていません。SMS起動失敗は同じ入力で再試行でき、起動後の記録失敗は「履歴を更新」で記録だけを再試行します。画面を閉じると再試行状態は引き継ぎません。ポイント数・使い道は未定です。履歴はこの画面で確認できます。ログイン状態が変わった場合は履歴と入力を消し、SMS準備や設定保存を停止します。画面を開き直してください。',
+                  '配布先の種類を選び、後からWEB版URLだけ追加送信できます。友達招待も利用可能なTestFlight・WEB版・公開版から選べます。URL追加送信ではログイン情報を再発行しません。ホーム・メニューの「SKO招待」から名前・電話番号を入力できます。取引会社登録・協力会社登録の一覧上部の「招待」では登録会社を選ぶか電話番号を直接入力します。代表者の電話番号を引き継ぎ、送信前に変更できます。招待の送信だけで社員所属・友達承認・会社連携が成立することはありません。本人の招待と紹介履歴は「設定」→「SKOアプリ招待・自分の紹介履歴」から開きます。会社owner/adminは招待機能ON、一般利用者は一般公開もONの場合に利用できます。OFFや権限不足は入口に表示し、開く直前にも利用状態を再確認します。配布URL未登録でも自分の履歴は確認できますが、SMS作成はできません。Masterは「設定」→「Master 機能設定」→「SKOアプリ招待・紹介管理」から設定・全体履歴を確認できます。機能と一般公開は初期OFFです。正式な配布URLを登録し、機能ONでMasterの招待入口が表示されます。名前・電話番号を入力して送信を押すとSMS作成画面が開きます。送信・配達は確認できません。社員の初回登録とは別の紹介機能です。紹介元確定とポイント付与はまだ接続されていません。SMS起動失敗は同じ入力で再試行でき、起動後の記録失敗は「履歴を更新」で記録だけを再試行します。画面を閉じると再試行状態は引き継ぎません。ポイント数・使い道は未定です。履歴はこの画面で確認できます。ログイン状態が変わった場合は履歴と入力を消し、SMS準備や設定保存を停止します。画面を開き直してください。',
                 ),
                 actions: [
                   TextButton(
@@ -392,8 +389,7 @@ class _AppReferralPageState extends State<AppReferralPage> {
                     ],
                     onChanged:
                         _busy ||
-                            _composer.needsRecordRetry ||
-                            widget.friendInvite
+                            _composer.needsRecordRetry
                         ? null
                         : (value) {
                             if (value != null) setState(() => _channel = value);
@@ -411,7 +407,7 @@ class _AppReferralPageState extends State<AppReferralPage> {
                   decoration: const InputDecoration(labelText: '電話番号'),
                 ),
                 if (widget.friendInvite && !_usesDistribution)
-                  const Text('公開版の案内を確認できないため、友達招待は送信できません。配布設定の更新をお待ちください。'),
+                  const Text('配布先の案内を確認できないため、友達招待は送信できません。配布設定の更新をお待ちください。'),
                 if (!channelReady)
                   const Text('配布URLが未登録、または公開前です。管理者へURL・公開設定の確認を依頼してください。'),
                 FilledButton(

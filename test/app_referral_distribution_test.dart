@@ -104,14 +104,27 @@ void main() {
     expect(find.text('WEB版'),findsOneWidget);
   });
 
-  testWidgets('friend cannot choose beta WEB or unpublished public guide', (tester) async {
-    await tester.pumpWidget(MaterialApp(home:AppReferralPage(
-      repository:ChannelRepository(),friendInvite:true,
+  testWidgets('friend can select ready TestFlight and WEB while public remains hidden', (tester) async {
+    await tester.pumpWidget(MaterialApp(home: AppReferralPage(
+      repository: ChannelRepository(), friendInvite: true,
     )));
     await tester.pumpAndSettle();
-    expect(find.text('TestFlight版'),findsNothing);
-    expect(find.text('WEB版'),findsNothing);
-    expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton,'送信')).onPressed,isNull);
+    expect(find.text('TestFlight版'), findsOneWidget);
+    expect(find.text('公開版の案内'), findsNothing);
+    expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, '送信')).onPressed, isNotNull);
+    await tester.tap(find.byType(DropdownButtonFormField<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('WEB版').last);
+    await tester.pumpAndSettle();
+    expect(find.text('WEB版'), findsOneWidget);
+  });
+
+  testWidgets('friend without internal permission defaults to ready public channel', (tester) async {
+    await tester.pumpWidget(MaterialApp(home: AppReferralPage(
+      repository: PublicOnlyChannelRepository(), friendInvite: true,
+    )));
+    await tester.pumpAndSettle();
+    expect(find.text('公開版の案内'), findsOneWidget);
+    expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, '送信')).onPressed, isNotNull);
   });
 }
-

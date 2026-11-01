@@ -100,7 +100,11 @@ class AppReferralComposer {
         _key = key;
         _invitationId = id;
         final body = guideUrl.isNotEmpty
-            ? appendSkoInstallationInvitation(message, guideUrl: guideUrl)
+            ? appendSkoInstallationInvitation(
+                message,
+                guideUrl: guideUrl,
+                includeTestFlight: distributionKey.split(':').first == 'testflight',
+              )
             : message;
         _uri = Uri(
           scheme: 'sms',
