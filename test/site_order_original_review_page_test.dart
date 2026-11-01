@@ -49,6 +49,7 @@ class Api extends SiteOrderWorkflowApi {
       unknown = false,
       saved = true,
       missingRate = false,
+      missingAmount = false,
       consentNotObserved = false;
   int shares = 0, registers = 0, reads = 0, records = 0;
   @override
@@ -101,6 +102,7 @@ class Api extends SiteOrderWorkflowApi {
       jsonDecode(jsonEncode(evidence)) as Map,
     );
     (e['body'] as Map)['transaction_id'] = id(2);
+    if (missingAmount) (e['body'] as Map)['total_amount_yen'] = null;
     (e['body'] as Map)['form_fields'] = {
       'rows': [
         {
@@ -286,6 +288,15 @@ Future<void> finalDialog(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('missing total refuses final send and never substitutes zero', (tester) async {
+    final api = Api()..missingAmount = true;
+    await pump(tester, api);
+    final button = tester.widget<FilledButton>(find.widgetWithText(FilledButton, '共有内容を最終確認'));
+    expect(button.onPressed, isNull);
+    expect(find.text('発注金額（総額）：未設定（送信できません）'), findsOneWidget);
+    expect(api.shares, 0);
+  });
+
   test('original snapshot and bytes are both bound before display', () {
     final api = Api();
     final review = api.review();
@@ -323,13 +334,16 @@ void main() {
         isNull,
       );
       await finalDialog(tester);
-      expect(find.text('この条件で共有しますか？'), findsOneWidget);
+      expect(find.text('送信内容の最終確認'), findsOneWidget);
+      final shown = tester.widget<Text>(find.byKey(const Key('site-order-send-question'))).data!;
+      expect(shown, '${(evidence['body'] as Map)['work_name']}を${((evidence['body'] as Map)['counterparty'] as Map)['name']}へ100円で送りますが良いですか？');
+      expect(find.textContaining('送る協力会社と金額があっていればこのまま送ります'), findsOneWidget);
       expect(api.shares, 0);
       await tester.tap(find.text('原本の確認に戻る'));
       await tester.pumpAndSettle();
       expect(api.shares, 0);
       await finalDialog(tester);
-      await tester.tap(find.text('確認して共有'));
+      await tester.tap(find.text('この会社・金額で送る'));
       await tester.pumpAndSettle();
       expect(api.shares, 1);
       expect(find.textContaining('相手の承認は未確認'), findsOneWidget);
@@ -342,7 +356,7 @@ void main() {
     final api = Api()..unknown = true;
     await pump(tester, api);
     await finalDialog(tester);
-    await tester.tap(find.text('確認して共有'));
+    await tester.tap(find.text('この会社・金額で送る'));
     await tester.pumpAndSettle();
     expect(api.shares, 1);
     expect(find.text('共有内容を最終確認'), findsNothing);
@@ -359,7 +373,7 @@ void main() {
       await finalDialog(tester);
       api.retire();
       await tester.pumpAndSettle();
-      expect(find.text('確認して共有'), findsNothing);
+      expect(find.text('この会社・金額で送る'), findsNothing);
       expect(find.text('表示を閉じました'), findsOneWidget);
       expect(find.textContaining('合成工事'), findsNothing);
       expect(api.shares, 0);

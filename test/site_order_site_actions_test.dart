@@ -92,6 +92,15 @@ Future<void> _history(WidgetTester tester) async {
   expect(find.byType(SiteOrderWorkflowPage), findsOneWidget);
 }
 void main() {
+  testWidgets('site warehouse uses exact site and groups saved orders and replies without a write', (tester) async {
+    final api = _Api(); await _mount(tester, api);
+    await tester.tap(find.text('管理倉庫（注文書・請書）')); await tester.pumpAndSettle();
+    expect(find.text('対象の現場の管理倉庫（注文書・請書）'), findsOneWidget);
+    expect(find.byType(SiteOrderWorkflowPage), findsOneWidget);
+    expect(api.siteReads, [site]);
+    expect(api.writes, 0);
+  });
+
   testWidgets('unavailable order API never blocks actual parent financial editor', (tester) async {
     // This is a synthetic existing-permission repository, not a live Auth test.
     await tester.pumpWidget(MaterialApp(home: AdminSiteFinancialPage(

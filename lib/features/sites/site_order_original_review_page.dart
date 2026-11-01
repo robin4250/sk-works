@@ -246,6 +246,9 @@ class _SiteOrderOriginalReviewPageState
           '工期：${body['period_start'] ?? '未設定'} ～ ${body['period_end'] ?? '未設定'}',
         ),
         Text('共有先：${(body['counterparty'] as Map)['name'] ?? '確認できません'}'),
+        Text(body['total_amount_yen'] is int && (body['total_amount_yen'] as int) >= 0
+          ? '発注金額（総額）：${_money(body['total_amount_yen'])}円'
+          : '発注金額（総額）：未設定（送信できません）'),
         if (rows is List)
           for (final row in rows.whereType<Map>().where(
             (r) =>
@@ -266,9 +269,22 @@ class _SiteOrderOriginalReviewPageState
     );
   }
 
+  String _money(Object? value) => value is int && value >= 0
+      ? value.toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => ',')
+      : '確認できません';
+
+  String _sendQuestion(Map<String, dynamic> body) =>
+      '${body['work_name']}を${(body['counterparty'] as Map)['name']}へ'
+      '${_money(body['total_amount_yen'])}円で送りますが良いですか？';
+
   bool get _completeTerms {
     final body = _review?.body;
-    if (body == null || body['form_fields'] is! Map) {
+    if (body == null || body['form_fields'] is! Map ||
+        body['work_name'] is! String || (body['work_name'] as String).trim().isEmpty ||
+        body['counterparty'] is! Map ||
+        (body['counterparty'] as Map)['name'] is! String ||
+        ((body['counterparty'] as Map)['name'] as String).trim().isEmpty ||
+        body['total_amount_yen'] is! int || (body['total_amount_yen'] as int) < 0) {
       return false;
     }
     final rows = (body['form_fields'] as Map)['rows'];
@@ -334,14 +350,18 @@ class _SiteOrderOriginalReviewPageState
                 ],
               )
             : AlertDialog(
-                title: const Text('この条件で共有しますか？'),
+                title: const Text('送信内容の最終確認'),
                 content: SingleChildScrollView(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      Text(_sendQuestion(review.body),
+                        key: const Key('site-order-send-question'),
+                        style: const TextStyle(fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 12),
                       _summary(review.body),
                       const SizedBox(height: 12),
-                      const Text('保存済みの押印原本を、この相手会社に共有します。'),
+                      const Text('送る協力会社と金額があっていればこのまま送ります。\n現場情報と保存済みの押印注文書をセットで送ります。'),
                     ],
                   ),
                 ),
@@ -352,7 +372,7 @@ class _SiteOrderOriginalReviewPageState
                   ),
                   FilledButton(
                     onPressed: () => Navigator.pop(dialog, true),
-                    child: const Text('確認して共有'),
+                    child: const Text('この会社・金額で送る'),
                   ),
                 ],
               ),

@@ -188,7 +188,8 @@ class _SiteOrderSiteActionsPageState extends State<SiteOrderSiteActionsPage>
           ? SiteOrderOutgoingComposePage(api: api, siteId: _siteId,
               issueDate: DateTime.now().toIso8601String().substring(0, 10))
           : SiteOrderWorkflowPage(api: api, siteId: _siteId, siteName: _siteName,
-              historyTitle: action == 'view' ? '保存された注文書を選択' : null);
+              historyTitle: action == 'view' ? '保存された注文書を選択'
+                : action == 'warehouse' ? '$_siteNameの管理倉庫（注文書・請書）' : null);
       // _busy protects admission only; the owned child manages its own writes.
       if (mounted) _update(() => _busy = false);
       await navigator.push<void>(MaterialPageRoute(builder: (_) => page));
@@ -277,6 +278,10 @@ class _SiteOrderSiteActionsPageState extends State<SiteOrderSiteActionsPage>
       FilledButton(onPressed: _busy || !_canCreate ? null : () => _open('create'),
         child: const Text('注文書を作る')),
       if (!_busy && !_canCreate) const Text('現在、新規作成は利用できません。'),
+      OutlinedButton.icon(onPressed: _busy ? null : () => _open('warehouse'),
+        icon: const Icon(Icons.inventory_2_outlined),
+        label: const Text('管理倉庫（注文書・請書）')),
+      const Text('この現場の注文書と、相手会社から返送された請書を取引ごとに確認・PDF保存・印刷できます。'),
       OutlinedButton(onPressed: _busy ? null : () => _open('history'),
         child: const Text('過去の注文書')),
     ]),
