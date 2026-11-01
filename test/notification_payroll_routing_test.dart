@@ -182,13 +182,26 @@ void main() {
     final targetValidation = source.indexOf('notificationTargetIsValid(target.actionKey, target.actionId)');
     expect(targetValidation, greaterThanOrEqualTo(0));
     expect(readMutation, greaterThan(targetValidation));
+    // _open owns the explanation lifetime; _openTarget owns resolution and its
+    // outer failure handler. An inner package-preflight catch is not that handler.
     final opening = source.substring(source.indexOf('Future<void> _open('),
-      source.indexOf('Widget build(BuildContext context)'));
-    final failureHandler = opening.substring(opening.indexOf('catch (error)'));
+      source.indexOf('Future<void> _markBodyRead('));
+    final targetOpening = source.substring(source.indexOf('Future<void> _openTarget('),
+      source.indexOf('  @override\n  Widget build(BuildContext context)'));
+    final failureStart = targetOpening.lastIndexOf('} catch (error) {');
+    expect(failureStart, greaterThanOrEqualTo(0));
+    final failureHandler = targetOpening.substring(failureStart);
+    expect(failureHandler, matches(RegExp(
+      r'^} catch \(error\) \{\s*_showError\(error\);\s*rethrow;\s*\}\s*\}\s*$')));
     expect(failureHandler, isNot(contains('markRead(')));
     final compact = opening.replaceAll(RegExp(r'\s+'), '');
     expect(compact, contains('if(_opening){return;}'));
-    expect(compact, contains('finally{if(mounted){setState(()=>_opening=false);}}'));
+    final cleanup = compact.indexOf('finally{flowClosed=true;');
+    final cleanupComplete = compact.indexOf('awaitorderChanges?.close();');
+    final reset = compact.indexOf('if(mounted){setState(()=>_opening=false);}');
+    expect(cleanup, greaterThanOrEqualTo(0));
+    expect(cleanupComplete, greaterThan(cleanup));
+    expect(reset, greaterThan(cleanupComplete));
     expect(source, contains('onTap: _opening ? null : () => _open(item)'));
     expect(source, contains('Text(item.body)'));
     expect(source, contains('item.title,'));

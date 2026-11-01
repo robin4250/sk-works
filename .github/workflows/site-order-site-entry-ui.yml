@@ -4,6 +4,8 @@ on:
     paths:
       - 'lib/features/sites/site_order_*.dart'
       - 'lib/features/sites/admin_site_financial_page.dart'
+      - 'lib/features/notifications/notifications_page.dart'
+      - 'lib/features/notifications/app_notification_repository.dart'
       - 'test/site_order*_test.dart'
       - 'tool/canonical_renderer/synthetic-cases.json'
       - 'tool/canonical_renderer/synthetic-evidence.json'
@@ -24,7 +26,7 @@ jobs:
           cache: true
       - run: flutter pub get
       - name: Analyze owned UI and retained typed contracts
-        run: flutter analyze lib/features/sites/site_order_*.dart lib/features/sites/admin_site_financial_page.dart test/site_order*_test.dart
+        run: flutter analyze lib/features/notifications/notifications_page.dart lib/features/notifications/app_notification_repository.dart lib/features/sites/site_order_*.dart lib/features/sites/admin_site_financial_page.dart test/site_order*_test.dart
       - name: Verify complete owned site order UI closure
         shell: bash
         run: |
@@ -37,6 +39,6 @@ jobs:
             esac
             tests+=("$file")
           done
-          test "${#tests[@]}" -eq 17
+          test "${#tests[@]}" -eq 19
           printf '%s\n' 'UNEXECUTED: Native execution 3. Native consent2/registered-target1 explicitly skip without artifacts.'
           flutter test "${tests[@]}" --reporter expanded

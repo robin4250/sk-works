@@ -8,6 +8,9 @@ import 'notification_target_policy.dart';
 import '../../international/language_controller.dart';
 
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../sites/site_order_site_actions.dart';
+import '../sites/site_order_workflow_repository.dart';
 
 import '../expenses/expense_notification_page.dart';
 import 'app_notification_repository.dart';
@@ -51,7 +54,13 @@ import '../route_billing/route_billing_quantity_approvals_page.dart';
 import '../people/worker_personnel_change_approvals_page.dart';
 
 class NotificationsPage extends StatefulWidget {
-  const NotificationsPage({super.key, this.companyId, this.currentCompany});
+  const NotificationsPage({super.key, this.companyId, this.currentCompany,
+    this.attentionRepository, this.notificationRepository, this.notificationClient,
+    this.siteOrderApiFactory});
+  @visibleForTesting final AttentionCenterRepository? attentionRepository;
+  @visibleForTesting final AppNotificationRepository? notificationRepository;
+  @visibleForTesting final SupabaseClient? notificationClient;
+  @visibleForTesting final SiteOrderWorkflowApi? Function()? siteOrderApiFactory;
   final String? companyId;
   final String? Function()? currentCompany;
   @override
@@ -59,9 +68,13 @@ class NotificationsPage extends StatefulWidget {
 }
 
 class _NotificationsPageState extends State<NotificationsPage> {
-  final _repository = AttentionCenterRepository.maybeCreate();
-  final _notifications = AppNotificationRepository.maybeCreate();
+  late final _repository = widget.attentionRepository ?? AttentionCenterRepository.maybeCreate();
+  late final _notifications = widget.notificationRepository ?? AppNotificationRepository.maybeCreate();
   AttentionCenterData? _data;
+  SiteOrderWorkflowApi? _siteOrderApi;
+  SiteOrderNotificationReadScope? _siteOrderRead;
+  String? _siteOrderCompany;
+  bool _siteOrderBoundaryRetired = false;
   NotificationOpenSession? _session;
   StreamSubscription<void>? _sessionChanges;
   int _loadRequest = 0;
@@ -73,8 +86,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
   @override
   void initState() {
     super.initState();
-    if (SupabaseBackend.isInitialized) {
-      final client = SupabaseBackend.client;
+    final client = widget.notificationClient ??
+        (SupabaseBackend.isInitialized ? SupabaseBackend.client : null);
+    if (client != null) {
       _session = NotificationOpenSession(actor: () => client.auth.currentUser?.id,
         changes: client.auth.onAuthStateChange.map((event) => event.session?.user.id));
       _sessionChanges = _session!.invalidations.listen((_) {
@@ -87,14 +101,31 @@ class _NotificationsPageState extends State<NotificationsPage> {
   @override
   void didUpdateWidget(covariant NotificationsPage oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (_siteOrderApi != null &&
+        (widget.currentCompany?.call() ?? widget.companyId) != _siteOrderCompany) {
+      _retireSiteOrderBoundary();
+    }
     if (oldWidget.companyId != widget.companyId) {
+      _retireSiteOrderBoundary();
       _data = null;
       _load();
     }
   }
 
+  void _retireSiteOrderBoundary() {
+    // Deny callbacks synchronously, then notify surviving routes outside the
+    // framework's build/unmount lock. An unrelated root modal is never popped.
+    _siteOrderBoundaryRetired = true;
+    final api = _siteOrderApi, scope = _siteOrderRead;
+    scheduleMicrotask(() {
+      scope?.retire();
+      if (api != null && !api.invalidated) api.retireUiScope();
+    });
+  }
+
   @override
   void dispose() {
+    _retireSiteOrderBoundary();
     _sessionChanges?.cancel();
     _session?.dispose();
     super.dispose();
@@ -170,13 +201,108 @@ class _NotificationsPageState extends State<NotificationsPage> {
     final session = _session;
     if (session == null || !session.isCurrent) return;
     final snapshot = _data;
+    final capturedLoad = _loadRequest;
+    final ids = snapshot?.notificationIdsByItemKey[item.deduplicationKey] ?? const <String>[];
+    final saved = ids.isEmpty ? null : snapshot?.notificationsById[ids.first];
+    final orderNotice = (saved?.actionKey ?? item.actionKey) == 'site_order_package';
+    final packageId = saved?.actionId ?? item.actionId;
+    final company = orderNotice ? widget.currentCompany?.call() ?? widget.companyId : null;
+    SiteOrderWorkflowApi? orderApi;
+    SiteOrderNotificationReadScope? readScope;
+    StreamController<void>? orderChanges;
+    StreamSubscription<void>? orderSessionChanges;
+    VoidCallback? orderListener;
+    bool notificationTupleCurrent() {
+      final currentIds = snapshot?.notificationIdsByItemKey[item.deduplicationKey] ?? const <String>[];
+      if (saved == null) {
+        return currentIds.isEmpty && item.actionKey == 'site_order_package' && item.actionId == packageId;
+      }
+      final current = snapshot?.notificationsById[saved.id];
+      return currentIds.isNotEmpty && currentIds.first == saved.id && current != null &&
+          current.id == saved.id && current.actionKey == 'site_order_package' &&
+          current.actionId == packageId;
+    }
+    bool retirementQueued = false, flowClosed = false;
+    bool flowCurrent() {
+      bool current;
+      try {
+        current = !flowClosed && !_siteOrderBoundaryRetired && mounted && session.isCurrent && capturedLoad == _loadRequest &&
+          notificationTupleCurrent() &&
+          (widget.currentCompany?.call() ?? widget.companyId) == company &&
+          identical(_siteOrderApi, orderApi) && orderApi?.invalidated == false &&
+          orderApi?.uiRetired == false && (readScope == null || readScope.isCurrent);
+      } catch (_) { current = false; }
+      if (!current && !retirementQueued) {
+        retirementQueued = true;
+        // A getter-only company change has no event stream. Retire at the first
+        // scope check, outside the current widget build/event stack.
+        scheduleMicrotask(() {
+          if (!flowClosed) { readScope?.retire(); orderApi?.retireUiScope(); }
+        });
+      }
+      return current;
+    }
+    void requireFlow() {
+      if (!flowCurrent()) throw StateError('通知一覧から開き直してください。');
+      session.requireCurrent();
+      orderApi?.requireCurrent();
+    }
     setState(() => _opening = true);
     try {
+      if (orderNotice) {
+        try {
+          if (packageId == null || !notificationTargetIsValid('site_order_package', packageId)) {
+            throw const SiteOrderNotificationReadUnknown();
+          }
+          orderApi = widget.siteOrderApiFactory == null
+              ? SiteOrderWorkflowRepository.maybeCreate() : widget.siteOrderApiFactory!();
+          if (orderApi == null) throw const SiteOrderNotificationReadUnknown();
+          _siteOrderBoundaryRetired = false;
+          _siteOrderApi = orderApi;
+          _siteOrderCompany = company;
+          if (!orderApi.bindNotificationUiContext(flowCurrent)) {
+            throw const SiteOrderNotificationReadUnknown();
+          }
+          orderChanges = StreamController<void>.broadcast();
+          var invalidationSent = false;
+          void emit() {
+            if (invalidationSent || orderChanges?.isClosed != false) return;
+            invalidationSent = true;
+            orderChanges!.add(null);
+          }
+          orderListener = () { if (orderApi?.invalidated == true || orderApi?.uiRetired == true) emit(); };
+          orderApi.addListener(orderListener);
+          orderSessionChanges = session.invalidations.listen((_) => emit());
+          if (saved != null && saved.id.isNotEmpty) {
+            final repository = _notifications;
+            if (repository == null) throw const SiteOrderNotificationReadUnknown();
+            readScope = repository.openSiteOrderReadScope(api: orderApi,
+              notificationId: saved.id, packageId: packageId,
+              expectedCompanyId: company,
+              currentCompany: company == null ? null : () => widget.currentCompany?.call() ?? widget.companyId);
+            _siteOrderRead = readScope;
+            readScope.addListener(emit);
+            await readScope.verifyTarget();
+          } else {
+            await verifySiteOrderNotificationTarget(orderApi, packageId);
+          }
+          requireFlow();
+        } catch (error) {
+          if (!mounted) return;
+          await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) =>
+            Scaffold(appBar: AppBar(title: const Text('通知の注文書')),
+              body: Center(child: Text(error is SiteOrderNotificationDenied
+                ? 'この注文書を閲覧する権限がありません。'
+                : '注文書の保存状態を確認できません。通知一覧から確認してください。')))));
+          return;
+        }
+      }
+      if (!mounted) return;
       await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) =>
         NotificationExplanationPage(item: item,
-          isCurrent: () => session.isCurrent,
-          invalidations: session.invalidations,
-          onInvalidate: session.invalidate,
+          isCurrent: orderNotice ? flowCurrent : () => session.isCurrent,
+          invalidations: orderNotice ? orderChanges!.stream : session.invalidations,
+          onInvalidate: orderNotice ? () => orderApi?.retireUiScope() : session.invalidate,
           onShown: () => _markBodyRead(item, snapshot),
           canOpenTarget: () async {
             session.requireCurrent();
@@ -185,6 +311,14 @@ class _NotificationsPageState extends State<NotificationsPage> {
             final key = record?.actionKey ?? item.actionKey;
             final id = record?.actionId ?? item.actionId;
             if (!notificationTargetIsValid(key, id)) return false;
+            if (key == 'site_order_package') {
+              requireFlow();
+              if (id != packageId || orderApi == null) return false;
+              if (readScope != null) { await readScope.verifyTarget(); }
+              else { await verifySiteOrderNotificationTarget(orderApi, id!); }
+              requireFlow();
+              return true;
+            }
             if (SourceNotificationTarget.supports(key)) return true;
             if (record != null && record.kind == 'resident_tax_reminder') {
               if (key != 'payroll_settings' || id == null) return false;
@@ -212,9 +346,19 @@ class _NotificationsPageState extends State<NotificationsPage> {
             }
             return true;
           },
-          openTarget: (pageContext) => _openTarget(item, pageContext, snapshot),
+          openTarget: (pageContext) => _openTarget(item, pageContext, snapshot,
+            siteOrderApi: orderApi, siteOrderRead: readScope,
+            requireSiteOrderCurrent: orderNotice ? requireFlow : null),
         )));
     } finally {
+      flowClosed = true;
+      if (orderListener != null) orderApi?.removeListener(orderListener);
+      await orderSessionChanges?.cancel();
+      readScope?.dispose();
+      orderApi?.dispose();
+      if (identical(_siteOrderRead, readScope)) _siteOrderRead = null;
+      if (identical(_siteOrderApi, orderApi)) _siteOrderApi = null;
+      await orderChanges?.close();
       if (mounted) {
         setState(() => _opening = false);
       }
@@ -239,8 +383,11 @@ class _NotificationsPageState extends State<NotificationsPage> {
   Future<void> _openTarget(
     AttentionCenterItem item,
     BuildContext pageContext,
-    AttentionCenterData? snapshot,
-  ) async {
+    AttentionCenterData? snapshot, {
+    SiteOrderWorkflowApi? siteOrderApi,
+    SiteOrderNotificationReadScope? siteOrderRead,
+    VoidCallback? requireSiteOrderCurrent,
+  }) async {
     _session?.requireCurrent();
     try {
       final data = snapshot;
@@ -326,6 +473,31 @@ class _NotificationsPageState extends State<NotificationsPage> {
         } else {
           destination = DailyReportApprovalsPage(initialRequestId: target.actionId);
         }
+      } else if (target.actionKey == 'site_order_package') {
+        if (siteOrderApi == null || target.actionId == null || requireSiteOrderCurrent == null) {
+          throw const SiteOrderNotificationReadUnknown();
+        }
+        requireSiteOrderCurrent();
+        if (siteOrderRead != null) { await siteOrderRead.verifyTarget(); }
+        else { await verifySiteOrderNotificationTarget(siteOrderApi, target.actionId!); }
+        requireSiteOrderCurrent();
+        final capturedId = record?.id, capturedPackage = target.actionId;
+        destination = SiteOrderSiteActionsPage.notification(api: siteOrderApi,
+          packageId: target.actionId!,
+          onNotificationRead: siteOrderRead == null ? null : (requireOwnedScope) async {
+            void requireTuple() {
+              requireOwnedScope(); requireSiteOrderCurrent();
+              final current = capturedId == null ? null : data?.notificationsById[capturedId];
+              if (current == null || current.id != siteOrderRead.notificationId ||
+                  current.actionKey != 'site_order_package' || current.actionId != capturedPackage ||
+                  capturedPackage != siteOrderRead.packageId) {
+                throw const SiteOrderNotificationReadUnknown();
+              }
+            }
+            requireTuple();
+            await siteOrderRead.markRead(requireTuple);
+            requireTuple();
+          });
       } else if (SourceNotificationTarget.supports(target.actionKey)) {
         final repository = _notifications;
         if (repository == null) {
@@ -351,10 +523,12 @@ class _NotificationsPageState extends State<NotificationsPage> {
       }
       _session?.requireCurrent();
       // System tasks have no notification id and never write a synthetic read state.
-      for (final id in ids) {
-        _session?.requireCurrent();
-        if (data?.notificationsById[id]?.read == false) {
-          await _notifications?.markRead(id);
+      if (target.actionKey != 'site_order_package') {
+        for (final id in ids) {
+          _session?.requireCurrent();
+          if (data?.notificationsById[id]?.read == false) {
+            await _notifications?.markRead(id);
+          }
         }
       }
       if (!mounted) {
@@ -481,7 +655,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
                                   ),
                                 ),
                                 title: Text(
-                                  item.title,
+                                  _isSiteOrderItem(item) ? '注文・請書のお知らせ' : item.title,
                                   style: TextStyle(
                                     fontWeight: item.needsAction || !item.read
                                         ? FontWeight.w900
@@ -494,10 +668,13 @@ class _NotificationsPageState extends State<NotificationsPage> {
                                     if (unread(item))
                                       Text(SkoLanguageController.tr('未読'),
                                         style: const TextStyle(fontWeight: FontWeight.w900)),
-                                    if (item.body.isNotEmpty) Text(item.body),
-                                    if (item.state !=
-                                        AttentionCenterState.information)
-                                      Text(_businessDescription(item)),
+                                    if (_isSiteOrderItem(item))
+                                      const Text('保存書類と現在の閲覧権限を確認して開きます。')
+                                    else ...[
+                                      if (item.body.isNotEmpty) Text(item.body),
+                                      if (item.state != AttentionCenterState.information)
+                                        Text(_businessDescription(item)),
+                                    ],
                                     if (item.createdAt != null)
                                       Text(
                                         _formatDate(item.createdAt!),
@@ -524,6 +701,12 @@ class _NotificationsPageState extends State<NotificationsPage> {
         ),
       ),
     );
+  }
+
+  bool _isSiteOrderItem(AttentionCenterItem item) {
+    final ids = _data?.notificationIdsByItemKey[item.deduplicationKey] ?? const <String>[];
+    final record = ids.isEmpty ? null : _data?.notificationsById[ids.first];
+    return (record?.actionKey ?? item.actionKey) == 'site_order_package';
   }
 
   String _businessDescription(AttentionCenterItem item) {
@@ -560,10 +743,13 @@ class _NotificationsPageState extends State<NotificationsPage> {
 Widget? notificationDestination(
   AppNotificationRecord item, {
   DateTime? payrollMonth,
+  @visibleForTesting SiteOrderWorkflowApi? siteOrderApi,
 }) {
   if (item.kind == 'resident_tax_reminder') return null; // Requires server-authorized annual target.
   if (!notificationTargetIsValid(item.actionKey, item.actionId)) return null;
   return switch (item.actionKey) {
+  'site_order_package' => SiteOrderSiteActionsPage.notification(
+    api: siteOrderApi, packageId: item.actionId!),
   'site_payment_agreement' => SiteContractNotificationPage(notificationId: item.id),
   'company_link_request' => companyLinkNotificationDestination(item.actionId),
   'company_profile_review' => item.actionId == null || item.actionId!.isEmpty

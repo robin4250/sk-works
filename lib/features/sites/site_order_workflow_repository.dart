@@ -40,6 +40,12 @@ abstract class SiteOrderWorkflowApi extends ChangeNotifier {
     _uiRetired = true;
     notifyListeners();
   }
+  /// Read-only context for an opt-in notification read receipt. Unknown until
+  /// current membership verification succeeds; never exposes an access token.
+  ({String actorId, String companyId, String sessionId})? get notificationReadBinding => null;
+  bool isNotificationReadClient(Object client) => false;
+  /// Opt-in parent notification lifetime; unsupported APIs fail closed.
+  bool bindNotificationUiContext(bool Function() current) => false;
   bool get invalidated;
   void requireCurrent();
   Future<Map<String, dynamic>> detail(String packageId);
@@ -168,7 +174,25 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
   final _refusalJournal = SiteOrderRefusalJournal();
   String get _actor => _client.auth.currentUser!.id;
   String? _company, _role;
-  bool _invalid = false;
+  bool _invalid = false, _disposed = false;
+  bool Function()? _notificationUiContext;
+  @override
+  bool bindNotificationUiContext(bool Function() current) {
+    if (invalidated || _notificationUiContext != null) return false;
+    _notificationUiContext = current;
+    try { _requireNotificationUiContext(); return true; }
+    catch (_) { return false; }
+  }
+  void _requireNotificationUiContext() {
+    final current = _notificationUiContext;
+    if (current == null) return; // Existing non-notification callers unchanged.
+    bool allowed;
+    try { allowed = current(); } catch (_) { allowed = false; }
+    if (!allowed) {
+      _invalidate(deferNotification: true);
+      throw StateError('通知一覧から開き直してください。');
+    }
+  }
   @override
   void retireUiScope() {
     if (uiRetired) return;
@@ -176,20 +200,36 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
     _invalidate();
   }
   @override
+  ({String actorId, String companyId, String sessionId})? get notificationReadBinding {
+    requireCurrent();
+    final company = _company, sid = _capturedSessionId;
+    if (company == null || sid == null || _role == null) return null;
+    return (actorId: _actor, companyId: company, sessionId: sid);
+  }
+  @override
+  bool isNotificationReadClient(Object client) => identical(client, _client);
+  @override
   bool get invalidated => _invalid || uiRetired;
   void _scopeChanged() {
     if (!_session.isCurrent) _invalidate();
   }
 
-  void _invalidate() {
+  void _invalidate({bool deferNotification = false}) {
     if (_invalid) return;
     _invalid = true;
     if (!_retired.isCompleted) _retired.complete();
-    notifyListeners();
+    if (deferNotification) {
+      // A child's initState may discover parent-context retirement while its
+      // route is being built. Deny now, notify surviving siblings after build.
+      scheduleMicrotask(() { if (!_disposed) notifyListeners(); });
+    } else {
+      notifyListeners();
+    }
   }
 
   @override
   void requireCurrent() {
+    _requireNotificationUiContext();
     if (invalidated) throw StateError('画面を開き直してください。');
     _session.requireScope();
   }
@@ -197,9 +237,12 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
   @override
   Future<void> verify() async {
     try {
+      _requireNotificationUiContext();
       if (invalidated) throw StateError('画面を開き直してください。');
       await _session.ready();
+      _requireNotificationUiContext();
       final raw = await _session.readOwnMemberships();
+      _requireNotificationUiContext();
       if (raw is! List || raw.length != 1 || raw.single is! Map) {
         throw StateError('会社登録を確認してください。');
       }
@@ -222,6 +265,7 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
 
   Future<Object?> _call(Map<String, dynamic> body, {bool write = false, bool outgoing = false}) async {
     await verify();
+    requireCurrent();
     try {
       final response = await _client.functions
           .invoke(
@@ -1109,6 +1153,7 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
 
   @override
   void dispose() {
+    _disposed = true;
     _invalidate();
     _session.removeListener(_scopeChanged);
     if (!_retired.isCompleted) _retired.complete();

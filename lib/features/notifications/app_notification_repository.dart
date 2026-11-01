@@ -1,3 +1,9 @@
+import 'dart:async';
+import 'package:flutter/foundation.dart';
+import '../auth/apple_session_navigation_binding.dart';
+import '../shared/trade_document_form_session.dart';
+import '../sites/site_order_workflow_repository.dart';
+import '../sites/site_order_site_actions.dart' show verifySiteOrderNotificationTarget, SiteOrderNotificationDenied;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
@@ -245,6 +251,16 @@ class AppNotificationRepository {
     return rows.length;
   }
 
+  /// Opt-in only. Existing notification marking paths are unchanged.
+  SiteOrderNotificationReadScope openSiteOrderReadScope({
+    required SiteOrderWorkflowApi api,
+    required String notificationId,
+    required String packageId,
+    String? expectedCompanyId,
+    String? Function()? currentCompany,
+  }) => SiteOrderNotificationReadScope._(_client, api, notificationId, packageId,
+      expectedCompanyId: expectedCompanyId, currentCompany: currentCompany);
+
   Future<void> markRead(String id) async {
     if (id.isEmpty) return;
     await _client
@@ -263,5 +279,176 @@ class AppNotificationRepository {
     } catch (_) {
       // Older schemas remain readable while migrations roll out.
     }
+  }
+}
+
+
+class SiteOrderNotificationReadUnknown implements Exception {
+  const SiteOrderNotificationReadUnknown();
+}
+
+/// A RAM-only receipt scope. Cancellation hides stale results; it cannot prove
+/// rollback of a read_at update that may already have reached the database.
+class SiteOrderNotificationReadScope extends ChangeNotifier {
+  SiteOrderNotificationReadScope._(this._client, this.api,
+      this.notificationId, this.packageId,
+      {String? expectedCompanyId, String? Function()? currentCompany})
+      : _expectedCompany = expectedCompanyId,
+        _currentCompany = currentCompany {
+    if (!_uuid(notificationId) || !_uuid(packageId) ||
+        (expectedCompanyId == null) != (currentCompany == null) ||
+        (expectedCompanyId != null && !_uuid(expectedCompanyId))) {
+      throw const SiteOrderNotificationReadUnknown();
+    }
+    final captured = _client.auth.currentSession;
+    final binding = AppleSessionNavigationBinding.fromSession(captured);
+    if (captured == null || binding == null || !api.isNotificationReadClient(_client)) {
+      throw const SiteOrderNotificationReadUnknown();
+    }
+    _captured = captured;
+    _binding = binding;
+    _session = TradeDocumentFormSession(_client,
+      target: expectedCompanyId, currentTarget: currentCompany);
+    _session.addListener(_changed);
+    api.addListener(_changed);
+  }
+  static bool _uuid(Object? value) => value is String &&
+      RegExp(r'^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$').hasMatch(value);
+  final SupabaseClient _client;
+  final SiteOrderWorkflowApi api;
+  final String notificationId, packageId;
+  final String? _expectedCompany;
+  final String? Function()? _currentCompany;
+  late final Session _captured;
+  late final AppleSessionNavigationBinding _binding;
+  late final TradeDocumentFormSession _session;
+  final _retired = Completer<void>();
+  String? _company;
+  bool _closed = false, _invalid = false, _attempted = false;
+  bool get isCurrent {
+    try {
+      return !_closed && !_invalid && !api.invalidated && !api.uiRetired &&
+          identical(_client.auth.currentSession, _captured) &&
+          (_currentCompany == null || _currentCompany() == _expectedCompany);
+    } catch (_) { return false; }
+  }
+  void _changed() {
+    if (!isCurrent || !_session.isCurrent) retire();
+  }
+  void retire() {
+    if (_invalid || _closed) return;
+    _invalid = true;
+    if (!_retired.isCompleted) _retired.complete();
+    notifyListeners();
+  }
+  void requireCurrent() {
+    if (!isCurrent) { retire(); throw const SiteOrderNotificationReadUnknown(); }
+    _session.requireScope();
+    api.requireCurrent();
+  }
+  Future<void> _verify() async {
+    if (!isCurrent) throw const SiteOrderNotificationReadUnknown();
+    await _session.ready();
+    // Admit the API's independent captured session before its synchronous guard.
+    if (!isCurrent) throw const SiteOrderNotificationReadUnknown();
+    _session.requireScope();
+    await api.verify();
+    requireCurrent();
+    final binding = api.notificationReadBinding;
+    if (binding == null || binding.actorId != _binding.actorId ||
+        binding.sessionId != _binding.sessionId || !api.isNotificationReadClient(_client)) {
+      retire(); throw const SiteOrderNotificationReadUnknown();
+    }
+    final rows = await _session.readOwnMemberships();
+    requireCurrent();
+    if (rows is! List || rows.length != 1 || rows.single is! Map) {
+      retire(); throw const SiteOrderNotificationReadUnknown();
+    }
+    final row = rows.single as Map;
+    final company = row['company_id'];
+    if (!_uuid(company) || company != binding.companyId ||
+        !const {'owner', 'admin', 'manager'}.contains(row['role']) ||
+        (_company != null && _company != company) ||
+        (_expectedCompany != null && _expectedCompany != company)) {
+      retire(); throw const SiteOrderNotificationReadUnknown();
+    }
+    _company ??= company as String;
+  }
+  void _validateRow(Object? value) {
+    if (value is! Map || value.length != 6 ||
+        !value.keys.every(const {'id','company_id','recipient_user_id','action_key','action_id','read_at'}.contains) ||
+        value['id'] != notificationId || value['company_id'] != _company ||
+        value['recipient_user_id'] != _binding.actorId ||
+        value['action_key'] != 'site_order_package' || value['action_id'] != packageId ||
+        (value['read_at'] != null && (value['read_at'] is! String || DateTime.tryParse(value['read_at']) == null))) {
+      throw const SiteOrderNotificationReadUnknown();
+    }
+  }
+  Future<Map<String, dynamic>> _readRow() async {
+    final value = await _client.from('app_notifications')
+      .select('id,company_id,recipient_user_id,action_key,action_id,read_at')
+      .eq('id', notificationId).eq('company_id', _company!)
+      .eq('recipient_user_id', _binding.actorId)
+      .eq('action_key', 'site_order_package').eq('action_id', packageId)
+      .maybeSingle().setHeader('Authorization', 'Bearer ${_captured.accessToken}')
+      .abortSignal(_retired.future);
+    requireCurrent(); _validateRow(value);
+    return Map<String, dynamic>.from(value as Map);
+  }
+  Future<void> verifyTarget() async {
+    try {
+      await _verify();
+      await verifySiteOrderNotificationTarget(api, packageId);
+      requireCurrent();
+      await _readRow();
+      await _verify();
+    } on SiteOrderNotificationDenied { retire(); rethrow; }
+    catch (_) { retire(); throw const SiteOrderNotificationReadUnknown(); }
+  }
+  Future<void> markRead(VoidCallback requireOwnedScope) async {
+    if (_attempted) throw const SiteOrderNotificationReadUnknown();
+    _attempted = true; // Reserve synchronously before any async admission.
+    requireOwnedScope();
+    await verifyTarget();
+    requireOwnedScope(); requireCurrent();
+    final before = await _readRow();
+    requireOwnedScope(); requireCurrent();
+    // A verified existing read is read-only. Never infer this from a CAS0.
+    if (before['read_at'] != null) {
+      await _verify();
+      await verifySiteOrderNotificationTarget(api, packageId);
+      requireOwnedScope(); requireCurrent();
+      return;
+    }
+    try {
+      final Object rows = await _client.from('app_notifications')
+        .update({'read_at': DateTime.now().toUtc().toIso8601String()})
+        .eq('id', notificationId).eq('company_id', _company!)
+        .eq('recipient_user_id', _binding.actorId)
+        .eq('action_key', 'site_order_package').eq('action_id', packageId)
+        .isFilter('read_at', null)
+        .select('id,company_id,recipient_user_id,action_key,action_id,read_at')
+        .setHeader('Authorization', 'Bearer ${_captured.accessToken}')
+        .abortSignal(_retired.future);
+      requireOwnedScope(); requireCurrent();
+      await _verify();
+      await verifySiteOrderNotificationTarget(api, packageId);
+      requireOwnedScope(); requireCurrent();
+      if (rows is! List || rows.length != 1) throw const SiteOrderNotificationReadUnknown();
+      _validateRow(rows.single);
+      if ((rows.single as Map)['read_at'] == null) throw const SiteOrderNotificationReadUnknown();
+    } catch (_) {
+      // The write may have committed. Retain unknown and never retry it here.
+      throw const SiteOrderNotificationReadUnknown();
+    }
+  }
+  @override void dispose() {
+    if (_closed) return;
+    retire();
+    _closed = true;
+    _session.removeListener(_changed);
+    api.removeListener(_changed);
+    _session.dispose();
+    super.dispose();
   }
 }
