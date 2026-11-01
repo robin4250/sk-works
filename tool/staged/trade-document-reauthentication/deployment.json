@@ -19,5 +19,19 @@
   "notes": [
     "Retain deployed verify_jwt=false; handler self-authenticates exact Bearer at real Auth/user.",
     "Shared master_feature rollout false\u2192true is separate reviewed ON dependency affecting master operations for existing six keys, not their enabled values."
-  ]
+  ],
+  "qualification": {
+    "actual_local_edge": true,
+    "gateway_verify_jwt": false,
+    "genuine_jwt_status": 200,
+    "signature_tamper_auth_status": 403,
+    "signature_tamper_handler_status": 401,
+    "anonymous_handler_status": 401,
+    "genuine_jwt_natural_expiry_seconds": 60,
+    "expired_auth_status": 403,
+    "expired_handler_status": 401,
+    "expired_jwt_session_still_present": true,
+    "evidence": "output/continuation-20261101/edge-sitekey-live-minimal/actual-edge-verification.json",
+    "production_deployed": false
+  }
 }
