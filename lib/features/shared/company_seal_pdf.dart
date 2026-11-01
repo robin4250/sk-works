@@ -256,7 +256,11 @@ class CompanySealPdf {
                 children: [
                   for (final rune in column.runes)
                     pw.Expanded(
-                      child: pw.FittedBox(
+                      // Preserve the registered whitespace cell without fitting a
+                      // zero-ink glyph (pdf FittedBox requires positive width).
+                      child: RegExp(r'^\s$').hasMatch(String.fromCharCode(rune))
+                          ? pw.SizedBox()
+                          : pw.FittedBox(
                         fit: pw.BoxFit.fill,
                         child: pw.Text(
                           String.fromCharCode(rune),

@@ -16,6 +16,7 @@ import 'trade_document_output_selector.dart';
 import 'trade_document_touch_editor_page.dart';
 import 'standalone_trade_document_operation_gate.dart';
 import 'standalone_trade_document.dart';
+import 'standalone_trade_document_validation.dart';
 import 'standalone_trade_document_repository.dart';
 import 'standalone_trade_document_print_scope.dart';
 
@@ -284,7 +285,7 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
     try {
       await _refreshOperationGate();
       final draft=_draft;if(draft==null)throw StateError('入力内容を確認してください。');
-      draft.validateForSave();
+      validateStandaloneTradeDocumentDraft(draft);
       final payload=_validatedPayload(draft.payload,context);
       final canonical=await TradeDocumentFormRenderer.canonical(payload);
       await _refreshOperationGate();
@@ -297,9 +298,7 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
     } catch (error) {
       if (mounted && !_revoked) {
         setState(() {
-          _error = error is StateError
-              ? error.message.toString()
-              : '帳票を作成できません。入力内容を確認してください。';
+          _error = standaloneTradeGenerationMessage(error);
         });
       }
     } finally {
