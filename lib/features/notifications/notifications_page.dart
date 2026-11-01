@@ -197,17 +197,31 @@ class _NotificationsPageState extends State<NotificationsPage> {
     final saved = ids.isEmpty ? null : snapshot?.notificationsById[ids.first];
     final orderNotice = (saved?.actionKey ?? item.actionKey) == 'site_order_package';
     final packageId = saved?.actionId ?? item.actionId;
-    final company = widget.currentCompany?.call() ?? widget.companyId;
+    final company = orderNotice ? widget.currentCompany?.call() ?? widget.companyId : null;
     SiteOrderWorkflowApi? orderApi;
     SiteOrderNotificationReadScope? readScope;
     StreamController<void>? orderChanges;
     StreamSubscription<void>? orderSessionChanges;
     VoidCallback? orderListener;
-    bool flowCurrent() => mounted && session.isCurrent && capturedLoad == _loadRequest &&
-        (widget.currentCompany?.call() ?? widget.companyId) == company &&
-        (!orderNotice || (identical(_siteOrderApi, orderApi) &&
-          orderApi?.invalidated == false && orderApi?.uiRetired == false &&
-          (readScope == null || readScope!.isCurrent)));
+    bool retirementQueued = false, flowClosed = false;
+    bool flowCurrent() {
+      bool current;
+      try {
+        current = !flowClosed && mounted && session.isCurrent && capturedLoad == _loadRequest &&
+          (widget.currentCompany?.call() ?? widget.companyId) == company &&
+          identical(_siteOrderApi, orderApi) && orderApi?.invalidated == false &&
+          orderApi?.uiRetired == false && (readScope == null || readScope!.isCurrent);
+      } catch (_) { current = false; }
+      if (!current && !retirementQueued) {
+        retirementQueued = true;
+        // A getter-only company change has no event stream. Retire at the first
+        // scope check, outside the current widget build/event stack.
+        scheduleMicrotask(() {
+          if (!flowClosed) { readScope?.retire(); orderApi?.retireUiScope(); }
+        });
+      }
+      return current;
+    }
     void requireFlow() {
       if (!flowCurrent()) throw StateError('通知一覧から開き直してください。');
       session.requireCurrent();
@@ -220,7 +234,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
           if (packageId == null || !notificationTargetIsValid('site_order_package', packageId)) {
             throw const SiteOrderNotificationReadUnknown();
           }
-          orderApi = widget.siteOrderApiFactory?.call() ?? SiteOrderWorkflowRepository.maybeCreate();
+          orderApi = widget.siteOrderApiFactory == null
+              ? SiteOrderWorkflowRepository.maybeCreate() : widget.siteOrderApiFactory!();
           if (orderApi == null) throw const SiteOrderNotificationReadUnknown();
           _siteOrderApi = orderApi;
           _siteOrderCompany = company;
@@ -306,6 +321,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
             requireSiteOrderCurrent: orderNotice ? requireFlow : null),
         )));
     } finally {
+      flowClosed = true;
       if (orderListener != null) orderApi?.removeListener(orderListener);
       await orderSessionChanges?.cancel();
       readScope?.dispose();
