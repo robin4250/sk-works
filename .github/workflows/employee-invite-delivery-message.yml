@@ -1,0 +1,28 @@
+name: Employee invitation delivery message
+on:
+  pull_request:
+    paths:
+      - 'lib/features/people/employee_invite_delivery_message.dart'
+      - 'lib/features/people/employee_invite_page.dart'
+      - 'lib/features/people/employee_initial_registration_page.dart'
+      - 'test/employee_invite_delivery_message_test.dart'
+      - '.github/workflows/employee-invite-delivery-message.yml'
+permissions:
+  contents: read
+jobs:
+  delivery-message:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.47.5'
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: git diff --exit-code -- pubspec.lock
+      - run: flutter analyze lib/features/people/employee_invite_delivery_message.dart lib/features/people/employee_invite_page.dart lib/features/people/employee_initial_registration_page.dart test/employee_invite_delivery_message_test.dart
+      - name: URL policy and intercepted native delivery handoffs
+        timeout-minutes: 3
+        run: flutter test test/employee_invite_delivery_message_test.dart test/employee_invite_localization_contract_test.dart test/employee_invite_role_selection_contract_test.dart --timeout 20s --reporter expanded
