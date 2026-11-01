@@ -142,7 +142,16 @@ for(const item of idle){
 const freshAuth=await connect();await actor(freshAuth);await prepare(freshAuth);
 for(const mode of modes)observations.push({connection:'fresh',mode,...await attempt(freshAuth,mode)});
 // Record counterexamples, rather than asserting that REVOKE retroactively cancels entry.
-for(const x of observations)if(!x.accepted)assert.equal(x.code,'42501','Unrelated failure is not ACL closure evidence');
+const deniedMessage='permission denied for function save_trade_document_attachment';
+for(const x of observations)if(!x.accepted){
+ assert.equal(x.code,'42501','Unrelated failure is not ACL closure evidence');
+ assert.equal(x.message,deniedMessage,'Another permission failure is not public saver closure evidence');
+}
+let activeClassification;
+if(activeOutcome.ok)activeClassification='entered_call_accepted';
+else if(activeOutcome.code==='42501'&&activeOutcome.message===deniedMessage)activeClassification='public_saver_acl_denied';
+else if(['55P03','57014'].includes(activeOutcome.code))activeClassification='controlled_wait_timeout_not_closure';
+else throw Error('Unclassified entered-call outcome: '+JSON.stringify(activeOutcome));
 const privateControl=await attempt(auth,'plain',false,privateSQL);assert.equal(privateControl.accepted,true);
 const owner=await connect();await actor(owner,'postgres');const ownerControl=await attempt(owner,'plain');assert.equal(ownerControl.accepted,true);
 const planCounters=(await auth.query("select name,generic_plans::text,custom_plans::text from pg_prepared_statements where name='acl_pause_save'")).rows;
@@ -151,7 +160,7 @@ await db.exec('grant execute on function '+signature+' to authenticated');paused
 assert.deepEqual(await catalog(),baseline);assert.deepEqual(await namespaces(),namespaceBefore);assert.deepEqual(await rowSnapshot(),beforeRows);
 for(const mode of modes){assert.equal((await attempt(auth,mode)).accepted,true);assert.equal((await attempt(freshAuth,mode)).accepted,true);}
 assert.deepEqual(await rowSnapshot(),beforeRows);
-report={kind:'existing_public_acl_pause_fixture',public_signature:signature,limited_authenticated_usage_alignment:usage,observations,planCounters,acl_order:aclOrder,active_call:activeOutcome.ok?{accepted:true,version:activeOutcome.value.rows[0].v.version}:{accepted:false,code:activeOutcome.code,message:activeOutcome.message},
+report={kind:'existing_public_acl_pause_fixture',public_signature:signature,limited_authenticated_usage_alignment:usage,observations,planCounters,acl_order:aclOrder,active_call_classification:activeClassification,active_call:activeOutcome.ok?{accepted:true,version:activeOutcome.value.rows[0].v.version}:{accepted:false,code:activeOutcome.code,message:activeOutcome.message},
  existing_key_wait_observed:true,acl_exactly_restored:true,all_other_function_attributes_unchanged:true,namespaces_unchanged:true,rows_unchanged:true,
  private_authenticated_control:privateControl,owner_control:ownerControl,fixture_authentication_synthetic:true,fixture_full_production_schema_acl_reproduced:false,
  actual_C_executed:false,prior_warm_tail_executed:false,restore_executed:false,actual_PLpgSQL_writer_proven:false,real_GoTrue:false,C_commit_barrier_proven:false,production:false,deployable:false};
