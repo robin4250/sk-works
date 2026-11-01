@@ -7,6 +7,7 @@ import '../../data/supabase_backend.dart';
 import '../auth/app_auth_mutation_gateway.dart';
 import '../auth/secondary_reset_session_guard.dart';
 import '../people/own_bank_account_repository.dart';
+import 'personal_pending_admission.dart';
 
 final _uuid = RegExp(r'^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$');
 final _hash = RegExp(r'^[0-9a-f]{64}$');
@@ -138,7 +139,9 @@ class PersonalDetailsRepository extends ChangeNotifier implements PersonalDetail
   final r=await _rpc('personal_bank_read_v1',{'p_expected_revision':revision,'p_proof':token},{..._base,'bank_account'});
   if(r['revision']!=revision)_invalid();return _bank(r['bank_account']);
  }
- @override Future<bool> save(int revision,Map<String,dynamic> changes,String operation,PersonalProof proof) async {
+ @override Future<bool> save(int revision,Map<String,dynamic> changes,String operation,PersonalProof proof) =>
+  withPersonalPendingAdmission(actorId,()=>_save(revision,changes,operation,proof));
+ Future<bool> _save(int revision,Map<String,dynamic> changes,String operation,PersonalProof proof) async {
   await _check();
   if(_writing||_pending!=null||!_revision(revision)||!_uuid.hasMatch(operation)||changes.isEmpty||changes.keys.any((k)=>!{'birth_date','bank_account'}.contains(k)))throw StateError('保存条件を確認してください。');
   if(changes.containsKey('birth_date') && (changes['birth_date']!=null&&changes['birth_date'] is! String || !personalBirthDateValid(changes['birth_date'])))_invalid();
@@ -162,18 +165,31 @@ class PersonalDetailsRepository extends ChangeNotifier implements PersonalDetail
    try {
     final result=await _rpc('personal_details_save_v1',{'p_expected_revision':revision,'p_operation_id':operation,'p_changes':frozen,'p_input_sha256':digest,'p_proof':token},{..._base,'operation_id','input_sha256','outcome'});
     if(result['revision']!=revision+1||result['operation_id']!=operation||result['input_sha256']!=digest||result['outcome']!='applied')_invalid();
-    await _store.clear(actorId);await _check();_pending=null;return true;
+    await _clearExpectedPending(pending);await _check();_pending=null;return true;
    } catch (_) {throw const PersonalDetailsUnconfirmed();}
   } finally {_writing=false;_activeWrites.remove(actorId);}
  }
- @override Future<bool> reconcile() async {
+ @override Future<bool> reconcile() => withPersonalPendingAdmission(actorId,_reconcile);
+ Future<bool> _reconcile() async {
   await _check();final p=_pending;if(p==null)return false;
   _pendingShape(p);if(p['sid']!=_sid)throw const PersonalDetailsUnconfirmed();
+  if(kIsWeb)await _requireStoredPending(p);
   final r=await _rpc('personal_details_reconcile_v1',{'p_before_revision':p['before'],'p_operation_id':p['operation'],'p_input_sha256':p['digest']},{..._base,'operation_id','input_sha256','outcome'});
   if(r['operation_id']!=p['operation']||r['input_sha256']!=p['digest']||!{'applied','unknown'}.contains(r['outcome']))_invalid();
   if(r['outcome']=='unknown')return false;
   if(r['revision']!=p['before']+1)_invalid();
-  await _store.clear(actorId);await _check();_pending=null;return true;
+  await _clearExpectedPending(p);await _check();_pending=null;return true;
+ }
+ Future<void> _requireStoredPending(Map<String,dynamic> expected) async {
+  final stored=await _store.read(actorId);await _check();
+  if(stored==null)throw const PersonalDetailsUnconfirmed();
+  _pendingShape(stored);
+  if(stored.length!=expected.length||expected.entries.any((e)=>stored[e.key]!=e.value))throw const PersonalDetailsUnconfirmed();
+ }
+ Future<void> _clearExpectedPending(Map<String,dynamic> expected) async {
+  // All cooperating WEB writers hold the same actor lock through compare/remove.
+  if(kIsWeb)await _requireStoredPending(expected);
+  await _store.clear(actorId);
  }
  @override Future<void> close() async {if(_closed)return;_closed=true;await _quarantine?.cancel();await _guard.close();dispose();}
 }
