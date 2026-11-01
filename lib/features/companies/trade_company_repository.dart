@@ -115,13 +115,20 @@ class TradeCompanyLinkCandidate {
 }
 
 class TradeCompanyRepository {
-  TradeCompanyRepository._(this._client);
-  TradeCompanyRepository.forTesting(this._client);
+  TradeCompanyRepository._(this._client) : _authEvents = null;
+  TradeCompanyRepository.forTesting(
+    this._client, {
+    Stream<AuthState>? Function()? authEvents,
+  }) : _authEvents = authEvents;
+  final Stream<AuthState>? Function()? _authEvents;
 
   final SupabaseClient _client;
 
   Future<CompanyLinkBoundContext> openBoundLinkContext() async {
-    final context = CompanyLinkBoundContext._(_client);
+    final context = CompanyLinkBoundContext._(
+      _client,
+      _authEvents == null ? _client.auth.onAuthStateChange : _authEvents!(),
+    );
     try {
       await context.initialize();
       return context;
@@ -322,14 +329,16 @@ class TradeCompanyRepository {
 /// Route-local lifetime and operation binding; never an authorization decision.
 /// Server checks the live SID, membership and exact company on every command.
 class CompanyLinkBoundContext {
-  CompanyLinkBoundContext._(this._client) {
+  CompanyLinkBoundContext._(this._client, Stream<AuthState>? events) {
     _binding = AppleSessionNavigationBinding.fromSession(
       _client.auth.currentSession,
     );
     if (_binding == null) {
       throw StateError('ログイン状態を確認してください');
     }
-    _subscription = _client.auth.onAuthStateChange.listen((event) {
+    _trackingHealthy = events != null;
+    try {
+    _subscription = events?.listen((event) {
       AppleSessionNavigationBinding? next;
       try {
         next = AppleSessionNavigationBinding.fromSession(event.session);
@@ -338,10 +347,19 @@ class CompanyLinkBoundContext {
       }
       if (next != _binding) _retire();
     });
+    } catch (_) {
+      _retireTracking();
+    }
+    if (!_trackingHealthy) _retire();
   }
   final SupabaseClient _client;
   AppleSessionNavigationBinding? _binding;
   StreamSubscription<AuthState>? _subscription;
+  late bool _trackingHealthy;
+  void _retireTracking() {
+    _trackingHealthy = false;
+    _retire();
+  }
   bool _retired = false;
   final _retirements = StreamController<void>.broadcast();
   Stream<void> get retirements => _retirements.stream;
@@ -369,6 +387,7 @@ class CompanyLinkBoundContext {
   String get companyId => _company ?? '';
   bool get hasUnknownResult => _pendingOperation != null || _corruptPending;
   bool get isCurrent {
+    if (!_trackingHealthy) _retire();
     try {
       if (AppleSessionNavigationBinding.fromSession(
             _client.auth.currentSession,
@@ -712,3 +731,4 @@ extension TradeCompanyConflictRepository on TradeCompanyRepository {
     ];
   }
 }
+
