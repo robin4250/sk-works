@@ -56,15 +56,35 @@ class InitialRegistrationEmployee {
 }
 
 class EmployeeInviteRepository {
-  EmployeeInviteRepository(this._client) {
+  EmployeeInviteRepository(SupabaseClient client)
+    : this._withTracking(client, client.auth.onAuthStateChange);
+
+  EmployeeInviteRepository.forTesting(
+    SupabaseClient client, {
+    required Stream<AuthState>? authEvents,
+  }) : this._withTracking(client, authEvents);
+
+  EmployeeInviteRepository._withTracking(this._client, this._authEvents) {
+    _trackingHealthy = _authEvents != null;
     _observedBinding = binding;
-    _subscription = _client.auth.onAuthStateChange.listen((event) {
-      _observe(event.session);
-    });
+    try {
+      _subscription = _authEvents?.listen(
+        (event) => _observe(event.session),
+      );
+    } catch (_) {
+      _retireTracking();
+    }
   }
 
   final SupabaseClient _client;
+  final Stream<AuthState>? _authEvents;
+  late bool _trackingHealthy;
   StreamSubscription<AuthState>? _subscription;
+  void _retireTracking() {
+    if (!_trackingHealthy) return;
+    _trackingHealthy = false;
+    _generation++;
+  }
   AppleSessionNavigationBinding? _observedBinding;
   int _generation = 0;
   bool _disposed = false;
@@ -89,8 +109,9 @@ class EmployeeInviteRepository {
 
   final Set<String> _attempted = {};
   String? get currentActorId => binding?.actorId;
-  Stream<AuthState> get authChanges => _client.auth.onAuthStateChange;
+  Stream<AuthState> get authChanges => _authEvents ?? const Stream.empty();
   AppleSessionNavigationBinding? get binding {
+    if (!_trackingHealthy || _disposed) return null;
     try {
       return AppleSessionNavigationBinding.fromSession(
         _client.auth.currentSession,
@@ -467,3 +488,4 @@ class EmployeeInviteRequest {
     if (!isCurrent) throw StateError('ログイン状態が変わりました。画面を開き直してください。');
   }
 }
+
