@@ -151,6 +151,17 @@ void main() {
     expect(f.wire.patches, 0); expect(f.wire.businessWrites, 0);
     expect(find.text('権限確認後の工事'), findsNothing);
   });
+  testWidgets('getter-only company change after package admission blocks child archive access', (tester) async {
+    var company = fixture.noticeCompany;
+    final f = (await _mount(tester, currentCompany: () => company)).fixture;
+    await _explanation(tester); await _openTarget(tester);
+    await _wait(tester, () => find.text('権限確認後の工事').evaluate().isNotEmpty);
+    company = fixture.otherNoticeId;
+    await tester.tap(find.text('注文書を見る')); await tester.pumpAndSettle();
+    expect(find.text('権限確認後の工事'), findsNothing);
+    expect(f.wire.patches, 1); expect(f.wire.businessWrites, 0);
+    expect(f.api.invalidated, isTrue);
+  });
   testWidgets('parent removal retires an open package without popping an unrelated root modal', (tester) async {
     final visible = ValueNotifier(true); addTearDown(visible.dispose);
     final mounted = await _mount(tester, parentVisible: visible), f = mounted.fixture;

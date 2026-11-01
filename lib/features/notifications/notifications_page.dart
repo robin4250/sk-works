@@ -74,6 +74,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
   SiteOrderWorkflowApi? _siteOrderApi;
   SiteOrderNotificationReadScope? _siteOrderRead;
   String? _siteOrderCompany;
+  bool _siteOrderBoundaryRetired = false;
   NotificationOpenSession? _session;
   StreamSubscription<void>? _sessionChanges;
   int _loadRequest = 0;
@@ -102,21 +103,29 @@ class _NotificationsPageState extends State<NotificationsPage> {
     super.didUpdateWidget(oldWidget);
     if (_siteOrderApi != null &&
         (widget.currentCompany?.call() ?? widget.companyId) != _siteOrderCompany) {
-      _siteOrderRead?.retire();
-      _siteOrderApi?.retireUiScope();
+      _retireSiteOrderBoundary();
     }
     if (oldWidget.companyId != widget.companyId) {
-      _siteOrderRead?.retire();
-      _siteOrderApi?.retireUiScope();
+      _retireSiteOrderBoundary();
       _data = null;
       _load();
     }
   }
 
+  void _retireSiteOrderBoundary() {
+    // Deny callbacks synchronously, then notify surviving routes outside the
+    // framework's build/unmount lock. An unrelated root modal is never popped.
+    _siteOrderBoundaryRetired = true;
+    final api = _siteOrderApi, scope = _siteOrderRead;
+    scheduleMicrotask(() {
+      scope?.retire();
+      if (api != null && !api.invalidated) api.retireUiScope();
+    });
+  }
+
   @override
   void dispose() {
-    _siteOrderRead?.retire();
-    _siteOrderApi?.retireUiScope();
+    _retireSiteOrderBoundary();
     _sessionChanges?.cancel();
     _session?.dispose();
     super.dispose();
@@ -217,7 +226,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
     bool flowCurrent() {
       bool current;
       try {
-        current = !flowClosed && mounted && session.isCurrent && capturedLoad == _loadRequest &&
+        current = !flowClosed && !_siteOrderBoundaryRetired && mounted && session.isCurrent && capturedLoad == _loadRequest &&
           notificationTupleCurrent() &&
           (widget.currentCompany?.call() ?? widget.companyId) == company &&
           identical(_siteOrderApi, orderApi) && orderApi?.invalidated == false &&
@@ -248,8 +257,12 @@ class _NotificationsPageState extends State<NotificationsPage> {
           orderApi = widget.siteOrderApiFactory == null
               ? SiteOrderWorkflowRepository.maybeCreate() : widget.siteOrderApiFactory!();
           if (orderApi == null) throw const SiteOrderNotificationReadUnknown();
+          _siteOrderBoundaryRetired = false;
           _siteOrderApi = orderApi;
           _siteOrderCompany = company;
+          if (!orderApi.bindNotificationUiContext(flowCurrent)) {
+            throw const SiteOrderNotificationReadUnknown();
+          }
           orderChanges = StreamController<void>.broadcast();
           var invalidationSent = false;
           void emit() {

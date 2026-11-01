@@ -160,6 +160,21 @@ class NoticeFixture {
   }
 }
 void main() {
+  test('opt-in parent lifetime permanently blocks child API after getter drift', () async {
+    final f = await NoticeFixture.create(); var current = true;
+    try {
+      expect(f.api.bindNotificationUiContext(() => current), isTrue);
+      await f.api.verify();
+      current = false;
+      final calls = f.wire.memberships;
+      await expectLater(f.api.verify(), throwsStateError);
+      current = true;
+      await expectLater(f.api.verify(), throwsStateError);
+      expect(f.wire.memberships, calls);
+      expect(f.api.invalidated, isTrue); expect(f.wire.businessWrites, 0);
+    } finally { await f.close(); }
+  });
+
   TestWidgetsFlutterBinding.ensureInitialized();
   test('actual SDK read scope pins tuple and updates only read_at once', () async {
     final f = await NoticeFixture.create(); final scope = f.scope();
