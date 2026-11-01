@@ -1,0 +1,49 @@
+name: Employee retirement transition guard review
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'docs/candidates/employee_retirement_transition_guard_20261101/**'
+      - '.github/workflows/employee-retirement-transition-guard-review.yml'
+permissions:
+  contents: read
+jobs:
+  native-isolated:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:17.6
+        env:
+          POSTGRES_PASSWORD: synthetic_retirement_fixture_only
+          POSTGRES_DB: retirement_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 3s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Bind the exact isolated PostgreSQL service address
+        env:
+          RETIREMENT_POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          python3 - <<'PY'
+          import ipaddress, json, os, subprocess
+          inspected = json.loads(subprocess.check_output(['docker','inspect',os.environ['RETIREMENT_POSTGRES_CONTAINER']],text=True))
+          assert len(inspected) == 1 and inspected[0]['Config']['Image'] == 'postgres:17.6'
+          addresses = [network['IPAddress'] for network in inspected[0]['NetworkSettings']['Networks'].values()]
+          assert len(addresses) == 1 and ipaddress.ip_address(addresses[0]).is_private
+          with open(os.environ['GITHUB_ENV'],'a') as output:
+              output.write('SKO_FIXTURE_SERVER_ADDR=' + addresses[0] + '\n')
+          PY
+      - run: node docs/candidates/employee_retirement_transition_guard_20261101/native-test.mjs --environment-faults
+      - run: node docs/candidates/employee_retirement_transition_guard_20261101/native-test.mjs
+        env:
+          PGHOST: '127.0.0.1'
+          PGPORT: '5432'
+          PGUSER: postgres
+          PGPASSWORD: synthetic_retirement_fixture_only
+          PGDATABASE: retirement_fixture

@@ -1,0 +1,32 @@
+-- REVIEW-ONLY: isolated fixture, deployable:false. No reinstatement bypass exists.
+BEGIN;
+DO $guard$
+BEGIN
+  IF current_database() <> 'retirement_fixture' THEN
+    RAISE EXCEPTION 'production HOLD: isolated retirement fixture only';
+  END IF;
+  IF to_regprocedure('private.reject_implicit_worker_reactivation()') IS NOT NULL
+    OR EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid='public.workers'::regclass
+      AND tgname='worker_reactivation_review_guard') THEN
+    RAISE EXCEPTION 'candidate collision';
+  END IF;
+END;
+$guard$;
+CREATE FUNCTION private.reject_implicit_worker_reactivation()
+RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path = '' AS $guard$
+BEGIN
+  IF TG_OP <> 'UPDATE' OR TG_TABLE_SCHEMA <> 'public' OR TG_TABLE_NAME <> 'workers' THEN
+    RAISE EXCEPTION 'unexpected reactivation guard target' USING ERRCODE='55000';
+  END IF;
+  IF NEW.status::text = 'active' AND OLD.status::text IS DISTINCT FROM 'active' THEN
+    RAISE EXCEPTION 'explicit reinstatement is required' USING ERRCODE='55000';
+  END IF;
+  RETURN NEW;
+END;
+$guard$;
+REVOKE ALL ON FUNCTION private.reject_implicit_worker_reactivation()
+  FROM PUBLIC, anon, authenticated, service_role;
+-- No UPDATE OF list: an earlier BEFORE trigger may alter status even when SET omits it.
+CREATE TRIGGER worker_reactivation_review_guard AFTER UPDATE ON public.workers
+FOR EACH ROW EXECUTE FUNCTION private.reject_implicit_worker_reactivation();
+COMMIT;
