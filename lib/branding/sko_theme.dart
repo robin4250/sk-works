@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class SkoPalette {
@@ -155,6 +156,7 @@ class SkoTheme {
     );
 
     final baseTheme = ThemeData(
+      fontFamily: kIsWeb ? 'SkoWebUI' : null,
       colorScheme: colorScheme,
       useMaterial3: true,
       scaffoldBackgroundColor: palette.background,

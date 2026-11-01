@@ -64,7 +64,12 @@ abstract interface class PersonalDetailsPendingStore {
 class _PreferencesPending implements PersonalDetailsPendingStore {
  String key(String actor)=>'sko.personal_details.pending.v1.$actor';
  @override Future<Map<String,dynamic>?> read(String actor) async {
-  final raw=(await SharedPreferences.getInstance()).getString(key(actor));
+  final preferences=await SharedPreferences.getInstance();
+  // Web preferences are cached per Dart context. Observe externally written
+  // ambiguity metadata before deciding whether another save may be prepared.
+  // This refresh is visibility only; it does not provide cross-tab exclusion.
+  if(kIsWeb)await preferences.reload();
+  final raw=preferences.getString(key(actor));
   if(raw==null)return null;
   final value=jsonDecode(raw);if(value is! Map<String,dynamic>)_invalid();return value;
  }

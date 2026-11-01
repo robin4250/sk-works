@@ -10,6 +10,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -2330,7 +2331,9 @@ class _BackendUnavailableScreen extends StatelessWidget {
                 ),
                 SizedBox(height: 10),
                 Text(
-                  '認証サーバーの設定を読み込めないため、ログインや管理機能は開いていません。Macの実機準備スクリプトでSupabase設定を確認してから再起動してください。',
+                  kIsWeb
+                      ? '認証サーバーの設定を読み込めないため、ログインや管理機能は開いていません。管理者にWEB版の接続設定の確認を依頼し、設定が完了してからページを再読み込みしてください。'
+                      : '認証サーバーの設定を読み込めないため、ログインや管理機能は開いていません。Macの実機準備スクリプトでSupabase設定を確認してから再起動してください。',
                   textAlign: TextAlign.center,
                 ),
               ],
