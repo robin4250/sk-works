@@ -147,6 +147,11 @@ void main() {
             scrollable: find.descendant(of: find.byType(ListView).first, matching: find.byType(Scrollable)).first);
         }
         expect(find.text(credential), findsOneWidget);
+        if (!initialPage) {
+          // The QR is a separate lazy ListView card below the credential card.
+          await tester.scrollUntilVisible(find.byType(QrImageView), 200, maxScrolls: 20,
+            scrollable: find.descendant(of: find.byType(ListView).first, matching: find.byType(Scrollable)).first);
+        }
         expect(find.byType(QrImageView), findsOneWidget);
         await tester.runAsync(() async {
           if (failure == 'error') { events.addError(StateError('synthetic tracking failure')); }
