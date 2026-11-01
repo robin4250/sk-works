@@ -849,7 +849,13 @@ Future<bool> companyProfileNotificationAvailable() async {
 Future<bool> companyLinkNotificationAvailable() async {
   final repository = TradeCompanyRepository.maybeCreate();
   if (repository == null) return false;
-  return (await repository.linkWorkspace())['enabled'] == true;
+  final scope = repository.createLinkScope();
+  try {
+    await scope.loadContexts();
+    return scope.contexts.any((company) => company.enabled);
+  } finally {
+    await scope.close();
+  }
 }
 
 Widget? companyLinkNotificationDestination(String? requestId) {
