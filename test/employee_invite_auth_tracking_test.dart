@@ -119,7 +119,9 @@ void main() {
           });
         });
         await tester.runAsync(f.login);
-        repository = TrackingInviteRepository(f.client, events.stream);
+        // Completers and SDK callback futures must share the real async zone.
+        repository = (await tester.runAsync(() async =>
+          TrackingInviteRepository(f.client, events.stream)))!;
         await tester.pumpWidget(MaterialApp(home: initialPage
           ? EmployeeInitialRegistrationPage(repository: repository)
           : EmployeeInvitePage(repository: repository)));
@@ -128,15 +130,15 @@ void main() {
           await tester.ensureVisible(find.text('送信'));
           await tester.runAsync(() async {
             await tester.tap(find.text('送信'));
-            await repository.completed.future;
-            await repository.refreshed.future;
+            await repository.completed.future.timeout(const Duration(seconds: 5));
+            await repository.refreshed.future.timeout(const Duration(seconds: 5));
           });
         } else {
           await tester.enterText(find.byType(TextField).at(0), 'Synthetic Employee');
           await tester.enterText(find.byType(TextField).at(1), '07000000000');
           final create = find.byWidgetPredicate((w) => w is FilledButton);
           await tester.ensureVisible(create.first);
-          await tester.runAsync(() async { await tester.tap(create.first); await repository.completed.future; });
+          await tester.runAsync(() async { await tester.tap(create.first); await repository.completed.future.timeout(const Duration(seconds: 5)); });
         }
         await tester.pumpAndSettle();
         final credential = initialPage ? '初期パスワード: ${fixture.fixturePassword}' : fixture.fixturePassword;
