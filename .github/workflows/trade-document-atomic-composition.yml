@@ -31,8 +31,8 @@ jobs:
     env:
       PARTNER_BANK_TEST_DATABASE_URL: postgres://postgres:fixture-only@127.0.0.1:5432/partner_bank_fixture
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with: {node-version: '22.14.0'}
       - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
       - run: python -m py_compile tool/build_trade_document_deployment_review.py tool/prepare_trade_document_atomic_review_fixture.py
@@ -57,7 +57,7 @@ jobs:
             module="$GITHUB_WORKSPACE/docs/review/partner-company-bank-order/native-db.mjs"
           fi
           node "$RUNNER_TEMP/atomic-review/machine-plan-fixture.mjs" "$module" core
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: atomic-review-${{ matrix.runtime }}-proof

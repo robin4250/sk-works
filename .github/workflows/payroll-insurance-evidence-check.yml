@@ -20,7 +20,7 @@ jobs:
       SKO_PDF_FONT_PATH: build/pdf-fixtures/NotoSansJP-Regular.ttf
       SKO_PDF_OUTPUT_DIR: build/pdf-fixtures
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.47.5'
@@ -37,7 +37,7 @@ jobs:
         run: flutter test --reporter expanded test/payroll_insurance_calculation_evidence_test.dart test/payroll_insurance_evidence_card_test.dart test/payroll_insurance_evidence_pdf_test.dart test/payroll_tax_pdf_test.dart
       - name: Preserve actual rendered PDF comparison
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: payroll-insurance-calculation-evidence-pdf
           path: |

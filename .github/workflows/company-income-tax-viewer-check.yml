@@ -13,8 +13,8 @@ jobs:
     timeout-minutes: 10
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with: {node-version: '24'}
       - run: npm install --prefix "$RUNNER_TEMP/sko-income-viewer" --no-save --ignore-scripts @electric-sql/pglite@0.3.14
       - run: node --test tool/company_income_viewer_pg17_database_guard.test.mjs
@@ -33,8 +33,8 @@ jobs:
     env:
       SKO_COMPANY_INCOME_VIEWER_FIXTURE_URL: postgresql://postgres:fixture-only-password@127.0.0.1:5432/sko_company_income_viewer_fixture
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with: {node-version: '24'}
       - run: npm install --prefix "$RUNNER_TEMP/sko-income-viewer" --no-save --ignore-scripts pg@8.16.3
       - run: node tool/verify_company_income_tax_viewer_read.mjs "file://$PWD/tool/company_income_viewer_native_pg17_runtime.mjs" "$RUNNER_TEMP/sko-income-viewer/node_modules/pg/lib/index.js"

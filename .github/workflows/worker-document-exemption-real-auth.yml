@@ -17,9 +17,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: {persist-credentials: false}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: {node-version: '24'}
       - run: npm ci --prefix tool/security/fixture_dependencies --no-audit --no-fund --ignore-scripts
       - run: node --check tool/worker_document_exemption_real_auth.mjs

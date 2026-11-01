@@ -15,7 +15,7 @@ jobs:
   preserved-original-and-operation-gate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: {fetch-depth: 0}
       - uses: subosito/flutter-action@v2
         with: {flutter-version: '3.47.5', channel: stable, cache: true}
@@ -58,7 +58,7 @@ jobs:
           print('PASS four historical adopted payloads / eight pages retain exact v1 pixels and text; frozen renderer body verified')
           PYCODE
       - run: flutter test test/standalone_trade_document_operation_gate_test.dart test/standalone_trade_document_print_scope_test.dart test/trade_document_form_host_wiring_test.dart test/trade_document_touch_editor_test.dart test/invoice_acceptance_resolver_test.dart test/payment_order_resolver_test.dart
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with: {name: original-contract-renderer-proof, path: /tmp/trade-history-current}
       - run: git diff --exit-code -- pubspec.yaml pubspec.lock lib/features/shared/trade_document_form_pdf.dart

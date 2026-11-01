@@ -19,8 +19,8 @@ jobs:
   sql-to-pdf:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
       - run: npm install --prefix "$RUNNER_TEMP/payroll-seal" --ignore-scripts --no-audit --no-fund @electric-sql/pglite@0.5.8
@@ -48,7 +48,7 @@ jobs:
               with fitz.open(path) as document:
                   document[0].get_pixmap(matrix=fitz.Matrix(1.5,1.5)).save(str(path.with_suffix('.png')))
           PY
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: payroll-current-seal-proof
           path: |
@@ -70,8 +70,8 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
       - run: npm install --prefix "$RUNNER_TEMP/payroll-seal" --ignore-scripts --no-audit --no-fund pg@8.16.3
