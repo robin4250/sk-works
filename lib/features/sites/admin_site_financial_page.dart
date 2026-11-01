@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../domain/rate_formula_settings.dart';
 import '../notifications/notification_bell.dart';
 import 'admin_site_financial_repository.dart';
+import 'site_order_site_actions.dart';
 
 class AdminSiteFinancialPage extends StatefulWidget {
   const AdminSiteFinancialPage({super.key, this.onOpenMap});
@@ -151,7 +152,7 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
                                             : Icons.lock_outline,
                                       ),
                                       onTap:
-                                          _canManage ? () => _edit(item) : null,
+                                          _canManage ? () => _openSite(item) : null,
                                     ),
                                   );
                                 },
@@ -162,6 +163,13 @@ class _AdminSiteFinancialPageState extends State<AdminSiteFinancialPage> {
         ),
       ),
     );
+  }
+
+  Future<void> _openSite(AdminSiteFinancialRecord record) async {
+    final editFinancial = await Navigator.push<bool>(context, MaterialPageRoute(
+      builder: (_) => SiteOrderSiteActionsPage(siteId: record.siteId, siteName: record.siteName),
+    ));
+    if (mounted && _canManage && editFinancial == true) await _edit(record);
   }
 
   Future<void> _edit(AdminSiteFinancialRecord record) async {

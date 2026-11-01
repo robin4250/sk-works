@@ -320,6 +320,7 @@ class _SiteOrderOriginalReviewPageState
     setState(() => _agreed = false);
     final confirmed = await showDialog<bool>(
       context: context,
+      useRootNavigator: false,
       builder: (dialog) => AnimatedBuilder(
         animation: Listenable.merge([widget.api, _dialogScope]),
         builder: (_, __) => _invalid || _hidden || generation != _generation

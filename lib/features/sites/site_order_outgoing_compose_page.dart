@@ -328,6 +328,7 @@ class _SiteOrderOutgoingComposePageState
     }
     final confirmed = await showDialog<bool>(
       context: context,
+      useRootNavigator: false,
       builder: (dialog) => AnimatedBuilder(
         animation: _scopeChanges,
         builder: (_, __) => _retired

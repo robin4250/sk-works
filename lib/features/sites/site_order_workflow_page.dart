@@ -18,8 +18,9 @@ class SiteOrderWorkflowPage extends StatefulWidget {
     this.previewBuilder,
     this.siteId,
     this.siteName,
+    this.historyTitle,
   }) : assert(initialPackageId == null || siteId == null);
-  final String? siteId, siteName;
+  final String? siteId, siteName, historyTitle;
   final String? initialPackageId;
   @visibleForTesting
   final Widget Function(Uint8List)? previewBuilder;
@@ -200,7 +201,7 @@ class _SiteOrderWorkflowPageState extends State<SiteOrderWorkflowPage> {
     }
     return Scaffold(
       appBar: AppBar(
-        title: Text(_siteId == null ? '過去の注文書・請書' : '${widget.siteName?.trim().isNotEmpty == true ? widget.siteName : '現場'}の注文履歴'),
+        title: Text(widget.historyTitle ?? (_siteId == null ? '過去の注文書・請書' : '${widget.siteName?.trim().isNotEmpty == true ? widget.siteName : '現場'}の注文履歴')),
         actions: [
           if (_siteId != null && api != null && _canCreate) IconButton(
             tooltip: '注文書を作る',
@@ -444,6 +445,7 @@ class _SiteOrderPackagePageState extends State<SiteOrderPackagePage> {
     try {
       final confirmed = await showDialog<bool>(
         context: context,
+        useRootNavigator: false,
         builder: (context) => AlertDialog(
           title: const Text('この注文を辞退しますか？'),
           content: const Text('注文元の会社へ辞退したことを通知します。現場の追加や請書の作成は行いません。'),

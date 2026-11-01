@@ -106,6 +106,7 @@ class _SiteOrderOutgoingRecoveryPageState
     if (stop) {
       final confirmed = await showDialog<bool>(
         context: context,
+        useRootNavigator: false,
         builder: (dialog) => AlertDialog(
           title: const Text('この注文の準備を停止'),
           content: const Text('結果不明の準備も照合し、未署名なら今後の準備を停止します。送信済みの注文は取り消しません。'),

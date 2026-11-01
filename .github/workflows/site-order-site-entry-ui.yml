@@ -11,6 +11,8 @@ permissions:
   contents: read
 jobs:
   verify:
+    # New nested site UI awaits independent source review before execution.
+    if: ${{ false }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

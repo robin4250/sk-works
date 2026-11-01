@@ -32,6 +32,14 @@ class SiteOrderResultUnknown implements Exception {
 }
 
 abstract class SiteOrderWorkflowApi extends ChangeNotifier {
+  bool _uiRetired = false;
+  bool get uiRetired => _uiRetired;
+  /// Retires client access only; never cancels server work or clears journals.
+  void retireUiScope() {
+    if (_uiRetired) return;
+    _uiRetired = true;
+    notifyListeners();
+  }
   bool get invalidated;
   void requireCurrent();
   Future<Map<String, dynamic>> detail(String packageId);
@@ -162,7 +170,13 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
   String? _company, _role;
   bool _invalid = false;
   @override
-  bool get invalidated => _invalid;
+  void retireUiScope() {
+    if (uiRetired) return;
+    super.retireUiScope();
+    _invalidate();
+  }
+  @override
+  bool get invalidated => _invalid || uiRetired;
   void _scopeChanged() {
     if (!_session.isCurrent) _invalidate();
   }
@@ -176,14 +190,14 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
 
   @override
   void requireCurrent() {
-    if (_invalid) throw StateError('画面を開き直してください。');
+    if (invalidated) throw StateError('画面を開き直してください。');
     _session.requireScope();
   }
 
   @override
   Future<void> verify() async {
     try {
-      if (_invalid) throw StateError('画面を開き直してください。');
+      if (invalidated) throw StateError('画面を開き直してください。');
       await _session.ready();
       final raw = await _session.readOwnMemberships();
       if (raw is! List || raw.length != 1 || raw.single is! Map) {

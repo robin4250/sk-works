@@ -445,6 +445,7 @@ class _SiteOrderOutgoingEntryPageState extends State<SiteOrderOutgoingEntryPage>
     });
     final confirmed = await showDialog<bool>(
       context: context,
+      useRootNavigator: false,
       builder: (dialog) => AnimatedBuilder(
         animation: _retirementChanges,
         builder: (_, __) => _retired
