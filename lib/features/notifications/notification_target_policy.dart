@@ -4,6 +4,7 @@
 bool notificationTargetIsValid(String? actionKey, String? actionId) {
   const requiredTargets = <String>{
     'site_share_approval',
+    'site_order_package',
     'paid_leave_request',
     'route_billing_quantity_request',
     'qualification_photo_request',
