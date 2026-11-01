@@ -17,9 +17,10 @@ import '../shared/trade_document_actor_boundary.dart';
 import 'company_seal_png_repository.dart';
 
 class CompanySealPngUploader extends StatefulWidget {
-  const CompanySealPngUploader({super.key, required this.company, this.source, this.pickPng});
+  const CompanySealPngUploader({super.key, required this.company, this.source, this.pickPng, this.versionsForTesting});
   final UploadedSealCompany company;
   final CompanySealPngSource? source;
+  @visibleForTesting final CompanySealImageVersionsRepository? versionsForTesting;
   @visibleForTesting final Future<Uint8List?> Function()? pickPng;
   @override State<CompanySealPngUploader> createState() => _CompanySealPngUploaderState();
 }
@@ -28,12 +29,12 @@ class _CompanySealPngUploaderState extends State<CompanySealPngUploader> {
   CompanySealPngSettings? _settings;
   CompanyUploadedSealPng? _pending;
   String? _previewedHash, _error;
-  CompanySealImageVersionsRepository? get _versions => SupabaseBackend.isInitialized && SupabaseBackend.client.auth.currentUser != null
-      ? CompanySealImageVersionsRepository(SupabaseBackend.client) : null;
+  CompanySealImageVersionsRepository? get _versions => widget.versionsForTesting ?? (SupabaseBackend.isInitialized && SupabaseBackend.client.auth.currentUser != null
+      ? CompanySealImageVersionsRepository(SupabaseBackend.client) : null);
   bool _toolsAllowed = false, _extendedCandidate = false;
   String? _registeredHash;
   List<CompanySealImageVersion> _history = const [];
-  bool _moreHistory = false;
+  bool _moreHistory = false, _historyLoaded = false;
   bool _busy = true;
   int _generation = 0;
   @override void initState() { super.initState(); _load(); }
@@ -45,7 +46,7 @@ class _CompanySealPngUploaderState extends State<CompanySealPngUploader> {
   Future<void> _load() async {
     final generation = ++_generation;
     final company = widget.company;
-    setState(() { _busy = true; _error = null; _settings = null; _pending = null; _previewedHash = null; });
+    setState(() { _busy = true; _error = null; _historyLoaded = false; _history = const []; _moreHistory = false; _settings = null; _pending = null; _previewedHash = null; });
     try {
       final result = await _source?.load(company) ?? CompanySealPngSettings(company: company, available: false);
       if (!mounted || generation != _generation) { return; }
@@ -136,11 +137,11 @@ class _CompanySealPngUploaderState extends State<CompanySealPngUploader> {
     final versions = _versions;
     if (_busy || png == null || versions == null || _previewedHash != png.sha256) { return; }
     final generation = _generation, company = widget.company;
-    setState(() { _busy = true; _error = null; });
+    setState(() { _busy = true; _error = null; _historyLoaded = false; });
     try {
       await versions.register(company, png);
       if (!mounted || generation != _generation) { return; }
-      setState(() { _registeredHash = png.sha256; _extendedCandidate = true; });
+      setState(() { _registeredHash = png.sha256; _extendedCandidate = true; _historyLoaded = false; });
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:
         Text('角印を追加保存しました。使用中の印影は変わりません。「この印影を使用」で切り替えます。')));
     } catch (_) {
@@ -153,11 +154,11 @@ class _CompanySealPngUploaderState extends State<CompanySealPngUploader> {
     final versions = _versions;
     if (_busy || versions == null || !_toolsAllowed) { return; }
     final generation = _generation, company = widget.company;
-    setState(() { _busy = true; _error = null; });
+    setState(() { _busy = true; _error = null; _historyLoaded = false; });
     try {
       final rows = await versions.list(company, before: older && _history.isNotEmpty ? _history.last : null);
       if (!mounted || generation != _generation) { return; }
-      setState(() { _history = older ? [..._history, ...rows] : rows; _moreHistory = rows.length == 20; });
+      setState(() { _history = older ? [..._history, ...rows] : rows; _moreHistory = rows.length == 20; _historyLoaded = true; });
     } catch (_) {
       if (mounted && generation == _generation) { setState(() => _error = '角印の履歴を読み込めません。追加保存の準備を確認してください。'); }
     } finally {
@@ -274,6 +275,8 @@ class _CompanySealPngUploaderState extends State<CompanySealPngUploader> {
           ]),
           const Text('画像化したPNGは追加保存してから、使う印影を選びます。以前の印影・確定帳票は変更しません。'),
           OutlinedButton(onPressed: _busy ? null : () => _loadHistory(), child: const Text('追加保存した角印を選ぶ')),
+          if (_historyLoaded && !_busy && _history.isEmpty)
+            const Text('追加保存した角印はありません。画像を追加保存すると、ここで選べます。'),
           for (final version in _history) ListTile(
             title: Text('角印 ${version.createdAt.toLocal().toString().split('.').first}'),
             subtitle: Text('${version.width}×${version.height}px・${version.sha256.substring(0, 8)}'),
