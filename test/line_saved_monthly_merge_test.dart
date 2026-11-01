@@ -6,7 +6,7 @@ import 'package:sk_works/features/chat/line_import_draft.dart';
 import 'package:sk_works/features/chat/line_saved_monthly_merge.dart';
 
 Map<String, dynamic> source(String id, int day, {String? posted, String? body}) => {
-  'id': id, 'body': body ?? '10月${day}日\n現場A 山田\n現場A 定時',
+  'id': id, 'body': body ?? '10月$day日\n現場A 山田\n現場A 定時',
   'sent_at': posted ?? '2026-10-${day.toString().padLeft(2, '0')}T08:00:00Z',
   'sender_display_name': '投稿者', 'source_type': 'received',
 };

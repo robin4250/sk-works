@@ -49,7 +49,9 @@ class LineImportDraft {
         // A copied group's reporter is not the destination reporter, even if
         // their display names match. Keep completion evidence in its origin.
         if ((source['saved_source_origin_group_id'] ?? source['saved_source_group_id']) !=
-            (candidate['saved_source_origin_group_id'] ?? candidate['saved_source_group_id'])) continue;
+            (candidate['saved_source_origin_group_id'] ?? candidate['saved_source_group_id'])) {
+          continue;
+        }
         if (candidate['sender_display_name'] != sender) continue;
         final report = candidate['body'];
         if (report is! String) continue;

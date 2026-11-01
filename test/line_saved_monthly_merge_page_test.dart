@@ -49,14 +49,16 @@ class _Repository extends Fake implements LineSavedMonthlyMergeRepository {
     expect(target, _target); expect(source, _source);
   }
   @override Future<Map<String, dynamic>> load(String group, DateTime month) async {
-    if (group == _target && saved != null) return {
+    if (group == _target && saved != null) {
+      return {
       'revision': 2, 'can_edit': true,
       'features': {'attendance': false, 'invoice': true},
       'source_messages': saved!['p_sources'], 'candidate_rows': saved!['p_rows'],
       'note_comparison': saved!['p_note'],
       'source_kind': saved!['p_source_kind'],
-      'confirmed': alteredConfirmation,
-    };
+        'confirmed': alteredConfirmation,
+      };
+    }
     final day = group == _target ? '8' : '1';
     final post = group == _target && sourceCollision
       ? (_sourcePost('saved:$_source:history-1', '1')..['body'] = '保存済みの別原文')

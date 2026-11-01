@@ -28,10 +28,12 @@ jobs:
           test/line_saved_monthly_merge_test.dart
           test/line_saved_monthly_merge_page_test.dart
           test/line_saved_monthly_merge_repository_test.dart
+          test/line_saved_monthly_merge_integration_test.dart
       - run: >-
           flutter test test/line_saved_monthly_merge_test.dart
           test/line_saved_monthly_merge_page_test.dart
           test/line_saved_monthly_merge_repository_test.dart
+          test/line_saved_monthly_merge_integration_test.dart
           test/line_historical_monthly_import_test.dart
           test/line_historical_amount_preview_test.dart
           test/line_import_draft_test.dart

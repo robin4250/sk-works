@@ -154,6 +154,15 @@ void main() {
     final f = await Fixture.create(); addTearDown(f.close); final command = await f.prepare();
     f.role = 'viewer'; await expectLater(f.repository.save(command), throwsStateError); expect(f.committed, 0);
   });
+  test('loading either group in a different month cannot submit the earlier prepared month', () async {
+    final f = await Fixture.create(); addTearDown(f.close); final command = await f.prepare();
+    for (final group in [target, source]) {
+      await f.repository.load(group, DateTime(2026, 11));
+      await expectLater(f.repository.save(command), throwsStateError);
+      expect(f.committed, 0);
+      await f.repository.load(group, month);
+    }
+  });
   test('lost ACK retains exact command and existing receipt is reused, never blind new command', () async {
     final f = await Fixture.create(); addTearDown(f.close); final command = await f.prepare(); f.loseAck = true;
     await expectLater(f.repository.save(command), throwsA(isA<http.ClientException>())); expect(f.committed, 1);

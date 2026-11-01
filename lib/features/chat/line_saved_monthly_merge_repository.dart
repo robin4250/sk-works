@@ -94,14 +94,18 @@ class LineSavedMonthlyMergeRepository extends ChangeNotifier {
 
   Future<String> _scope(String group) async {
     await _check();
-    if (!_uuid(group)) throw StateError('グループを確認してください。');
+    if (!_uuid(group)) {
+      throw StateError('グループを確認してください。');
+    }
     final rows = await _client.from('communication_groups').select('id,company_id')
         .eq('id', group).limit(2)
         .setHeader('Authorization', 'Bearer ${_session!.accessToken}')
         .timeout(const Duration(seconds: 30));
     await _check();
     if (rows.length != 1 || rows.single['id'] != group ||
-        !_uuid(rows.single['company_id'])) throw StateError('グループの会社を確認できません。');
+        !_uuid(rows.single['company_id'])) {
+      throw StateError('グループの会社を確認できません。');
+    }
     final company = rows.single['company_id'] as String;
     if (_company != null && _company != company) {
       throw StateError('同じ会社の保存済みデータを選択してください。');
@@ -230,6 +234,7 @@ class LineSavedMonthlyMergeRepository extends ChangeNotifier {
     final source = _pendingSource ?? _source;
     if (_target == null || source == null || captured['p_group_id'] != _target ||
         captured['p_target'] != 'invoice' || captured['p_confirmed'] != false ||
+        _loadedMonths[_target] != captured['p_month'] || _loadedMonths[source] != captured['p_month'] ||
         !_uuid(captured['p_command_id']) || month == null || _month(month) != captured['p_month'] ||
         captured['p_expected_revision'] is! int || captured['p_expected_revision'] < 0 ||
         captured['p_sources'] is! List || captured['p_rows'] is! List) {

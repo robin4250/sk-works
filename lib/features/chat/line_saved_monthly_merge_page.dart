@@ -136,8 +136,10 @@ class _MergeState extends State<_MergeContent> {
       setState(() { _targetWorkspace = target; _sourceWorkspace = incoming;
         _preview = preview; _busy = false; });
     } catch (_) {
-      if (_live(generation)) setState(() { _busy = false;
-        _error = '保存済みデータを取得できません。対象グループの権限と接続を確認してください。'; });
+      if (_live(generation)) {
+        setState(() { _busy = false;
+          _error = '保存済みデータを取得できません。対象グループの権限と接続を確認してください。'; });
+      }
     }
   }
 
@@ -156,7 +158,9 @@ class _MergeState extends State<_MergeContent> {
   Future<void> _save() async {
     final repository = _repository, preview = _preview, source = _source;
     if (_busy || _blocked || !_checked || _pending != null || !_changed ||
-        repository == null || preview == null || !preview.canSave || source == null) return;
+        repository == null || preview == null || !preview.canSave || source == null) {
+      return;
+    }
     final generation = ++_generation;
     setState(() { _busy = true; _error = null; });
     var sent = false;
@@ -188,6 +192,7 @@ class _MergeState extends State<_MergeContent> {
       if (!_live(generation)) return;
       if (!_matchesSaved(result, _pending!)) throw StateError('保存結果が一致しません。');
       _pending = null;
+      if (!mounted) return;
       Navigator.of(context).pop(true);
     } on PostgrestException catch (error) {
       if (!_live(generation)) return;
@@ -217,6 +222,7 @@ class _MergeState extends State<_MergeContent> {
       if (!_live(generation)) return;
       if (_matchesSaved(result, command)) {
         _pending = null;
+        if (!mounted) return;
         Navigator.of(context).pop(true);
         return;
       }

@@ -117,7 +117,9 @@ List<Map<String, dynamic>> lineReconcileSavedMonthlyRows(
     for (var j = i + 1; j < result.length; j++) {
       final a = result[i], b = result[j];
       if (a['excluded'] == true || b['excluded'] == true ||
-          !(fromSaved(a) || fromSaved(b)) || !_sameOrUnresolvedIdentity(a, b)) continue;
+          !(fromSaved(a) || fromSaved(b)) || !_sameOrUnresolvedIdentity(a, b)) {
+        continue;
+      }
       participating.add(a['row_id'].toString());
       participating.add(b['row_id'].toString());
     }
@@ -126,7 +128,9 @@ List<Map<String, dynamic>> lineReconcileSavedMonthlyRows(
   for (var i = 0; i < result.length; i++) {
     final row = result[i], saved = old[result[i]['row_id'].toString()];
     if (saved != null && participating.contains(row['row_id'].toString()) &&
-        unchanged(row, saved)) result[i] = _copy(saved);
+        unchanged(row, saved)) {
+      result[i] = _copy(saved);
+    }
   }
   final order = List<int>.generate(result.length, (i) => i)..sort((a, b) {
     final ao = old.containsKey(result[a]['row_id'].toString());
