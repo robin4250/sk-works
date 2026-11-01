@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
+import 'company_link_scope.dart';
 
 enum TradeCompanyPageMode { customer, subcontractor }
 
@@ -129,6 +130,8 @@ class TradeCompanyRepository {
           TradeCompanyRecord.fromJson(Map<String, dynamic>.from(item)),
     ];
   }
+
+  CompanyLinkScope createLinkScope() => CompanyLinkScope.forClient(_client);
 
   Future<Map<String, dynamic>> linkWorkspace() async {
     final raw = await _client.rpc('trade_company_link_workspace');
