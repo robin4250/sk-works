@@ -112,6 +112,22 @@ class NoticeWire extends http.BaseClient {
 class NoticeApi extends SiteOrderWorkflowRepository {
   NoticeApi(super.client);
   bool closed = false, missingBinding = false;
+  String pendingJournalPhase = 'none';
+  @override Future<bool> hasPendingApproval(String id) async {
+    pendingJournalPhase = 'approval';
+    final value = await super.hasPendingApproval(id);
+    pendingJournalPhase = 'approval-complete'; return value;
+  }
+  @override Future<bool> hasPendingRefusal(String id) async {
+    pendingJournalPhase = 'refusal';
+    final value = await super.hasPendingRefusal(id);
+    pendingJournalPhase = 'refusal-complete'; return value;
+  }
+  @override Future<bool> hasPendingReplyRecovery(String id) async {
+    pendingJournalPhase = 'recovery';
+    final value = await super.hasPendingReplyRecovery(id);
+    pendingJournalPhase = 'recovery-complete'; return value;
+  }
   ({String actorId, String companyId, String sessionId})? replacement;
   @override ({String actorId, String companyId, String sessionId})? get notificationReadBinding =>
     missingBinding ? null : replacement ?? super.notificationReadBinding;

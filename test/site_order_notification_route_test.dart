@@ -9,6 +9,7 @@ import 'package:sk_works/features/notifications/attention_center_repository.dart
 import 'package:sk_works/features/notifications/notification_explanation_page.dart';
 import 'package:sk_works/features/notifications/notifications_page.dart';
 import 'package:sk_works/features/sites/site_order_site_actions.dart';
+import 'package:sk_works/features/sites/site_order_approval_journal.dart';
 import 'package:sk_works/features/sites/site_order_workflow_page.dart';
 
 import 'site_order_notification_scoped_read_test.dart' as fixture;
@@ -42,6 +43,18 @@ Future<void> _wait(WidgetTester tester, bool Function() ready, {VoidCallback? on
 }
 Future<void> _cleanup(WidgetTester tester, fixture.NoticeFixture f) async {
   await tester.pumpWidget(const SizedBox.shrink()); await tester.pump();
+  // The real journal serializes across instances. Finish an actual read in the
+  // real zone before this widget FakeAsync zone ends; do not reset its queue or
+  // remove stored receipts to make a later test pass.
+  var drained = false;
+  Object? drainError;
+  await tester.runAsync(() async {
+    unawaited(SiteOrderApprovalJournal().read(fixture.noticeActor,
+      fixture.noticeCompany, fixture.noticePackage).then((_) { drained = true; },
+      onError: (Object error) { drainError = error; drained = true; }));
+  });
+  await _wait(tester, () => drained);
+  expect(drainError, isNull);
   await tester.runAsync(f.close);
 }
 Future<({fixture.NoticeFixture fixture, _Attention attention, GlobalKey<NavigatorState> navigator})> _mount(
@@ -169,7 +182,7 @@ void main() {
     final f = (await tester.runAsync(fixture.NoticeFixture.create))!;
     addTearDown(() => _cleanup(tester, f));
     await tester.pumpWidget(MaterialApp(home: notificationDestination(_record(), siteOrderApi: f.api)!));
-    void stage() => debugPrint('pure package stage: details=${f.wire.details}; memberships=${f.wire.memberships}; invalid=${f.api.invalidated}; retired=${f.api.uiRetired}; workflow=${find.byType(SiteOrderWorkflowPage).evaluate().length}; progress=${find.byType(CircularProgressIndicator).evaluate().length}; lifecycle=${tester.binding.lifecycleState}');
+    void stage() => debugPrint('pure package stage: journal=${f.api.pendingJournalPhase}; details=${f.wire.details}; memberships=${f.wire.memberships}; invalid=${f.api.invalidated}; retired=${f.api.uiRetired}; workflow=${find.byType(SiteOrderWorkflowPage).evaluate().length}; progress=${find.byType(CircularProgressIndicator).evaluate().length}; lifecycle=${tester.binding.lifecycleState}');
     await _wait(tester, () => find.text('権限確認後の工事').evaluate().isNotEmpty ||
       f.api.invalidated || find.textContaining('保存状態を確認できません').evaluate().isNotEmpty,
       onFailure: stage);
