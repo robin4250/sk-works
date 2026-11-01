@@ -127,7 +127,7 @@ class TradeCompanyRepository {
   Future<CompanyLinkBoundContext> openBoundLinkContext() async {
     final context = CompanyLinkBoundContext._(
       _client,
-      _authEvents == null ? _client.auth.onAuthStateChange : _authEvents!(),
+      _authEvents == null ? _client.auth.onAuthStateChange : _authEvents(),
     );
     try {
       await context.initialize();
