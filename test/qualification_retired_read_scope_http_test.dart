@@ -248,6 +248,25 @@ void main() {
         expect(f.requests.any((r) => r.url.path.contains('/object/sign/')), false);
       });
     }
+    test('$kind targeted photo lookup rejects another valid saved UUID', () async {
+      final f = await _Fixture.create(); addTearDown(f.close);
+      const legacy = '$company/$worker/front.jpg';
+      f.qualifications.single['attachment_path'] = legacy;
+      f.ignoreQualificationFilters = true;
+      if (kind == 'cloud') {
+        f.qualifications.single['id'] = '50000000-0000-0000-0000-000000000002';
+        await expectLater(f.photo(kind, legacy), throwsStateError);
+        expect(f.requests.any((r) => r.url.path.contains('/object/sign/')), false);
+      } else {
+        // Path-only manager/own API selects the original row; a changed UUID on
+        // its post-sign targeted reload must never return the old signed URL.
+        f.waitPath = '/object/sign/'; f.wait = Completer<void>();
+        final pending = f.photo(kind, legacy); final rejected = expectLater(pending, throwsStateError);
+        await f.started.future.timeout(const Duration(seconds: 5));
+        f.qualifications.single['id'] = '50000000-0000-0000-0000-000000000002';
+        f.wait!.complete(); await rejected;
+      }
+    });
     test('$kind photo changed during signing never returns the stale URL', () async {
       final f = await _Fixture.create(); addTearDown(f.close);
       f.waitPath = '/object/sign/'; f.wait = Completer<void>();

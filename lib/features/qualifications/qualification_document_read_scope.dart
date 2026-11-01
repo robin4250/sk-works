@@ -193,6 +193,9 @@ class QualificationDocumentReadScope {
         });
         final values = List<Map<String, dynamic>>.from(rows);
         validateQualifications(values, ownWorkerId: workerId);
+        if (qualificationId != null && values.any((row) => row['id'] != qualificationId)) {
+          throw StateError('資格書類の識別情報が一致しません。');
+        }
         return values;
       } on PostgrestException catch (error) {
         check();
