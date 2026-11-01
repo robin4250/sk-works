@@ -1,0 +1,24 @@
+{
+  "product_source": "candidate PR1740; exact per-file SHA256 below",
+  "retirement_source": "a63656f7f7b71abdaf8412dbf5d296a6ce22a1c5",
+  "files": {
+    "lib/features/qualifications/qualification_cloud_repository.dart": "aa9bd9aca35af30821795aa632ab4c41822d61a05603b7db5e84359f42787c70",
+    "lib/features/qualifications/qualification_certificate_repository.dart": "6e9e7ffd25d03908108022705a239ac20228850fd9034c086b4350451adc09ad",
+    "supabase/migrations/20260930062500_fix_manager_vehicle_route_effective_permissions.sql": "2c7908a4c91ae24b9ee3c07c2c9eb359584aefa8e72979ea1fbabf3f2c8ff853",
+    "supabase/migrations/20260920022000_harden_attendance_and_approval_privacy.sql": "036af44cd559c3019865f92479a2cc9d7370be492961c684a93dd8c9505e5ad4",
+    "supabase/migrations/20260922031000_cache_auth_uid_in_core_rls.sql": "d7a46fb872bcf86816ff984796203d4d246eab6c2ca63ec7067c757d7c7a43da",
+    "supabase/migrations/20260919024500_harden_qualification_rls.sql": "b959c38ea1fc1f0710ef430efac352ff2bf6991af7c528a1364bada408e4c071",
+    "supabase/migrations/20260920205500_restrict_worker_private_documents.sql": "576526d36b29d7aa8d30ad565b4b901ee0e290f6068ae88d4071e8f387087a8e",
+    "lib/features/qualifications/qualification_document_read_scope.dart": "cb70d35c539381e5c619b77bd635b56a583a6b5efd1ac203fa88d66955372bd6"
+  },
+  "retirement_files": {
+    "tool/review/employee_retirement_worker_binding_20261101/production-observed-baseline.sql": "e70287a0ff7cfe89e91af2e243dd4c4a38bedabe6b08c37d23a9c4731c94b824",
+    "tool/review/employee_retirement_worker_binding_20261101/repair.sql.review-only": "4e621d5d92cdb66ffade23dec719bf602b3d12235f80ad37502c2669d01af426"
+  },
+  "deployable": false,
+  "auth": "synthetic auth.uid/JWT, not GoTrue",
+  "http": "custom loopback SQL bridge, not actual PostgREST",
+  "storage_bytes": false,
+  "rls": "selected exact source read policies on synthetic minimal schema; not deployed full catalog",
+  "fixture_parent": "PR1738 ec4c6f23c7dfcda7ba1f1a591a3256f899067008"
+}

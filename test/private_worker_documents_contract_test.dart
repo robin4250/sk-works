@@ -30,15 +30,15 @@ void main() {
     expect(documentRead, isNot(contains("rpc('ensure_current_user_worker')")));
 
     expect(qualifications, contains("permissions['can_manage_people'] == true"));
-    expect(qualifications, contains("rpc('ensure_current_user_worker')"));
+    expect(qualifications, isNot(contains("rpc('ensure_current_user_worker')")));
     expect(
       qualifications,
-      contains("qualificationsQuery.eq('worker_id', ownWorkerId)"),
+      contains("query.eq('worker_id', ownWorkerId!)"),
     );
     expect(qualificationCloud, contains("value.role == 'manager'"));
     expect(
       qualificationCloud,
-      contains("qualificationsQuery.eq('worker_id', ownWorkerId)"),
+      contains("query.eq('worker_id', ownWorkerId!)"),
     );
     expect(page, contains('if (_canManage)'));
     expect(page, contains('資格証写真はまだ登録されていません。'));

@@ -21,4 +21,4 @@ jobs:
         with: {flutter-version: '3.47.5', channel: stable, cache: true}
       - run: flutter pub get --enforce-lockfile
       - run: flutter analyze lib/features/qualifications/qualification_cloud_repository.dart lib/features/qualifications/qualification_certificate_repository.dart lib/features/qualifications/qualification_document_read_scope.dart test/qualification_retired_read_scope_http_test.dart
-      - run: flutter test test/qualification_retired_read_scope_http_test.dart --reporter expanded
+      - run: flutter test test/qualification_retired_read_scope_http_test.dart test/private_worker_missing_link_contract_test.dart test/private_worker_documents_contract_test.dart test/own_qualification_photo_contract_test.dart test/qualification_extra_photo_http_test.dart --reporter expanded

@@ -37,7 +37,7 @@ class _Client extends SupabaseClient {
   @override GoTrueClient get auth => observed ?? super.auth;
 }
 
-class Fixture {
+class _Fixture {
   late _Client client;
   late QualificationCloudRepository cloud;
   late QualificationCertificateRepository certificates;
@@ -67,8 +67,8 @@ class Fixture {
         'app_metadata': <String, dynamic>{}, 'user_metadata': <String, dynamic>{}},
     }));
   }
-  static Future<Fixture> create() async {
-    final f = Fixture();
+  static Future<_Fixture> create() async {
+    final f = _Fixture();
     f.client = _Client(MockClient((r) async {
       f.requests.add(r);
       final endpoint = r.url.path.split('/').last;
@@ -133,7 +133,7 @@ class Fixture {
 void main() {
   for (final kind in ['cloud', 'certificate']) {
     test('$kind inactive own history does not initialize or write and keeps originals', () async {
-      final f = await Fixture.create(); addTearDown(f.close);
+      final f = await _Fixture.create(); addTearDown(f.close);
       final bearer = 'Bearer ${f.client.auth.currentSession!.accessToken}';
       final original = jsonEncode(f.qualifications);
       final result = await f.read(kind);
@@ -147,7 +147,7 @@ void main() {
       expect(identity.every((r) => r.url.queryParameters['limit'] == '2' && r.url.queryParameters['user_id'] == 'eq.$actor'), true);
     });
     test('$kind manager roster keeps other active and inactive workers', () async {
-      final f = await Fixture.create(); addTearDown(f.close);
+      final f = await _Fixture.create(); addTearDown(f.close);
       f.members.single['role'] = 'admin'; f.permissions = {'can_manage_people': true};
       f.workers.add({'id': otherWorker, 'company_id': company, 'user_id': otherActor, 'name': 'Other person', 'status': 'active'});
       expect((await f.read(kind))['workers'], hasLength(2));
@@ -155,7 +155,7 @@ void main() {
     });
     for (final fault in ['missing', 'duplicate', 'foreign-person', 'foreign-company', 'invalid-id', 'unknown-status']) {
       test('$kind own identity $fault refuses private qualification reads', () async {
-        final f = await Fixture.create(); addTearDown(f.close); f.ignoreWorkerFilters = true;
+        final f = await _Fixture.create(); addTearDown(f.close); f.ignoreWorkerFilters = true;
         switch (fault) {
           case 'missing': f.workers.clear();
           case 'duplicate': f.workers.add(Map.of(f.workers.single));
@@ -170,7 +170,7 @@ void main() {
     }
     for (final fault in ['missing-role', 'unknown-role', 'company-id', 'duplicate', 'missing-sid', 'bad-sid', 'token-actor']) {
       test('$kind initial $fault refuses before private data', () async {
-        final f = await Fixture.create(); addTearDown(f.close);
+        final f = await _Fixture.create(); addTearDown(f.close);
         switch (fault) {
           case 'missing-role': f.members.single.remove('role');
           case 'unknown-role': f.members.single['role'] = 'unknown';
@@ -186,7 +186,7 @@ void main() {
     }
     for (final fault in ['company', 'worker', 'id', 'master-id', 'duplicate']) {
       test('$kind returned qualification $fault mismatch is rejected', () async {
-        final f = await Fixture.create(); addTearDown(f.close); f.ignoreQualificationFilters = true;
+        final f = await _Fixture.create(); addTearDown(f.close); f.ignoreQualificationFilters = true;
         switch (fault) {
           case 'company': f.qualifications.single['company_id'] = otherCompany;
           case 'worker': f.qualifications.single['worker_id'] = otherWorker;
@@ -199,7 +199,7 @@ void main() {
     }
     for (final change in ['sid', 'sid-aba', 'company', 'role', 'worker-status']) {
       test('$kind late $change cannot adopt an old result', () async {
-        final f = await Fixture.create(); addTearDown(f.close);
+        final f = await _Fixture.create(); addTearDown(f.close);
         f.waitPath = '/worker_qualifications'; f.wait = Completer<void>();
         final pending = f.read(kind); final rejected = expectLater(pending, throwsStateError);
         await f.started.future.timeout(const Duration(seconds: 5));
@@ -215,7 +215,7 @@ void main() {
     }
     for (final failure in ['error', 'done']) {
       test('$kind tracking $failure permanently rejects late data and fresh SID ABA', () async {
-        final f = await Fixture.create(); addTearDown(f.close);
+        final f = await _Fixture.create(); addTearDown(f.close);
         final events = StreamController<AuthState>.broadcast();
         addTearDown(() async { if (!events.isClosed) await events.close(); });
         f.client.observed = _ObservedAuth(f.client.originalAuth, events.stream);
@@ -230,7 +230,7 @@ void main() {
       });
     }
     test('$kind photo signs only saved row using captured bearer and independent bucket headers', () async {
-      final f = await Fixture.create(); addTearDown(f.close);
+      final f = await _Fixture.create(); addTearDown(f.close);
       final auth = f.client.auth.currentSession;
       final before = Map.of(f.client.storage.from('qualification-certificates').headers);
       expect(await f.photo(kind, path), contains('token=signed'));
@@ -242,14 +242,14 @@ void main() {
     });
     for (final badPath in ['https://foreign.invalid/file.jpg', '$otherCompany/$worker/$qualification/front.jpg', '$company/$worker/$qualification/../front.jpg', '$company/$worker/$qualification/%2e%2e.jpg', '$company/$worker/$qualification/unknown.jpg']) {
       test('$kind malformed or unreferenced photo is never signed: $badPath', () async {
-        final f = await Fixture.create(); addTearDown(f.close);
+        final f = await _Fixture.create(); addTearDown(f.close);
         if (!badPath.endsWith('unknown.jpg')) f.qualifications.single['attachment_path'] = badPath;
         await expectLater(f.photo(kind, badPath), throwsStateError);
         expect(f.requests.any((r) => r.url.path.contains('/object/sign/')), false);
       });
     }
     test('$kind photo changed during signing never returns the stale URL', () async {
-      final f = await Fixture.create(); addTearDown(f.close);
+      final f = await _Fixture.create(); addTearDown(f.close);
       f.waitPath = '/object/sign/'; f.wait = Completer<void>();
       final pending = f.photo(kind, path); final rejected = expectLater(pending, throwsStateError);
       await f.started.future.timeout(const Duration(seconds: 5));
@@ -257,14 +257,14 @@ void main() {
       f.wait!.complete(); await rejected;
     });
     test('$kind confirmed extra-photo fallback retains the same captured bearer', () async {
-      final f = await Fixture.create(); addTearDown(f.close); f.missingExtras = true;
+      final f = await _Fixture.create(); addTearDown(f.close); f.missingExtras = true;
       expect((await f.read(kind))['qualifications'], hasLength(1));
       expect(f.qualificationReads, 2);
       expect(f.requests.every((r) => r.headers['Authorization'] == 'Bearer ${f.client.auth.currentSession!.accessToken}'), true);
     });
   }
   test('certificate manager may preview another authorized worker without broadening own preview', () async {
-    final f = await Fixture.create(); addTearDown(f.close);
+    final f = await _Fixture.create(); addTearDown(f.close);
     f.members.single['role'] = 'admin'; f.permissions = {'can_manage_people': true};
     f.workers.add({'id': otherWorker, 'company_id': company, 'user_id': otherActor, 'name': 'Other', 'status': 'inactive'});
     final otherPath = '$company/$otherWorker/$qualification/other.jpg';
@@ -273,7 +273,7 @@ void main() {
     await expectLater(f.cloud.createOwnQualificationPhotoUrl(qualificationId: qualification, storagePath: otherPath), throwsStateError);
   });
   test('existing active registration and mutation routes retain their initializer and payload', () async {
-    final f = await Fixture.create(); addTearDown(f.close); f.workers.single['status'] = 'active';
+    final f = await _Fixture.create(); addTearDown(f.close); f.workers.single['status'] = 'active';
     final result = await f.cloud.insertOwnQualification(qualificationMasterId: master, certificateNumber: 'ACTIVE');
     expect(result['worker_id'], worker);
     expect(f.requests.where((r) => r.url.path.endsWith('ensure_current_user_worker')), hasLength(1));

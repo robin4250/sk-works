@@ -9,17 +9,16 @@ void main() {
       'lib/features/qualifications/qualification_cloud_repository.dart',
     ]) {
       final source = File(path).readAsStringSync();
-      expect(
-        source,
-        contains('ownWorkerId == null || ownWorkerId.isEmpty'),
-        reason: path,
-      );
-      expect(
-        source,
-        contains("'workers': const <Map<String, dynamic>>[]"),
-        reason: path,
-      );
+      final load = source.substring(source.indexOf('Future<Map<String, dynamic>> loadAll()'), source.length);
+      expect(load, contains('await scope.ownWorker()'), reason: path);
+      expect(source, contains('QualificationDocumentReadScope.capture(_client)'), reason: path);
     }
+    final scope = File('lib/features/qualifications/qualification_document_read_scope.dart').readAsStringSync();
+    expect(scope, contains(".eq('company_id', companyId).eq('user_id', actor)"));
+    expect(scope, contains(".inFilter('status', ['active', 'inactive']).limit(2)"));
+    expect(scope, contains('rows.length != 1'));
+    expect(scope, contains("rows.single['user_id'] != actor"));
+    expect(scope, isNot(contains("rpc('ensure_current_user_worker')")));
     final workerDocs = File('lib/features/people/worker_document_repository.dart')
         .readAsStringSync();
     final loadStart = workerDocs.indexOf('>>>> loadAll(');

@@ -31,7 +31,7 @@ class QualificationDocumentReadScope {
       if (parts.length != 3 || parts.any((part) => part.isEmpty)) return null;
       final raw = jsonDecode(utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))));
       if (raw is! Map || raw['sub'] != actor || !uuid(raw['session_id']) ||
-          raw['exp'] is! int || raw['exp'] <= DateTime.now().millisecondsSinceEpoch ~/ 1000) return null;
+          raw['exp'] is! int || raw['exp'] <= DateTime.now().millisecondsSinceEpoch ~/ 1000) { return null; }
       return raw['session_id'] as String;
     } catch (_) { return null; }
   }
