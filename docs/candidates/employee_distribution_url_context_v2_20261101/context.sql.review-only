@@ -163,4 +163,25 @@ $$;
 revoke all on function public.employee_distribution_url_context_v2(uuid,uuid,text,uuid,jsonb)
  from public,anon,authenticated,service_role;
 grant execute on function public.employee_distribution_url_context_v2(uuid,uuid,text,uuid,jsonb) to authenticated;
+-- Reject unexpected default-ACL inheritance rather than silently broadening access.
+do $acl$ declare f record; begin
+ for f in select p.* from pg_proc p where p.oid in (
+  'private.employee_distribution_url_v2_immutable()'::regprocedure,
+  'private.employee_distribution_url_context_v2(uuid,uuid,text,uuid,jsonb)'::regprocedure,
+  'public.employee_distribution_url_context_v2(uuid,uuid,text,uuid,jsonb)'::regprocedure
+ ) loop
+  if pg_get_userbyid(f.proowner)<>'postgres' or exists(
+   select 1 from aclexplode(coalesce(f.proacl,acldefault('f',f.proowner))) a
+   where a.grantee<>f.proowner and not (
+    f.proname='employee_distribution_url_context_v2'
+    and a.grantee='authenticated'::regrole and a.privilege_type='EXECUTE' and not a.is_grantable
+   )) then raise exception 'distribution_url_function_acl_rejected'; end if;
+ end loop;
+ if exists(select 1 from pg_class c cross join lateral
+   aclexplode(coalesce(c.relacl,acldefault('r',c.relowner))) a
+   where c.oid in ('private.employee_distribution_url_v2_control'::regclass,
+    'private.employee_distribution_url_v2_operations'::regclass)
+    and (pg_get_userbyid(c.relowner)<>'postgres' or a.grantee<>c.relowner)) then
+  raise exception 'distribution_url_table_acl_rejected'; end if;
+end $acl$;
 commit;

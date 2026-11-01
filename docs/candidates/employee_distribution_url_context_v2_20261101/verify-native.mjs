@@ -79,5 +79,29 @@ try {
  const after=await db.query("select pg_get_functiondef('private.require_reauthentication_session()'::regprocedure) a,pg_get_functiondef('private.account_access_allowed()'::regprocedure) b");
  assert.deepEqual(after.rows,legacy.rows);pass('existing helper bodies unchanged');
  assert.equal(Number((await db.query("select count(*) n from pg_constraint where conrelid='private.employee_distribution_url_v2_operations'::regclass and contype='f'")).rows[0].n),0);pass('no new existing-table FK triggers');
+ // Verify an actual row-lock wait on a separate connection before CAS resumes.
+ const contender=new Client({application_name:'sko-url-v2-contender'});await contender.connect();
+ try {
+  const fresh=await invoke('read',{},null,nextSid);
+  await db.query('begin');
+  await db.query('update public.companies set employee_testflight_url=$1,updated_at=clock_timestamp() where id=$2',[url+'Q',company]);
+  const pid=(await contender.query('select pg_backend_pid() pid')).rows[0].pid;
+  await contender.query('begin');
+  await contender.query("select set_config('request.jwt.claims',$1,true)",[JSON.stringify({sub:actor,role:'authenticated',session_id:nextSid})]);
+  await contender.query('set local role authenticated');
+  const pending=contender.query('select public.employee_distribution_url_context_v2($1,$2,$3,$4,$5) v',[company,nextSid,'save',id(90),{before_url:fresh.url,before_updated_at:fresh.updated_at,url}]);
+  let waiting=false;
+  for(let attempt=0;attempt<100;attempt++) {
+   const row=(await db.query('select wait_event_type from pg_stat_activity where pid=$1',[pid])).rows[0];
+   if(row?.wait_event_type==='Lock'){waiting=true;break;}
+   await new Promise(resolve=>setTimeout(resolve,20));
+  }
+  assert.equal(waiting,true,'second connection must actually wait');
+  await db.query('commit');
+  const raced=(await pending).rows[0].v;
+  assert.equal(raced.result.status,'conflict');
+  await contender.query('commit');pass('two real connections wait then reject stale CAS without overwrite');
+  assert.equal((await db.query('select employee_testflight_url v from public.companies where id=$1',[company])).rows[0].v,url+'Q');
+ } finally {await db.query('rollback');await contender.query('rollback');await contender.end();}
  console.log(`Native PostgreSQL17 isolated synthetic Auth: ${checks} PASS; production 0`);
 } finally {await db.end();}

@@ -76,7 +76,7 @@ class EmployeeDistributionUrlRepository {
       'p_command': command, 'p_operation': operation, 'p_payload': payload,
     }).setHeader('Authorization', request.authorization).retry(enabled: false);
     request.check();
-    if (raw is! Map || raw['version'] != 2 || raw['actor_id'] != request.actorId ||
+    if (raw is! Map || raw['version'] is! int || raw['version'] != 2 || raw['actor_id'] != request.actorId ||
         raw['company_id'] != request.companyId || raw['session_id'] != request.sessionId ||
         raw['command'] != command) {
       throw StateError('URL設定の応答を確認できません。再保存せず結果を確認してください。');
@@ -166,6 +166,7 @@ class EmployeeDistributionUrlRepository {
         (result['status'] == 'saved' && (result.length != 3 ||
           employeeInviteTestFlightUrl(result['url'] as String?) == null ||
           result['updated_at'] is! String ||
+          DateTime.tryParse(result['updated_at'] as String) == null ||
           sha256.convert(utf8.encode(result['url'] as String)).toString() != pending['url_hash'])) ||
         (result['status'] == 'conflict' && result.length != 1)) {
       throw StateError('保存結果が不明です。再保存しないでください。');

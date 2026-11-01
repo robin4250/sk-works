@@ -146,7 +146,9 @@ class _EmployeeInitialRegistrationPageState
       setState(() {
         _urlBefore = before;
         // Never turn an unread or invalid response into an empty before-value.
-        if (!repository.hasUnknownResult) _testFlightUrl.text = before.url ?? '';
+        if (!repository.hasUnknownResult) {
+          _testFlightUrl.text = before.url ?? '';
+        }
         _urlError = repository.hasUnknownResult
             ? '前の保存結果を確認してください。再保存はできません。'
             : before.canSave ? null : 'URL設定の保存は停止中です。';
