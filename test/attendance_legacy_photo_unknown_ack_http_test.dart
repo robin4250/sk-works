@@ -49,8 +49,9 @@ class _Harness {
         password: 'fixture-only',
       ).then((_) {});
 
-  http.Response _json(Object? value, [int status = 200]) => http.Response(
-      jsonEncode(value), status, headers: {'content-type': 'application/json'});
+  http.Response _json(http.Request request, Object? value, [int status = 200]) => http.Response(
+      jsonEncode(value), status, request: request,
+      headers: {'content-type': 'application/json'});
 
   String _token(String actor) {
     String part(Object value) =>
@@ -67,7 +68,7 @@ class _Harness {
     if (path == '/auth/v1/token') {
       final body = jsonDecode(request.body) as Map;
       final actor = body['email'] == 'other@example.test' ? _otherActor : _actor;
-      return _json({
+      return _json(request, {
         'access_token': _token(actor), 'refresh_token': 'fixture-refresh',
         'expires_in': 3600, 'token_type': 'bearer',
         'user': {
@@ -79,13 +80,13 @@ class _Harness {
     }
     if (path == '/rest/v1/company_members' && request.method == 'GET') {
       expect(request.url.queryParameters['user_id'], 'eq.${client.auth.currentUser!.id}');
-      return _json([{'company_id': _company}]);
+      return _json(request, [{'company_id': _company}]);
     }
     if (path == '/rest/v1/work_vehicle_route_selections') {
       expect(request.method, 'GET');
       expect(request.url.queryParameters['company_id'], 'eq.$_company');
       expect(request.url.queryParameters['worker_id'], 'eq.$_worker');
-      return _json([]);
+      return _json(request, []);
     }
     const prefix = '/storage/v1/object/attendance-evidence/';
     if (path.startsWith(prefix) && request.method == 'POST') {
@@ -98,7 +99,7 @@ class _Harness {
       expect(uploadContainsOriginal, isTrue);
       objects[object] = Uint8List.fromList(_photo);
       if (reply == _Reply.actorAfterUpload) await signIn(_otherActor);
-      return _json({'Key': 'attendance-evidence/$object'});
+      return _json(request, {'Key': 'attendance-evidence/$object'});
     }
     if (path == '/storage/v1/object/attendance-evidence' && request.method == 'DELETE') {
       deletes++;
@@ -106,14 +107,14 @@ class _Harness {
       for (final key in body['prefixes'] as List) {
         objects.remove(key);
       }
-      return _json([]);
+      return _json(request, []);
     }
     if (path == '/rest/v1/attendance_verifications') {
       if (request.method == 'GET') {
         // Existing clock-out recovery stays result-only and exact-source scoped.
         expect(request.url.queryParameters['source_clock_in_id'], 'eq.$_source');
         expect(request.url.queryParameters['event_type'], 'eq.clock_out');
-        return _json(committed == null ? [] : [committed]);
+        return _json(request, committed == null ? [] : [committed]);
       }
       expect(request.method, 'POST');
       inserts++;
@@ -125,7 +126,7 @@ class _Harness {
       expect(payload['created_by'], _actor);
       expect(payload['photo_storage_path'], uploadedPath);
       if (reply == _Reply.rejected) {
-        return _json({'message': 'fixture definite rejection', 'code': '42501'}, 403);
+        return _json(request, {'message': 'fixture definite rejection', 'code': '42501'}, 403);
       }
       committed = {
         ...payload, 'id': _saved, 'work_date': '2026-11-01',
@@ -135,7 +136,7 @@ class _Harness {
         throw http.ClientException('fixture: committed response lost', request.url);
       }
       if (reply == _Reply.actorAfterCommit) await signIn(_otherActor);
-      return _json(committed);
+      return _json(request, committed);
     }
     throw StateError('Unexpected synthetic request: ${request.method} $path');
   }
