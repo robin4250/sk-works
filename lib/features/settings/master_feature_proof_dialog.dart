@@ -5,12 +5,13 @@ import 'package:flutter/material.dart';
 class MasterFeatureProofDialog extends StatefulWidget {
   const MasterFeatureProofDialog({super.key, required this.expectedActor,
     required this.currentActor, required this.requestProof,
-    required this.label, required this.enabled});
+    required this.label, required this.enabled, this.title, this.description, this.confirmLabel});
   final String expectedActor;
   final String? Function() currentActor;
   final Future<String> Function(String password) requestProof;
   final String label;
   final bool enabled;
+  final String? title, description, confirmLabel;
   @override
   State<MasterFeatureProofDialog> createState() => _ProofState();
 }
@@ -90,10 +91,10 @@ class _ProofState extends State<MasterFeatureProofDialog> with WidgetsBindingObs
   @override
   Widget build(BuildContext context) => PopScope(canPop: !_busy,
     child: AlertDialog(
-      title: Text(widget.enabled ? '機能を有効にする' : '機能を一時停止する'),
+      title: Text(widget.title ?? (widget.enabled ? '機能を有効にする' : '機能を一時停止する')),
       content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Text('「${widget.label}」を${widget.enabled ? '有効' : '一時停止'}にします。ログイン用の本パスワードで本人確認してください。'),
+        Text(widget.description ?? '「${widget.label}」を${widget.enabled ? '有効' : '一時停止'}にします。ログイン用の本パスワードで本人確認してください。'),
         const SizedBox(height: 12),
         TextField(key: const Key('master-feature-password'), controller: _password,
           enabled: !_busy && !_returned, obscureText: true, autocorrect: false, enableSuggestions: false,
@@ -103,6 +104,6 @@ class _ProofState extends State<MasterFeatureProofDialog> with WidgetsBindingObs
         if (_error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(_error!)),
       ])),
       actions: [TextButton(onPressed: _busy || _returned ? null : () => Navigator.pop(context), child: const Text('キャンセル')),
-        FilledButton(onPressed: _busy || _returned ? null : _verify, child: const Text('本人確認して変更'))],
+        FilledButton(onPressed: _busy || _returned ? null : _verify, child: Text(widget.confirmLabel ?? '本人確認して変更'))],
     ));
 }

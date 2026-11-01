@@ -17,7 +17,7 @@ PayrollRecordedIncomeTaxEvidence recordedPayrollIncomeTaxEvidence(Map<String, dy
   const unavailable = '計算根拠の保存記録なし';
   final tax = detail['tax_calculation'];
   if (tax is! Map || tax['blocked'] == true ||
-      !const {'payroll-tax-20261010-v1', 'payroll-tax-20261014-overrides-v1'}
+      !const {'payroll-tax-20261010-v1', 'payroll-tax-20261014-overrides-v1', 'payroll-tax-personal-uid-v1'}
           .contains(tax['calculator_version']) ||
       tax['condition_version'] is! int || tax['condition_version'] < 1 ||
       !_month(tax['conditions_start']) || !_month(month) ||

@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'own_draft_bank_admission.dart';
+import 'own_draft_bank_repository.dart';
 import 'payroll_pending_attendance_panel.dart';
 import 'payroll_condition_warning.dart';
 import 'payroll_finalization_panel.dart';
@@ -205,11 +208,12 @@ class _PayrollStatementsPageState extends State<PayrollStatementsPage> {
 }
 
 class PayrollStatementPreviewPage extends StatefulWidget {
-  const PayrollStatementPreviewPage({super.key, required this.statement, this.allowFinalization = false, this.sourceRepository});
+  const PayrollStatementPreviewPage({super.key, required this.statement, this.allowFinalization = false, this.sourceRepository, this.ownBankGateway});
 
   final PayrollStatementRecord statement;
   final bool allowFinalization;
   final PayrollStatementSourceRepository? sourceRepository;
+  final OwnDraftBankGateway? ownBankGateway;
 
   @override
   State<PayrollStatementPreviewPage> createState() =>
@@ -228,11 +232,49 @@ class _PayrollStatementPreviewPageState
   bool _finalizationUncertain = false;
   String? _confirmationError;
   final _pdfBytes = PdfBytesCache();
+  OwnDraftBankGateway? _bankGateway;
+  OwnDraftBankAdmission? _bankAdmission;
+  bool _bankLoading=false;
+  String? _bankError;
+  int _bankGeneration=0;
 
   @override
   void initState() {
     super.initState();
+    if(widget.statement.ownDraftBankPurpose && widget.statement.isDraft){
+      _bankGateway=widget.ownBankGateway??OwnDraftBankRepository.maybeCreate();
+      _bankGateway?.addListener(_bankScopeChanged);
+    }
     _loadConfirmation();
+  }
+
+  void _ensureOwnBankGateway(){
+    if(_bankGateway!=null)return;
+    _bankGateway=widget.ownBankGateway??OwnDraftBankRepository.maybeCreate();
+    _bankGateway?.addListener(_bankScopeChanged);
+  }
+  void _bankScopeChanged(){
+    if(!mounted||_bankGateway?.isCurrent==true)return;
+    _bankGeneration++;_bankAdmission=null;_pdfBytes.invalidate();
+    setState((){_bankLoading=false;_bankError='ログイン状態が変わりました。口座を再確認してください。';});
+  }
+  Future<void> _resolveOwnBank(PayrollStatementRecord source) async {
+    if(!source.isDraft||!source.ownDraftBankPurpose)return;
+    _ensureOwnBankGateway();
+    final generation=++_bankGeneration;_bankAdmission=null;_pdfBytes.invalidate();
+    setState((){_bankLoading=true;_bankError=null;});
+    try{
+      final gateway=_bankGateway;if(gateway==null)throw StateError('口座確認を利用できません。');
+      final value=await gateway.read(source);
+      final current=_refreshedStatement??widget.statement;
+      if(!mounted||generation!=_bankGeneration||!gateway.isCurrent||current.id!=source.id||current.revision!=source.revision||!current.isDraft)return;
+      setState((){_bankAdmission=value.withLease(() {
+        if(!mounted||generation!=_bankGeneration)return false;
+        final active=_refreshedStatement??widget.statement;
+        return active.isDraft&&active.id==source.id&&active.revision==source.revision;
+      });_bankError=value.state==OwnDraftBankState.unavailable?'個人口座を確認できません。未登録とは判断せず、給与金額は保持しています。':null;_pdfBytes.invalidate();});
+    }catch(_){if(mounted&&generation==_bankGeneration)setState(()=>_bankError='個人口座を確認できません。未登録とは判断せず、給与金額は保持しています。');}
+    finally{if(mounted&&generation==_bankGeneration)setState(()=>_bankLoading=false);}
   }
 
   Future<PayrollStatementRecord?> _loadConfirmation() async {
@@ -243,6 +285,7 @@ class _PayrollStatementPreviewPageState
       }
       return null;
     }
+    _bankGeneration++;_bankAdmission=null;_pdfBytes.invalidate();
     setState(() { _sourceLoading = true; _confirmationError = null; });
     try {
       final source = await repository.load(widget.statement);
@@ -253,6 +296,7 @@ class _PayrollStatementPreviewPageState
         _statementUnavailable = false;
         _pdfBytes.invalidate();
       });
+      unawaited(_resolveOwnBank(source.statement));
       return source.statement;
     } catch (error) {
       if (mounted) {
@@ -303,7 +347,9 @@ class _PayrollStatementPreviewPageState
   }
 
   PayrollStatementRecord get _pdfStatement {
-    final original = _refreshedStatement ?? widget.statement;
+    final loaded = _refreshedStatement ?? widget.statement;
+    final original = loaded.ownDraftBankPurpose && loaded.isDraft ? asOwnDraftStatement(loaded,admission:_bankAdmission)
+        : widget.statement.managementBankHidden ? asManagementBankHiddenStatement(loaded) : loaded;
     final status = _confirmation;
     return payrollStatementWithDraftReview(
       original, confirmed: status?.confirmed,
@@ -362,6 +408,9 @@ class _PayrollStatementPreviewPageState
 
   @override
   void dispose() {
+    _bankGeneration++;_bankAdmission=null;_pdfBytes.invalidate();
+    _bankGateway?.removeListener(_bankScopeChanged);
+    if(widget.ownBankGateway==null)unawaited(_bankGateway?.close()??Future<void>.value());
     _zoomController.dispose();
     super.dispose();
   }
@@ -479,6 +528,13 @@ class _PayrollStatementPreviewPageState
                 ? const Center(child: CircularProgressIndicator())
                 : _statementUnavailable || _finalizationUncertain || _confirmationError != null
                 ? Center(child: Text(SkoLanguageController.tr('この給与明細を閲覧できません。')))
+                : statement.isDraft && statement.ownDraftBankPurpose && statement.ownDraftBankAdmission?.permits(statement.id,statement.revision)!=true
+                ? Center(child: Padding(padding:const EdgeInsets.all(16),child:Column(mainAxisSize:MainAxisSize.min,children:[
+                    Text('支給額 ${statement.grossPay}円 / 控除額 ${statement.deductions}円 / 差引支給額 ${statement.netPay}円'),
+                    Text(_bankLoading?'個人口座を確認しています。':(_bankError??'個人口座の確認が必要です。未登録とは判断していません。')),
+                    const Text('口座を確認するまで、この下書きのプレビュー・印刷・PDF共有を停止しています。確定済み明細には影響しません。'),
+                    OutlinedButton(onPressed:_bankLoading?null:()=>_resolveOwnBank(statement),child:const Text('口座を再確認')),
+                  ])))
                 : statement.detail['tax_calculation'] is Map &&
                     (statement.detail['tax_calculation'] as Map)['blocked'] == true
                 ? Center(child: Text('税計算の条件を確認してください。\n${(statement.detail['tax_calculation'] as Map)['reason']}'))

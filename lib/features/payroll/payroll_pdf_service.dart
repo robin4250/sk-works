@@ -9,6 +9,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import 'payroll_statement_repository.dart';
+import 'own_draft_bank_admission.dart';
 import 'payroll_recorded_tax_amounts.dart';
 import 'payroll_insurance_calculation_evidence.dart';
 import 'payroll_recorded_unit_evidence.dart';
@@ -25,6 +26,12 @@ class PayrollPdfService {
     pw.Font? regularFont,
     pw.Font? boldFont,
   }) async {
+    void checkOwnBank() {
+      if(statement.isDraft && statement.ownDraftBankPurpose && statement.ownDraftBankAdmission?.permits(statement.id,statement.revision)!=true) {
+        throw StateError('個人口座を確認できません。給与金額は保持しています。');
+      }
+    }
+    checkOwnBank();
     if (statement.detail['tax_calculation'] is Map &&
         (statement.detail['tax_calculation'] as Map)['blocked'] == true) {
       throw StateError('税計算の条件を確認してください。未計算の明細は出力できません。');
@@ -41,7 +48,12 @@ class PayrollPdfService {
       theme: pw.ThemeData.withFont(base: regular, bold: bold),
     );
 
-    final detail = detailWithRecordedPayrollInsurance(statement.detail,
+    final sourceDetail = statement.managementBankHidden
+        ? {...sanitizeOwnDraftBank(statement.detail), 'bank_account': <String,dynamic>{}}
+        : statement.isDraft && statement.ownDraftBankPurpose
+        ? {...sanitizeOwnDraftBank(statement.detail), 'bank_account': statement.ownDraftBankAdmission!.bankFor(statement.id,statement.revision)}
+        : statement.detail;
+    final detail = detailWithRecordedPayrollInsurance(sourceDetail,
       month: '${statement.periodStart.year.toString().padLeft(4, '0')}-'
           '${statement.periodStart.month.toString().padLeft(2, '0')}-01');
     final earnings = _pick(detail, const ['基本給', '残業手当', '交通費', '出勤に基づく支給額']);
@@ -151,7 +163,9 @@ class PayrollPdfService {
       }
     }
 
-    return document.save();
+    final bytes = await document.save();
+    checkOwnBank();
+    return bytes;
   }
 
   static Future<bool> printStatement(PayrollStatementRecord statement) {
@@ -219,6 +233,13 @@ class PayrollPdfService {
     );
     final light = PdfColor.fromHex('#83CBEA');
     final companyText = text(seal.registeredName(statement.companyName), size: 10, bold: true);
+    final savedBankBasis = detail['personal_bank_basis'];
+    final companyBankCaption = statement.isDraft || statement.managementBankHidden || savedBankBasis is! Map
+        ? null : switch(savedBankBasis['source_kind']) {
+          'company_worker_unlinked_v1' => '会社登録の口座',
+          'company_worker_inactive_v1' => '会社保管の\n精算口座',
+          _ => null,
+        };
     final bank = detail['bank_account'] is Map
         ? Map<String, dynamic>.from(detail['bank_account'] as Map)
         : detail;
@@ -653,11 +674,16 @@ class PayrollPdfService {
               child: pw.Row(
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
-                  text('振込先', size: 8.5),
+                  companyBankCaption == null
+                      ? text('振込先', size: 8.5)
+                      : pw.SizedBox(width: 36, child: pw.Column(
+                          crossAxisAlignment: pw.CrossAxisAlignment.start,
+                          children: [text('振込先', size: 8.5), pw.SizedBox(height: 2), text(companyBankCaption, size: 4.5)],
+                        )),
                   pw.SizedBox(width: 20),
                   pw.Expanded(
                     child: bankFields.every((field) => field[1].isEmpty)
-                        ? text('未登録', size: 9, color: PdfColors.red)
+                        ? text(statement.managementBankHidden ? '管理者向けでは口座を表示しません' : companyBankCaption != null ? '会社の口座情報は未登録' : '未登録', size: 9, color: statement.managementBankHidden ? PdfColors.black : PdfColors.red)
                         : pw.Column(
                             crossAxisAlignment: pw.CrossAxisAlignment.start,
                             children: [

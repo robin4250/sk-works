@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
 import '../auth/app_auth_mutation_gateway.dart';
+import '../auth/secondary_reset_session_guard.dart';
 import 'avatar_upload_format.dart';
 
 class ProfileData {
@@ -15,6 +16,7 @@ class ProfileData {
     required this.companyId,
     required this.role,
     required this.personalSkoId,
+    this.companyAvailable = true,
     this.avatarPath,
     this.avatarUrl,
   });
@@ -26,6 +28,7 @@ class ProfileData {
   final String companyId;
   final String role;
   final String personalSkoId;
+  final bool companyAvailable;
   final String? avatarPath;
   final String? avatarUrl;
 }
@@ -49,34 +52,48 @@ class ProfileRepository {
     final user = _client.auth.currentUser;
     if (user == null) throw StateError('ログインが必要です。');
 
-    final memberships = await _client
-        .from('company_members')
-        .select('company_id, role')
-        .eq('user_id', user.id)
-        .limit(1);
-
-    String companyName = '';
-    String companyId = '';
-    String role = 'viewer';
-
-    if (memberships.isNotEmpty) {
-      companyId = memberships.first['company_id'] as String;
-      role = memberships.first['role']?.toString() ?? 'viewer';
-      final companies = await _client
-          .from('companies')
-          .select('name')
-          .eq('id', companyId)
-          .limit(1);
-      if (companies.isNotEmpty) {
-        companyName = companies.first['name']?.toString() ?? '';
+    final session = _client.auth.currentSession;
+    if (session == null) throw StateError('ログインが必要です。');
+    final owner = AppAuthMutationGateway.forClient(_client);
+    final epoch = await owner.externalFlowAdmission();
+    final guard = SecondaryResetSessionGuard(currentSession: () => _client.auth.currentSession,
+      changes: _client.auth.onAuthStateChange);
+    Future<void> check() async {
+      if (epoch == null || !owner.isExternalFlowCurrent(epoch) ||
+          SecondaryResetSessionGuard.identityOf(session) != SecondaryResetSessionGuard.identityOf(_client.auth.currentSession)) {
+        throw StateError('ログイン状態が変わりました。画面を開き直してください。');
       }
+      await guard.checkAfterQueuedEvents();
+    }
+    try {
+    await check();
+    String companyName = '', companyId = '', role = 'viewer';
+    var companyAvailable = true;
+    try {
+      final memberships = await _client.from('company_members').select('company_id, role')
+          .eq('user_id', user.id).limit(1)
+          .setHeader('Authorization', 'Bearer ${session.accessToken}');
+      await check();
+      if (memberships.isNotEmpty) {
+        companyId = memberships.first['company_id'] as String;
+        role = memberships.first['role']?.toString() ?? 'viewer';
+        final companies = await _client.from('companies').select('name').eq('id', companyId).limit(1)
+            .setHeader('Authorization', 'Bearer ${session.accessToken}');
+        await check();
+        if (companies.isNotEmpty) companyName = companies.first['name']?.toString() ?? '';
+      }
+    } catch (_) {
+      // Company availability never determines the existence of personal data.
+      await check();
+      companyAvailable = false; companyName = ''; companyId = ''; role = 'viewer';
     }
 
     final profiles = await _client
         .from('user_profiles')
         .select('display_name, phone, avatar_storage_path')
         .eq('user_id', user.id)
-        .limit(1);
+        .limit(1).setHeader('Authorization', 'Bearer ${session.accessToken}');
+    await check();
 
     final profile = profiles.isEmpty
         ? <String, dynamic>{}
@@ -94,7 +111,8 @@ class ProfileRepository {
     }
 
     final personalSkoId =
-        (await _client.rpc('ensure_personal_sko_id'))?.toString() ?? '';
+        (await _client.rpc('ensure_personal_sko_id').setHeader('Authorization', 'Bearer ${session.accessToken}'))?.toString() ?? '';
+    await check();
 
     return ProfileData(
       displayName: profile['display_name']?.toString() ??
@@ -103,6 +121,7 @@ class ProfileRepository {
           'ユーザー',
       phone: profile['phone']?.toString() ?? user.phone ?? '',
       email: user.email ?? '',
+      companyAvailable: companyAvailable,
       companyName: companyName,
       companyId: companyId,
       role: role,
@@ -110,6 +129,7 @@ class ProfileRepository {
       avatarPath: avatarPath,
       avatarUrl: avatarUrl,
     );
+    } finally { await guard.close(); }
   }
 
   Future<Map<String, dynamic>?> loadPersonnelProfile() async {

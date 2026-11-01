@@ -77,6 +77,10 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
   };
   bool _manualSupported = false;
   bool _basisSupported = false;
+  bool _personalBirthSource = false;
+  bool _companyBirthSource = false;
+  bool _inactiveCompanySource = false;
+  String? _loadedBirthDate;
   PayrollInsuranceBasisReference? _basisReference, _loadedBasisReference;
   int _basisEditorRevision = 0;
   bool _incomeConversionActive = false;
@@ -133,6 +137,7 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
       _actor = SupabaseBackend.client.auth.currentUser?.id;
     }
     _month.text = _targetMonth;
+    _birth.clear();
     _load();
   }
 
@@ -200,6 +205,9 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
     _items = items;
     _manualSupported = raw['manual_insurance_contract_version'] == 1;
     _basisSupported = raw['insurance_basis_reference_contract_version'] == 1;
+    _personalBirthSource = payrollUsesPersonalBirthSource(raw);
+    _inactiveCompanySource = payrollBirthSource(raw) == 'company_worker_inactive_v1';
+    _companyBirthSource = _inactiveCompanySource || payrollBirthSource(raw) == 'company_worker_unlinked_v1';
     _canEdit = raw['can_edit'] == true &&
         (_manualSupported || !items.any((row) => (row['value'] as Map)['insurance_mode'] == 'manual')) &&
         (_basisSupported || !items.any((row) => (row['value'] as Map)['insurance_basis_reference'] != null));
@@ -209,13 +217,14 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
     _incomeConversionActive = false; _incomeNeedsApplication = false; _incomeConversionError = null; _baseInputError = null;
     final value = row['value'] as Map;
     _month.text = (row['starts_on'] as String).substring(0, 7);
+    _loadedBirthDate = value['birth_date'] as String?;
+    _birth.text = _companyBirthSource ? _loadedBirthDate ?? '' : '';
     _basisReference = value['insurance_basis_reference'] == null ? null :
         PayrollInsuranceBasisReference.fromJson(value['insurance_basis_reference']);
     _loadedBasisReference = _basisReference;
     _basisEditorRevision++;
     _insurance = value['insurance_mode'] as String;
     _income = value['income_mode'] as String;
-    _birth.text = value['birth_date'] as String? ?? '';
     _deductionOverrides = value['deduction_overrides'] is Map
         ? Map<String, dynamic>.from(value['deduction_overrides'] as Map) : {};
     for (final key in _amounts.keys) {
@@ -234,6 +243,8 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
   void _resetInitialConditions() {
     _incomeConversionActive = false; _incomeNeedsApplication = false; _incomeConversionError = null; _baseInputError = null;
     _month.text = _targetMonth;
+    _birth.clear();
+    _loadedBirthDate = null;
     _basisReference = null;
     _loadedBasisReference = null;
     _basisEditorRevision++;
@@ -241,7 +252,6 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
     for (final c in _manualPremiums.values) { c.clear(); }
     _insurance = 'rates';
     _income = 'koh';
-    _birth.clear();
     for (final controller in _amounts.values) {
       controller.text = '0';
     }
@@ -331,6 +341,10 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
   }
 
   Future<void> _save() async {
+    if (!_personalBirthSource && !_companyBirthSource && _insurance == 'rates' && _flags['nursing'] == true) {
+      setState(() => _message = '本人プロフィールの誕生日連携は準備中です。料率による介護保険の設定は保存できません。');
+      return;
+    }
     if (_needsInitialConfirmation && !_initialConditionsConfirmed) return;
     if (_insurance == 'manual' && !_manualSupported) return;
     final generation = _generation;
@@ -341,7 +355,7 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
       return;
     }
     if (!_form.currentState!.validate()) {
-      setState(() => _baseInputError = '入力内容を確認してください。対象期間・所得税・控除条件の詳細や生年月日欄で、不足や入力形式を確認できます。');
+      setState(() => _baseInputError = '入力内容を確認してください。対象期間・所得税・控除条件の詳細で、不足や入力形式を確認できます。');
       return;
     }
     if (_insurance == 'rates' && _incomeNeedsApplication) {
@@ -370,7 +384,9 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
         for (final key in const ['dependents', 'non_taxable_yen', 'additional_social_deduction_yen']) key: int.parse(_amounts[key]!.text),
         if (_deductionOverrides.containsKey('income_tax')) 'deduction_overrides': {'income_tax': _deductionOverrides['income_tax']},
       } else ...{
-        'birth_date': _birth.text.isEmpty ? null : _birth.text,
+        'birth_date': _personalBirthSource ? null
+            : _companyBirthSource ? (_birth.text.isEmpty ? null : _birth.text)
+            : _loadedBirthDate,
         if (_deductionOverrides.isNotEmpty) 'deduction_overrides': _deductionOverrides,
         ..._flags,
         for (final key in _amounts.keys) key: int.parse(_amounts[key]!.text),
@@ -808,25 +824,29 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
                     ],
                   ),
                 ],
-                  Offstage(offstage: (_insurance != 'rates' || !_flags['nursing']!) && _birth.text.trim().isEmpty, child: TextFormField(
-                    controller: _birth,
-                    enabled: _canEdit && !_busy && !_uncertain,
-                    decoration: const InputDecoration(
-                      labelText: '生年月日（YYYY-MM-DD）',
-                    ),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return _insurance == 'rates' && _flags['nursing']! ? '生年月日を入力してください' : null;
-                      }
-                      final date = DateTime.tryParse(value);
-                      if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(value) ||
-                          date == null || date.year < 1 ||
-                          '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}' != value) {
-                        return '生年月日をYYYY-MM-DDの正しい日付で入力してください';
-                      }
-                      return null;
-                    },
-                  )),
+                  Text(_inactiveCompanySource ? '誕生日の参照元：会社管理の精算情報' : _companyBirthSource ? '誕生日の参照元：会社の未連携従業員登録' : _personalBirthSource
+                    ? '本人プロフィールの誕生日で判定します。ここでは誕生日を表示・変更しません。'
+                    : '本人プロフィールの誕生日連携は準備中です。料率による介護保険の設定は保存できません。',
+                    key: const ValueKey('payroll-personal-birth-source')),
+                  if (_companyBirthSource) ...[
+                    Text(_inactiveCompanySource ? '会社管理の精算情報として登録した生年月日で判定します。本人の現在の個人プロフィールは取得しません。' : 'SKO未連携の従業員は会社が登録した生年月日で判定します。個人プロフィールには転用しません。'),
+                    Offstage(offstage: (_insurance != 'rates' || !_flags['nursing']!) && _birth.text.trim().isEmpty, child: TextFormField(
+                      controller: _birth,
+                      enabled: _canEdit && !_busy && !_uncertain,
+                      decoration: const InputDecoration(labelText: '生年月日（YYYY-MM-DD）'),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return _insurance == 'rates' && _flags['nursing']! ? '生年月日を入力してください' : null;
+                        }
+                        final date = DateTime.tryParse(value);
+                        if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(value) || date == null || date.year < 1 ||
+                            '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}' != value) {
+                          return '生年月日をYYYY-MM-DDの正しい日付で入力してください';
+                        }
+                        return null;
+                      },
+                    )),
+                  ],
                 ]),
                 _settingsCard('その他の控除条件', Icons.tune_outlined, [
                 ExpansionTile(key: const ValueKey('insurance-deduction-details'),
@@ -842,6 +862,9 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
                 ),
                 ]),
                 ]),
+                if (!_personalBirthSource && !_companyBirthSource) const Text(
+                  '本人プロフィールの誕生日連携は準備中です。料率による介護保険の設定は保存できません。',
+                  key: ValueKey('payroll-personal-birth-unavailable')),
                 _settingsCard('保存する内容', Icons.fact_check_outlined, [
                   ValueListenableBuilder<TextEditingValue>(
                     valueListenable: _month,

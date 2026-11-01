@@ -48,19 +48,20 @@ class PayrollStatementSourceRepository {
         error.message.contains('payroll_review_workspace')));
 
   Future<PayrollStatementSource> load(PayrollStatementRecord original) async {
+    PayrollStatementRecord scoped(PayrollStatementRecord value) => original.ownDraftBankPurpose ? asOwnDraftStatement(value) : value;
     PayrollStatementRecord statement;
     try {
-      statement = _target(await readManagement(original.periodStart), original.id);
+      statement = scoped(_target(await readManagement(original.periodStart), original.id));
     } catch (error) {
       if (!_selfFallback(error)) rethrow;
-      return PayrollStatementSource(_target(await readSelf(), original.id), null);
+      return PayrollStatementSource(scoped(_target(await readSelf(), original.id)), null);
     }
     if (!statement.isDraft) return PayrollStatementSource(statement, null);
     try {
       return PayrollStatementSource(statement, await readConfirmation(statement.periodStart));
     } catch (error) {
       if (_selfFallback(error)) {
-        return PayrollStatementSource(_target(await readSelf(), original.id), null);
+        return PayrollStatementSource(scoped(_target(await readSelf(), original.id)), null);
       }
       if (error is PostgrestException &&
           (error.code == 'PGRST202' || error.code == '42883') &&

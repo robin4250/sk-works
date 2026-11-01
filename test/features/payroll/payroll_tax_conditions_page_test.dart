@@ -27,6 +27,7 @@ void main() {
     'company_id': 'company',
     'worker_id': 'worker',
     'can_edit': edit,
+    'birth_source': 'personal_uid_v1',
     'items': items,
   };
   Future<void> open(WidgetTester t, PayrollTaxRpc rpc) async {
@@ -599,22 +600,22 @@ void main() {
   });
   for (final invalidDate in ['abc', '2026-02-30']) {
     for (final fixedMode in [false, true]) {
-    testWidgets('nursing off keeps invalid birth date visible and refuses save: $invalidDate fixed=$fixedMode', (t) async {
+    testWidgets('canonical DOB ignores legacy invalid company birth date: $invalidDate fixed=$fixedMode', (t) async {
       var writes = 0;
       await open(t, (name, params) async {
-        if (!name.startsWith('read_')) writes++;
+        if (!name.startsWith('read_')) {
+          writes++; expect((params['p_value'] as Map)['birth_date'], null);
+        }
         return state(items: [{'starts_on': '2026-10-01', 'version': 1, 'value': {
           ...value, 'insurance_mode': 'rates', 'health': true, 'pension': true,
-          'health_base_yen': 300000, 'pension_base_yen': 300000,
+          'health_base_yen': 300000, 'pension_base_yen': 300000, 'birth_date': invalidDate,
         }}]);
       });
       final nursing = find.widgetWithText(CheckboxListTile, '介護保険（40〜64歳を自動判定）');
       await t.ensureVisible(nursing); await t.pumpAndSettle();
       await t.tap(nursing); await t.pumpAndSettle();
       final birth = find.widgetWithText(TextFormField, '生年月日（YYYY-MM-DD）');
-      await t.ensureVisible(birth); await t.pumpAndSettle();
-      await t.enterText(birth, invalidDate);
-      t.testTextInput.hide(); await t.pumpAndSettle();
+      expect(birth, findsNothing);
       await t.ensureVisible(nursing); await t.pumpAndSettle();
       await t.tap(nursing); await t.pumpAndSettle();
       if (fixedMode) {
@@ -623,17 +624,15 @@ void main() {
         await t.tap(mode); await t.pumpAndSettle();
         await t.tap(find.text('個別設定の固定月額').last); await t.pumpAndSettle();
       }
-      expect(birth, findsOneWidget);
-      expect(t.widget<TextFormField>(birth).controller!.text, invalidDate);
-      await tapSave(t);
-      expect(writes, 0); expect(find.byType(AlertDialog), findsNothing);
-      expect(find.text('生年月日をYYYY-MM-DDの正しい日付で入力してください'), findsOneWidget);
-      expect(t.widget<TextFormField>(birth).controller!.text, invalidDate);
+      expect(birth, findsNothing);
+      await tapSave(t); expect(find.byType(AlertDialog), findsOneWidget);
+      await t.tap(find.widgetWithText(FilledButton, '確認して保存').last);
+      await t.pumpAndSettle(); expect(writes, 1);
     });
     }
   }
 
-  testWidgets('valid nursing birth date still saves the explicit date', (t) async {
+  testWidgets('canonical nursing source saves no company birth date', (t) async {
     var version = 1, writes = 0;
     var saved = <String, dynamic>{...value, 'insurance_mode': 'rates',
       'health': true, 'pension': true, 'health_base_yen': 300000, 'pension_base_yen': 300000};
@@ -649,15 +648,13 @@ void main() {
     await t.ensureVisible(nursing); await t.pumpAndSettle();
     await t.tap(nursing); await t.pumpAndSettle();
     final birth = find.widgetWithText(TextFormField, '生年月日（YYYY-MM-DD）');
-    await t.ensureVisible(birth); await t.pumpAndSettle();
-    await t.enterText(birth, '1990-01-01');
-    t.testTextInput.hide(); await t.pumpAndSettle();
+    expect(birth, findsNothing);
     await tapSave(t);
     expect(find.byType(AlertDialog), findsOneWidget);
     await t.tap(find.widgetWithText(FilledButton, '確認して保存').last);
     await t.pumpAndSettle();
     expect(writes, 1);
-    expect(saved['nursing'], true); expect(saved['birth_date'], '1990-01-01');
+    expect(saved['nursing'], true); expect(saved['birth_date'], null);
     expect(find.textContaining('保存しました。対象の未確定給与へ反映しました。'), findsOneWidget);
   });
 
