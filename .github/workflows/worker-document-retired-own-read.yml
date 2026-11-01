@@ -7,6 +7,8 @@ on:
       - 'test/worker_document_bank_metadata_http_test.dart'
       - 'test/worker_document_company_admission_test.dart'
       - 'test/worker_document_own_save_http_test.dart'
+      - 'test/private_worker_missing_link_contract_test.dart'
+      - 'test/private_worker_documents_contract_test.dart'
       - '.github/workflows/worker-document-retired-own-read.yml'
 permissions:
   contents: read
@@ -28,4 +30,6 @@ jobs:
           test/worker_document_bank_metadata_http_test.dart
           test/worker_document_company_admission_test.dart
           test/worker_document_own_save_http_test.dart
+          test/private_worker_missing_link_contract_test.dart
+          test/private_worker_documents_contract_test.dart
           --reporter expanded

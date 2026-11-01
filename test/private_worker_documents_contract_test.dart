@@ -19,7 +19,15 @@ void main() {
 
     expect(workerDocs, contains("value.role == 'manager'"));
     expect(workerDocs, contains("rpc('ensure_current_user_worker')"));
-    expect(workerDocs, contains("statusesQuery.eq('worker_id', ownWorkerId)"));
+    final loadStart = workerDocs.indexOf('>>>> loadAll(');
+    final loadEnd = workerDocs.indexOf('>>>> loadOwnDocuments()', loadStart);
+    expect(loadStart, greaterThanOrEqualTo(0));
+    expect(loadEnd, greaterThan(loadStart));
+    final documentRead = workerDocs.substring(loadStart, loadEnd);
+    expect(documentRead, contains("if (!canManage) statusesQuery = statusesQuery.eq('worker_id', ownWorkerId!)"));
+    expect(documentRead, contains("row['company_id'] != companyId || row['worker_id'] != ownWorkerId"));
+    expect(documentRead, contains(".eq('company_id', companyId).eq('status', 'active')"));
+    expect(documentRead, isNot(contains("rpc('ensure_current_user_worker')")));
 
     expect(qualifications, contains("permissions['can_manage_people'] == true"));
     expect(qualifications, contains("rpc('ensure_current_user_worker')"));
