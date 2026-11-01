@@ -134,10 +134,16 @@ void main() {
     expect(find.text('権限確認後の工事'), findsNothing);
   });
   testWidgets('package identity replacement permanently retires the owned read-only route', (tester) async {
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     final f = (await tester.runAsync(fixture.NoticeFixture.create))!;
     addTearDown(() => _cleanup(tester, f));
     await tester.pumpWidget(MaterialApp(home: notificationDestination(_record(), siteOrderApi: f.api)!));
-    await _wait(tester, () => find.text('権限確認後の工事').evaluate().isNotEmpty);
+    await _wait(tester, () => find.text('権限確認後の工事').evaluate().isNotEmpty ||
+      find.textContaining('保存状態を確認できません').evaluate().isNotEmpty);
+    if (find.text('権限確認後の工事').evaluate().isEmpty) {
+      debugPrint('pure package admission stage: details=${f.wire.details}; invalid=${f.api.invalidated}; lifecycle=${tester.binding.lifecycleState}');
+    }
+    expect(find.text('権限確認後の工事'), findsOneWidget);
     await tester.pumpWidget(MaterialApp(home: notificationDestination(
       _record(packageId: fixture.otherNoticeId), siteOrderApi: f.api)!));
     await tester.pumpAndSettle();

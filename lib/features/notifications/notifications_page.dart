@@ -250,8 +250,13 @@ class _NotificationsPageState extends State<NotificationsPage> {
           if (orderApi == null) throw const SiteOrderNotificationReadUnknown();
           _siteOrderApi = orderApi;
           _siteOrderCompany = company;
-          orderChanges = StreamController<void>.broadcast(sync: true);
-          void emit() { if (orderChanges?.isClosed == false) orderChanges!.add(null); }
+          orderChanges = StreamController<void>.broadcast();
+          var invalidationSent = false;
+          void emit() {
+            if (invalidationSent || orderChanges?.isClosed != false) return;
+            invalidationSent = true;
+            orderChanges!.add(null);
+          }
           orderListener = () { if (orderApi?.invalidated == true || orderApi?.uiRetired == true) emit(); };
           orderApi.addListener(orderListener);
           orderSessionChanges = session.invalidations.listen((_) => emit());

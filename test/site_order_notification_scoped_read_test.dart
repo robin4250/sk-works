@@ -218,10 +218,10 @@ void main() {
     f.wire.holdDetail = true; f.wire.detailHold = Completer<void>(); f.wire.detailStarted = Completer<void>();
     final scope = f.scope();
     try {
-      final pending = scope.markRead(() {});
+      final checked = expectLater(scope.markRead(() {}), throwsA(anything));
       await noticeStage(f.wire.detailStarted!, 'detail'); await f.changeSession();
       f.wire.detailHold!.complete();
-      await expectLater(pending, throwsA(anything)); expect(f.wire.patches, 0);
+      await checked; expect(f.wire.patches, 0);
     } finally { scope.dispose(); await f.close(); }
   });
   for (final mode in ['cas-zero','ack-loss']) {
@@ -239,9 +239,9 @@ void main() {
     f.wire.commitBeforeHold = true; f.wire.patchHold = Completer<void>(); f.wire.patchStarted = Completer<void>();
     final scope = f.scope();
     try {
-      final pending = scope.markRead(() {});
+      final checked = expectLater(scope.markRead(() {}), throwsA(anything));
       await noticeStage(f.wire.patchStarted!, 'read PATCH'); await f.changeSession(); f.wire.patchHold!.complete();
-      await expectLater(pending, throwsA(anything));
+      await checked;
       expect(f.wire.readAt, isNotNull); expect(f.wire.patches, 1);
       await expectLater(scope.markRead(() {}), throwsA(anything)); expect(f.wire.patches, 1);
     } finally { scope.dispose(); await f.close(); }
