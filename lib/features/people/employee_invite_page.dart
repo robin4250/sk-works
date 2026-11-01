@@ -82,7 +82,7 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
     _authSubscription = _repository?.authChanges.listen((event) {
       _request?.observeSession(event.session);
       if (_request != null && !_request!.isCurrent) _invalidate();
-    });
+    }, onError: (Object _) => _invalidate(), onDone: _invalidate);
     _bindContext();
   }
 
@@ -605,3 +605,4 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
     );
   }
 }
+
