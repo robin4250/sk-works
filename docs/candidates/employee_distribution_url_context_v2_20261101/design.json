@@ -1,0 +1,69 @@
+{
+  "status": "source_implementation_authorized",
+  "base_pr": 1739,
+  "base_head": "046c1f7ca4c7b4e08cbe17fde2aeaa6f53efbb64",
+  "production_operations": 0,
+  "real_url_hardcoded": false,
+  "baseline": {
+    "authorization": "existing account_access and owner/admin; no new secondary password",
+    "legacy_rpc_replacement": false,
+    "shared_master_key_or_check_change": false
+  },
+  "owned_paths": [
+    "docs/candidates/employee_distribution_url_context_v2_20261101/",
+    "lib/features/people/employee_distribution_url_repository.dart",
+    "test/employee_distribution_url_context_v2_sdk_test.dart",
+    "lib/features/people/employee_initial_registration_page.dart"
+  ],
+  "proposed_workflow": ".github/workflows/employee-distribution-url-context-v2.yml",
+  "contract": {
+    "binding": [
+      "current auth actor",
+      "exact current company",
+      "live SID",
+      "known owner/admin role, NULL denied",
+      "account access"
+    ],
+    "read": "typed raw nullable URL and updated_at; save capability separate from employee list",
+    "save": "only canonical TestFlight URL; expected raw before URL null/empty distinct plus updated_at CAS; capture bearer; atomic receipt and update",
+    "receipt": "same op and same payload returns original result; differing payload denied; new login may lookup with current actor/company/rights, never resubmit old operation",
+    "unknown": "persist secret-free operation identity and fingerprint; block resend; result query only; missing result stays unresolved",
+    "lifecycle": "reuse permanent retirement from tracking unavailable/error/done/SID ABA; do not fall back to legacy LIMIT 1 RPC"
+  },
+  "new_control": {
+    "scope": "only new V2 writes",
+    "default_enabled": false,
+    "read_and_result_available_when_off": true,
+    "shared_master_schema_change": false,
+    "legacy_writers_stopped": false,
+    "agreement_pending": false
+  },
+  "new_tables": [
+    "private module control singleton",
+    "private append-only operation receipt without FK to existing company/auth tables"
+  ],
+  "review_requirements": [
+    "exact dependency definitions/owners/ACL pinned before real install",
+    "read/save/result dispatch validates typed captured tuple",
+    "no existing company fields other than employee_testflight_url and updated_at changed",
+    "raw invalid before value retained for CAS, never normalized/erased",
+    "new API absent/OFF/unknown authorization disables only URL save",
+    "existing create invite and company link secondary authentication unchanged"
+  ],
+  "verification_plan": [
+    "actual SDK mock HTTP tests",
+    "Native PostgreSQL CAS/idempotence/OFF/result tests",
+    "independent source review",
+    "latest head CI"
+  ],
+  "separate_unimplemented": [
+    "server invite preflight before account creation",
+    "production Edge18 complete handler qualification",
+    "production adoption or disabling of legacy URL writer",
+    "actual URL setting and TestFlight availability verification"
+  ],
+  "design_review": {
+    "root": "limited control agreed",
+    "independent": "stage_a_review agreed; lock order and original SID retained"
+  }
+}

@@ -1,0 +1,166 @@
+-- REVIEW ONLY. No production execution or activation is authorized.
+-- Existing URL RPC bodies, master flags, company RLS and Auth definitions remain unchanged.
+begin;
+-- Pin only required helpers; current production qualification remains a separate approval.
+do $guard$ declare dependency record; begin
+ if current_user <> 'postgres' then raise exception 'distribution_url_owner_required'; end if;
+ for dependency in select * from (values
+ ('private.require_reauthentication_session()','165d0f26da6f6e346bb2766ae70282f7','{postgres=X/postgres}'),
+ ('private.account_access_allowed()','313d371759a4de968cfe99db050ee65d','{postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}')
+ ) d(signature,definition_hash,acl) loop
+  if not exists(select 1 from pg_proc p where p.oid=to_regprocedure(dependency.signature)
+   and md5(pg_get_functiondef(p.oid))=dependency.definition_hash and p.prosecdef
+   and pg_get_userbyid(p.proowner)='postgres' and p.proacl::text is not distinct from dependency.acl
+   and p.proconfig=array['search_path=""']) then
+   raise exception 'distribution_url_dependency_changed'; end if;
+ end loop;
+ if to_regclass('private.employee_distribution_url_v2_control') is not null
+  or to_regclass('private.employee_distribution_url_v2_operations') is not null
+  or to_regprocedure('private.employee_distribution_url_context_v2(uuid,uuid,text,uuid,jsonb)') is not null
+  or to_regprocedure('public.employee_distribution_url_context_v2(uuid,uuid,text,uuid,jsonb)') is not null
+  or to_regprocedure('extensions.digest(bytea,text)') is null
+  or not has_schema_privilege('authenticated','private','USAGE') then
+  raise exception 'distribution_url_installation_unqualified'; end if;
+end $guard$;
+create table private.employee_distribution_url_v2_control (
+  singleton boolean primary key default true check (singleton),
+  enabled boolean not null default false
+);
+insert into private.employee_distribution_url_v2_control values (true,false);
+create table private.employee_distribution_url_v2_operations (
+  operation_id uuid primary key,
+  actor_id uuid not null,
+  company_id uuid not null,
+  original_session_id uuid not null,
+  payload jsonb not null,
+  fingerprint text not null check (fingerprint ~ '^[0-9a-f]{64}$'),
+  result jsonb not null,
+  created_at timestamptz not null default clock_timestamp()
+);
+alter table private.employee_distribution_url_v2_control enable row level security;
+alter table private.employee_distribution_url_v2_operations enable row level security;
+revoke all on private.employee_distribution_url_v2_control,
+  private.employee_distribution_url_v2_operations from public,anon,authenticated,service_role;
+
+create function private.employee_distribution_url_v2_immutable() returns trigger
+language plpgsql security definer set search_path='' as $$
+begin raise exception 'distribution_url_receipt_immutable'; end $$;
+revoke all on function private.employee_distribution_url_v2_immutable() from public,anon,authenticated,service_role;
+create trigger employee_distribution_url_v2_immutable
+before update or delete or truncate on private.employee_distribution_url_v2_operations
+for each statement execute function private.employee_distribution_url_v2_immutable();
+
+create function private.employee_distribution_url_context_v2(
+  p_company uuid,p_session uuid,p_command text,p_operation uuid default null,
+  p_payload jsonb default '{}'::jsonb
+) returns jsonb language plpgsql security definer set search_path='' as $$
+declare
+  actor uuid := auth.uid(); sid uuid; enabled boolean; members integer;
+  member_role text; before_url text; before_updated timestamptz; after_updated timestamptz;
+  canonical text; result jsonb; receipt private.employee_distribution_url_v2_operations%rowtype;
+  fingerprint text; envelope jsonb;
+begin
+  -- One lock order for read/save/result: module, account/session, membership,
+  -- company, operation. This control stops only the new writer, not legacy RPCs.
+  select c.enabled into enabled from private.employee_distribution_url_v2_control c
+    where c.singleton for share;
+  if not found then raise sqlstate '42501' using message='distribution_url_unavailable'; end if;
+  sid := private.require_reauthentication_session();
+  if actor is null or sid is distinct from p_session or p_company is null
+    or p_command is null or p_command not in ('read','save','result')
+    or p_payload is null or jsonb_typeof(p_payload)<>'object' then
+    raise sqlstate '42501' using message='distribution_url_context_rejected';
+  end if;
+  -- Never pick a first membership. Match the client exact-one company contract.
+  perform 1 from public.company_members where user_id=actor order by company_id for share;
+  select count(*),min(role::text) into members,member_role
+    from public.company_members where user_id=actor;
+  if members<>1 or member_role is null or member_role not in ('owner','admin')
+    or not exists(select 1 from public.company_members where user_id=actor and company_id=p_company) then
+    raise sqlstate '42501' using message='distribution_url_company_rejected';
+  end if;
+  if p_command='save' and not enabled then
+    raise sqlstate '42501' using message='distribution_url_disabled';
+  end if;
+  select employee_testflight_url,updated_at into before_url,before_updated
+    from public.companies where id=p_company for update;
+  if not found then raise sqlstate '42501' using message='distribution_url_company_rejected'; end if;
+  envelope:=jsonb_build_object('version',2,'actor_id',actor,'company_id',p_company,
+    'session_id',sid,'command',p_command);
+  if p_command='read' then
+    if p_operation is not null or p_payload<>'{}'::jsonb then raise exception 'distribution_url_payload_rejected'; end if;
+    return envelope||jsonb_build_object('can_save',enabled,'url',before_url,'updated_at',before_updated);
+  end if;
+  if p_operation is null then raise exception 'distribution_url_operation_required'; end if;
+  -- Global operation collision protection, including reuse against another company.
+  perform pg_advisory_xact_lock(hashtextextended(p_operation::text,725013));
+  select * into receipt from private.employee_distribution_url_v2_operations where operation_id=p_operation;
+  if p_command='result' then
+    if (select count(*) from jsonb_object_keys(p_payload))<>2
+      or not (p_payload ?& array['fingerprint','original_session_id'])
+      or jsonb_typeof(p_payload->'fingerprint')<>'string'
+      or jsonb_typeof(p_payload->'original_session_id')<>'string' then
+      raise exception 'distribution_url_payload_rejected';
+    end if;
+    if receipt.operation_id is null then
+      return envelope||jsonb_build_object('state','unobserved','operation_id',p_operation);
+    end if;
+    if receipt.actor_id is distinct from actor or receipt.company_id is distinct from p_company
+      or receipt.original_session_id::text is distinct from p_payload->>'original_session_id'
+      or receipt.fingerprint is distinct from p_payload->>'fingerprint' then
+      raise sqlstate '42501' using message='distribution_url_receipt_rejected';
+    end if;
+    return envelope||jsonb_build_object('state','committed','operation_id',p_operation,
+      'original_session_id',receipt.original_session_id,'fingerprint',receipt.fingerprint,'result',receipt.result);
+  end if;
+  if (select count(*) from jsonb_object_keys(p_payload))<>3
+    or not (p_payload ?& array['before_url','before_updated_at','url'])
+    or jsonb_typeof(p_payload->'before_url') not in ('null','string')
+    or jsonb_typeof(p_payload->'before_updated_at') not in ('null','string')
+    or jsonb_typeof(p_payload->'url')<>'string' then
+    raise exception 'distribution_url_payload_rejected';
+  end if;
+  canonical:=p_payload->>'url';
+  -- Deliberately no clear operation. Stored NULL and empty before-values stay distinct.
+  if canonical !~ '^https://testflight[.]apple[.]com/join/[A-Za-z0-9]+$'
+    or canonical like '%YOUR_CODE%' then raise exception 'distribution_url_invalid'; end if;
+  fingerprint:=encode(extensions.digest(convert_to(
+    coalesce(octet_length(p_payload->>'before_url')::text||':'||(p_payload->>'before_url'),'-:')||
+    coalesce(octet_length(p_payload->>'before_updated_at')::text||':'||(p_payload->>'before_updated_at'),'-:')||
+    octet_length(canonical)::text||':'||canonical,'UTF8'),'sha256'),'hex');
+  if receipt.operation_id is not null then
+    if receipt.actor_id is distinct from actor or receipt.company_id is distinct from p_company
+      or receipt.original_session_id is distinct from sid or receipt.payload is distinct from p_payload then
+      raise sqlstate '42501' using message='distribution_url_operation_reused';
+    end if;
+    return envelope||jsonb_build_object('state','committed','operation_id',p_operation,
+      'original_session_id',sid,'fingerprint',receipt.fingerprint,'result',receipt.result);
+  end if;
+  if before_url is distinct from p_payload->>'before_url'
+    or before_updated is distinct from (p_payload->>'before_updated_at')::timestamptz then
+    result:=jsonb_build_object('status','conflict');
+  else
+    update public.companies set employee_testflight_url=canonical,updated_at=clock_timestamp()
+      where id=p_company returning updated_at into after_updated;
+    result:=jsonb_build_object('status','saved','url',canonical,'updated_at',after_updated);
+  end if;
+  insert into private.employee_distribution_url_v2_operations
+    (operation_id,actor_id,company_id,original_session_id,payload,fingerprint,result)
+    values (p_operation,actor,p_company,sid,p_payload,fingerprint,result);
+  return envelope||jsonb_build_object('state','committed','operation_id',p_operation,
+    'original_session_id',sid,'fingerprint',fingerprint,'result',result);
+end $$;
+revoke all on function private.employee_distribution_url_context_v2(uuid,uuid,text,uuid,jsonb)
+ from public,anon,authenticated,service_role;
+-- Necessary delegation for the public invoker wrapper. No private table privileges.
+grant execute on function private.employee_distribution_url_context_v2(uuid,uuid,text,uuid,jsonb) to authenticated;
+create function public.employee_distribution_url_context_v2(
+  p_company uuid,p_session uuid,p_command text,p_operation uuid default null,
+  p_payload jsonb default '{}'::jsonb
+) returns jsonb language sql security invoker set search_path='' as $$
+select private.employee_distribution_url_context_v2(p_company,p_session,p_command,p_operation,p_payload)
+$$;
+revoke all on function public.employee_distribution_url_context_v2(uuid,uuid,text,uuid,jsonb)
+ from public,anon,authenticated,service_role;
+grant execute on function public.employee_distribution_url_context_v2(uuid,uuid,text,uuid,jsonb) to authenticated;
+commit;
