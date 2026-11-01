@@ -12,6 +12,7 @@ import 'line_import_page.dart';
 import 'line_historical_monthly_import.dart';
 import 'line_historical_monthly_import_page.dart';
 import 'line_import_repository.dart';
+import 'line_saved_monthly_merge_page.dart';
 import '../../international/language_controller.dart';
 
 class LineHistoricalInvoicePage extends StatelessWidget {
@@ -204,6 +205,17 @@ class _LineHistoricalInvoicePageState extends State<_LineHistoricalInvoicePageCo
       LineHistoricalMonthlyImportPage(groupId: group)));
     if (mounted) await _load();
   }
+  Future<void> _openSavedMonthlyMerge() async {
+    final group = _group;
+    if (_busy || _edited || _pending != null || group == null) return;
+    final names = _groups.where((item) => item['id'].toString() == group).toList();
+    if (names.length != 1) return;
+    final name = names.single['display_name']?.toString() ??
+      names.single['name']?.toString() ?? '選択中のグループ';
+    final saved = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) =>
+      LineSavedMonthlyMergePage(groupId: group, groupName: name, month: _month)));
+    if (mounted && saved == true) await _load();
+  }
   String _formalName(List<Map<String, dynamic>> rows, LineHistoricalGroup group) {
     final names = rows.where((row) => row['site_id'] == group.siteId)
       .map((row) => row['formal_site_name']?.toString().trim() ?? '')
@@ -287,6 +299,12 @@ class _LineHistoricalInvoicePageState extends State<_LineHistoricalInvoicePageCo
             label: const Text('月別表・ファイル取込と受信データ'))),
         if (!widget.editingRates) Padding(
           padding: const EdgeInsets.only(top: 12),
+          child: OutlinedButton.icon(onPressed: _busy || _edited || _pending != null || _group == null
+              ? null : _openSavedMonthlyMerge,
+            icon: const Icon(Icons.playlist_add_outlined),
+            label: const Text('保存済みデータを追加'))),
+        if (!widget.editingRates) Padding(
+          padding: const EdgeInsets.only(top: 12),
           child: OutlinedButton.icon(onPressed: _busy ? null : _openImport,
             icon: const Icon(Icons.fact_check_outlined),
             label: Text(_tr('LINE請求候補を確認・取込')))),
@@ -304,7 +322,20 @@ class _LineHistoricalInvoicePageState extends State<_LineHistoricalInvoicePageCo
         if (_busy) const LinearProgressIndicator(),
         if (_error != null) Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error))),
         if (_data.isNotEmpty) Text('実人数 $people人 ／ 延べ ${days.toStringAsFixed(1)}人工', style: Theme.of(context).textTheme.titleMedium),
-        if (_data.isNotEmpty && _summary.isEmpty && _candidateRows.isNotEmpty) Card(child: Padding(
+        if (_data.isNotEmpty && !widget.editingRates) Card(child: ExpansionTile(
+          title: const Text('読取参考額の計算対象を確認'),
+          subtitle: Text(candidateEstimate.workDates.isEmpty ? '計算対象日なし' :
+            '${candidateEstimate.workDates.first} 〜 ${candidateEstimate.workDates.last}'),
+          childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          expandedAlignment: Alignment.centerLeft,
+          children: [
+            Text('対象日：${candidateEstimate.workDates.isEmpty ? 'なし' : candidateEstimate.workDates.join('、')}'),
+            Text('計算対象 ${candidateEstimate.includedRows}件 ／ 除外 ${_candidateRows.where((row) => row['excluded'] == true).length}件'),
+            Text('要確認 ${candidateEstimate.pendingRows}件 ／ 計算対象外 ${candidateEstimate.incompleteRows}件'),
+            const Text('本文の出勤日で対象月を判定します。月末で受信を打ち切らず、後日分も同じ月別表へ追加できます。正式請求書は自動発行・送信しません。'),
+          ],
+        )),
+        if (_data.isNotEmpty && !widget.editingRates && _candidateRows.isNotEmpty) Card(child: Padding(
           padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(candidateEstimate.sites.isEmpty ? '請求金額：数量の確認が必要です' : '現在の読取数量による参考請求額 ${candidateEstimate.total}円', style: Theme.of(context).textTheme.titleLarge),
             Text('未確認 ${candidateEstimate.pendingRows}行 ／ 計算対象外 ${candidateEstimate.incompleteRows}行。指定初期単価・福利15%・消費税10%。全件確定額ではありません。'),

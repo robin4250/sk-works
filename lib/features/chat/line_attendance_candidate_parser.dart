@@ -47,8 +47,13 @@ class LineAttendanceCandidateParser {
       if (dateMatch == null) continue;
 
       final explicitYear = dateMatch.group(1);
+      // December work reported in the following January belongs to the prior
+      // year. An explicit year in the original body always wins.
+      final implicitYear = message.timestamp.month == 1 &&
+          int.parse(dateMatch.group(2)!) == 12
+          ? message.timestamp.year - 1 : message.timestamp.year;
       final workDate = DateTime(
-        explicitYear == null ? message.timestamp.year : int.parse(explicitYear),
+        explicitYear == null ? implicitYear : int.parse(explicitYear),
         int.parse(dateMatch.group(2)!),
         int.parse(dateMatch.group(3)!),
       );
