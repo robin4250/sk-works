@@ -1,8 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'master_owner_access.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../../data/supabase_backend.dart';
 import 'master_credential_repository.dart';
 import 'master_credential_setup_page.dart';
 import 'master_password_entry_repository.dart';
@@ -10,10 +11,11 @@ import 'master_password_entry_repository.dart';
 /// Disconnected unless the explicit compile-time candidate switch is enabled.
 /// A verified reply grants only this local entry; it is not an operation proof.
 class MasterPasswordProtectedPage extends StatefulWidget {
-  const MasterPasswordProtectedPage({super.key, required this.title, required this.child, this.access, this.settingsBuilder});
+  const MasterPasswordProtectedPage({super.key, required this.title, required this.child, this.access, this.settingsBuilder, this.client});
   final String title;
   final Widget child;
   final MasterPasswordEntryAccess? access;
+  final SupabaseClient? client;
   final Widget Function(MasterCredentialAccess access)? settingsBuilder;
   @override State<MasterPasswordProtectedPage> createState() => _MasterPasswordProtectedPageState();
 }
@@ -63,8 +65,8 @@ class _MasterPasswordProtectedPageState extends State<MasterPasswordProtectedPag
     } else { _lock(); }
   }
   Future<MasterPasswordEntryAccess?> _defaultAccess() async {
-    if (!SupabaseBackend.isInitialized) return null;
-    final client = SupabaseBackend.client;
+    final client = widget.client ?? MasterOwnerAccess.defaultClient;
+    if (client == null) return null;
     final actor = client.auth.currentUser?.id;
     if (actor == null) return null;
     final prefs = await SharedPreferences.getInstance();

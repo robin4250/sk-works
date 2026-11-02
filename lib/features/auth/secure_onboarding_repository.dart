@@ -33,6 +33,7 @@ class SecureOnboardingRepository {
   SecureOnboardingRepository._(this._client);
 
   SecureOnboardingRepository.forClient(this._client);
+  SupabaseClient get ownerClient => _client;
 
   final SupabaseClient _client;
   AppAuthMutationGateway get _auth => AppAuthMutationGateway.forClient(_client);

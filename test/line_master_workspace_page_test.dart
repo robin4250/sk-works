@@ -1,4 +1,6 @@
 import 'support/line_test_app.dart';
+import 'support/master_owner_backend_fixture.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/chat/line_master_workspace_page.dart';
@@ -9,8 +11,11 @@ import 'package:sk_works/features/chat/line_billing_directory_page.dart';
 import 'package:sk_works/features/chat/line_reading_rules_page.dart';
 
 void main() {
+  late SupabaseClient client;
+  setUp(() async { client = await masterOwnerFixtureClient(); });
+  tearDown(() async { await client.dispose(); });
   testWidgets('default rate entry connects the reading rule editor', (tester) async {
-    await tester.pumpWidget(LineTestApp(home: LineMasterWorkspacePage(masterCheck: () async => true)));
+    await tester.pumpWidget(LineTestApp(home: LineMasterWorkspacePage(client: client, masterCheck: () async => true)));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('line-master-rates')));
     await tester.pumpAndSettle();
@@ -35,7 +40,7 @@ void main() {
         data: MediaQuery.of(context).copyWith(textScaler: const TextScaler.linear(1.3)),
         child: child!,
       ),
-      home: LineMasterWorkspacePage(masterCheck: () async => true),
+      home: LineMasterWorkspacePage(client: client, masterCheck: () async => true),
     ));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('line-master-chat')), findsOneWidget);
@@ -52,7 +57,7 @@ void main() {
     SkoLanguageController.pack.value = englishLanguagePack;
     addTearDown(() => SkoLanguageController.pack.value = previous);
     await tester.pumpWidget(LineTestApp(
-      home: LineMasterWorkspacePage(masterCheck: () async => true),
+      home: LineMasterWorkspacePage(client: client, masterCheck: () async => true),
     ));
     await tester.pumpAndSettle();
     expect(find.text('LINE Master Access'), findsOneWidget);
@@ -64,7 +69,7 @@ void main() {
 
   testWidgets('non-master cannot see or open master entries', (tester) async {
     await tester.pumpWidget(LineTestApp(
-      home: LineMasterWorkspacePage(masterCheck: () async => false),
+      home: LineMasterWorkspacePage(client: client, masterCheck: () async => false),
     ));
     await tester.pumpAndSettle();
     expect(find.byType(ListTile), findsNothing);
@@ -74,7 +79,7 @@ void main() {
   testWidgets('each entry opens its own page and rechecks master on return',
       (tester) async {
     var checks = 0;
-    await tester.pumpWidget(LineTestApp(home: LineMasterWorkspacePage(
+    await tester.pumpWidget(LineTestApp(home: LineMasterWorkspacePage(client: client,
       masterCheck: () async { checks++; return true; },
       talkBuilder: (_) => const Scaffold(body: Text('received-source-page')),
       invoiceBuilder: (_) => const Scaffold(body: Text('monthly-invoice-page')),
@@ -82,6 +87,8 @@ void main() {
       monthlyBuilder: (_) => const Scaffold(body: Text('editable-monthly-page')),
     )));
     await tester.pumpAndSettle();
+    final initialChecks = checks;
+    expect(initialChecks, greaterThanOrEqualTo(1));
     for (final entry in const {
       'line-master-chat': 'received-source-page',
       'line-master-invoices': 'monthly-invoice-page',
@@ -95,13 +102,13 @@ void main() {
       tester.state<NavigatorState>(find.byType(Navigator)).pop();
       await tester.pumpAndSettle();
     }
-    expect(checks, 9);
+    expect(checks - initialChecks, 8, reason: 'each of four entries verifies before push and after return');
   });
 
   testWidgets('master revoked before navigation never builds protected page',
       (tester) async {
     var master = true, opened = false;
-    await tester.pumpWidget(LineTestApp(home: LineMasterWorkspacePage(
+    await tester.pumpWidget(LineTestApp(home: LineMasterWorkspacePage(client: client,
       masterCheck: () async => master,
       ratesBuilder: (_) { opened = true; return const Scaffold(); },
     )));

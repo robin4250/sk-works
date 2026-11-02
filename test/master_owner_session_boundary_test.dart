@@ -7,7 +7,6 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:sk_works/data/supabase_backend.dart';
 import 'package:sk_works/features/settings/master_owner_access.dart';
 import 'package:sk_works/features/settings/master_protected_page.dart';
 import 'package:sk_works/features/settings/settings_page.dart';
@@ -54,11 +53,8 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(() async {
     SharedPreferences.setMockInitialValues({});
-    await Supabase.initialize(
-      url: 'https://master-owner-fixture.invalid',
-      publishableKey: 'public-fixture',
-      debug: false,
-      authOptions: const FlutterAuthClientOptions(autoRefreshToken: false),
+    client = SupabaseClient('https://master-owner-fixture.invalid', 'public-fixture',
+      authOptions: const AuthClientOptions(autoRefreshToken: false),
       httpClient: MockClient((r) async {
         expect(r.url.host, 'master-owner-fixture.invalid');
         final name = r.url.path.split('/').last;
@@ -95,10 +91,7 @@ void main() {
         );
       }),
     );
-    // Existing initialize returns the same singleton (pinned SDK behavior); the
-    // product initializer then marks backend configured without replacing our HTTP fixture.
-    await SupabaseBackend.initializeIfConfigured();
-    client = SupabaseBackend.client;
+
   });
   setUp(() {
     masterWait = null;
@@ -107,7 +100,7 @@ void main() {
     bearers.clear();
   });
   tearDownAll(() async {
-    await Supabase.instance.dispose();
+    await client.dispose();
   });
 
   testWidgets(
@@ -124,8 +117,9 @@ void main() {
         reason: 'non-owner must be rejected before server RPC',
       );
       await t.pumpWidget(
-        const MaterialApp(
+        MaterialApp(
           home: MasterProtectedPage(
+            ownerClient: client,
             title: 'fixture',
             dedicatedMode: true,
             child: Scaffold(body: Text('DO-NOT-MOUNT')),
@@ -134,6 +128,14 @@ void main() {
       );
       await settle(t);
       expect(find.text('DO-NOT-MOUNT'), findsNothing);
+      expect(find.text('Master認証を利用できません。'), findsOneWidget);
+      await t.pumpWidget(LineTestApp(home: LineMasterWorkspacePage(client: client, masterCheck: () async => true)));
+      await settle(t);
+      expect(find.byKey(const ValueKey('line-master-chat')), findsNothing);
+      expect(masterCalls, 1, reason: 'callback cannot bypass non-owner pre-RPC denial');
+      await t.pumpWidget(const MaterialApp(home: MasterProtectedPage(title: 'unconfigured-default', dedicatedMode: true, child: Text('DEFAULT-MUST-NOT-MOUNT'))));
+      await settle(t);
+      expect(find.text('DEFAULT-MUST-NOT-MOUNT'), findsNothing);
       expect(find.text('Master認証を利用できません。'), findsOneWidget);
       await t.pumpWidget(const SizedBox.shrink());
     },
@@ -145,7 +147,7 @@ void main() {
       await t.binding.setSurfaceSize(const Size(1000, 5000));
       addTearDown(() => t.binding.setSurfaceSize(null));
       await login(MasterOwnerAccess.ownerId, 'before-refresh');
-      await t.pumpWidget(const MaterialApp(home: SettingsPage()));
+      await t.pumpWidget(MaterialApp(home: SettingsPage(client: client)));
       await settle(t);
       expect(find.text('Master 機能設定'), findsOneWidget);
       final oldToken = client.auth.currentSession!.accessToken;
@@ -159,7 +161,7 @@ void main() {
       expect(find.text('Master 機能設定'), findsOneWidget);
       expect(bearers.last, 'Bearer ${client.auth.currentSession!.accessToken}');
       expect(bearers.last, isNot('Bearer $oldToken'));
-      await t.pumpWidget(const LineTestApp(home: LineMasterWorkspacePage()));
+      await t.pumpWidget(LineTestApp(home: LineMasterWorkspacePage(client: client)));
       await settle(t);
       expect(find.byKey(const ValueKey('line-master-chat')), findsOneWidget);
       await login(MasterOwnerAccess.ownerId, 'workspace-refresh');
@@ -180,7 +182,7 @@ void main() {
       await login(MasterOwnerAccess.ownerId, 'pending-settings');
       masterWait = Completer<void>();
       masterReached = Completer<void>();
-      await t.pumpWidget(const MaterialApp(home: SettingsPage()));
+      await t.pumpWidget(MaterialApp(home: SettingsPage(client: client)));
       await settle(t);
       expect(
         masterReached,
@@ -198,7 +200,7 @@ void main() {
       await login(MasterOwnerAccess.ownerId, 'pending-workspace');
       masterWait = Completer<void>();
       masterReached = Completer<void>();
-      await t.pumpWidget(const LineTestApp(home: LineMasterWorkspacePage()));
+      await t.pumpWidget(LineTestApp(home: LineMasterWorkspacePage(client: client)));
       await settle(t);
       expect(masterReached, isNull);
       client.auth.notifyException(StateError('synthetic-auth-stream-error'));

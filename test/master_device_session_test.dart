@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:sk_works/features/settings/master_owner_access.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -9,7 +10,7 @@ import 'package:sk_works/features/settings/master_device_management_page.dart';
 import 'package:sk_works/features/auth/operation_reauthentication_repository.dart';
 import 'package:sk_works/features/settings/master_device_repository.dart';
 
-const actor = '80000000-0000-0000-0000-000000000001';
+const actor = MasterOwnerAccess.ownerId;
 Map<String, dynamic> session(String sid) {
   String part(Object v) => base64Url.encode(utf8.encode(jsonEncode(v))).replaceAll('=', '');
   return {'access_token': '${part({'alg':'HS256'})}.${part({'sub':actor,'role':'authenticated','session_id':sid,'exp':DateTime.now().millisecondsSinceEpoch ~/ 1000 + 3600})}.synthetic',

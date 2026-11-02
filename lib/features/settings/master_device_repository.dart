@@ -85,6 +85,8 @@ class MasterDeviceRepository {
   MasterDeviceRepository._(this._client);
 
   MasterDeviceRepository.forTesting(this._client);
+  MasterDeviceRepository.forClient(this._client);
+  SupabaseClient get ownerClient => _client;
 
   final SupabaseClient _client;
 

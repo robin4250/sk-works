@@ -2,7 +2,7 @@
   "product_source": "candidate PR1740; exact per-file SHA256 below",
   "retirement_source": "a63656f7f7b71abdaf8412dbf5d296a6ce22a1c5",
   "files": {
-    "lib/features/qualifications/qualification_cloud_repository.dart": "aa9bd9aca35af30821795aa632ab4c41822d61a05603b7db5e84359f42787c70",
+    "lib/features/qualifications/qualification_cloud_repository.dart": "8fdff31dc1f08f5b2d97ede3b7a6ddeed33ddc7c229296a70655607474ceca11",
     "lib/features/qualifications/qualification_certificate_repository.dart": "6e9e7ffd25d03908108022705a239ac20228850fd9034c086b4350451adc09ad",
     "supabase/migrations/20260930062500_fix_manager_vehicle_route_effective_permissions.sql": "2c7908a4c91ae24b9ee3c07c2c9eb359584aefa8e72979ea1fbabf3f2c8ff853",
     "supabase/migrations/20260920022000_harden_attendance_and_approval_privacy.sql": "036af44cd559c3019865f92479a2cc9d7370be492961c684a93dd8c9505e5ad4",

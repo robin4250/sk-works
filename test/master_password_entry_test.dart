@@ -1,4 +1,7 @@
 import 'dart:async';
+import 'support/master_owner_backend_fixture.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:sk_works/features/settings/master_owner_access.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/settings/master_credential_repository.dart';
@@ -6,11 +9,12 @@ import 'package:sk_works/features/settings/master_password_entry_repository.dart
 import 'package:sk_works/features/settings/master_password_protected_page.dart';
 import 'package:sk_works/features/settings/master_protected_page.dart';
 
-const _actor = '50000000-0000-0000-0000-000000000001';
+const _actor = MasterOwnerAccess.ownerId;
 const _sid = '50000000-0000-0000-0000-000000000002';
 const _binding = MasterCredentialBinding(_actor, _sid, 'synthetic-token-A', 'synthetic-device-key-longer-than-32-characters');
 class _Settings implements MasterCredentialAccess { @override dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation); }
 class _Access implements MasterPasswordEntryAccess {
+  @override SupabaseClient? ownerClient;
   @override MasterCredentialBinding? binding = _binding;
   final events = StreamController<void>.broadcast(sync: true);
   @override Stream<void> get changes => events.stream;
@@ -67,7 +71,10 @@ Future<void> _close(WidgetTester t, _Access access) async {
 }
 void main() {
   testWidgets('explicit candidate wrapper requires actual dedicated password plus Face and server reread', (t) async {
-    final access = _Access(); await _show(t, access, wrapper: true); await _unlock(t);
+    final client=(await t.runAsync(masterOwnerFixtureClient))!;
+    addTearDown(client.dispose);
+    final access = _Access()..ownerClient=client..binding=MasterCredentialBinding(client.auth.currentUser!.id,'82000000-0000-0000-0000-000000000002',client.auth.currentSession!.accessToken,'synthetic-device-key-longer-than-32-characters');
+    await _show(t, access, wrapper: true); await _unlock(t);
     expect(access.passwords, ['dedicated-master-password']); expect(access.faces, 1);
     expect(access.reads, greaterThanOrEqualTo(3)); expect(find.text('MASTER-PRIVATE-CONTENT'), findsOneWidget);
     await _close(t, access);

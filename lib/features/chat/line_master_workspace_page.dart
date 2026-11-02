@@ -2,8 +2,8 @@ import 'dart:async';
 import 'line_release_access.dart';
 import '../settings/master_owner_access.dart';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../data/supabase_backend.dart';
 import '../../international/language_controller.dart';
 import 'line_joined_groups_page.dart';
 import 'line_source_upload_page.dart';
@@ -15,6 +15,7 @@ class LineMasterWorkspacePage extends StatelessWidget {
   const LineMasterWorkspacePage({
     super.key,
     this.masterCheck,
+    this.client,
     this.talkBuilder,
     this.invoiceBuilder,
     this.ratesBuilder,
@@ -22,17 +23,20 @@ class LineMasterWorkspacePage extends StatelessWidget {
     this.uploadBuilder,
   });
 
+  final SupabaseClient? client;
   @visibleForTesting
   final Future<bool> Function()? masterCheck;
   @visibleForTesting
   final WidgetBuilder? talkBuilder, invoiceBuilder, ratesBuilder, monthlyBuilder, uploadBuilder;
 
   @override
-  Widget build(BuildContext context) => LineReleaseBoundary(builder: (_) => _LineMasterWorkspacePageContent(masterCheck: masterCheck, talkBuilder: talkBuilder, invoiceBuilder: invoiceBuilder, ratesBuilder: ratesBuilder, monthlyBuilder: monthlyBuilder, uploadBuilder: uploadBuilder));
+  Widget build(BuildContext context) => LineReleaseBoundary(builder: (_) => _LineMasterWorkspacePageContent(client: client, masterCheck: masterCheck, talkBuilder: talkBuilder, invoiceBuilder: invoiceBuilder, ratesBuilder: ratesBuilder, monthlyBuilder: monthlyBuilder, uploadBuilder: uploadBuilder));
 }
 
 class _LineMasterWorkspacePageContent extends StatefulWidget {
+  final SupabaseClient? client;
   const _LineMasterWorkspacePageContent({
+    this.client,
     this.masterCheck,
     this.talkBuilder,
     this.invoiceBuilder,
@@ -52,6 +56,7 @@ class _LineMasterWorkspacePageContent extends StatefulWidget {
 }
 
 class _LineMasterWorkspacePageState extends State<_LineMasterWorkspacePageContent> {
+  late final SupabaseClient? _client = widget.client ?? MasterOwnerAccess.defaultClient;
   bool _loading = true, _master = false;
   StreamSubscription<dynamic>? _ownerChanges;
   int _masterGeneration = 0;
@@ -62,7 +67,7 @@ class _LineMasterWorkspacePageState extends State<_LineMasterWorkspacePageConten
   @override
   void initState() {
     super.initState();
-    if (SupabaseBackend.isInitialized) { _ownerChanges = SupabaseBackend.client.auth.onAuthStateChange.listen((_) {
+    if (_client != null) { _ownerChanges = _client.auth.onAuthStateChange.listen((_) {
       if (!mounted) { return; }
       setState(() => _master = false);
       _load();
@@ -81,13 +86,12 @@ class _LineMasterWorkspacePageState extends State<_LineMasterWorkspacePageConten
   void dispose() { _masterGeneration++; _ownerChanges?.cancel(); super.dispose(); }
 
   Future<bool> _check() async {
-    if (widget.masterCheck != null) return widget.masterCheck!();
-    if (!SupabaseBackend.isInitialized) return false;
-    final client = SupabaseBackend.client;
-    final actor = client.auth.currentUser?.id;
-    if (actor == null) return false;
-    final master = await MasterOwnerAccess.check(client);
-    return client.auth.currentUser?.id == actor && master == true;
+    final client = _client;
+    final captured = client?.auth.currentSession;
+    if (client == null || !await MasterOwnerAccess.check(client)) { return false; }
+    if (widget.masterCheck != null && !await widget.masterCheck!()) { return false; }
+    return identical(captured, client.auth.currentSession) && MasterOwnerAccess.currentFor(client);
+
   }
 
   Future<void> _load() async {

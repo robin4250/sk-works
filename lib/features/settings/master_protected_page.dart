@@ -5,10 +5,10 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../data/supabase_backend.dart';
 import '../auth/secure_onboarding_repository.dart';
 import 'master_device_repository.dart';
 import 'master_device_platform.dart';
@@ -24,6 +24,7 @@ class MasterProtectedPage extends StatefulWidget {
     required this.child,
     this.dedicatedMode = const bool.fromEnvironment('SKO_MASTER_PASSWORD_V1', defaultValue: false),
     this.dedicatedAccess,
+    this.ownerClient,
     this.legacyDeviceRepository,
     this.legacyAuthRepository,
     this.legacySessionToken,
@@ -34,6 +35,7 @@ class MasterProtectedPage extends StatefulWidget {
   final Widget child;
   final bool dedicatedMode;
   final MasterPasswordEntryAccess? dedicatedAccess;
+  final SupabaseClient? ownerClient;
   final MasterDeviceRepository? legacyDeviceRepository;
   final SecureOnboardingRepository? legacyAuthRepository;
   final String? Function()? legacySessionToken;
@@ -45,6 +47,9 @@ class MasterProtectedPage extends StatefulWidget {
 
 class _MasterProtectedPageState extends State<MasterProtectedPage>
     with WidgetsBindingObserver {
+  late final SupabaseClient? _ownerClient;
+  bool _ownerContextMatches = false;
+  bool _dedicatedOwnerReady = false, _dedicatedOwnerChecking = false;
   late final MasterDeviceRepository? _deviceRepository;
   late final SecureOnboardingRepository? _authRepository;
   final _localAuth = LocalAuthentication();
@@ -71,10 +76,10 @@ class _MasterProtectedPageState extends State<MasterProtectedPage>
   AppLifecycleState _lifecycle = AppLifecycleState.resumed;
   String? get _currentToken => widget.legacySessionToken != null
       ? widget.legacySessionToken!()
-      : SupabaseBackend.isInitialized ? SupabaseBackend.client.auth.currentSession?.accessToken : null;
+      : _ownerClient?.auth.currentSession?.accessToken;
 
   bool _same(int generation, String actor, String token, {bool nativeInactive = false}) =>
-      mounted && generation == _generation && _deviceRepository?.currentUserId == actor &&
+      mounted && _ownerContextMatches && generation == _generation && _deviceRepository?.currentUserId == actor &&
       _authRepository?.currentUser?.id == actor && _currentToken == token &&
       ModalRoute.of(context)?.isCurrent == true &&
       (_lifecycle == AppLifecycleState.resumed || nativeInactive && _nativePrompt && _lifecycle == AppLifecycleState.inactive);
@@ -82,19 +87,43 @@ class _MasterProtectedPageState extends State<MasterProtectedPage>
   @override
   void initState() {
     super.initState();
-    _deviceRepository = widget.legacyDeviceRepository ?? MasterDeviceRepository.maybeCreate();
-    _authRepository = widget.legacyAuthRepository ?? SecureOnboardingRepository.maybeCreate();
-    if (SupabaseBackend.isInitialized) {
-      _ownerChanges = SupabaseBackend.client.auth.onAuthStateChange.listen((_) => _lock(), onError: (Object _) => _lock());
+    _ownerClient = widget.ownerClient ?? widget.dedicatedAccess?.ownerClient ??
+        widget.legacyDeviceRepository?.ownerClient ?? MasterOwnerAccess.defaultClient;
+    _ownerContextMatches = _ownerClient != null &&
+        (widget.dedicatedAccess == null || identical(widget.dedicatedAccess!.ownerClient, _ownerClient)) &&
+        (widget.legacyDeviceRepository == null || identical(widget.legacyDeviceRepository!.ownerClient, _ownerClient)) &&
+        (widget.legacyAuthRepository == null || identical(widget.legacyAuthRepository!.ownerClient, _ownerClient));
+    _deviceRepository = widget.legacyDeviceRepository ?? (_ownerClient == null ? null : MasterDeviceRepository.forClient(_ownerClient));
+    _authRepository = widget.legacyAuthRepository ?? (_ownerClient == null ? null : SecureOnboardingRepository.forClient(_ownerClient));
+    if (_ownerClient != null) {
+      final initialSession = _ownerClient.auth.currentSession;
+      var first = true;
+      _ownerChanges = _ownerClient.auth.onAuthStateChange.listen((event) {
+        final replay = first && identical(event.session, initialSession) &&
+            identical(_ownerClient.auth.currentSession, initialSession) &&
+            (event.event == AuthChangeEvent.initialSession || event.event == AuthChangeEvent.signedIn);
+        first = false;
+        if (!replay) { _lock(); }
+      }, onError: (Object _) => _lock());
     }
-    if (widget.dedicatedMode) return;
+    if (widget.dedicatedMode) { _authorizeDedicatedOwner(); return; }
     _lifecycle = WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed;
     WidgetsBinding.instance.addObserver(this);
-    final changes = widget.legacyChanges ?? (SupabaseBackend.isInitialized ? SupabaseBackend.client.auth.onAuthStateChange.map((_) {}) : null);
+    final changes = widget.legacyChanges ?? _ownerClient?.auth.onAuthStateChange.map((_) {});
     _authChanges = changes?.listen((_) {
       if (_loadedActor != null && (_deviceRepository?.currentUserId != _loadedActor || _currentToken != _loadedToken)) _lock();
     }, onError: (Object _) => _lock());
-    _load();
+    if (_ownerContextMatches) { _load(); } else { _loading = false; }
+  }
+
+  @override
+  void didUpdateWidget(covariant MasterProtectedPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(widget.ownerClient, oldWidget.ownerClient) || !identical(widget.dedicatedAccess, oldWidget.dedicatedAccess) ||
+        !identical(widget.legacyDeviceRepository, oldWidget.legacyDeviceRepository) || !identical(widget.legacyAuthRepository, oldWidget.legacyAuthRepository)) {
+      _ownerContextMatches = false;
+      _lock();
+    }
   }
 
   @override
@@ -260,6 +289,8 @@ class _MasterProtectedPageState extends State<MasterProtectedPage>
 
   void _lock() {
     _generation++;
+    _dedicatedOwnerReady = false;
+    _dedicatedOwnerChecking = false;
     _clearCaptured?.call();
     final wait = _resume; _resume = null;
     if (wait != null && !wait.isCompleted) wait.complete(false);
@@ -305,10 +336,35 @@ class _MasterProtectedPageState extends State<MasterProtectedPage>
     super.dispose();
   }
 
+  bool get _dedicatedBindingMatches {
+    final access = widget.dedicatedAccess;
+    if (access == null) return true;
+    final binding = access.binding;
+    return identical(access.ownerClient, _ownerClient) && binding != null &&
+        MasterOwnerAccess.bindingMatches(_ownerClient, binding.actor, binding.sessionId, binding.token);
+  }
+  Future<void> _authorizeDedicatedOwner() async {
+    final client = _ownerClient;
+    if (client == null || !_ownerContextMatches || !_dedicatedBindingMatches) return;
+    final generation = ++_generation;
+    _dedicatedOwnerChecking = true;
+    var allowed = false;
+    try { allowed = await MasterOwnerAccess.check(client); } catch (_) { allowed = false; }
+    if (!mounted || generation != _generation) return;
+    setState(() {
+      _dedicatedOwnerChecking = false;
+      _dedicatedOwnerReady = allowed && _ownerContextMatches && _dedicatedBindingMatches;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (!MasterOwnerAccess.current) { return const Scaffold(body: Center(child: Text('Master認証を利用できません。'))); }
-    if (widget.dedicatedMode) return MasterPasswordProtectedPage(title: widget.title, access: widget.dedicatedAccess, child: widget.child);
+    if (!_ownerContextMatches || !MasterOwnerAccess.currentFor(_ownerClient) || (widget.dedicatedMode && !_dedicatedBindingMatches)) { return const Scaffold(body: Center(child: Text('Master認証を利用できません。'))); }
+    if (widget.dedicatedMode) {
+      if (_dedicatedOwnerChecking) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      if (!_dedicatedOwnerReady) return Scaffold(body: Center(child: TextButton(onPressed: _authorizeDedicatedOwner, child: const Text('Master認証を再確認'))));
+      return MasterPasswordProtectedPage(title: widget.title, access: widget.dedicatedAccess, client: _ownerClient, child: widget.child);
+    }
     if (_loading) {
       return Scaffold(
         appBar: AppBar(title: Text(widget.title)),

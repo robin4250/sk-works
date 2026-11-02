@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'master_owner_access.dart';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../auth/panel_seven_page.dart';
 import '../auth/panel_seven_repository.dart';
@@ -13,7 +14,6 @@ import '../companies/company_link_page.dart';
 import '../companies/trade_company_repository.dart';
 import '../help/floating_help_controller.dart';
 import '../../branding/sko_theme.dart';
-import '../../data/supabase_backend.dart';
 import '../../international/language_controller.dart';
 import 'company_module_settings_page.dart';
 import 'company_rate_settings_page.dart';
@@ -30,7 +30,8 @@ import 'master_protected_page.dart';
 import 'master_recovery_contacts_page.dart';
 
 class SettingsPage extends StatefulWidget {
-  const SettingsPage({super.key});
+  const SettingsPage({super.key, this.client});
+  final SupabaseClient? client;
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
@@ -49,13 +50,14 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _floatingHelpEnabled = true;
   bool _appNotificationSoundEnabled = true;
 
-  bool get _usesCloud => SupabaseBackend.isInitialized;
+  SupabaseClient? get _client => widget.client ?? MasterOwnerAccess.defaultClient;
+  bool get _usesCloud => _client != null;
 
   @override
   void initState() {
     super.initState();
-    if (SupabaseBackend.isInitialized) {
-      _masterChanges = SupabaseBackend.client.auth.onAuthStateChange.listen((_) {
+    if (_client != null) {
+      _masterChanges = _client!.auth.onAuthStateChange.listen((_) {
         if (!mounted) { return; }
         setState(() { _isMasterAdmin = false; _canManageCompany = false; _canReadPayrollRates = false; _companyId = null; });
         _load();
@@ -102,18 +104,18 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _loadFromCloud(int generation) async {
-    final session = SupabaseBackend.client.auth.currentSession;
+    final session = _client!.auth.currentSession;
     void check() {
       if (!mounted || generation != _loadGeneration || session == null || session.isExpired ||
-          !identical(session, SupabaseBackend.client.auth.currentSession)) { throw StateError('Session changed'); }
+          !identical(session, _client!.auth.currentSession)) { throw StateError('Session changed'); }
     }
     check();
-    final user = SupabaseBackend.client.auth.currentUser;
+    final user = _client!.auth.currentUser;
     if (user == null) {
       throw StateError('ログイン情報がありません。');
     }
 
-    final memberships = await SupabaseBackend.client
+    final memberships = await _client!
         .from('company_members')
         .select('company_id, role')
         .eq('user_id', user.id)
@@ -128,7 +130,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _canManageCompany = role == 'owner' || role == 'admin';
     _canReadPayrollRates = _canManageCompany || role == 'viewer';
 
-    final masterRepository = MasterDeviceRepository.maybeCreate();
+    final masterRepository = _client == null ? null : MasterDeviceRepository.forClient(_client!);
     if (masterRepository != null) {
       try {
         final master = await masterRepository.isMasterAdmin();
@@ -138,7 +140,7 @@ class _SettingsPageState extends State<SettingsPage> {
         if (generation == _loadGeneration) { _isMasterAdmin = false; }
       }
     }
-    final companies = await SupabaseBackend.client
+    final companies = await _client!
         .from('companies')
         .select('id')
         .eq('id', companyId)
@@ -160,7 +162,7 @@ class _SettingsPageState extends State<SettingsPage> {
       trailing: const Icon(Icons.chevron_right),
       onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
         builder: (_) => PanelSevenPage(
-          repository: PanelSevenRepository(SupabaseBackend.client)),
+          repository: PanelSevenRepository(_client!)),
       )),
     ),
   );
@@ -221,7 +223,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       if (_usesCloud) _accountEntry(),
                       if (_usesCloud)
                         AppReferralPersonalEntry(
-                          repository: AppReferralRepository(SupabaseBackend.client),
+                          repository: AppReferralRepository(_client!),
                         ),
                       Text(
                         SkoLanguageController.tr('表示言語'),
@@ -480,7 +482,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           ),
                           const SizedBox(height: 16),
                         ],
-                        if (_isMasterAdmin && MasterOwnerAccess.current) ...[
+                        if (_isMasterAdmin && MasterOwnerAccess.currentFor(_client)) ...[
                           Card(
                             child: ListTile(
                               leading: const Icon(Icons.history_outlined),
