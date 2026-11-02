@@ -147,6 +147,7 @@ class PayrollConfirmationStatus {
 
 class PayrollConfirmationRepository {
   PayrollConfirmationRepository._(this._client);
+  PayrollConfirmationRepository.forClient(this._client);
   final SupabaseClient _client;
   static PayrollConfirmationRepository? maybeCreate() {
     if (!SupabaseBackend.isInitialized) return null;

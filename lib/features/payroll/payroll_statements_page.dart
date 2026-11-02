@@ -5,6 +5,7 @@ import 'payroll_pending_attendance_panel.dart';
 import 'payroll_condition_warning.dart';
 import 'payroll_finalization_panel.dart';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
 
@@ -208,21 +209,26 @@ class _PayrollStatementsPageState extends State<PayrollStatementsPage> {
 }
 
 class PayrollStatementPreviewPage extends StatefulWidget {
-  const PayrollStatementPreviewPage({super.key, required this.statement, this.allowFinalization = false, this.sourceRepository, this.ownBankGateway});
+  const PayrollStatementPreviewPage({super.key, required this.statement, this.allowFinalization = false, this.sourceRepository, this.ownBankGateway, this.confirmationRepository, this.previewBuilder});
 
   final PayrollStatementRecord statement;
   final bool allowFinalization;
   final PayrollStatementSourceRepository? sourceRepository;
   final OwnDraftBankGateway? ownBankGateway;
+  final PayrollConfirmationRepository? confirmationRepository;
+  @visibleForTesting
+  final Widget Function(PayrollStatementRecord)? previewBuilder;
 
   @override
   State<PayrollStatementPreviewPage> createState() =>
       _PayrollStatementPreviewPageState();
 }
 
+enum _PayrollConfirmationActionFailure { employeeReviewRequired, unknown }
+
 class _PayrollStatementPreviewPageState
     extends State<PayrollStatementPreviewPage> {
-  final _confirmationRepository = PayrollConfirmationRepository.maybeCreate();
+  late final _confirmationRepository = widget.confirmationRepository ?? PayrollConfirmationRepository.maybeCreate();
   PayrollConfirmationStatus? _confirmation;
   PayrollStatementRecord? _refreshedStatement;
   bool _statementUnavailable = false;
@@ -231,6 +237,9 @@ class _PayrollStatementPreviewPageState
   bool _finalizationBusy = false;
   bool _finalizationUncertain = false;
   String? _confirmationError;
+  _PayrollConfirmationActionFailure? _confirmationActionFailure;
+  bool _confirmationActionReconciled = false;
+  int _sourceGeneration = 0;
   final _pdfBytes = PdfBytesCache();
   OwnDraftBankGateway? _bankGateway;
   OwnDraftBankAdmission? _bankAdmission;
@@ -278,6 +287,7 @@ class _PayrollStatementPreviewPageState
   }
 
   Future<PayrollStatementRecord?> _loadConfirmation() async {
+    final generation = ++_sourceGeneration;
     final repository = widget.sourceRepository ?? PayrollStatementSourceRepository.maybeCreate();
     if (repository == null) {
       if (SupabaseBackend.isInitialized) {
@@ -289,7 +299,7 @@ class _PayrollStatementPreviewPageState
     setState(() { _sourceLoading = true; _confirmationError = null; });
     try {
       final source = await repository.load(widget.statement);
-      if (!mounted) return null;
+      if (!mounted || generation != _sourceGeneration) return null;
       setState(() {
         _confirmation = source.confirmation;
         _refreshedStatement = source.statement;
@@ -299,7 +309,7 @@ class _PayrollStatementPreviewPageState
       unawaited(_resolveOwnBank(source.statement));
       return source.statement;
     } catch (error) {
-      if (mounted) {
+      if (mounted && generation == _sourceGeneration) {
         setState(() {
           _confirmation = null;
           _confirmationError = SkoLanguageController.trParams(
@@ -309,7 +319,7 @@ class _PayrollStatementPreviewPageState
       }
       return null;
     } finally {
-      if (mounted) setState(() => _sourceLoading = false);
+      if (mounted && generation == _sourceGeneration) setState(() => _sourceLoading = false);
     }
   }
 
@@ -324,7 +334,13 @@ class _PayrollStatementPreviewPageState
       return;
     }
     if (!mounted) return;
-    setState(() => _confirmationBusy = true);
+    _bankGeneration++; _bankAdmission = null; _pdfBytes.invalidate();
+    setState(() {
+      _confirmationBusy = true;
+      _statementUnavailable = true;
+      _confirmationActionFailure = null;
+      _confirmationActionReconciled = false;
+    });
     try {
       if (cancel) {
         await repository.cancelMonth(widget.statement.periodStart);
@@ -336,14 +352,41 @@ class _PayrollStatementPreviewPageState
       }
       await _loadConfirmation();
     } catch (error) {
+      if (!mounted) return;
+      final failure = error is PostgrestException && error.code == 'P0001' &&
+          error.message == 'check all employee statements before confirmation'
+          ? _PayrollConfirmationActionFailure.employeeReviewRequired
+          : _PayrollConfirmationActionFailure.unknown;
+      // A rejection/unknown ACK never authorizes the previous cached statement.
+      // Read only: do not resend the confirmation mutation automatically.
+      final refreshed = await _loadConfirmation();
       if (mounted) {
-        setState(() => _confirmationError = '$error');
+        setState(() {
+          _confirmationActionFailure = failure;
+          _confirmationActionReconciled = refreshed != null;
+        });
       }
     } finally {
       if (mounted) {
         setState(() => _confirmationBusy = false);
       }
     }
+  }
+
+  String get _confirmationActionMessage {
+    if (_confirmationActionFailure == _PayrollConfirmationActionFailure.employeeReviewRequired) {
+      return SkoLanguageController.isEnglish
+          ? 'Review every employee payslip before confirming the month’s payroll.'
+          : '全従業員の給与明細を確認してから、月の給与を確認してください。';
+    }
+    if (_confirmationActionReconciled) {
+      return SkoLanguageController.isEnglish
+          ? 'The confirmation result could not be verified. The latest payslip and confirmation status have been reloaded. Check the status before trying again.'
+          : '確認操作の結果を確認できませんでした。最新の給与明細と確認状況を再取得しました。再操作する前に確認状況を確認してください。';
+    }
+    return SkoLanguageController.isEnglish
+        ? 'The confirmation result and latest payslip could not be verified. Reload the payslip and check its confirmation status before trying again.'
+        : '確認操作の結果と最新の給与明細を確認できません。明細を再取得し、確認状況を確認してから操作してください。';
   }
 
   PayrollStatementRecord get _pdfStatement {
@@ -408,6 +451,7 @@ class _PayrollStatementPreviewPageState
 
   @override
   void dispose() {
+    _sourceGeneration++;
     _bankGeneration++;_bankAdmission=null;_pdfBytes.invalidate();
     _bankGateway?.removeListener(_bankScopeChanged);
     if(widget.ownBankGateway==null)unawaited(_bankGateway?.close()??Future<void>.value());
@@ -459,6 +503,13 @@ class _PayrollStatementPreviewPageState
               child: PayrollConditionWarning(
                 warnings: payrollConditionWarnings(_pdfStatement.detail),
               ),
+            ),
+          if (_confirmationActionFailure != null)
+            Padding(
+              key: const ValueKey('payroll-confirmation-action-error'),
+              padding: const EdgeInsets.all(8),
+              child: Text(_confirmationActionMessage,
+                style: TextStyle(color: Theme.of(context).colorScheme.error)),
             ),
           if (_confirmationError != null)
             Padding(
@@ -538,7 +589,7 @@ class _PayrollStatementPreviewPageState
                 : statement.detail['tax_calculation'] is Map &&
                     (statement.detail['tax_calculation'] as Map)['blocked'] == true
                 ? Center(child: Text('税計算の条件を確認してください。\n${(statement.detail['tax_calculation'] as Map)['reason']}'))
-                : InteractiveViewer(
+                : widget.previewBuilder?.call(statement) ?? InteractiveViewer(
                     transformationController: _zoomController,
                     minScale: 1,
                     maxScale: 5,
