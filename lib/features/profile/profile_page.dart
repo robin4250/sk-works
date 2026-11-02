@@ -563,6 +563,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
   @override
   Widget build(BuildContext context) {
+    SkoLanguageController.watch(context);
     final data = _data;
 
     return Scaffold(
@@ -577,8 +578,8 @@ class _ProfilePageState extends State<ProfilePage> {
         child: Column(children: [
           ListTile(key: const Key('profile-personal-details-entry'),
             leading: const Icon(Icons.person_outline),
-            title: const Text('個人プロフィール（本人の誕生日・個人口座）'),
-            subtitle: const Text('所属会社や会社書類とは別の本人情報'),
+            title: Text(SkoLanguageController.tr('個人プロフィール（本人の誕生日・個人口座）')),
+            subtitle: Text(SkoLanguageController.tr('所属会社や会社書類とは別の本人情報')),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
               builder: (_) => const PersonalDetailsPage())),

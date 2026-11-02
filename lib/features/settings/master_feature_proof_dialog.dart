@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../international/language_controller.dart';
 
 /// This dialog collects primary credentials for a server proof. Native
 /// biometrics and local unlock state are never submitted as proof.
@@ -89,21 +90,24 @@ class _ProofState extends State<MasterFeatureProofDialog> with WidgetsBindingObs
     _password.clear();_password.dispose();super.dispose();
   }
   @override
-  Widget build(BuildContext context) => PopScope(canPop: !_busy,
+  Widget build(BuildContext context) {
+    SkoLanguageController.watch(context);
+    return PopScope(canPop: !_busy,
     child: AlertDialog(
-      title: Text(widget.title ?? (widget.enabled ? '機能を有効にする' : '機能を一時停止する')),
+      title: Text(SkoLanguageController.tr(widget.title ?? (widget.enabled ? '機能を有効にする' : '機能を一時停止する'))),
       content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Text(widget.description ?? '「${widget.label}」を${widget.enabled ? '有効' : '一時停止'}にします。ログイン用の本パスワードで本人確認してください。'),
+        Text(widget.description != null ? SkoLanguageController.tr(widget.description!) : SkoLanguageController.trParams('「{label}」を{state}にします。ログイン用の本パスワードで本人確認してください。', {'label':SkoLanguageController.tr(widget.label),'state':SkoLanguageController.tr(widget.enabled ? '有効' : '一時停止')})),
         const SizedBox(height: 12),
         TextField(key: const Key('master-feature-password'), controller: _password,
           enabled: !_busy && !_returned, obscureText: true, autocorrect: false, enableSuggestions: false,
-          decoration: const InputDecoration(labelText: 'ログイン用の本パスワード'),
+          decoration: InputDecoration(labelText: SkoLanguageController.tr('ログイン用の本パスワード')),
           onSubmitted: (_) => _verify()),
         if (_busy) const LinearProgressIndicator(),
-        if (_error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(_error!)),
+        if (_error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(SkoLanguageController.tr(_error!))),
       ])),
-      actions: [TextButton(onPressed: _busy || _returned ? null : () => Navigator.pop(context), child: const Text('キャンセル')),
-        FilledButton(onPressed: _busy || _returned ? null : _verify, child: Text(widget.confirmLabel ?? '本人確認して変更'))],
+      actions: [TextButton(onPressed: _busy || _returned ? null : () => Navigator.pop(context), child: Text(SkoLanguageController.tr('キャンセル'))),
+        FilledButton(onPressed: _busy || _returned ? null : _verify, child: Text(SkoLanguageController.tr(widget.confirmLabel ?? '本人確認して変更')))],
     ));
+  }
 }
