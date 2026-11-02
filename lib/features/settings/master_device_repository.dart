@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'master_owner_access.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -104,13 +105,9 @@ class MasterDeviceRepository {
     if (accessToken != null && accessToken.isEmpty) throw StateError('Missing captured session');
     await session?.check();
     accessToken = session?.accessToken ?? accessToken;
-    final request = _client.rpc('current_master_admin_status');
-    final raw = await (accessToken == null ? request : request.setHeader('Authorization', 'Bearer $accessToken'));
+    final allowed = await MasterOwnerAccess.check(_client, accessToken: accessToken);
     await session?.check();
-    if (raw is Map) {
-      return raw['is_master_admin'] == true;
-    }
-    return false;
+    return allowed;
   }
 
   Future<List<MasterDeviceRecord>> loadDevices({MasterDeviceSession? session}) async {

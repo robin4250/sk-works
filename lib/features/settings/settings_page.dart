@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'master_owner_access.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../auth/panel_seven_page.dart';
@@ -38,6 +40,8 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _loading = true;
   bool _canManageCompany = false;
   bool _isMasterAdmin = false;
+  StreamSubscription<dynamic>? _masterChanges;
+  int _loadGeneration = 0;
   String? _companyId;
   bool _canReadPayrollRates = false;
   String? _loadError;
@@ -50,10 +54,31 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   void initState() {
     super.initState();
+    if (SupabaseBackend.isInitialized) {
+      _masterChanges = SupabaseBackend.client.auth.onAuthStateChange.listen((_) {
+        if (!mounted) { return; }
+        setState(() { _isMasterAdmin = false; _canManageCompany = false; _canReadPayrollRates = false; _companyId = null; });
+        _load();
+      }, onError: (Object _) {
+        _loadGeneration++;
+        if (mounted) { setState(() {
+          _isMasterAdmin = false;
+          _canManageCompany = false;
+          _canReadPayrollRates = false;
+          _companyId = null;
+          _loading = false;
+          _loadError = 'ログイン状態を確認できません。画面を開き直してください。';
+        }); }
+      });
+    }
     _load();
   }
 
+  @override
+  void dispose() { _loadGeneration++; _masterChanges?.cancel(); super.dispose(); }
+
   Future<void> _load() async {
+    final generation = ++_loadGeneration;
     setState(() {
       _loading = true;
       _loadError = null;
@@ -66,17 +91,23 @@ class _SettingsPageState extends State<SettingsPage> {
       _appNotificationSoundEnabled =
           personalPrefs.getBool('sko_app_notification_sound_enabled') ?? true;
       if (_usesCloud) {
-        await _loadFromCloud();
+        await _loadFromCloud(generation);
       }
     } catch (error) {
-      _loadError = '設定の読み込みに失敗しました: $error';
+      if (generation == _loadGeneration) { _loadError = '設定の読み込みに失敗しました: $error'; }
     }
 
-    if (!mounted) return;
+    if (!mounted || generation != _loadGeneration) { return; }
     setState(() => _loading = false);
   }
 
-  Future<void> _loadFromCloud() async {
+  Future<void> _loadFromCloud(int generation) async {
+    final session = SupabaseBackend.client.auth.currentSession;
+    void check() {
+      if (!mounted || generation != _loadGeneration || session == null || session.isExpired ||
+          !identical(session, SupabaseBackend.client.auth.currentSession)) { throw StateError('Session changed'); }
+    }
+    check();
     final user = SupabaseBackend.client.auth.currentUser;
     if (user == null) {
       throw StateError('ログイン情報がありません。');
@@ -87,6 +118,7 @@ class _SettingsPageState extends State<SettingsPage> {
         .select('company_id, role')
         .eq('user_id', user.id)
         .limit(1);
+    check();
     if (memberships.isEmpty) {
       throw StateError('会社への所属情報がありません。');
     }
@@ -99,9 +131,11 @@ class _SettingsPageState extends State<SettingsPage> {
     final masterRepository = MasterDeviceRepository.maybeCreate();
     if (masterRepository != null) {
       try {
-        _isMasterAdmin = await masterRepository.isMasterAdmin();
+        final master = await masterRepository.isMasterAdmin();
+        check();
+        _isMasterAdmin = master;
       } catch (_) {
-        _isMasterAdmin = false;
+        if (generation == _loadGeneration) { _isMasterAdmin = false; }
       }
     }
     final companies = await SupabaseBackend.client
@@ -109,6 +143,7 @@ class _SettingsPageState extends State<SettingsPage> {
         .select('id')
         .eq('id', companyId)
         .limit(1);
+    check();
     if (companies.isEmpty) {
       throw StateError('会社情報が見つかりません。');
     }
@@ -445,7 +480,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           ),
                           const SizedBox(height: 16),
                         ],
-                        if (_isMasterAdmin) ...[
+                        if (_isMasterAdmin && MasterOwnerAccess.current) ...[
                           Card(
                             child: ListTile(
                               leading: const Icon(Icons.history_outlined),

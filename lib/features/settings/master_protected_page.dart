@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'master_owner_access.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -62,6 +63,7 @@ class _MasterProtectedPageState extends State<MasterProtectedPage>
   String? _loadedActor;
   String? _loadedToken;
   StreamSubscription<void>? _authChanges;
+  StreamSubscription<dynamic>? _ownerChanges;
   int _generation = 0;
   bool _nativePrompt = false;
   Completer<bool>? _resume;
@@ -82,6 +84,9 @@ class _MasterProtectedPageState extends State<MasterProtectedPage>
     super.initState();
     _deviceRepository = widget.legacyDeviceRepository ?? MasterDeviceRepository.maybeCreate();
     _authRepository = widget.legacyAuthRepository ?? SecureOnboardingRepository.maybeCreate();
+    if (SupabaseBackend.isInitialized) {
+      _ownerChanges = SupabaseBackend.client.auth.onAuthStateChange.listen((_) => _lock(), onError: (Object _) => _lock());
+    }
     if (widget.dedicatedMode) return;
     _lifecycle = WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed;
     WidgetsBinding.instance.addObserver(this);
@@ -293,6 +298,7 @@ class _MasterProtectedPageState extends State<MasterProtectedPage>
     _generation++; _clearCaptured?.call();
     final wait = _resume; if (wait != null && !wait.isCompleted) wait.complete(false);
     _authChanges?.cancel();
+    _ownerChanges?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _expiryTimer?.cancel();
     _password.dispose();
@@ -301,6 +307,7 @@ class _MasterProtectedPageState extends State<MasterProtectedPage>
 
   @override
   Widget build(BuildContext context) {
+    if (!MasterOwnerAccess.current) { return const Scaffold(body: Center(child: Text('Master認証を利用できません。'))); }
     if (widget.dedicatedMode) return MasterPasswordProtectedPage(title: widget.title, access: widget.dedicatedAccess, child: widget.child);
     if (_loading) {
       return Scaffold(

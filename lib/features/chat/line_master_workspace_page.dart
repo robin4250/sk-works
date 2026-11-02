@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'line_release_access.dart';
+import '../settings/master_owner_access.dart';
 import 'package:flutter/material.dart';
 
 import '../../data/supabase_backend.dart';
@@ -51,6 +53,8 @@ class _LineMasterWorkspacePageContent extends StatefulWidget {
 
 class _LineMasterWorkspacePageState extends State<_LineMasterWorkspacePageContent> {
   bool _loading = true, _master = false;
+  StreamSubscription<dynamic>? _ownerChanges;
+  int _masterGeneration = 0;
   String? _error;
 
   String _tr(String text) => SkoLanguageController.tr(text);
@@ -58,8 +62,23 @@ class _LineMasterWorkspacePageState extends State<_LineMasterWorkspacePageConten
   @override
   void initState() {
     super.initState();
+    if (SupabaseBackend.isInitialized) { _ownerChanges = SupabaseBackend.client.auth.onAuthStateChange.listen((_) {
+      if (!mounted) { return; }
+      setState(() => _master = false);
+      _load();
+    }, onError: (Object _) {
+      _masterGeneration++;
+      if (mounted) { setState(() {
+        _master = false;
+        _loading = false;
+        _error = 'ログイン状態を確認できません。画面を開き直してください。';
+      }); }
+    }); }
     _load();
   }
+
+  @override
+  void dispose() { _masterGeneration++; _ownerChanges?.cancel(); super.dispose(); }
 
   Future<bool> _check() async {
     if (widget.masterCheck != null) return widget.masterCheck!();
@@ -67,11 +86,12 @@ class _LineMasterWorkspacePageState extends State<_LineMasterWorkspacePageConten
     final client = SupabaseBackend.client;
     final actor = client.auth.currentUser?.id;
     if (actor == null) return false;
-    final master = await client.rpc('is_current_user_master_admin');
+    final master = await MasterOwnerAccess.check(client);
     return client.auth.currentUser?.id == actor && master == true;
   }
 
   Future<void> _load() async {
+    final generation = ++_masterGeneration;
     setState(() {
       _loading = true;
       _master = false;
@@ -79,17 +99,17 @@ class _LineMasterWorkspacePageState extends State<_LineMasterWorkspacePageConten
     });
     try {
       final master = await _check();
-      if (!mounted) return;
+      if (!mounted || generation != _masterGeneration) { return; }
       setState(() {
         _master = master;
         _error = master ? null : 'マスター権限でログインしてください。';
       });
     } catch (_) {
-      if (mounted) {
+      if (mounted && generation == _masterGeneration) {
         setState(() => _error = 'マスター権限と接続を確認してください。');
       }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && generation == _masterGeneration) { setState(() => _loading = false); }
     }
   }
 

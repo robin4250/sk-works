@@ -14,11 +14,13 @@ class AuthenticatedNavigationBoundary extends StatefulWidget {
     super.key,
     required this.child,
     @visibleForTesting this.initialSession,
+    @visibleForTesting this.currentSession,
     @visibleForTesting this.authChanges,
     @visibleForTesting this.mutationGateway,
   });
   final Widget child;
   final Session? initialSession;
+  final Session? Function()? currentSession;
   final Stream<AuthState>? authChanges;
   final AppAuthMutationGateway? mutationGateway;
 
@@ -41,46 +43,69 @@ class _AuthenticatedNavigationBoundaryState
   @override
   void initState() {
     super.initState();
-    _gateway = widget.mutationGateway ?? (SupabaseBackend.isInitialized
-        ? AppAuthMutationGateway.forClient(SupabaseBackend.client) : null);
+    _gateway =
+        widget.mutationGateway ??
+        (SupabaseBackend.isInitialized
+            ? AppAuthMutationGateway.forClient(SupabaseBackend.client)
+            : null);
     final signal = _gateway?.logoutQuarantine;
     if (signal != null) {
       _logoutState = signal.state;
-      _logoutSubscription = signal.changes.listen(_logoutChanged,
-          onError: (Object _) => _logoutChanged(AppLogoutQuarantineState.failed),
-          onDone: () => _logoutChanged(AppLogoutQuarantineState.failed));
+      _logoutSubscription = signal.changes.listen(
+        _logoutChanged,
+        onError: (Object _) => _logoutChanged(AppLogoutQuarantineState.failed),
+        onDone: () => _logoutChanged(AppLogoutQuarantineState.failed),
+      );
     }
     if (!SupabaseBackend.isInitialized && widget.authChanges == null) return;
     try {
-      _binding = AppleSessionNavigationBinding.fromSession(widget.initialSession ??
-          (SupabaseBackend.isInitialized
-              ? SupabaseBackend.client.auth.currentSession : null));
-    } catch (_) { _failed = true; }
-    final changes = widget.authChanges ??
-        SupabaseBackend.client.auth.onAuthStateChange;
-    _subscription = changes.listen((event) {
-      if (!mounted) return;
-      AppleSessionNavigationBinding? binding;
-      try {
-        binding = event.event == AuthChangeEvent.signedOut
-            ? null : AppleSessionNavigationBinding.fromSession(event.session);
-      }
-      catch (_) { _fail(); return; }
-      if (binding == _binding && !_failed) return;
-      final previous = _binding;
-      _binding = binding;
-      // Only the first valid SDK sign-in belongs to the pending OTP callback.
-      if (previous == null && binding != null &&
-          event.event == AuthChangeEvent.signedIn && !_failed && !_resetting) {
-        return;
-      }
-      _reset();
-    }, onError: (Object error) => _fail(), onDone: _fail);
+      _binding = AppleSessionNavigationBinding.fromSession(
+        widget.initialSession ??
+            (SupabaseBackend.isInitialized
+                ? SupabaseBackend.client.auth.currentSession
+                : null),
+      );
+    } catch (_) {
+      _failed = true;
+    }
+    final changes =
+        widget.authChanges ?? SupabaseBackend.client.auth.onAuthStateChange;
+    _subscription = changes.listen(
+      (event) {
+        if (!mounted) return;
+        AppleSessionNavigationBinding? binding;
+        try {
+          binding = event.event == AuthChangeEvent.signedOut
+              ? null
+              : AppleSessionNavigationBinding.fromSession(event.session);
+        } catch (_) {
+          _fail();
+          return;
+        }
+        if (binding == _binding && !_failed) return;
+        final previous = _binding;
+        _binding = binding;
+        // Only the first valid SDK sign-in belongs to the pending OTP callback.
+        if (previous == null &&
+            binding != null &&
+            event.event == AuthChangeEvent.signedIn &&
+            !_failed &&
+            !_resetting) {
+          return;
+        }
+        _reset();
+      },
+      onError: (Object error) => _fail(),
+      onDone: _fail,
+    );
   }
 
   void _logoutChanged(AppLogoutQuarantineState state) {
     if (!mounted) return;
-    setState(() { _logoutState = state; _epoch++; });
+    setState(() {
+      _logoutState = state;
+      _epoch++;
+    });
     if (state == AppLogoutQuarantineState.clear) {
       // Keep the old Navigator absent for a frame before reusing its global key.
       setState(() => _resetting = true);
@@ -91,8 +116,11 @@ class _AuthenticatedNavigationBoundaryState
   }
 
   Future<void> _retryLogout() async {
-    try { await _gateway?.signOut(); }
-    catch (_) { /* The signal keeps the safe retry screen blocked. */ }
+    try {
+      await _gateway?.signOut();
+    } catch (_) {
+      /* The signal keeps the safe retry screen blocked. */
+    }
   }
 
   void _fail() {
@@ -115,6 +143,36 @@ class _AuthenticatedNavigationBoundaryState
     });
   }
 
+  // Observe only an established lifetime. Initial null -> first signedIn keeps
+  // the existing pending OTP completion exception. A getter in tests supplies
+  // UI state, never server authentication evidence.
+  void _observeEstablishedSessionBeforeBuild() {
+    if (_binding == null || _failed || _resetting) return;
+    final observe =
+        widget.currentSession ??
+        (widget.authChanges == null && SupabaseBackend.isInitialized
+            ? () => SupabaseBackend.client.auth.currentSession
+            : null);
+    if (observe == null) return;
+    AppleSessionNavigationBinding? current;
+    try {
+      current = AppleSessionNavigationBinding.fromSession(observe());
+    } catch (_) {
+      _failed = true;
+      _epoch++;
+      return;
+    }
+    if (current == _binding) return;
+    // Latch before returning the neutral frame. Do not setState during build.
+    // Even a silent return to the old SID cannot revive the removed Navigator.
+    _binding = current;
+    _epoch++;
+    _resetting = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() => _resetting = false);
+    });
+  }
+
   @override
   void dispose() {
     _subscription?.cancel();
@@ -123,29 +181,44 @@ class _AuthenticatedNavigationBoundaryState
   }
 
   @override
-  Widget build(BuildContext context) => _logoutState != AppLogoutQuarantineState.clear
-      ? Directionality(
-          textDirection: TextDirection.ltr,
-          child: Material(color: Colors.white, child: Center(child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(_logoutState == AppLogoutQuarantineState.failed
-                  ? 'ログアウト状態を確認できません。'
-                  : 'ログアウト状態を確認しています。'),
-              if (_logoutState == AppLogoutQuarantineState.failed)
-                TextButton(onPressed: _retryLogout, child: const Text('ログアウトを再試行')),
-            ],
-          ))),
-        )
-      : _failed || _resetting
-      ? Directionality(
-          textDirection: TextDirection.ltr,
-          child: ColoredBox(
-            color: Colors.white,
-            child: Center(child: Text(_failed
-                ? 'ログイン状態を確認できません。アプリを開き直してください。'
-                : 'ログイン状態を確認しています。')),
-          ),
-        )
-      : KeyedSubtree(key: ValueKey(_epoch), child: widget.child);
+  Widget build(BuildContext context) {
+    _observeEstablishedSessionBeforeBuild();
+    return _logoutState != AppLogoutQuarantineState.clear
+        ? Directionality(
+            textDirection: TextDirection.ltr,
+            child: Material(
+              color: Colors.white,
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _logoutState == AppLogoutQuarantineState.failed
+                          ? 'ログアウト状態を確認できません。'
+                          : 'ログアウト状態を確認しています。',
+                    ),
+                    if (_logoutState == AppLogoutQuarantineState.failed)
+                      TextButton(
+                        onPressed: _retryLogout,
+                        child: const Text('ログアウトを再試行'),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          )
+        : _failed || _resetting
+        ? Directionality(
+            textDirection: TextDirection.ltr,
+            child: ColoredBox(
+              color: Colors.white,
+              child: Center(
+                child: Text(
+                  _failed ? 'ログイン状態を確認できません。アプリを開き直してください。' : 'ログイン状態を確認しています。',
+                ),
+              ),
+            ),
+          )
+        : KeyedSubtree(key: ValueKey(_epoch), child: widget.child);
+  }
 }

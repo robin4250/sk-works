@@ -2215,8 +2215,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 builder: (context) {
                   final pageIndexes = <int>[
                     0,
-                    if (!_isViewer) 1,
-                    if (!_isViewer) 2,
+                    1,
+                    2,
                     3,
                     4,
                   ];
@@ -2226,14 +2226,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                       selectedIcon: const Icon(Icons.home),
                       label: SkoLanguageController.tr('ホーム'),
                     ),
-                    if (!_isViewer)
-                      NavigationDestination(
+                    NavigationDestination(
                         icon: const Icon(Icons.calendar_month_outlined),
                         selectedIcon: const Icon(Icons.calendar_month),
                         label: SkoLanguageController.tr('出勤表'),
                       ),
-                    if (!_isViewer)
-                      NavigationDestination(
+                    NavigationDestination(
                         icon: const Icon(Icons.business_outlined),
                         selectedIcon: const Icon(Icons.business),
                         label: SkoLanguageController.tr('現場'),
