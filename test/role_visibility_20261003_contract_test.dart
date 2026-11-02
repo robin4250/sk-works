@@ -22,13 +22,24 @@ void main() {
     expect(app, isNot(contains("if (!_identity.can('can_manage_attendance'))")));
   });
 
-  test('viewer footer hides attendance and sites but keeps chat', () {
+  test('all roles retain personal attendance and sites footer while module and management guards remain', () {
     final app = File('lib/app_v2.dart').readAsStringSync();
-
-    expect(app, contains("bool get _isViewer => _identity.role == 'viewer'"));
-    expect(app, contains('if (!_isViewer) 1'));
-    expect(app, contains('if (!_isViewer) 2'));
-    expect(app, contains("label: SkoLanguageController.tr('チャット')"));
+    final compact = app.replaceAll(RegExp(r'\s+'), '');
+    final footerStart = app.indexOf('final pageIndexes = <int>[');
+    final footerEnd = app.indexOf('final selectedPosition', footerStart);
+    expect(footerStart, greaterThanOrEqualTo(0));
+    expect(footerEnd, greaterThan(footerStart));
+    final footer = app.substring(footerStart, footerEnd).replaceAll(RegExp(r'\s+'), '').replaceAll(',]', ']');
+    expect(footer, contains('finalpageIndexes=<int>[0,1,2,3,4];'));
+    expect(footer, isNot(contains('_isViewer')));
+    for (final label in ['出勤表', '現場', 'チャット']) {
+      expect(footer, contains("label:SkoLanguageController.tr('$label')"));
+    }
+    expect(compact, contains("_moduleEnabled('attendance')?WorkerAttendanceSheetPage(isActive:_selectedIndex==1):_ModuleDisabledPage(label:SkoLanguageController.tr('出勤表'))"));
+    expect(compact, contains("_moduleEnabled('sites')?constSiteCloudPage():_ModuleDisabledPage(label:SkoLanguageController.tr('現場'))"));
+    expect(compact, contains("_identity.can('can_manage_attendance')?constAttendanceCloudPage():constWorkerAttendanceSheetPage()"));
+    expect(compact, contains("if(_moduleEnabled('sites')&&_identity.can('can_view_admin_site_data'))"));
+    expect(compact, contains('ChatCloudPage(viewerOnlyFriends:_isViewer'));
   });
 
   test('viewer chat is limited to registered direct friends', () {

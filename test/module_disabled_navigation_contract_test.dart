@@ -39,8 +39,12 @@ void main() {
     expect(normalized, contains("if (key == 'company_modules')"));
     expect(normalized, isNot(contains('page = const CompanyModuleSettingsPage();')));
     final settings = File('lib/features/settings/settings_page.dart').readAsStringSync();
-    final masterSection = settings.substring(settings.indexOf('if (_isMasterAdmin) ...['));
-    expect(masterSection, contains('child: CompanyModuleSettingsPage()'));
+    final compactSettings = settings.replaceAll(RegExp(r'\s+'), '');
+    const ownerGate = 'if(_isMasterAdmin&&MasterOwnerAccess.currentFor(_client))...[';
+    final masterStart = compactSettings.indexOf(ownerGate);
+    expect(masterStart, greaterThanOrEqualTo(0));
+    final masterSection = compactSettings.substring(masterStart);
+    expect(masterSection, contains('child:CompanyModuleSettingsPage()'));
     expect(masterSection, contains('MasterProtectedPage('));
     final repository = File('lib/features/settings/company_module_settings_repository.dart').readAsStringSync();
     expect(repository, isNot(contains('.delete(')));
