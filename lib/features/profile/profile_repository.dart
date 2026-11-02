@@ -39,6 +39,8 @@ class ProfileRepository {
   ProfileRepository.forClient(this._client);
 
   final SupabaseClient _client;
+  Session? get currentSession => _client.auth.currentSession;
+  Stream<AuthState> get authChanges => _client.auth.onAuthStateChange;
   static const _bucket = 'profile-photos';
 
   static ProfileRepository? maybeCreate() {
@@ -56,80 +58,108 @@ class ProfileRepository {
     if (session == null) throw StateError('ログインが必要です。');
     final owner = AppAuthMutationGateway.forClient(_client);
     final epoch = await owner.externalFlowAdmission();
-    final guard = SecondaryResetSessionGuard(currentSession: () => _client.auth.currentSession,
-      changes: _client.auth.onAuthStateChange);
+    final guard = SecondaryResetSessionGuard(
+      currentSession: () => _client.auth.currentSession,
+      changes: _client.auth.onAuthStateChange,
+    );
     Future<void> check() async {
-      if (epoch == null || !owner.isExternalFlowCurrent(epoch) ||
-          SecondaryResetSessionGuard.identityOf(session) != SecondaryResetSessionGuard.identityOf(_client.auth.currentSession)) {
+      if (epoch == null ||
+          !owner.isExternalFlowCurrent(epoch) ||
+          SecondaryResetSessionGuard.identityOf(session) !=
+              SecondaryResetSessionGuard.identityOf(
+                _client.auth.currentSession,
+              )) {
         throw StateError('ログイン状態が変わりました。画面を開き直してください。');
       }
       await guard.checkAfterQueuedEvents();
     }
+
     try {
-    await check();
-    String companyName = '', companyId = '', role = 'viewer';
-    var companyAvailable = true;
-    try {
-      final memberships = await _client.from('company_members').select('company_id, role')
-          .eq('user_id', user.id).limit(1)
-          .setHeader('Authorization', 'Bearer ${session.accessToken}');
       await check();
-      if (memberships.isNotEmpty) {
-        companyId = memberships.first['company_id'] as String;
-        role = memberships.first['role']?.toString() ?? 'viewer';
-        final companies = await _client.from('companies').select('name').eq('id', companyId).limit(1)
+      String companyName = '', companyId = '', role = 'viewer';
+      var companyAvailable = true;
+      try {
+        final memberships = await _client
+            .from('company_members')
+            .select('company_id, role')
+            .eq('user_id', user.id)
+            .limit(1)
             .setHeader('Authorization', 'Bearer ${session.accessToken}');
         await check();
-        if (companies.isNotEmpty) companyName = companies.first['name']?.toString() ?? '';
-      }
-    } catch (_) {
-      // Company availability never determines the existence of personal data.
-      await check();
-      companyAvailable = false; companyName = ''; companyId = ''; role = 'viewer';
-    }
-
-    final profiles = await _client
-        .from('user_profiles')
-        .select('display_name, phone, avatar_storage_path')
-        .eq('user_id', user.id)
-        .limit(1).setHeader('Authorization', 'Bearer ${session.accessToken}');
-    await check();
-
-    final profile = profiles.isEmpty
-        ? <String, dynamic>{}
-        : Map<String, dynamic>.from(profiles.first);
-    final avatarPath = profile['avatar_storage_path']?.toString();
-
-    String? avatarUrl;
-    if (avatarPath != null && avatarPath.isNotEmpty) {
-      try {
-        avatarUrl =
-            await _client.storage.from(_bucket).createSignedUrl(avatarPath, 3600);
+        if (memberships.isNotEmpty) {
+          companyId = memberships.first['company_id'] as String;
+          role = memberships.first['role']?.toString() ?? 'viewer';
+          final companies = await _client
+              .from('companies')
+              .select('name')
+              .eq('id', companyId)
+              .limit(1)
+              .setHeader('Authorization', 'Bearer ${session.accessToken}');
+          await check();
+          if (companies.isNotEmpty) {
+            companyName = companies.first['name']?.toString() ?? '';
+          }
+        }
       } catch (_) {
-        avatarUrl = null;
+        // Company availability never determines the existence of personal data.
+        await check();
+        companyAvailable = false;
+        companyName = '';
+        companyId = '';
+        role = 'viewer';
       }
+
+      final profiles = await _client
+          .from('user_profiles')
+          .select('display_name, phone, avatar_storage_path')
+          .eq('user_id', user.id)
+          .limit(1)
+          .setHeader('Authorization', 'Bearer ${session.accessToken}');
+      await check();
+
+      final profile = profiles.isEmpty
+          ? <String, dynamic>{}
+          : Map<String, dynamic>.from(profiles.first);
+      final avatarPath = profile['avatar_storage_path']?.toString();
+
+      String? avatarUrl;
+      if (avatarPath != null && avatarPath.isNotEmpty) {
+        try {
+          avatarUrl = await _client.storage
+              .from(_bucket)
+              .createSignedUrl(avatarPath, 3600);
+        } catch (_) {
+          avatarUrl = null;
+        }
+      }
+
+      final personalSkoId =
+          (await _client
+                  .rpc('ensure_personal_sko_id')
+                  .setHeader('Authorization', 'Bearer ${session.accessToken}'))
+              ?.toString() ??
+          '';
+      await check();
+
+      return ProfileData(
+        displayName:
+            profile['display_name']?.toString() ??
+            user.phone ??
+            user.email ??
+            'ユーザー',
+        phone: profile['phone']?.toString() ?? user.phone ?? '',
+        email: user.email ?? '',
+        companyAvailable: companyAvailable,
+        companyName: companyName,
+        companyId: companyId,
+        role: role,
+        personalSkoId: personalSkoId,
+        avatarPath: avatarPath,
+        avatarUrl: avatarUrl,
+      );
+    } finally {
+      await guard.close();
     }
-
-    final personalSkoId =
-        (await _client.rpc('ensure_personal_sko_id').setHeader('Authorization', 'Bearer ${session.accessToken}'))?.toString() ?? '';
-    await check();
-
-    return ProfileData(
-      displayName: profile['display_name']?.toString() ??
-          user.phone ??
-          user.email ??
-          'ユーザー',
-      phone: profile['phone']?.toString() ?? user.phone ?? '',
-      email: user.email ?? '',
-      companyAvailable: companyAvailable,
-      companyName: companyName,
-      companyId: companyId,
-      role: role,
-      personalSkoId: personalSkoId,
-      avatarPath: avatarPath,
-      avatarUrl: avatarUrl,
-    );
-    } finally { await guard.close(); }
   }
 
   Future<Map<String, dynamic>?> loadPersonnelProfile() async {
@@ -144,10 +174,7 @@ class ProfileRepository {
   }) async {
     final raw = await _client.rpc(
       'save_worker_personnel_profile',
-      params: {
-        'p_worker_id': workerId,
-        'p_payload': payload,
-      },
+      params: {'p_worker_id': workerId, 'p_payload': payload},
     );
     return raw is Map
         ? Map<String, dynamic>.from(raw)
@@ -172,11 +199,12 @@ class ProfileRepository {
     if (id.isEmpty) throw StateError('SKO IDを変更できませんでした。');
     return id;
   }
+
   Future<String> requestPhoneChange(String rawPhone) async {
     final normalized = _normalizeJapanesePhone(rawPhone);
-    await AppAuthMutationGateway.forClient(_client).updateUser(
-      UserAttributes(phone: normalized),
-    );
+    await AppAuthMutationGateway.forClient(
+      _client,
+    ).updateUser(UserAttributes(phone: normalized));
     return normalized;
   }
 
@@ -240,7 +268,9 @@ class ProfileRepository {
     final path =
         '${user.id}/avatar-${DateTime.now().microsecondsSinceEpoch}$extension';
 
-    await _client.storage.from(_bucket).uploadBinary(
+    await _client.storage
+        .from(_bucket)
+        .uploadBinary(
           path,
           bytes,
           fileOptions: FileOptions(upsert: false, contentType: format.mime),

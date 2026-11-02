@@ -13,7 +13,9 @@ void main() {
     expect(app, contains('const OwnQualificationRegistrationPage()'));
     expect(app, contains('const QualificationCloudPage()'));
     expect(cloud, contains('Future<void> _addQualification({String? initialMasterId})'));
-    expect(cloud, contains("initialMasterId: row['qualification_master_id']?.toString()"));
+    expect(cloud, matches(RegExp(
+      r"initialMasterId\s*:\s*row\['qualification_master_id'\]\s*\?\.toString\(\)\s*,?\s*\)",
+    )));
     expect(cloud, contains('insertWorkerQualification('));
     expect(cloud, contains("title: const Text('従業員資格')"));
     expect(cloud, contains("hintText: '従業員名で検索'"));

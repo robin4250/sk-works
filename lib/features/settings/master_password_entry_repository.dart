@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'master_credential_repository.dart';
 
 abstract class MasterPasswordEntryAccess {
+  SupabaseClient? get ownerClient;
   MasterCredentialBinding? get binding;
   Stream<void> get changes;
   MasterCredentialAccess get settingsAccess;
@@ -20,6 +21,7 @@ class MasterPasswordEntryRepository implements MasterPasswordEntryAccess {
   MasterPasswordEntryRepository(this.client, {required String deviceKey})
       : _settings = MasterCredentialRepository(client, deviceKey: deviceKey);
   final SupabaseClient client;
+  @override SupabaseClient get ownerClient => client;
   final MasterCredentialRepository _settings;
   final _local = LocalAuthentication();
   @override MasterCredentialBinding? get binding => _settings.binding;

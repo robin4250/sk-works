@@ -1,6 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../international/language_controller.dart';
+
+import '../auth/secondary_reset_session_guard.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../people/worker_document_photo_editor.dart';
@@ -11,16 +14,24 @@ import 'own_qualification_photo_submission_repository.dart';
 import 'qualification_cloud_repository.dart';
 import '../shared/resource_registration_card.dart';
 
-
 class OwnQualificationRegistrationPage extends StatefulWidget {
-  const OwnQualificationRegistrationPage({super.key, this.repository, this.photoRepository, this.pickAttachments});
+  const OwnQualificationRegistrationPage({
+    super.key,
+    this.repository,
+    this.photoRepository,
+    this.pickAttachments,
+  });
 
   @visibleForTesting
   final QualificationCloudRepository? repository;
   @visibleForTesting
   final OwnQualificationPhotoSubmissionRepository? photoRepository;
   @visibleForTesting
-  final Future<List<WorkerDocumentPhoto>?> Function(BuildContext context, List<WorkerDocumentPhoto> current)? pickAttachments;
+  final Future<List<WorkerDocumentPhoto>?> Function(
+    BuildContext context,
+    List<WorkerDocumentPhoto> current,
+  )?
+  pickAttachments;
 
   @override
   State<OwnQualificationRegistrationPage> createState() =>
@@ -29,9 +40,14 @@ class OwnQualificationRegistrationPage extends StatefulWidget {
 
 class _OwnQualificationRegistrationPageState
     extends State<OwnQualificationRegistrationPage> {
-  late final _repository = widget.repository ?? QualificationCloudRepository.maybeCreate();
-  late final _photoRepository = widget.photoRepository ??
-      OwnQualificationPhotoSubmissionRepository.maybeCreate();
+  late final _repository =
+      widget.repository ?? QualificationCloudRepository.maybeCreate();
+  // An injected main repository must not silently mix with the global client.
+  late final _photoRepository =
+      widget.photoRepository ??
+      (widget.repository == null
+          ? OwnQualificationPhotoSubmissionRepository.maybeCreate()
+          : null);
   OwnQualificationPhotoCapability _photoCapability =
       OwnQualificationPhotoCapability.unavailable;
   Map<String, dynamic>? _pendingPhotos;
@@ -52,20 +68,102 @@ class _OwnQualificationRegistrationPageState
   bool _registrationDialogOpen = false;
   String? _error;
 
+  SecondaryResetSessionGuard? _pageSessionGuard;
+  bool _pageSessionInvalidated = false;
+
+  bool _pageSessionObservedInvalid = false;
+
+  bool get _pageSessionCurrent {
+    if (_pageSessionInvalidated || _pageSessionObservedInvalid) return false;
+    if (_pageSessionGuard?.isCurrent != true) {
+      // A build/request that observes a silent session change retires this State.
+      // Even a later silent return to the original SID must not reveal old rows.
+      _pageSessionObservedInvalid = true;
+      return false;
+    }
+    return true;
+  }
+
+  void _bindPageSession() {
+    final repository = _repository;
+    if (repository == null) {
+      _pageSessionInvalidated = true;
+      return;
+    }
+    try {
+      _pageSessionGuard = SecondaryResetSessionGuard(
+        currentSession: () => repository.currentSession,
+        changes: repository.attachmentAuthChanges,
+        onInvalidated: _invalidatePageSession,
+      );
+    } catch (_) {
+      _pageSessionInvalidated = true;
+    }
+  }
+
+  void _invalidatePageSession() {
+    if (!mounted || _pageSessionInvalidated) return;
+    setState(() {
+      _pageSessionInvalidated = true;
+      _loadGeneration++;
+      _galleryGeneration++;
+      _galleryChanges.value++;
+      _galleryLease = null;
+      _worker = null;
+      _masters = const [];
+      _qualifications = const [];
+      _photoSubmissions = const [];
+      _pendingPhotos = null;
+      _photoError = null;
+      _photoCapability = OwnQualificationPhotoCapability.unavailable;
+      _searchController.clear();
+      _query = '';
+      _loading = false;
+      _error = null;
+    });
+  }
+
+  Widget _sessionChangedPage() => Scaffold(
+    appBar: AppBar(
+      title: Text(
+        SkoLanguageController.isEnglish ? 'Session changed' : 'ログイン状態が変わりました',
+      ),
+    ),
+    body: Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text(
+          SkoLanguageController.isEnglish
+              ? 'Close this page and reopen it from your current account.'
+              : 'この画面を閉じて、現在のアカウントから開き直してください。',
+          textAlign: TextAlign.center,
+        ),
+      ),
+    ),
+  );
+
   @override
   void initState() {
     super.initState();
-    _load();
+    _bindPageSession();
+    if (_pageSessionCurrent) _load();
   }
 
   @override
   void dispose() {
-    _galleryGeneration++; _galleryChanges.value++; _galleryChanges.dispose();
+    unawaited(_pageSessionGuard?.close());
+    _galleryGeneration++;
+    _galleryChanges.value++;
+    _galleryChanges.dispose();
     _searchController.dispose();
     super.dispose();
   }
 
   Future<void> _load() async {
+    if (!_pageSessionCurrent) {
+      _invalidatePageSession();
+      return;
+    }
     final galleryGeneration = ++_galleryGeneration;
     _galleryChanges.value++;
     final generation = ++_loadGeneration;
@@ -85,17 +183,24 @@ class _OwnQualificationRegistrationPageState
     final actor = repository.currentUserId;
     try {
       bool Function()? galleryLease;
-      try { galleryLease = await repository.captureAttachmentReadScope(); } catch (_) { galleryLease = null; }
+      try {
+        galleryLease = await repository.captureAttachmentReadScope();
+      } catch (_) {
+        galleryLease = null;
+      }
 
       final data = await repository.loadOwnQualificationWorkspace();
-      if (!mounted ||
+      if (!_pageSessionCurrent ||
+          !mounted ||
           generation != _loadGeneration ||
           actor == null ||
           actor != repository.currentUserId) {
         return;
       }
       setState(() {
-        _galleryLease = galleryGeneration == _galleryGeneration ? galleryLease : null;
+        _galleryLease = galleryGeneration == _galleryGeneration
+            ? galleryLease
+            : null;
         _worker = Map<String, dynamic>.from(data['worker'] as Map);
         _masters = List<Map<String, dynamic>>.from(data['masters'] as List);
         _qualifications = List<Map<String, dynamic>>.from(
@@ -105,7 +210,8 @@ class _OwnQualificationRegistrationPageState
       });
       await _loadPhotoWorkspace(actor, generation);
     } catch (error) {
-      if (!mounted ||
+      if (!_pageSessionCurrent ||
+          !mounted ||
           generation != _loadGeneration ||
           actor != repository.currentUserId) {
         return;
@@ -183,8 +289,8 @@ class _OwnQualificationRegistrationPageState
       uploadNotice: [
         ...resourceQualificationMetadata(row),
         _photoCapability.uploadAllowed
-          ? '写真の変更は申請として送信し、承認後に登録内容へ反映します。資格名・番号などの情報は変更しません。'
-          : '新しい資格証写真の送信は停止中です。保存済み写真の並べ替え・一覧からの削除だけを申請できます。承認後に反映し、写真ファイルは履歴に保持します。',
+            ? '写真の変更は申請として送信し、承認後に登録内容へ反映します。資格名・番号などの情報は変更しません。'
+            : '新しい資格証写真の送信は停止中です。保存済み写真の並べ替え・一覧からの削除だけを申請できます。承認後に反映し、写真ファイルは履歴に保持します。',
       ].join('\n'),
     );
     if (!mounted ||
@@ -211,8 +317,9 @@ class _OwnQualificationRegistrationPageState
       );
     } catch (error) {
       if (!mounted || repository.actor != actor) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('写真申請を確認してください: $error')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('写真申請を確認してください: $error')));
     } finally {
       if (mounted && repository.actor == actor) {
         setState(() => _photoBusy = false);
@@ -340,13 +447,16 @@ class _OwnQualificationRegistrationPageState
         })
         .toList(growable: false);
     if (filteredMasters.isEmpty) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('該当する資格種類がありません')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('該当する資格種類がありません')));
       return;
     }
 
-    var masterId = filteredMasters.any((m) => m['id']?.toString() == initialMasterId)
-      ? initialMasterId : filteredMasters.first['id']?.toString();
+    var masterId =
+        filteredMasters.any((m) => m['id']?.toString() == initialMasterId)
+        ? initialMasterId
+        : filteredMasters.first['id']?.toString();
     final certificateController = TextEditingController();
     final issuerController = TextEditingController();
     final notesController = TextEditingController();
@@ -361,122 +471,140 @@ class _OwnQualificationRegistrationPageState
       builder: (dialogContext) {
         dialogCompleted ??= ModalRoute.of(dialogContext)?.completed;
         return StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-          constraints: const BoxConstraints(maxWidth: 560),
-          title: const Text('自分の資格を登録'),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    '登録者：${_worker?['name'] ?? '本人'}',
-                    style: const TextStyle(fontWeight: FontWeight.w900),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                isExpanded: true,
-                  initialValue: masterId,
-                  decoration: const InputDecoration(labelText: '資格種類'),
-                  items: [
-                    for (final row in filteredMasters)
-                      DropdownMenuItem(
-                        value: row['id']?.toString(),
-                        child: Text(row['name']?.toString() ?? '資格'),
+          builder: (context, setDialogState) => AlertDialog(
+            insetPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 24,
+            ),
+            constraints: const BoxConstraints(maxWidth: 560),
+            title: const Text('自分の資格を登録'),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        '登録者：${_worker?['name'] ?? '本人'}',
+                        style: const TextStyle(fontWeight: FontWeight.w900),
                       ),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      isExpanded: true,
+                      initialValue: masterId,
+                      decoration: const InputDecoration(labelText: '資格種類'),
+                      items: [
+                        for (final row in filteredMasters)
+                          DropdownMenuItem(
+                            value: row['id']?.toString(),
+                            child: Text(row['name']?.toString() ?? '資格'),
+                          ),
+                      ],
+                      onChanged: (value) =>
+                          setDialogState(() => masterId = value),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: certificateController,
+                      decoration: const InputDecoration(labelText: '証明書番号'),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: issuerController,
+                      decoration: const InputDecoration(labelText: '発行元'),
+                    ),
+                    const SizedBox(height: 8),
+                    _DateTile(
+                      label: '取得日',
+                      value: issuedAt,
+                      onTap: () async {
+                        final picked = await _pickDate(dialogContext, issuedAt);
+                        if (picked != null) {
+                          setDialogState(() => issuedAt = picked);
+                        }
+                      },
+                    ),
+                    _DateTile(
+                      label: '有効期限',
+                      value: expiresAt,
+                      onTap: () async {
+                        final picked = await _pickDate(
+                          dialogContext,
+                          expiresAt,
+                        );
+                        if (picked != null) {
+                          setDialogState(() => expiresAt = picked);
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      onPressed:
+                          !_photoCapability.available ||
+                              !_photoCapability.uploadAllowed ||
+                              _pendingPhotos != null
+                          ? null
+                          : () async {
+                              final selected = widget.pickAttachments != null
+                                  ? await widget.pickAttachments!(
+                                      dialogContext,
+                                      selectedAttachments,
+                                    )
+                                  : await editWorkerDocumentPhotos(
+                                      dialogContext,
+                                      paths: const [],
+                                      signedUrl: (_) async => '',
+                                      initialPhotos: selectedAttachments,
+                                    );
+                              if (!dialogContext.mounted || selected == null) {
+                                return;
+                              }
+                              setDialogState(
+                                () => selectedAttachments = selected,
+                              );
+                            },
+                      icon: const Icon(Icons.attach_file),
+                      label: Text('資格証を選択（${selectedAttachments.length}件）'),
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 12),
+                      child: Text(
+                        '資格情報の登録後、資格証を変更申請として送信します。承認後に反映されます。送信が停止中の場合は登録後に追加できます。',
+                      ),
+                    ),
+                    TextField(
+                      controller: notesController,
+                      decoration: const InputDecoration(labelText: '備考'),
+                      maxLines: 2,
+                    ),
                   ],
-                  onChanged: (value) => setDialogState(() => masterId = value),
                 ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: certificateController,
-                  decoration: const InputDecoration(labelText: '証明書番号'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: issuerController,
-                  decoration: const InputDecoration(labelText: '発行元'),
-                ),
-                const SizedBox(height: 8),
-                _DateTile(
-                  label: '取得日',
-                  value: issuedAt,
-                  onTap: () async {
-                    final picked = await _pickDate(dialogContext, issuedAt);
-                    if (picked != null) {
-                      setDialogState(() => issuedAt = picked);
-                    }
-                  },
-                ),
-                _DateTile(
-                  label: '有効期限',
-                  value: expiresAt,
-                  onTap: () async {
-                    final picked = await _pickDate(dialogContext, expiresAt);
-                    if (picked != null) {
-                      setDialogState(() => expiresAt = picked);
-                    }
-                  },
-                ),
-                const SizedBox(height: 12),
-                OutlinedButton.icon(
-                  onPressed: !_photoCapability.available ||
-                          !_photoCapability.uploadAllowed || _pendingPhotos != null
-                      ? null
-                      : () async {
-                          final selected = widget.pickAttachments != null
-                              ? await widget.pickAttachments!(dialogContext, selectedAttachments)
-                              : await editWorkerDocumentPhotos(
-                            dialogContext,
-                            paths: const [],
-                            signedUrl: (_) async => '',
-                            initialPhotos: selectedAttachments,
-                          );
-                          if (!dialogContext.mounted || selected == null) return;
-                          setDialogState(() => selectedAttachments = selected);
-                        },
-                  icon: const Icon(Icons.attach_file),
-                  label: Text('資格証を選択（${selectedAttachments.length}件）'),
-                ),
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 12),
-                  child: Text('資格情報の登録後、資格証を変更申請として送信します。承認後に反映されます。送信が停止中の場合は登録後に追加できます。'),
-                ),
-                TextField(
-                  controller: notesController,
-                  decoration: const InputDecoration(labelText: '備考'),
-                  maxLines: 2,
-                ),
-              ],
+              ),
             ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('キャンセル'),
+              ),
+              FilledButton(
+                onPressed: masterId == null
+                    ? null
+                    : () => Navigator.pop(dialogContext, {
+                        'masterId': masterId,
+                        'certificateNumber': certificateController.text.trim(),
+                        'issuer': issuerController.text.trim(),
+                        'issuedAt': issuedAt,
+                        'expiresAt': expiresAt,
+                        'notes': notesController.text.trim(),
+                        'attachments': selectedAttachments,
+                      }),
+                child: const Text('登録'),
+              ),
+            ],
           ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('キャンセル'),
-            ),
-            FilledButton(
-              onPressed: masterId == null
-                  ? null
-                  : () => Navigator.pop(dialogContext, {
-                      'masterId': masterId,
-                      'certificateNumber': certificateController.text.trim(),
-                      'issuer': issuerController.text.trim(),
-                      'issuedAt': issuedAt,
-                      'expiresAt': expiresAt,
-                      'notes': notesController.text.trim(),
-                      'attachments': selectedAttachments,
-                    }),
-              child: const Text('登録'),
-            ),
-          ],
-        ),
         );
       },
     );
@@ -489,6 +617,7 @@ class _OwnQualificationRegistrationPageState
         setState(() => _registrationDialogOpen = false);
       }
     }
+
     final completed = dialogCompleted;
     if (completed == null) {
       disposeDraft();
@@ -512,55 +641,133 @@ class _OwnQualificationRegistrationPageState
         final photoRepository = _photoRepository;
         try {
           if (photoRepository == null) throw StateError('資格証の申請を利用できません。');
-          await photoRepository.submitSelection(row: inserted, photos: attachments);
+          await photoRepository.submitSelection(
+            row: inserted,
+            photos: attachments,
+          );
         } catch (_) {
           if (!mounted) return;
           await _load();
           if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('資格情報は登録済みです。資格証の申請結果を一覧で確認してください。'),
-          ));
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('資格情報は登録済みです。資格証の申請結果を一覧で確認してください。')),
+          );
           return;
         }
       }
       await _load();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(attachments.isEmpty ? '自分の資格を登録しました' : '資格情報を登録し、資格証を申請しました。'),
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            attachments.isEmpty ? '自分の資格を登録しました' : '資格情報を登録し、資格証を申請しました。',
+          ),
+        ),
+      );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('資格を登録できませんでした: $error')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('資格を登録できませんでした: $error')));
     }
   }
 
   ResourceAttachmentGallery? _gallery() {
     final repository = _repository, rows = _qualifications;
     final lease = _galleryLease, galleryGeneration = _galleryGeneration;
-    final actor = repository?.currentUserId, worker = _worker?['id']?.toString(), company = _worker?['company_id']?.toString();
+    final actor = repository?.currentUserId,
+        worker = _worker?['id']?.toString(),
+        company = _worker?['company_id']?.toString();
     final generation = _loadGeneration;
-    if (repository == null || lease == null || !lease() || actor == null || worker == null || company == null || company.isEmpty) { return null; }
-    bool current() => mounted && !_loading && galleryGeneration == _galleryGeneration && lease() && generation == _loadGeneration &&
-      identical(rows, _qualifications) && _worker?['id'] == worker && _worker?['company_id'] == company && repository.currentUserId == actor;
-    if (rows.any((row) => row['worker_id'] == worker && row['company_id'] != company && row['_unregistered'] != true)) { return null; }
-    final titles = {for (final row in _masters) row['id']: row['name']?.toString() ?? '資格'};
+    if (repository == null ||
+        lease == null ||
+        !lease() ||
+        actor == null ||
+        worker == null ||
+        company == null ||
+        company.isEmpty) {
+      return null;
+    }
+    bool current() =>
+        mounted &&
+        !_loading &&
+        galleryGeneration == _galleryGeneration &&
+        lease() &&
+        generation == _loadGeneration &&
+        identical(rows, _qualifications) &&
+        _worker?['id'] == worker &&
+        _worker?['company_id'] == company &&
+        repository.currentUserId == actor;
+    if (rows.any(
+      (row) =>
+          row['worker_id'] == worker &&
+          row['company_id'] != company &&
+          row['_unregistered'] != true,
+    )) {
+      return null;
+    }
+    final titles = {
+      for (final row in _masters) row['id']: row['name']?.toString() ?? '資格',
+    };
     final entries = <ResourceAttachment>[];
-    for (final row in rows.where((row) => row['worker_id'] == worker && row['company_id'] == company && row['_unregistered'] != true)) {
-      final id = row['id']?.toString(); if (id == null || id.isEmpty) { continue; }
-      final paths = [row['attachment_path'], row['attachment_back_path'], ...?row['attachment_extra_paths'] as List?];
+    for (final row in rows.where(
+      (row) =>
+          row['worker_id'] == worker &&
+          row['company_id'] == company &&
+          row['_unregistered'] != true,
+    )) {
+      final id = row['id']?.toString();
+      if (id == null || id.isEmpty) {
+        continue;
+      }
+      final paths = [
+        row['attachment_path'],
+        row['attachment_back_path'],
+        ...?row['attachment_extra_paths'] as List?,
+      ];
       for (var i = 0; i < paths.length; i++) {
-        final path = paths[i]; if (path is! String || path.trim().isEmpty) { continue; }
-        Future<String> signed(String value) async {
-          if (!current()) { throw StateError('Attachment scope changed'); }
-          final url = await repository.createOwnQualificationPhotoUrl(qualificationId: id, storagePath: value);
-          if (!current()) { throw StateError('Attachment scope changed'); } return url;
+        final path = paths[i];
+        if (path is! String || path.trim().isEmpty) {
+          continue;
         }
-        entries.add(signedResourceAttachment(label: i == 0 ? '表面' : i == 1 ? '裏面' : '追加写真 ${i - 1}', path: path,
-          signedUrl: signed, previewKey: 'qualification:$id:$i', recordTitle: titles[row['qualification_master_id']] ?? '資格'));
+        Future<String> signed(String value) async {
+          if (!current()) {
+            throw StateError('Attachment scope changed');
+          }
+          final url = await repository.createOwnQualificationPhotoUrl(
+            qualificationId: id,
+            storagePath: value,
+          );
+          if (!current()) {
+            throw StateError('Attachment scope changed');
+          }
+          return url;
+        }
+
+        entries.add(
+          signedResourceAttachment(
+            label: i == 0
+                ? '表面'
+                : i == 1
+                ? '裏面'
+                : '追加写真 ${i - 1}',
+            path: path,
+            signedUrl: signed,
+            previewKey: 'qualification:$id:$i',
+            recordTitle: titles[row['qualification_master_id']] ?? '資格',
+          ),
+        );
       }
     }
-    return ResourceAttachmentGallery(source: rows, workerId: worker, companyId: company, isCurrent: current, signal: _galleryChanges, changes: repository.attachmentAuthChanges, entries: entries);
+    return ResourceAttachmentGallery(
+      source: rows,
+      workerId: worker,
+      companyId: company,
+      isCurrent: current,
+      signal: _galleryChanges,
+      changes: repository.attachmentAuthChanges,
+      entries: entries,
+    );
   }
 
   Future<void> _previewPhotos(Map<String, dynamic> row, String title) async {
@@ -583,7 +790,8 @@ class _OwnQualificationRegistrationPageState
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     if (index == 0)
-                      for (final metadata in resourceQualificationMetadata(row)) Text(metadata),
+                      for (final metadata in resourceQualificationMetadata(row))
+                        Text(metadata),
                     Text(
                       photos[index].label,
                       style: const TextStyle(fontWeight: FontWeight.w700),
@@ -667,7 +875,8 @@ class _OwnQualificationRegistrationPageState
     );
   }
 
-  String get _photoNotice => _photoError ??
+  String get _photoNotice =>
+      _photoError ??
       (!_photoCapability.available
           ? '資格証写真の変更申請は準備中です。登録済み写真と資格情報登録は利用できます。'
           : _photoCapability.uploadAllowed
@@ -685,13 +894,19 @@ class _OwnQualificationRegistrationPageState
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text('資格登録について', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
+              const Text(
+                '資格登録について',
+                style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
+              ),
               const SizedBox(height: 12),
               const Text('ログイン中の本人の資格だけを表示します'),
               const SizedBox(height: 12),
               Text(_photoNotice),
               const SizedBox(height: 12),
-              TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる')),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('閉じる'),
+              ),
             ],
           ),
         ),
@@ -701,6 +916,7 @@ class _OwnQualificationRegistrationPageState
 
   @override
   Widget build(BuildContext context) {
+    if (!_pageSessionCurrent) return _sessionChangedPage();
     final masterById = {
       for (final row in _masters) row['id']?.toString() ?? '': row,
     };
@@ -743,7 +959,8 @@ class _OwnQualificationRegistrationPageState
       bottomNavigationBar: ResourceRegistrationFooter(
         label: '資格を登録',
         onPressed: _loading || _masters.isEmpty || _worker == null
-          ? null : _addQualification,
+            ? null
+            : _addQualification,
       ),
       body: SafeArea(
         child: _loading
@@ -754,20 +971,29 @@ class _OwnQualificationRegistrationPageState
                 children: [
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                    child: Row(children: [
-                      const Icon(Icons.person_outline, size: 20),
-                      const SizedBox(width: 8),
-                      Expanded(child: Text(
-                        _worker?['name']?.toString() ?? '本人',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontWeight: FontWeight.w900),
-                      )),
-                    ]),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.person_outline, size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _worker?['name']?.toString() ?? '本人',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontWeight: FontWeight.w900),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  if (_photoError != null || _pendingPhotos != null || _photoBusy)
+                  if (_photoError != null ||
+                      _pendingPhotos != null ||
+                      _photoBusy)
                     Card(
-                      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                      margin: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 4,
+                      ),
                       child: Padding(
                         padding: const EdgeInsets.all(12),
                         child: Column(
@@ -775,14 +1001,22 @@ class _OwnQualificationRegistrationPageState
                           children: [
                             if (_photoError != null) Text(_photoError!),
                             if (_pendingPhotos != null) ...[
-                              const Text('送信結果が未確認の写真申請があります。写真を再送せず同じ申請を確認してください。'),
+                              const Text(
+                                '送信結果が未確認の写真申請があります。写真を再送せず同じ申請を確認してください。',
+                              ),
                               OutlinedButton.icon(
-                                onPressed: _photoBusy || !_photoCapability.available ? null : _recoverPhotos,
+                                onPressed:
+                                    _photoBusy || !_photoCapability.available
+                                    ? null
+                                    : _recoverPhotos,
                                 icon: const Icon(Icons.refresh),
                                 label: const Text('保留中の写真申請を再確認'),
                               ),
                               TextButton(
-                                onPressed: _photoBusy || !_photoCapability.available ? null : _cancelPendingPhotos,
+                                onPressed:
+                                    _photoBusy || !_photoCapability.available
+                                    ? null
+                                    : _cancelPendingPhotos,
                                 child: const Text('未送信の下書きを取り消す'),
                               ),
                             ],
@@ -797,7 +1031,10 @@ class _OwnQualificationRegistrationPageState
                       controller: _searchController,
                       decoration: const InputDecoration(
                         isDense: true,
-                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 12,
+                        ),
                         prefixIcon: Icon(Icons.search),
                         hintText: '資格種類・証明書番号で検索',
                       ),
@@ -827,44 +1064,95 @@ class _OwnQualificationRegistrationPageState
                               final repository = _repository;
                               final actor = repository?.currentUserId;
                               Future<String> signedUrl(String path) async {
-                                if (repository == null || actor == null || actor != repository.currentUserId) {
+                                if (repository == null ||
+                                    actor == null ||
+                                    actor != repository.currentUserId) {
                                   throw StateError('Session changed');
                                 }
-                                final url = await repository.createOwnQualificationPhotoUrl(
-                                  qualificationId: row['id'].toString(), storagePath: path);
-                                if (actor != repository.currentUserId) throw StateError('Session changed');
+                                final url = await repository
+                                    .createOwnQualificationPhotoUrl(
+                                      qualificationId: row['id'].toString(),
+                                      storagePath: path,
+                                    );
+                                if (actor != repository.currentUserId) {
+                                  throw StateError('Session changed');
+                                }
                                 return url;
                               }
+
                               final attachments = [
-                                signedResourceAttachment(label: '表面', previewKey: 'qualification:${row['id']}:0', recordTitle: title,
-                                  path: row['attachment_path']?.toString(), signedUrl: signedUrl,
-                                  known: unregistered || row.containsKey('attachment_path')),
-                                signedResourceAttachment(label: '裏面', previewKey: 'qualification:${row['id']}:1', recordTitle: title,
-                                  path: row['attachment_back_path']?.toString(), signedUrl: signedUrl,
-                                  known: unregistered || row.containsKey('attachment_back_path')),
+                                signedResourceAttachment(
+                                  label: '表面',
+                                  previewKey: 'qualification:${row['id']}:0',
+                                  recordTitle: title,
+                                  path: row['attachment_path']?.toString(),
+                                  signedUrl: signedUrl,
+                                  known:
+                                      unregistered ||
+                                      row.containsKey('attachment_path'),
+                                ),
+                                signedResourceAttachment(
+                                  label: '裏面',
+                                  previewKey: 'qualification:${row['id']}:1',
+                                  recordTitle: title,
+                                  path: row['attachment_back_path']?.toString(),
+                                  signedUrl: signedUrl,
+                                  known:
+                                      unregistered ||
+                                      row.containsKey('attachment_back_path'),
+                                ),
                               ];
-                              final canEdit = !_photoBusy && _photoCapability.available && _pendingPhotos == null;
+                              final canEdit =
+                                  !_photoBusy &&
+                                  _photoCapability.available &&
+                                  _pendingPhotos == null;
                               return ResourceRegistrationCard(
-                                key: ValueKey('own-qualification:${_worker?['id']}:${row['id'] ?? row['qualification_master_id']}'),
-                                title: title, icon: Icons.badge_outlined, registered: !unregistered,
+                                key: ValueKey(
+                                  'own-qualification:${_worker?['id']}:${row['id'] ?? row['qualification_master_id']}',
+                                ),
+                                title: title,
+                                icon: Icons.badge_outlined,
+                                registered: !unregistered,
                                 dateLabel: [
-                                  if ((row['issued_at']?.toString() ?? '').isNotEmpty)
+                                  if ((row['issued_at']?.toString() ?? '')
+                                      .isNotEmpty)
                                     '取得日 ${row['issued_at']}',
-                                  ((master?['category']?.toString() ?? '').trim().isEmpty)
-                                    ? '区分未設定'
-                                    : master!['category'].toString().trim(),
+                                  ((master?['category']?.toString() ?? '')
+                                          .trim()
+                                          .isEmpty)
+                                      ? '区分未設定'
+                                      : master!['category'].toString().trim(),
                                 ].join(' / '),
                                 statusLabel: unregistered ? '未登録' : '登録済み',
-                                detailLabel: [...resourceQualificationMetadata(row),
-                                  if (_photoStatus(row['id'].toString()) != null) _photoStatus(row['id'].toString())!,
-                                  if (photos.length > 2) '添付 ${photos.length}件（詳細で確認）'].join(' / '),
-                                attachments: attachments, gallery: _gallery(), requireGalleryScope: true,
+                                detailLabel: [
+                                  ...resourceQualificationMetadata(row),
+                                  if (_photoStatus(row['id'].toString()) !=
+                                      null)
+                                    _photoStatus(row['id'].toString())!,
+                                  if (photos.length > 2)
+                                    '添付 ${photos.length}件（詳細で確認）',
+                                ].join(' / '),
+                                attachments: attachments,
+                                gallery: _gallery(),
+                                requireGalleryScope: true,
                                 onAction: unregistered
-                                  ? () => _addQualification(initialMasterId: row['qualification_master_id']?.toString())
-                                  : canEdit ? () => _editPhotos(row) : () => _previewPhotos(row, title),
+                                    ? () => _addQualification(
+                                        initialMasterId:
+                                            row['qualification_master_id']
+                                                ?.toString(),
+                                      )
+                                    : canEdit
+                                    ? () => _editPhotos(row)
+                                    : () => _previewPhotos(row, title),
                                 onOpenDetail: unregistered
-                                  ? () => _addQualification(initialMasterId: row['qualification_master_id']?.toString())
-                                  : canEdit ? () => _editPhotos(row) : () => _previewPhotos(row, title),
+                                    ? () => _addQualification(
+                                        initialMasterId:
+                                            row['qualification_master_id']
+                                                ?.toString(),
+                                      )
+                                    : canEdit
+                                    ? () => _editPhotos(row)
+                                    : () => _previewPhotos(row, title),
                               );
                             },
                           ),
@@ -931,4 +1219,3 @@ class _OwnQualificationError extends StatelessWidget {
     );
   }
 }
-

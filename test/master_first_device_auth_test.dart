@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:sk_works/features/settings/master_owner_access.dart';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -12,7 +13,7 @@ import 'package:sk_works/features/auth/secure_onboarding_repository.dart';
 import 'package:sk_works/features/settings/master_device_repository.dart';
 import 'package:sk_works/features/settings/master_protected_page.dart';
 
-const _actor = '80000000-0000-0000-0000-000000000001';
+const _actor = MasterOwnerAccess.ownerId;
 const _other = '80000000-0000-0000-0000-000000000002';
 Map<String,dynamic> _session(String actor) {
   String part(Object value) => base64Url.encode(utf8.encode(jsonEncode(value))).replaceAll('=', '');

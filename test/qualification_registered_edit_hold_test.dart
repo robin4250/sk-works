@@ -1,3 +1,4 @@
+import 'fixtures/qualification_ui_session_fixture.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -35,7 +36,7 @@ class _Photos implements QualificationCertificateRepository {
   final signed = <String>[];
   final writes = <Symbol>[];
   @override
-  String? get currentUserId => 'actor';
+  String? get currentUserId => qualificationUiActorId;
   @override
   Stream<AuthState> get authChanges => const Stream.empty();
   @override
@@ -56,8 +57,12 @@ class _Photos implements QualificationCertificateRepository {
   }
 }
 
-class _Cloud implements QualificationCloudRepository {
-  @override Future<bool Function()> captureAttachmentReadScope() async => () => false;
+class _Cloud
+    with QualificationUiSessionFixture
+    implements QualificationCloudRepository {
+  @override
+  Future<bool Function()> captureAttachmentReadScope() async =>
+      () => false;
   _Cloud({this.hasSaved = true});
   final bool hasSaved;
   final inserts = <Map<String, Object?>>[];
