@@ -668,475 +668,422 @@ class _ProfilePageState extends State<ProfilePage> {
         actions: const [SkoNotificationBell()],
       ),
       body: SafeArea(
-        child: Column(
+        child: ListView(
+          padding: const EdgeInsets.all(16),
           children: [
-            ListTile(
-              key: const Key('profile-personal-details-entry'),
-              leading: const Icon(Icons.person_outline),
-              title: Text(SkoLanguageController.tr('個人プロフィール（本人の誕生日・個人口座）')),
-              subtitle: Text(SkoLanguageController.tr('所属会社や会社書類とは別の本人情報')),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => const PersonalDetailsPage(),
+            Center(
+              child: Stack(
+                children: [
+                  CircleAvatar(
+                    radius: 58,
+                    backgroundImage: data?.avatarUrl == null
+                        ? null
+                        : NetworkImage(data!.avatarUrl!),
+                    child: data?.avatarUrl == null
+                        ? const Icon(Icons.person, size: 58)
+                        : null,
+                  ),
+                  Positioned(
+                    right: 0,
+                    bottom: 0,
+                    child: IconButton.filled(
+                      tooltip: '写真を変更',
+                      onPressed: _loading || _error != null || _saving
+                          ? null
+                          : _pickPhoto,
+                      icon: const Icon(Icons.camera_alt_outlined),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            if (_loading) const Center(child: CircularProgressIndicator()),
+            if (_error != null)
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(_error!, textAlign: TextAlign.center),
+                      const SizedBox(height: 16),
+                      FilledButton.icon(
+                        onPressed: _load,
+                        icon: const Icon(Icons.refresh),
+                        label: Text(SkoLanguageController.tr('再読み込み')),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            if (!_loading && _error == null) ...[
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      TextField(
+                        controller: _name,
+                        enabled: !_saving,
+                        decoration: InputDecoration(
+                          labelText: SkoLanguageController.tr('氏名'),
+                          prefixIcon: Icon(Icons.person_outline),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _phone,
+                        enabled: !_saving,
+                        keyboardType: TextInputType.phone,
+                        decoration: InputDecoration(
+                          labelText: SkoLanguageController.tr('電話番号'),
+                          prefixIcon: Icon(Icons.phone_outlined),
+                        ),
+                      ),
+                      if ((data?.email ?? '').isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(Icons.email_outlined),
+                          title: Text(SkoLanguageController.tr('メールアドレス')),
+                          subtitle: Text(data!.email),
+                        ),
+                      ],
+                      if ((data?.companyName ?? '').isNotEmpty) ...[
+                        const Divider(),
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(Icons.business_outlined),
+                          title: Text(SkoLanguageController.tr('所属会社')),
+                          subtitle: Text(data!.companyName),
+                        ),
+                      ],
+                      const Divider(),
+                      TextField(
+                        controller: _personalSkoId,
+                        enabled: !_saving,
+                        textCapitalization: TextCapitalization.characters,
+                        decoration: InputDecoration(
+                          labelText: SkoLanguageController.tr('個人SKO ID'),
+                          helperText: 'プロフィールから変更できます。SKO-に続けて英数字4〜20文字。',
+                          prefixIcon: const Icon(Icons.alternate_email),
+                          suffixIcon: IconButton(
+                            tooltip: '個人SKO IDを変更',
+                            onPressed: _saving ? null : _changePersonalSkoId,
+                            icon: const Icon(Icons.check_circle_outline),
+                          ),
+                        ),
+                      ),
+                      if ((data?.companyId ?? '').isNotEmpty) ...[
+                        const Divider(),
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(Icons.badge_outlined),
+                          title: Text(SkoLanguageController.tr('SKO会社ID')),
+                          subtitle: SelectableText(data!.companyId),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: 16),
+            Card(
+              key: const Key('profile-personal-details-section'),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      SkoLanguageController.tr('個人情報'),
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    const PersonalDetailsPage(embedded: true),
+                  ],
                 ),
               ),
             ),
-            Expanded(
-              child: _loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _error != null
-                  ? Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(_error!, textAlign: TextAlign.center),
-                            const SizedBox(height: 16),
-                            FilledButton.icon(
-                              onPressed: _load,
-                              icon: const Icon(Icons.refresh),
-                              label: Text(SkoLanguageController.tr('再読み込み')),
-                            ),
-                          ],
+            if (!_loading && _error == null) ...[
+              if (_personnelError != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(
+                    _personnelError!,
+                    key: const Key('profile-company-unavailable'),
+                  ),
+                ),
+              const SizedBox(height: 16),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        SkoLanguageController.tr('社員個人情報'),
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
                         ),
                       ),
-                    )
-                  : ListView(
-                      padding: const EdgeInsets.all(16),
-                      children: [
-                        if (_personnelError != null)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: Text(
-                              _personnelError!,
-                              key: const Key('profile-company-unavailable'),
-                            ),
+                      for (final detail in [
+                        ('社員番号', _employeeNumber),
+                        ('所属', _department),
+                        ('入社日', _hireDate.replaceAll('-', '/')),
+                      ])
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          dense: true,
+                          title: Text(SkoLanguageController.tr(detail.$1)),
+                          subtitle: Text(detail.$2.isEmpty ? '未登録' : detail.$2),
+                        ),
+                      const Text('社員番号・所属・入社日は社員データに登録された情報です。変更は社員データから行います。'),
+                      const SizedBox(height: 6),
+                      const Text(
+                        '未登録は直接保存できます。登録済み情報の変更は1〜3名で登録した承認者の承認後に反映されます。',
+                      ),
+                      const SizedBox(height: 14),
+                      TextField(
+                        controller: _personnelName,
+                        enabled: !_saving,
+                        decoration: InputDecoration(
+                          labelText: SkoLanguageController.tr('名前'),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      DropdownButtonFormField<String>(
+                        initialValue: _bloodType.isEmpty ? null : _bloodType,
+                        decoration: InputDecoration(
+                          labelText: SkoLanguageController.tr('血液型'),
+                        ),
+                        items: const [
+                          DropdownMenuItem(value: 'A', child: Text('A型')),
+                          DropdownMenuItem(value: 'B', child: Text('B型')),
+                          DropdownMenuItem(value: 'O', child: Text('O型')),
+                          DropdownMenuItem(value: 'AB', child: Text('AB型')),
+                          DropdownMenuItem(value: '不明', child: Text('不明')),
+                        ],
+                        onChanged: _saving
+                            ? null
+                            : (value) =>
+                                  setState(() => _bloodType = value ?? ''),
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: _personnelRole,
+                        enabled: !_saving,
+                        decoration: InputDecoration(
+                          labelText: SkoLanguageController.tr('職種'),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: _personnelPhone,
+                        enabled: !_saving,
+                        keyboardType: TextInputType.phone,
+                        decoration: InputDecoration(
+                          labelText: SkoLanguageController.tr('社員台帳の電話番号'),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: _personnelAddress,
+                        enabled: !_saving,
+                        decoration: InputDecoration(
+                          labelText: SkoLanguageController.tr('住所'),
+                          suffixIcon: IconButton(
+                            tooltip: SkoLanguageController.isEnglish
+                                ? 'Open in Google Maps'
+                                : 'Googleマップで開く',
+                            onPressed: _personnelAddress.text.trim().isEmpty
+                                ? null
+                                : () => _openGoogleMap(_personnelAddress.text),
+                            icon: const Icon(Icons.map_outlined),
                           ),
-                        Center(
-                          child: Stack(
-                            children: [
-                              CircleAvatar(
-                                radius: 58,
-                                backgroundImage: data?.avatarUrl == null
-                                    ? null
-                                    : NetworkImage(data!.avatarUrl!),
-                                child: data?.avatarUrl == null
-                                    ? const Icon(Icons.person, size: 58)
-                                    : null,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Text(
+                        SkoLanguageController.tr('緊急連絡先'),
+                        style: TextStyle(fontWeight: FontWeight.w900),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _emergencyName,
+                        enabled: !_saving,
+                        decoration: InputDecoration(
+                          labelText: SkoLanguageController.tr('氏名'),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: _emergencyRelation,
+                        enabled: !_saving,
+                        decoration: InputDecoration(
+                          labelText: SkoLanguageController.tr('続柄'),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: _emergencyPhone,
+                        enabled: !_saving,
+                        keyboardType: TextInputType.phone,
+                        decoration: InputDecoration(
+                          labelText: SkoLanguageController.tr('電話番号'),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: _emergencyAddress,
+                        enabled: !_saving,
+                        decoration: InputDecoration(
+                          labelText: SkoLanguageController.tr('住所'),
+                          suffixIcon: IconButton(
+                            tooltip: 'Googleマップで開く',
+                            onPressed: _emergencyAddress.text.trim().isEmpty
+                                ? null
+                                : () => _openGoogleMap(_emergencyAddress.text),
+                            icon: const Icon(Icons.map_outlined),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      Text(
+                        SkoLanguageController.tr('家族・扶養情報'),
+                        style: TextStyle(fontWeight: FontWeight.w900),
+                      ),
+                      const SizedBox(height: 6),
+                      const Text('社員一覧には表示しません。社会保険等の本人手続きで使う個別情報です。'),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: _familyComposition,
+                        enabled: !_saving,
+                        decoration: InputDecoration(
+                          labelText: SkoLanguageController.tr('家族構成'),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      for (var i = 0; i < _familyMembers.length; i++)
+                        _profileFamilyMemberCard(i),
+                      OutlinedButton.icon(
+                        onPressed: _saving
+                            ? null
+                            : () => setState(
+                                () =>
+                                    _familyMembers.add(EditableFamilyMember()),
                               ),
-                              Positioned(
-                                right: 0,
-                                bottom: 0,
-                                child: IconButton.filled(
-                                  tooltip: '写真を変更',
-                                  onPressed: _saving ? null : _pickPhoto,
-                                  icon: const Icon(Icons.camera_alt_outlined),
-                                ),
-                              ),
-                            ],
-                          ),
+                        icon: const Icon(Icons.person_add_alt_1_outlined),
+                        label: Text(
+                          SkoLanguageController.isEnglish
+                              ? 'Add spouse, child, or dependent'
+                              : '配偶者・子供・扶養家族を追加',
                         ),
-                        const SizedBox(height: 20),
-                        Card(
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              children: [
-                                TextField(
-                                  controller: _name,
-                                  enabled: !_saving,
-                                  decoration: InputDecoration(
-                                    labelText: SkoLanguageController.tr('氏名'),
-                                    prefixIcon: Icon(Icons.person_outline),
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                TextField(
-                                  controller: _phone,
-                                  enabled: !_saving,
-                                  keyboardType: TextInputType.phone,
-                                  decoration: InputDecoration(
-                                    labelText: SkoLanguageController.tr('電話番号'),
-                                    prefixIcon: Icon(Icons.phone_outlined),
-                                  ),
-                                ),
-                                if ((data?.email ?? '').isNotEmpty) ...[
-                                  const SizedBox(height: 12),
-                                  ListTile(
-                                    contentPadding: EdgeInsets.zero,
-                                    leading: const Icon(Icons.email_outlined),
-                                    title: Text(
-                                      SkoLanguageController.tr('メールアドレス'),
-                                    ),
-                                    subtitle: Text(data!.email),
-                                  ),
-                                ],
-                                if ((data?.companyName ?? '').isNotEmpty) ...[
-                                  const Divider(),
-                                  ListTile(
-                                    contentPadding: EdgeInsets.zero,
-                                    leading: const Icon(
-                                      Icons.business_outlined,
-                                    ),
-                                    title: Text(
-                                      SkoLanguageController.tr('所属会社'),
-                                    ),
-                                    subtitle: Text(data!.companyName),
-                                  ),
-                                ],
-                                const Divider(),
-                                TextField(
-                                  controller: _personalSkoId,
-                                  enabled: !_saving,
-                                  textCapitalization:
-                                      TextCapitalization.characters,
-                                  decoration: InputDecoration(
-                                    labelText: SkoLanguageController.tr(
-                                      '個人SKO ID',
-                                    ),
-                                    helperText:
-                                        'プロフィールから変更できます。SKO-に続けて英数字4〜20文字。',
-                                    prefixIcon: const Icon(
-                                      Icons.alternate_email,
-                                    ),
-                                    suffixIcon: IconButton(
-                                      tooltip: '個人SKO IDを変更',
-                                      onPressed: _saving
-                                          ? null
-                                          : _changePersonalSkoId,
-                                      icon: const Icon(
-                                        Icons.check_circle_outline,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                if ((data?.companyId ?? '').isNotEmpty) ...[
-                                  const Divider(),
-                                  ListTile(
-                                    contentPadding: EdgeInsets.zero,
-                                    leading: const Icon(Icons.badge_outlined),
-                                    title: Text(
-                                      SkoLanguageController.tr('SKO会社ID'),
-                                    ),
-                                    subtitle: SelectableText(data!.companyId),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
+                      ),
+                      const SizedBox(height: 14),
+                      FilledButton.icon(
+                        onPressed: _saving ? null : _savePersonnel,
+                        icon: const Icon(Icons.badge_outlined),
+                        label: Text(SkoLanguageController.tr('社員個人情報を保存')),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Card(
+                child: Column(
+                  children: [
+                    ListTile(
+                      leading: const CircleAvatar(
+                        child: Icon(Icons.badge_outlined),
+                      ),
+                      title: const Text(
+                        '資格',
+                        style: TextStyle(fontWeight: FontWeight.w900),
+                      ),
+                      subtitle: const Text('自分の資格一覧・資格登録'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              const OwnQualificationRegistrationPage(),
                         ),
-                        const SizedBox(height: 16),
-                        Card(
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                Text(
-                                  SkoLanguageController.tr('社員個人情報'),
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w900,
-                                  ),
-                                ),
-                                for (final detail in [
-                                  ('社員番号', _employeeNumber),
-                                  ('所属', _department),
-                                  ('入社日', _hireDate.replaceAll('-', '/')),
-                                ])
-                                  ListTile(
-                                    contentPadding: EdgeInsets.zero,
-                                    dense: true,
-                                    title: Text(
-                                      SkoLanguageController.tr(detail.$1),
-                                    ),
-                                    subtitle: Text(
-                                      detail.$2.isEmpty ? '未登録' : detail.$2,
-                                    ),
-                                  ),
-                                const Text(
-                                  '社員番号・所属・入社日は社員データに登録された情報です。変更は社員データから行います。',
-                                ),
-                                const SizedBox(height: 6),
-                                const Text(
-                                  '未登録は直接保存できます。登録済み情報の変更は1〜3名で登録した承認者の承認後に反映されます。',
-                                ),
-                                const SizedBox(height: 14),
-                                TextField(
-                                  controller: _personnelName,
-                                  enabled: !_saving,
-                                  decoration: InputDecoration(
-                                    labelText: SkoLanguageController.tr('名前'),
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-                                DropdownButtonFormField<String>(
-                                  initialValue: _bloodType.isEmpty
-                                      ? null
-                                      : _bloodType,
-                                  decoration: InputDecoration(
-                                    labelText: SkoLanguageController.tr('血液型'),
-                                  ),
-                                  items: const [
-                                    DropdownMenuItem(
-                                      value: 'A',
-                                      child: Text('A型'),
-                                    ),
-                                    DropdownMenuItem(
-                                      value: 'B',
-                                      child: Text('B型'),
-                                    ),
-                                    DropdownMenuItem(
-                                      value: 'O',
-                                      child: Text('O型'),
-                                    ),
-                                    DropdownMenuItem(
-                                      value: 'AB',
-                                      child: Text('AB型'),
-                                    ),
-                                    DropdownMenuItem(
-                                      value: '不明',
-                                      child: Text('不明'),
-                                    ),
-                                  ],
-                                  onChanged: _saving
-                                      ? null
-                                      : (value) => setState(
-                                          () => _bloodType = value ?? '',
-                                        ),
-                                ),
-                                const SizedBox(height: 10),
-                                TextField(
-                                  controller: _personnelRole,
-                                  enabled: !_saving,
-                                  decoration: InputDecoration(
-                                    labelText: SkoLanguageController.tr('職種'),
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-                                TextField(
-                                  controller: _personnelPhone,
-                                  enabled: !_saving,
-                                  keyboardType: TextInputType.phone,
-                                  decoration: InputDecoration(
-                                    labelText: SkoLanguageController.tr(
-                                      '社員台帳の電話番号',
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-                                TextField(
-                                  controller: _personnelAddress,
-                                  enabled: !_saving,
-                                  decoration: InputDecoration(
-                                    labelText: SkoLanguageController.tr('住所'),
-                                    suffixIcon: IconButton(
-                                      tooltip: SkoLanguageController.isEnglish
-                                          ? 'Open in Google Maps'
-                                          : 'Googleマップで開く',
-                                      onPressed:
-                                          _personnelAddress.text.trim().isEmpty
-                                          ? null
-                                          : () => _openGoogleMap(
-                                              _personnelAddress.text,
-                                            ),
-                                      icon: const Icon(Icons.map_outlined),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 14),
-                                Text(
-                                  SkoLanguageController.tr('緊急連絡先'),
-                                  style: TextStyle(fontWeight: FontWeight.w900),
-                                ),
-                                const SizedBox(height: 8),
-                                TextField(
-                                  controller: _emergencyName,
-                                  enabled: !_saving,
-                                  decoration: InputDecoration(
-                                    labelText: SkoLanguageController.tr('氏名'),
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-                                TextField(
-                                  controller: _emergencyRelation,
-                                  enabled: !_saving,
-                                  decoration: InputDecoration(
-                                    labelText: SkoLanguageController.tr('続柄'),
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-                                TextField(
-                                  controller: _emergencyPhone,
-                                  enabled: !_saving,
-                                  keyboardType: TextInputType.phone,
-                                  decoration: InputDecoration(
-                                    labelText: SkoLanguageController.tr('電話番号'),
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-                                TextField(
-                                  controller: _emergencyAddress,
-                                  enabled: !_saving,
-                                  decoration: InputDecoration(
-                                    labelText: SkoLanguageController.tr('住所'),
-                                    suffixIcon: IconButton(
-                                      tooltip: 'Googleマップで開く',
-                                      onPressed:
-                                          _emergencyAddress.text.trim().isEmpty
-                                          ? null
-                                          : () => _openGoogleMap(
-                                              _emergencyAddress.text,
-                                            ),
-                                      icon: const Icon(Icons.map_outlined),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 18),
-                                Text(
-                                  SkoLanguageController.tr('家族・扶養情報'),
-                                  style: TextStyle(fontWeight: FontWeight.w900),
-                                ),
-                                const SizedBox(height: 6),
-                                const Text(
-                                  '社員一覧には表示しません。社会保険等の本人手続きで使う個別情報です。',
-                                ),
-                                const SizedBox(height: 10),
-                                TextField(
-                                  controller: _familyComposition,
-                                  enabled: !_saving,
-                                  decoration: InputDecoration(
-                                    labelText: SkoLanguageController.tr('家族構成'),
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-                                for (var i = 0; i < _familyMembers.length; i++)
-                                  _profileFamilyMemberCard(i),
-                                OutlinedButton.icon(
-                                  onPressed: _saving
-                                      ? null
-                                      : () => setState(
-                                          () => _familyMembers.add(
-                                            EditableFamilyMember(),
-                                          ),
-                                        ),
-                                  icon: const Icon(
-                                    Icons.person_add_alt_1_outlined,
-                                  ),
-                                  label: Text(
-                                    SkoLanguageController.isEnglish
-                                        ? 'Add spouse, child, or dependent'
-                                        : '配偶者・子供・扶養家族を追加',
-                                  ),
-                                ),
-                                const SizedBox(height: 14),
-                                FilledButton.icon(
-                                  onPressed: _saving ? null : _savePersonnel,
-                                  icon: const Icon(Icons.badge_outlined),
-                                  label: Text(
-                                    SkoLanguageController.tr('社員個人情報を保存'),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        Card(
-                          child: Column(
-                            children: [
-                              ListTile(
-                                leading: const CircleAvatar(
-                                  child: Icon(Icons.badge_outlined),
-                                ),
-                                title: const Text(
-                                  '資格',
-                                  style: TextStyle(fontWeight: FontWeight.w900),
-                                ),
-                                subtitle: const Text('自分の資格一覧・資格登録'),
-                                trailing: const Icon(Icons.chevron_right),
-                                onTap: () => Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (_) =>
-                                        const OwnQualificationRegistrationPage(),
-                                  ),
-                                ),
-                              ),
-                              const Divider(height: 1),
-                              ListTile(
-                                leading: const CircleAvatar(
-                                  child: Icon(Icons.description_outlined),
-                                ),
-                                title: const Text(
-                                  '書類',
-                                  style: TextStyle(fontWeight: FontWeight.w900),
-                                ),
-                                subtitle: const Text('自分の登録済み書類・書類登録'),
-                                trailing: const Icon(Icons.chevron_right),
-                                onTap: () => Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (_) =>
-                                        const OwnDocumentRegistrationPage(),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        Card(
-                          color: Theme.of(context).colorScheme.primaryContainer,
-                          child: ListTile(
-                            leading: const CircleAvatar(
-                              child: Icon(Icons.menu_book_outlined),
-                            ),
-                            title: const Text(
-                              '使い方・説明書',
-                              style: TextStyle(fontWeight: FontWeight.w900),
-                            ),
-                            subtitle: Text(
-                              '${ManualContent.roleLabel(widget.role)}用説明書とSKOパンフレットを閲覧・印刷できます',
-                            ),
-                            trailing: const Icon(Icons.chevron_right),
-                            onTap: () => Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) =>
-                                    ManualLibraryPage(role: widget.role),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        Card(
-                          child: ListTile(
-                            leading: const Icon(Icons.person_remove_outlined),
-                            title: Text(SkoLanguageController.tr('アカウント削除の案内')),
-                            subtitle: Text(
-                              SkoLanguageController.tr('受付状況と業務記録の保護について'),
-                            ),
-                            trailing: const Icon(Icons.chevron_right),
-                            onTap: () => Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => const AccountDeletionPage(),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        FilledButton.icon(
-                          onPressed: _saving ? null : _save,
-                          icon: const Icon(Icons.save_outlined),
-                          label: Text(
-                            SkoLanguageController.isEnglish
-                                ? (_saving ? 'Saving...' : 'Save Profile')
-                                : (_saving ? '保存中...' : 'プロフィールを保存'),
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
-            ),
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: const CircleAvatar(
+                        child: Icon(Icons.description_outlined),
+                      ),
+                      title: const Text(
+                        '書類',
+                        style: TextStyle(fontWeight: FontWeight.w900),
+                      ),
+                      subtitle: const Text('自分の登録済み書類・書類登録'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const OwnDocumentRegistrationPage(),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              Card(
+                color: Theme.of(context).colorScheme.primaryContainer,
+                child: ListTile(
+                  leading: const CircleAvatar(
+                    child: Icon(Icons.menu_book_outlined),
+                  ),
+                  title: const Text(
+                    '使い方・説明書',
+                    style: TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                  subtitle: Text(
+                    '${ManualContent.roleLabel(widget.role)}用説明書とSKOパンフレットを閲覧・印刷できます',
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => ManualLibraryPage(role: widget.role),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.person_remove_outlined),
+                  title: Text(SkoLanguageController.tr('アカウント削除の案内')),
+                  subtitle: Text(SkoLanguageController.tr('受付状況と業務記録の保護について')),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const AccountDeletionPage(),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                onPressed: _saving ? null : _save,
+                icon: const Icon(Icons.save_outlined),
+                label: Text(
+                  SkoLanguageController.isEnglish
+                      ? (_saving ? 'Saving...' : 'Save Profile')
+                      : (_saving ? '保存中...' : 'プロフィールを保存'),
+                ),
+              ),
+            ],
           ],
         ),
       ),
