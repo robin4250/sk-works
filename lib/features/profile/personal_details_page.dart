@@ -377,7 +377,7 @@ class _PersonalDetailsPageState extends State<PersonalDetailsPage> {
       );
     }
     return Scaffold(
-      appBar: AppBar(title: Text(_tr('個人情報'))),
+      appBar: AppBar(title: Text(_tr('個人プロフィール'))),
       body: ListView(padding: const EdgeInsets.all(16), children: children),
     );
   }
