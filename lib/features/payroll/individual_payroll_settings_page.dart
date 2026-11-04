@@ -434,7 +434,7 @@ class _IndividualPayrollSettingsPageState
       }
       ..['rate_overrides'] = rateDraft.overrides;
 
-    if (rateDraft.payType == 'daily') {
+    {
       final items = _serializeCustomMoney(_positionTransferItems, sectionName: '振替');
       if (items == null) return;
       (values['rate_formula'] as Map<String, dynamic>)['position_transfer'] = {
@@ -981,8 +981,7 @@ class _IndividualPayrollSettingsPageState
                       ),
                     ),
                   ],
-                  if (!_showDeductions && _earningUnit == PayrollItemUnit.day &&
-                      (_rateDraft?.payType ?? _settingValues['pay_type'] ?? 'daily') == 'daily') ...[
+                  if (!_showDeductions) ...[
                     const SizedBox(height: 12),
                     Card(child: Padding(
                       padding: const EdgeInsets.all(16),
