@@ -161,7 +161,7 @@ class PayrollPdfService {
         ),
       );
       if (pageIndex == 0 && expenses != null) {
-        ExpenseDetailPdf.append(document, claims:expenses.claims, kind:ExpenseDocument.payroll, subjectId:expenses.subjectId, regularFont:regular, boldFont:bold);
+        ExpenseDetailPdf.append(document, claims:expenses.claims.forMonth(statement.periodEnd), kind:ExpenseDocument.payroll, subjectId:expenses.subjectId, regularFont:regular, boldFont:bold);
       }
     }
 
