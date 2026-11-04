@@ -438,6 +438,7 @@ class _IndividualPayrollSettingsPageState
       final items = _serializeCustomMoney(_positionTransferItems, sectionName: '振替');
       if (items == null) return;
       (values['rate_formula'] as Map<String, dynamic>)['position_transfer'] = {
+        'version': 2,
         'enabled': _positionTransferEnabled,
         'items': items,
       };
@@ -989,7 +990,7 @@ class _IndividualPayrollSettingsPageState
                         SwitchListTile(
                           key: const ValueKey('position-transfer-enabled'),
                           title: const Text('役職手当振替'),
-                          subtitle: const Text('役職手当と勤務手当を表示上の基本給へ振り替えます。'),
+                          subtitle: const Text('基本給の一部を指定した手当へ振り替えます。総支給額は変わりません。'),
                           value: _positionTransferEnabled,
                           onChanged: workspace.canEdit && !_busy
                               ? (value) => setState(() => _positionTransferEnabled = value) : null,
@@ -1012,8 +1013,8 @@ class _IndividualPayrollSettingsPageState
                           onPressed: workspace.canEdit && !_busy && _positionTransferEnabled
                             ? () => setState(() => _positionTransferItems.add(_CustomMoneyDraft())) : null,
                           icon: const Icon(Icons.add), label: const Text('項目を追加')),
-                        const Text('支給に登録した項目と金額が一致する場合に振り替えます。'),
-                        const Text('表示用日給は500円単位に四捨五入します。支給額・残業代は変わりません。'),
+                        const Text('指定した月額を基本給から差し引き、指定項目に表示します。'),
+                        const Text('総支給額・残業代・控除額・差引額は変わりません。'),
                       ]),
                     )),
                   ],

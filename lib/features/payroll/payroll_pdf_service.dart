@@ -107,6 +107,8 @@ class PayrollPdfService {
         '_position_transfer_invalid': true,
     } : <String, dynamic>{
       ...detail,
+      '_position_transfer_reallocated': transfer.rate == null,
+      '_position_transfer_targets': transfer.reallocatedNames,
       '_position_transfer_rate': transfer.rate,
       '_position_transfer_days': transfer.days,
       '_position_transfer_average': transfer.isAverage,
@@ -1012,8 +1014,13 @@ class PayrollPdfService {
                         pw.Expanded(
                           flex: earnings ? 39 : 43,
                           child: pw.Text(
-                            earnings && visible[i].key == '基本給' && detail['_position_transfer_invalid'] == true
+                            earnings && (detail['_position_transfer_targets'] is Set &&
+                                (detail['_position_transfer_targets'] as Set).contains(visible[i].key))
+                              ? '基本給から振替'
+                              : earnings && visible[i].key == '基本給' && detail['_position_transfer_invalid'] == true
                               ? '振替の設定・支給額を確認してください'
+                              : earnings && visible[i].key == '基本給' && detail['_position_transfer_reallocated'] == true
+                              ? '振替後の基本給'
                               : earnings && visible[i].key == '基本給' && detail['_position_transfer_rate'] != null
                               ? '${detail['_position_transfer_average'] == true ? '平均 ' : ''}${_number(detail['_position_transfer_rate'] as int)}円 × ${detail['_position_transfer_days']}日'
                               : recordedPayrollUnitEvidence(detail, name: visible[i].key,
@@ -1028,7 +1035,12 @@ class PayrollPdfService {
                           pw.Expanded(
                             flex: 17,
                             child: pw.Text(
-                              visible[i].key == '基本給' && detail['_position_transfer_days'] != null
+                              (detail['_position_transfer_targets'] is Set &&
+                                  (detail['_position_transfer_targets'] as Set).contains(visible[i].key))
+                                ? ''
+                                : visible[i].key == '基本給' && detail['_position_transfer_reallocated'] == true
+                                ? ''
+                                : visible[i].key == '基本給' && detail['_position_transfer_days'] != null
                                 ? '${detail['_position_transfer_days']}日'
                                 : recordedPayrollUnitEvidence(detail, name: visible[i].key,
                                 section: 'earning',
