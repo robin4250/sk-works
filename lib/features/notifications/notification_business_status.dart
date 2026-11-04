@@ -101,3 +101,35 @@ NotificationBusinessStatus expenseNotificationBusinessStatus({
     return const NotificationBusinessStatus();
   }
 }
+
+/// A read-only, invoice-bound approval response can establish a pending task.
+/// It cannot establish overall completion in place of server finalization.
+NotificationBusinessState invoicePendingNotificationState({
+  required String? currentUserId,
+  required Object? value,
+}) {
+  final uuid = RegExp(r'^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$');
+  if (currentUserId == null || !uuid.hasMatch(currentUserId) || value is! List || value.isEmpty || value.length > 3) {
+    return NotificationBusinessState.unknown;
+  }
+  final seen = <String>{};
+  var pending = false;
+  for (final row in value) {
+    if (row is! Map || row['approver_user_id'] is! String ||
+        !uuid.hasMatch(row['approver_user_id'] as String) ||
+        !seen.add(row['approver_user_id'] as String) ||
+        !const {'pending', 'approved'}.contains(row['status']) ||
+        row['can_current_user_approve'] is! bool) {
+      return NotificationBusinessState.unknown;
+    }
+    if (row['can_current_user_approve'] == true &&
+        (row['approver_user_id'] != currentUserId || row['status'] != 'pending')) {
+      return NotificationBusinessState.unknown;
+    }
+    if (row['approver_user_id'] == currentUserId && row['status'] == 'pending' &&
+        row['can_current_user_approve'] == true) {
+      pending = true;
+    }
+  }
+  return pending ? NotificationBusinessState.pending : NotificationBusinessState.unknown;
+}

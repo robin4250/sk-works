@@ -175,6 +175,32 @@ class AppNotificationRepository {
         for (final row in rows) {
           if (row['approval_finalized_at'] != null) row['status'] = 'approved';
         }
+        if (rows.length == 1 && rows.single['approval_finalized_at'] == null) {
+          final actor = _client.auth.currentUser?.id;
+          if (actor != null) {
+            try {
+              // v2 is read-only. Never fall back to the legacy initializer.
+              final scope = TradeDocumentFormSession(_client);
+              Object? value;
+              try {
+                value = await scope.rpc('invoice_approval_status_rows_v2',
+                    {'p_invoice_id': id});
+                scope.requireScope();
+              } finally {
+                scope.dispose();
+              }
+              if (_client.auth.currentUser?.id != actor) {
+                return const NotificationBusinessStatus();
+              }
+              if (invoicePendingNotificationState(currentUserId: actor, value: value) ==
+                  NotificationBusinessState.pending) {
+                rows.single['status'] = 'pending';
+              }
+            } catch (_) {
+              // Unknown stays unknown; do not manufacture completion or work.
+            }
+          }
+        }
       }
       if (item.actionKey == 'payroll_review' && rows.length == 1) {
         final period = rows.single['period_start']?.toString();

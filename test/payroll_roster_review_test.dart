@@ -92,6 +92,21 @@ Future<PayrollReviewWorkspace> readRpc(Map<String, dynamic> body) async {
 }
 
 void main() {
+  testWidgets('coverage separates current roster from historical statement holders', (tester) async {
+    final body = payload();
+    final rows = body['statements'] as List;
+    rows.last['worker_id'] = workerId(99);
+    final workspace = (await tester.runAsync(() => readRpc(body)))!;
+    final repository = _CachedRepository(workspace);
+    await tester.pumpWidget(MaterialApp(home: PayrollReviewPage(repository: repository)));
+    await tester.pumpAndSettle();
+    expect(find.text('在籍社員 9名 ／ 当月明細 6件'), findsOneWidget);
+    expect(find.textContaining('在籍社員の明細あり 5名 ／ 明細なし 4名。'), findsOneWidget);
+    expect(workspace.items.length, 6);
+    expect(workspace.items.last.workerId, workerId(99));
+    expect(repository.reads, 1);
+    expect(tester.takeException(), isNull);
+  });
   testWidgets(
     'RPC identities survive projection and show real absence without creating zero slips',
     (tester) async {

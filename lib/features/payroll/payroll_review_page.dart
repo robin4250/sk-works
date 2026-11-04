@@ -355,6 +355,13 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
                                 key: const ValueKey('payroll-roster-counts'),
                               ),
                             ),
+                            if (workspace.canCompareRoster)
+                              Text(
+                                SkoLanguageController.isEnglish
+                                    ? 'Active employees with payslips: ${workspace.workers.where((worker) => items.any((item) => item.workerId == worker.workerId)).length} / Without payslips: ${workspace.workers.where((worker) => !items.any((item) => item.workerId == worker.workerId)).length}. Monthly payslips may also include employees outside the current active roster.'
+                                    : '在籍社員の明細あり ${workspace.workers.where((worker) => items.any((item) => item.workerId == worker.workerId)).length}名 ／ 明細なし ${workspace.workers.where((worker) => !items.any((item) => item.workerId == worker.workerId)).length}名。当月明細には現在の在籍社員以外の明細も含む場合があります。',
+                                key: const ValueKey('payroll-roster-coverage'),
+                              ),
                             if (workspace.canCompareRoster &&
                                 workspace.workers.any(
                                   (worker) => !items.any(

@@ -1555,6 +1555,8 @@ const englishLanguagePack = LanguagePack(
     '設定を保存しました': 'Settings saved',
     '給料一覧': 'Payroll List',
     '確認済み': 'Confirmed',
+    '既読': 'Read',
+    '通知は既読です。必要な確認・承認が完了するまで要対応に残ります。': 'Notification read. This remains under Action required until the required review or approval is complete.',
     '未確定': 'Unconfirmed',
     '支払証明書': 'Payment Certificate',
     '下書き': 'Draft',
