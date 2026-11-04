@@ -1,3 +1,4 @@
+import '../shared/trade_document_form_session.dart';
 import '../qualifications/qualification_photo_submission_review_page.dart';
 import 'dart:async';
 import 'notification_open_session.dart';
@@ -319,6 +320,12 @@ class _NotificationsPageState extends State<NotificationsPage> {
               requireFlow();
               return true;
             }
+            if (key == 'daily_report_edit_request') {
+              final available = await dailyReportNotificationAvailable(
+                  widget.notificationClient ?? SupabaseBackend.client, id!);
+              session.requireCurrent();
+              if (!available) return false;
+            }
             if (SourceNotificationTarget.supports(key)) return true;
             if (record != null && record.kind == 'resident_tax_reminder') {
               if (key != 'payroll_settings' || id == null) return false;
@@ -457,10 +464,14 @@ class _NotificationsPageState extends State<NotificationsPage> {
         if (actor == null || client.auth.currentUser?.id != actor) {
           throw StateError('ログイン状態が変わりました');
         }
-        if (request?['status'] == 'approved' && request?['requested_by'] == actor) {
+        _session?.requireCurrent();
+        if (request == null) {
+          throw StateError('通知の編集申請を取得できません。通知本文は履歴として確認できます。');
+        }
+        if (request['status'] == 'approved' && request['requested_by'] == actor) {
           final report = await client.from('daily_reports')
               .select('id,report_date,site_id,route_assignment_id')
-              .eq('id', request!['report_id']).single();
+              .eq('id', request['report_id']).single();
           if (client.auth.currentUser?.id != actor) {
             throw StateError('ログイン状態が変わりました');
           }
@@ -657,7 +668,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
                                 title: Text(
                                   _isSiteOrderItem(item) ? '注文・請書のお知らせ' : item.title,
                                   style: TextStyle(
-                                    fontWeight: item.needsAction || !item.read
+                                    fontWeight: item.needsAction || unread(item)
                                         ? FontWeight.w900
                                         : FontWeight.w600,
                                   ),
@@ -665,9 +676,12 @@ class _NotificationsPageState extends State<NotificationsPage> {
                                 subtitle: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    if (unread(item))
-                                      Text(SkoLanguageController.tr('未読'),
-                                        style: const TextStyle(fontWeight: FontWeight.w900)),
+                                    if ((data?.notificationIdsByItemKey[item.deduplicationKey] ?? const <String>[]).isNotEmpty)
+                                      Text(SkoLanguageController.tr(unread(item) ? '未読' : '既読'),
+                                        style: TextStyle(fontWeight: unread(item) ? FontWeight.w900 : FontWeight.normal)),
+                                    if ((data?.notificationIdsByItemKey[item.deduplicationKey] ?? const <String>[]).isNotEmpty &&
+                                        !unread(item) && item.needsAction)
+                                      Text(SkoLanguageController.tr('通知は既読です。必要な確認・承認が完了するまで要対応に残ります。')),
                                     if (_isSiteOrderItem(item))
                                       const Text('保存書類と現在の閲覧権限を確認して開きます。')
                                     else ...[
@@ -871,4 +885,22 @@ Widget residentTaxReminderDestination(AppNotificationRecord item, ResidentTaxRem
     companyId: target.companyId, fiscalYear: target.fiscalYear,
     reminderPanel: ResidentTaxReminderPanel(companyId: target.companyId),
   ));
+}
+
+/// A missing or RLS-hidden request must not lead to an unrelated approvals list.
+/// This read does not decide whether an edit is approved or completed.
+@visibleForTesting
+Future<bool> dailyReportNotificationAvailable(SupabaseClient client, String requestId) async {
+  if (!RegExp(r'^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$').hasMatch(requestId)) return false;
+  final scope = TradeDocumentFormSession(client);
+  try {
+    await scope.ready();
+    final token = client.auth.currentSession!.accessToken;
+    final request = await client.from('daily_report_edit_requests').select('id')
+        .eq('id', requestId).setHeader('Authorization', 'Bearer $token').maybeSingle();
+    await scope.ready();
+    return request != null && request['id'] == requestId;
+  } finally {
+    scope.dispose();
+  }
 }
