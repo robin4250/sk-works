@@ -679,7 +679,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
                                     if ((data?.notificationIdsByItemKey[item.deduplicationKey] ?? const <String>[]).isNotEmpty)
                                       Text(SkoLanguageController.tr(unread(item) ? '未読' : '既読'),
                                         style: TextStyle(fontWeight: unread(item) ? FontWeight.w900 : FontWeight.normal)),
-                                    if (!unread(item) && item.needsAction)
+                                    if ((data?.notificationIdsByItemKey[item.deduplicationKey] ?? const <String>[]).isNotEmpty &&
+                                        !unread(item) && item.needsAction)
                                       Text(SkoLanguageController.tr('通知は既読です。必要な確認・承認が完了するまで要対応に残ります。')),
                                     if (_isSiteOrderItem(item))
                                       const Text('保存書類と現在の閲覧権限を確認して開きます。')
