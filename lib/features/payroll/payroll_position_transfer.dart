@@ -1,16 +1,21 @@
 /// Presentation-only transfer from a statement's immutable saved snapshot.
 /// Returns null unless every saved amount can be attributed without guessing.
 class PayrollPositionTransfer {
-  const PayrollPositionTransfer(this.entries, this.rate, this.days, this.isAverage);
+  const PayrollPositionTransfer(this.entries, this.rate, this.days, this.isAverage,
+      {this.reallocatedNames = const {}});
   final Map<String, Object?> entries;
-  final int rate;
-  final num days;
+  final int? rate;
+  final num? days;
   final bool isAverage;
+  final Set<String> reallocatedNames;
 }
 
 PayrollPositionTransfer? payrollPositionTransfer(
     Map<String, dynamic> detail, Map<String, Object?> original) {
   final snap = detail['position_transfer_snapshot'];
+  if (snap is Map && snap['version'] == 2) {
+    return _baseToAllowance(snap, original);
+  }
   if (snap is! Map || snap['version'] != 1 || snap['enabled'] != true ||
       snap['pay_type'] != 'daily') {
     return null;
@@ -122,4 +127,37 @@ _TransferItems? _parseItems(Object? rawItems) {
     if (total > 2147483647) return null;
   }
   return _TransferItems(amounts, total);
+}
+
+// Version 2 reallocates saved basic earnings; version 1 retains its historical
+// opposite-direction presentation. Never derive this from current settings.
+PayrollPositionTransfer? _baseToAllowance(
+    Map snapshot, Map<String, Object?> original) {
+  if (snapshot.length != 4 || !snapshot.keys.toSet().containsAll(
+      const ['version', 'enabled', 'pay_type', 'items']) ||
+      snapshot['enabled'] != true ||
+      !const ['daily', 'hourly', 'monthly'].contains(snapshot['pay_type'])) {
+    return null;
+  }
+  final base = _yen(original['基本給']);
+  final parsed = _parseItems(snapshot['items']);
+  if (base == null || parsed == null || parsed.total > base ||
+      original.containsKey('基本給の調整額')) {
+    return null;
+  }
+  final result = Map<String, Object?>.from(original);
+  for (final entry in parsed.amounts.entries) {
+    if (const ['残業手当', '早出手当', '深夜手当', '休日手当', '休日出勤手当',
+        '夜勤手当', '有給手当'].contains(entry.key)) {
+      return null;
+    }
+    final existing = original.containsKey(entry.key) ? _yen(original[entry.key]) : 0;
+    if (existing == null || existing != 0) {
+      return null;
+    }
+    result[entry.key] = existing + entry.value;
+  }
+  result['基本給'] = base - parsed.total;
+  return PayrollPositionTransfer(Map.unmodifiable(result), null, null, false,
+      reallocatedNames: Set.unmodifiable(parsed.amounts.keys));
 }

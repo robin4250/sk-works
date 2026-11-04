@@ -95,7 +95,7 @@ void main() {
         await t.tap(find.widgetWithText(FilledButton, '登録')); await t.pumpAndSettle();
         await t.tap(find.text('確定して保存')); await t.pumpAndSettle();
         expect((repository.saved!['rate_formula'] as Map)['position_transfer'], {
-          'enabled': true,
+          'version': 2, 'enabled': true,
           'items': [{'name': '役職手当', 'amount_yen': 100000}],
         });
         await t.pumpWidget(const SizedBox()); await t.pumpAndSettle();

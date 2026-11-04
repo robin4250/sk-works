@@ -20,7 +20,7 @@ void main() {
   });
   test('malformed and unknown requested snapshots cannot suppress warnings', () {
     final invalid = <Map<String, dynamic>>[
-      {...snapshot('monthly'), 'version': 2},
+      {...snapshot('monthly'), 'version': 3},
       {...snapshot('monthly'), 'pay_type': 'future'},
       {...snapshot('monthly'), 'items': null},
       {...snapshot('monthly'), 'items': []},
