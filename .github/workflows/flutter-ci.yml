@@ -50,15 +50,20 @@ jobs:
       - name: Verify pinned Flutter
         run: flutter --version
 
-      - name: Create Android project files
+      - name: Set up Android Java toolchain
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Verify tracked Android project
         run: |
           set -euo pipefail
-          lock_backup=$(mktemp)
-          cp pubspec.lock "$lock_backup"
-          trap 'cp "$lock_backup" pubspec.lock; rm -f "$lock_backup"' EXIT
-          flutter create . --no-pub --platforms=android --project-name sk_works --org com.skworks
-          cp "$lock_backup" pubspec.lock
-          git diff --exit-code -- pubspec.yaml pubspec.lock
+          test -x android/gradlew
+          test -s android/gradle/wrapper/gradle-wrapper.jar
+          test -s android/app/src/main/kotlin/com/skworks/sko/MainActivity.kt
+          git ls-files --error-unmatch android/gradlew android/gradlew.bat android/gradle/wrapper/gradle-wrapper.jar
+          git diff --exit-code -- android pubspec.yaml pubspec.lock
 
       - name: Scan tracked files for production secrets
         run: bash tool/check_no_client_secrets.sh
