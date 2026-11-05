@@ -1,0 +1,20 @@
+{
+  "name": "SKO",
+  "short_name": "SKO",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#FFFFFF",
+  "theme_color": "#FFFFFF",
+  "description": "SKO WEB版（準備中）",
+  "orientation": "any",
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "icons/sko-app-icon.png",
+      "sizes": "456x456",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "scope": "."
+}
