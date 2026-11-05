@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'company_link_scope.dart';
 
 import 'trade_company_repository.dart';
 
@@ -19,6 +21,7 @@ class CompanyLinkPage extends StatefulWidget {
 }
 
 class _CompanyLinkPageState extends State<CompanyLinkPage> {
+  late final CompanyLinkScope _scope;
   final _query = TextEditingController();
   Map<String, dynamic>? _workspace;
   List<Map<String, dynamic>> _results = const [];
@@ -28,17 +31,22 @@ class _CompanyLinkPageState extends State<CompanyLinkPage> {
   @override
   void initState() {
     super.initState();
-    _run(_reload);
+    _scope = widget.repository.createLinkScope();
+    _run(() async {
+      await _scope.loadContexts();
+      if (_scope.company != null) await _reload();
+    });
   }
 
   @override
   void dispose() {
+    unawaited(_scope.close());
     _query.dispose();
     super.dispose();
   }
 
   Future<void> _reload() async {
-    final value = await widget.repository.linkWorkspace();
+    final value = await _scope.workspace();
     if (mounted) setState(() => _workspace = value);
   }
 
@@ -57,6 +65,7 @@ class _CompanyLinkPageState extends State<CompanyLinkPage> {
   }
 
   Future<void> _request(Map<String, dynamic> company) async {
+    final generation = _scope.generation;
     final now = DateTime.now();
     final selected = await showDatePicker(
       context: context,
@@ -90,10 +99,11 @@ class _CompanyLinkPageState extends State<CompanyLinkPage> {
     );
     if (confirm != true) return;
     await _run(() async {
-      await widget.repository.requestLink(
-        companyId: company['company_id'].toString(),
-        mode: widget.mode,
-        startMonth: DateTime(selected.year, selected.month),
+      _scope.requireGeneration(generation);
+      await _scope.request(
+        target: company['company_id'].toString(),
+        role: widget.mode == TradeCompanyPageMode.customer ? 'customer' : 'subcontractor',
+        month: DateTime(selected.year, selected.month),
       );
       await _reload();
       if (mounted) {
@@ -104,6 +114,7 @@ class _CompanyLinkPageState extends State<CompanyLinkPage> {
   }
 
   Future<void> _respond(Map<String, dynamic> request, String action) async {
+    final generation = _scope.generation;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -131,7 +142,8 @@ class _CompanyLinkPageState extends State<CompanyLinkPage> {
     );
     if (confirmed != true) return;
     await _run(() async {
-      await widget.repository.respondLink(request['id'].toString(), action);
+      _scope.requireGeneration(generation);
+      await _scope.respond(request['id'].toString(), action);
       await _reload();
     });
   }
@@ -175,6 +187,20 @@ class _CompanyLinkPageState extends State<CompanyLinkPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          DropdownButtonFormField<String>(
+            key: ValueKey('company-link-${_scope.generation}'),
+            initialValue: _scope.company,
+            decoration: const InputDecoration(labelText: '操作する自社'),
+            items: [for (final company in _scope.contexts)
+              DropdownMenuItem(value: company.id, child: Text(company.name))],
+            onChanged: _busy ? null : (company) {
+              if (company == null) return;
+              setState(() { _scope.select(company); _workspace = null; _results = []; _query.clear(); });
+              _run(_reload);
+            },
+          ),
+          if (!_busy && _scope.contexts.isEmpty) const Text('会社の管理権限がありません。所属と権限を確認してください。'),
+          if (_scope.contexts.length > 1 && _scope.company == null) const Text('操作する自社を選択してください。'),
           const Text('会社名・法人番号で検索 → 申請 → 相手が承認 → 双方の一覧へ反映'),
           const Text('連携は会社間の関係登録です。社員情報や給与の公開にはなりません。'),
           if (_workspace != null)
@@ -184,7 +210,7 @@ class _CompanyLinkPageState extends State<CompanyLinkPage> {
               onChanged: _busy
                   ? null
                   : (value) => _run(() async {
-                      await widget.repository.setLinkEnabled(value);
+                      await _scope.setEnabled(value);
                       await _reload();
                     }),
             ),
@@ -285,7 +311,7 @@ class _CompanyLinkPageState extends State<CompanyLinkPage> {
   }
 
   Future<void> _search() => _run(() async {
-    final results = await widget.repository.searchLinkCompanies(_query.text);
+    final results = await _scope.search(_query.text);
     if (mounted) {
       setState(() => _results = results);
       if (results.isEmpty) {
