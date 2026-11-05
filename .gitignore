@@ -129,3 +129,8 @@ app.*.symbols
 /.idea/
 /.metadata
 /sk_works.iml
+
+# Reviewed Android wrapper is source; local SDK and signing files stay ignored.
+!/android/gradlew
+!/android/gradlew.bat
+!/android/gradle/wrapper/gradle-wrapper.jar
