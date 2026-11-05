@@ -1,0 +1,58 @@
+name: Company link bound candidate
+on:
+  pull_request:
+    paths:
+      - 'tool/staged/company_link_bound.sql.review-only'
+      - 'tool/company_link_bound_fixture.cjs'
+      - 'lib/features/companies/company_link_page.dart'
+      - 'lib/features/companies/trade_company_repository.dart'
+      - 'test/company_link_bound_sdk_test.dart'
+      - '.github/workflows/company-link-bound.yml'
+permissions:
+  contents: read
+jobs:
+  isolated-sql:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:17.6
+        env:
+          POSTGRES_PASSWORD: synthetic_fixture_only
+          POSTGRES_DB: company_link_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 3s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --prefix tool/security/fixture_dependencies
+      - run: node tool/company_link_bound_fixture.cjs
+        env:
+          NODE_PATH: '${{ github.workspace }}/tool/security/fixture_dependencies/node_modules'
+      - run: node tool/company_link_bound_fixture.cjs
+        env:
+          NODE_PATH: '${{ github.workspace }}/tool/security/fixture_dependencies/node_modules'
+          SKO_COMPANY_LINK_NATIVE: '1'
+          PGHOST: '127.0.0.1'
+          PGPORT: '5432'
+          PGUSER: postgres
+          PGPASSWORD: synthetic_fixture_only
+          PGDATABASE: company_link_fixture
+  sdk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.47.5'
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: git diff --exit-code -- pubspec.lock
+      - run: flutter analyze lib/features/companies/company_link_page.dart lib/features/companies/trade_company_repository.dart test/company_link_bound_sdk_test.dart
+      - run: flutter test test/company_link_bound_sdk_test.dart --timeout 20s --reporter expanded
