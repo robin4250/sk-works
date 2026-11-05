@@ -5,6 +5,7 @@ on:
       - 'lib/features/auth/existing_google_login.dart'
       - 'lib/features/auth/app_auth_mutation_gateway.dart'
       - 'test/existing_google_gateway_boundary_test.dart'
+      - 'test/existing_google_mac_entry_test.dart'
       - '.github/workflows/google-gateway-boundary.yml'
 permissions:
   contents: read
@@ -21,5 +22,6 @@ jobs:
           cache: true
       - run: flutter pub get --enforce-lockfile
       - run: git diff --exit-code -- pubspec.lock
-      - run: dart analyze lib/features/auth/app_auth_mutation_gateway.dart lib/features/auth/existing_google_login.dart test/existing_google_gateway_boundary_test.dart
-      - run: flutter test test/existing_google_gateway_boundary_test.dart test/existing_google_login_test.dart --reporter expanded
+      - run: dart analyze lib/features/auth/app_auth_mutation_gateway.dart lib/features/auth/existing_google_login.dart test/existing_google_gateway_boundary_test.dart test/existing_google_mac_entry_test.dart
+      - run: flutter test test/existing_google_gateway_boundary_test.dart test/existing_google_login_test.dart test/existing_google_mac_entry_test.dart --reporter expanded
+      - run: flutter test --dart-define=SKO_MAC_EXISTING_GOOGLE_LOGIN_ENABLED=true test/existing_google_mac_entry_test.dart --reporter expanded
