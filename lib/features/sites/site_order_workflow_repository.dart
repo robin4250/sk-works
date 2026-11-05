@@ -297,13 +297,16 @@ class SiteOrderWorkflowRepository extends SiteOrderWorkflowApi {
           _capturedSessionId != null &&
           value['company_id'] == _company &&
           value['role'] == _role &&
-          value['master_enabled'] == true &&
+          value['master_enabled'] is bool &&
           value['can_read'] == true &&
           value['can_create'] is bool &&
           value['can_mutate'] is bool &&
           (!creating ||
-              (value['can_create'] == true && value['can_mutate'] == true)) &&
-          (!mutating || value['can_mutate'] == true);
+              (value['master_enabled'] == true &&
+                  value['can_create'] == true &&
+                  value['can_mutate'] == true)) &&
+          (!mutating ||
+              (value['master_enabled'] == true && value['can_mutate'] == true));
     } catch (_) {
       // Includes missing RPC, unknown contract and stale actor/session/company.
       // verify() retires changed scopes; it must never restore an old receipt.
