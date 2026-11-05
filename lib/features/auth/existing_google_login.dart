@@ -11,9 +11,16 @@ class ExistingGoogleLogin {
   ExistingGoogleLogin(this.client);
 
   final SupabaseClient client;
+  /// Source-only Mac entry; callback and Auth pre-write policy remain release gates.
+  static const macEnabled = bool.fromEnvironment(
+    'SKO_MAC_EXISTING_GOOGLE_LOGIN_ENABLED',
+    defaultValue: false,
+  );
   static const nativeRedirect = 'com.skworks.sko://login-callback/';
   static bool get supportedPlatform =>
-      !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.iOS ||
+          (defaultTargetPlatform == TargetPlatform.macOS && macEnabled));
 
   static ExistingGoogleLogin? maybeCreate() => SupabaseBackend.isInitialized
       ? ExistingGoogleLogin(SupabaseBackend.client)
@@ -24,7 +31,7 @@ class ExistingGoogleLogin {
 
   Future<bool> launch() async {
     if (!supportedPlatform) {
-      throw UnsupportedError('Verified iOS Google callback is required');
+      throw UnsupportedError('Verified native Google callback is required');
     }
     final owner = AppAuthMutationGateway.forClient(client);
     final epoch = await owner.externalFlowAdmission();
@@ -38,7 +45,10 @@ class ExistingGoogleLogin {
     // PKCE storage awaits, immediately before the native handoff.
     if (!owner.isExternalFlowCurrent(epoch)) throw StateError('Authentication changed before browser launch.');
     final launched = await launchUrl(Uri.parse(response.url),
-        mode: LaunchMode.platformDefault, webOnlyWindowName: '_self');
+        mode: defaultTargetPlatform == TargetPlatform.macOS
+            ? LaunchMode.externalApplication
+            : LaunchMode.platformDefault,
+        webOnlyWindowName: '_self');
     if (!owner.isExternalFlowCurrent(epoch)) throw StateError('Authentication changed during browser launch.');
     return launched;
   }
