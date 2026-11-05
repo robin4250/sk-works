@@ -23,26 +23,26 @@ jobs:
         ports: ['5432:5432']
         options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: {ref: 57623f15b91069b7e6affa76a43a77c808f20653, path: backend, persist-credentials: false}
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: matrix.fixture == 'execution'
         with: {ref: 14cf77f4b166bcb86d0f5fef68080841ac89a27a, path: actual, persist-credentials: false}
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: matrix.fixture == 'execution'
         with: {ref: 6a24114471a9c264fad1aeec5dd2222915ddbedf, path: c-source, persist-credentials: false}
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: matrix.fixture == 'execution'
         with: {ref: de4d4bb018e8c8ca56b0c85bde09fadebca312a4, path: reply, persist-credentials: false}
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: matrix.fixture == 'execution'
         with: {ref: f4c6da47e8c6bd894c920ab1d85399a4dc5da7bb, path: history, persist-credentials: false}
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: matrix.fixture == 'execution'
         with: {ref: 8bd475b31f5b05788ea437f33e8825651ef54de0, path: auth-source, persist-credentials: false}
       - uses: dart-lang/setup-dart@v1
         with: {sdk: '3.13.7'}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: {node-version: '22.21.0'}
       - run: dart pub get --enforce-lockfile --directory=backend/tool/canonical_renderer
       - run: npm ci --prefix backend/tool/security/fixture_dependencies --ignore-scripts
@@ -75,7 +75,7 @@ jobs:
           fi
       - working-directory: receipts
         run: sha256sum *.json > checksums-${{ matrix.fixture }}.sha256
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: site-order-native-${{ matrix.fixture }}-${{ github.sha }}
           path: receipts/*
@@ -85,9 +85,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: {persist-credentials: false}
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: site-order-native-*-${{ github.sha }}
           path: receipts

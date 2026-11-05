@@ -17,7 +17,7 @@ jobs:
   saved-invoice-read:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.47.5'
@@ -28,8 +28,8 @@ jobs:
   existing-invoice-rpc:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
       - run: npm install --prefix "$RUNNER_TEMP/invoice-read-runtime" --ignore-scripts --no-audit --no-fund @electric-sql/pglite@0.3.14

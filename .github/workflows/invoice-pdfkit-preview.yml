@@ -16,6 +16,6 @@ jobs:
   adopted-pdf:
     runs-on: macos-26-intel
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Parse and render the actual adopted invoice pages with Apple PDFKit
         run: swift tool/verify_invoice_pdfkit.swift docs/adopted_reports/generated/e3b14ec/generated_invoice_v8.pdf docs/adopted_reports/generated/e3b14ec/invoice_pagination.pdf

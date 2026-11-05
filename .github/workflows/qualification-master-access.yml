@@ -18,14 +18,14 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U postgres" --health-interval 10s --health-timeout 5s --health-retries 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f docs/review/qualification-master-access/native-test.sql
         env:
           PGPASSWORD: postgres
   ui:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.47.5'

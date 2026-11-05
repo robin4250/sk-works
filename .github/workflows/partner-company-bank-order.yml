@@ -28,8 +28,8 @@ jobs:
           --health-cmd "pg_isready -U postgres -d partner_bank_fixture"
           --health-interval 10s --health-timeout 5s --health-retries 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '22.14.0'
       - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
@@ -46,7 +46,7 @@ jobs:
   client-and-pdf:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.47.5'
@@ -85,7 +85,7 @@ jobs:
                   pdf[0].get_pixmap().save(folder/(name+'.png'))
           print('PASS exact saved supplier bank, leading zero, legacy absence, original parties/totals and page bounds')
           PY
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: supplier-bank-order-pdf-proof
           path: build/partner-bank-proof/

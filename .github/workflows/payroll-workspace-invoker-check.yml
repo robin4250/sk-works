@@ -17,8 +17,8 @@ jobs:
   pglite:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
       - run: npm install --prefix "$RUNNER_TEMP/payroll-invoker" --ignore-scripts --no-audit --no-fund @electric-sql/pglite@0.5.8
@@ -38,8 +38,8 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
       - run: npm install --prefix "$RUNNER_TEMP/payroll-invoker" --ignore-scripts --no-audit --no-fund pg@8.16.3

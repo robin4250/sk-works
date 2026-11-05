@@ -23,10 +23,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '24.22.1'
       - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
@@ -51,17 +51,17 @@ jobs:
       SKO_SCOPED_ATTENTION_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_scoped_attention_fixture
       SKO_WRITE_CANONICAL_FIXTURE: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '24.22.1'
       - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
       - run: |
           ln -s "$PWD/tool/security/fixture_dependencies/node_modules" docs/review/scoped-required-document-attention/node_modules
           node docs/review/scoped-required-document-attention/verify.mjs
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: canonical-document-receipts-${{ github.run_id }}-${{ github.run_attempt }}
           path: docs/review/scoped-required-document-attention/canonical-receipts.generated.json
@@ -72,7 +72,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: subosito/flutter-action@v2
@@ -80,7 +80,7 @@ jobs:
           flutter-version: '3.47.5'
           channel: stable
           cache: true
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: canonical-document-receipts-${{ github.run_id }}-${{ github.run_attempt }}
           path: tool/security/canonical-evidence-fixtures

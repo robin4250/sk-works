@@ -26,9 +26,9 @@ jobs:
           --health-cmd "pg_isready -U postgres -d sko_trade_fixture"
           --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: {persist-credentials: false}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: {node-version: '24'}
       - run: npm ci --prefix tool/security/fixture_dependencies --no-audit --no-fund --ignore-scripts
       - run: node tool/verify_worker_document_exemption.mjs "$GITHUB_WORKSPACE/tool/trade_document_pg_adapter.mjs"
@@ -38,7 +38,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: {persist-credentials: false}
       - uses: subosito/flutter-action@v2
         with: {flutter-version: '3.47.5', channel: stable, cache: true}
