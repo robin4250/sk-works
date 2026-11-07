@@ -23,6 +23,20 @@ class SecureAuthPage extends StatefulWidget {
 }
 
 class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObserver {
+  bool get _canUseGoogle =>
+      widget.googleLogin != null || ExistingGoogleLogin.supportedPlatform;
+
+  String get _primaryRecoveryMessage {
+    final googleGuidance = _canUseGoogle
+        ? 'Googleでログインできる方は「通常ログインへ戻る」からログインし、アカウント設定で第一パスワードを設定・変更できます。\n'
+        : 'この環境ではGoogleログインは利用できません。Googleでログインしていた方は、対応する登録済み端末のSKOでアカウント設定を確認してください。\n';
+    return '本パスワードはログイン用で、第2パスワードとは別です。\n'
+        'Face IDによる第2パスワードの再設定では、本パスワードは変わりません。\n'
+        '$googleGuidance'
+        '登録済みの電話番号または確認済みメールと、保存した本パスワードを使います。Google用のパスワードとは別です。\n'
+        'この画面からの再設定・SMS復旧は利用できません。';
+  }
+
   ExistingGoogleLogin? _google;
   StreamSubscription<AuthState>? _googleSubscription;
   int _googleGeneration = 0;
@@ -336,11 +350,7 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
                         _awaitingSms
                             ? 'SMSで届いた6桁のコードを入力してください。'
                             : _passwordResetMode
-                                ? '本パスワードはログイン用で、第2パスワードとは別です。\n'
-                                  'Face IDによる第2パスワードの再設定では、本パスワードは変わりません。\n'
-                                  'Googleでログインできる方は「通常ログインへ戻る」からログインし、アカウント設定で第一パスワードを設定・変更できます。\n'
-                                  '登録済みの電話番号または確認済みメールと、保存した本パスワードを使います。Google用のパスワードとは別です。\n'
-                                  'この画面からの再設定・SMS復旧は利用できません。'
+                                ? _primaryRecoveryMessage
                                 : _registerMode
                                     ? '携帯電話番号をIDとして登録します。'
                                     : '登録済みの方法でログインしてください。初めて使う方は下の初回登録へ進んでください。',
@@ -349,7 +359,7 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
                           color: scheme.onSurfaceVariant,
                         ),
                       ),
-                      if ((widget.googleLogin != null || ExistingGoogleLogin.supportedPlatform) &&
+                      if (_canUseGoogle &&
                           !_registerMode && !_awaitingSms && !_passwordResetMode) ...[
                         const SizedBox(height: 16),
                         OutlinedButton(

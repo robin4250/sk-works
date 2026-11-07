@@ -1,7 +1,11 @@
 {{flutter_js}}
 {{flutter_build_config}}
 
-// Ship the matching engine with this build; no runtime CanvasKit CDN fetch.
-_flutter.loader.load({
-  config: {canvasKitBaseUrl: 'canvaskit/'},
-});
+// Keep the engine self-hosted and preserve Flutter's default initialization.
+try {
+  Promise.resolve(_flutter.loader.load({
+    config: {canvasKitBaseUrl: 'canvaskit/'},
+  })).catch(() => window.skoStartup?.fail());
+} catch (_) {
+  window.skoStartup?.fail();
+}
