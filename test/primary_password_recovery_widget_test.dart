@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:sk_works/features/auth/secure_onboarding_pages.dart';
+import 'package:sk_works/features/auth/existing_google_login.dart';
 import 'package:sk_works/features/auth/secure_onboarding_repository.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -29,12 +30,12 @@ class _Wire {
   late final SecureOnboardingRepository repository;
   final calls = <http.Request>[];
 }
-Future<void> _show(WidgetTester tester, _Wire w, VoidCallback onAuthenticated) async {
+Future<void> _show(WidgetTester tester, _Wire w, VoidCallback onAuthenticated, {ExistingGoogleLogin? googleLogin}) async {
   debugPrint('primary fixture: prepare surface');
   await tester.binding.setSurfaceSize(const Size(900, 1400));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   debugPrint('primary fixture: mount');
-  await tester.pumpWidget(MaterialApp(home: SecureAuthPage(repository: w.repository, onAuthenticated: onAuthenticated)));
+  await tester.pumpWidget(MaterialApp(home: SecureAuthPage(repository: w.repository, onAuthenticated: onAuthenticated, googleLogin: googleLogin)));
   debugPrint('primary fixture: mounted');
 }
 // The pinned SDK subscription cancellation may complete in the real setup
@@ -49,7 +50,7 @@ Future<void> _settleAuth(WidgetTester tester) async {
 }
 void main() {
   late List<_Wire> wires;
-  setUpAll(() { wires = List.generate(3, (_) => _Wire()); });
+  setUpAll(() { wires = List.generate(4, (_) => _Wire()); });
   tearDownAll(() async { for (final w in wires) { await w.client.dispose(); } });
   testWidgets('forgot is unavailable: no SMS, no update, no fake biometric and back clears credentials', (tester) async {
     final w = wires[0]; var authenticated = 0;
@@ -59,8 +60,8 @@ void main() {
     await tester.tap(find.text('本パスワードを忘れた方')); await tester.pumpAndSettle();
     expect(find.textContaining('本パスワードはログイン用で、第2パスワードとは別です。'), findsOneWidget);
     expect(find.textContaining('本パスワードは変わりません。'), findsOneWidget);
-    expect(find.textContaining('Googleでログインできる方は'), findsOneWidget);
-    expect(find.textContaining('アカウント設定で第一パスワードを設定・変更できます。'), findsOneWidget);
+    expect(find.textContaining('この環境ではGoogleログインは利用できません。'), findsOneWidget);
+    expect(find.textContaining('Googleでログインできる方は'), findsNothing);
     expect(find.textContaining('登録済みの電話番号または確認済みメールと、保存した本パスワードを使います。'), findsOneWidget);
     expect(find.textContaining('Google用のパスワードとは別です。'), findsOneWidget);
     expect(find.textContaining('この画面からの再設定・SMS復旧は利用できません。'), findsOneWidget);
@@ -89,6 +90,16 @@ void main() {
     expect(jsonDecode(w.calls.single.body), containsPair('phone', '+819012345678'));
     expect(w.calls.where((r) => r.url.path == '/auth/v1/otp' || r.url.path == '/auth/v1/user'), isEmpty);
   }, timeout: const Timeout(Duration(seconds: 30)));
+  testWidgets('available Google entry keeps recovery guidance on the current environment', (tester) async {
+    final w = wires[3]; var authenticated = 0;
+    await _show(tester, w, () => authenticated++, googleLogin: ExistingGoogleLogin(w.client));
+    expect(find.text('登録済みのGoogleでログイン'), findsOneWidget);
+    await tester.tap(find.text('本パスワードを忘れた方')); await tester.pumpAndSettle();
+    expect(find.textContaining('Googleでログインできる方は'), findsOneWidget);
+    expect(find.textContaining('この環境ではGoogleログインは利用できません。'), findsNothing);
+    expect(w.calls, isEmpty); expect(authenticated, 0);
+    expect(find.byType(TextField), findsNothing);
+  });
   testWidgets('initial registration retains separate SMS verification, QR entry and no recovery reset', (tester) async {
     final w = wires[2]; var authenticated = 0;
     await _show(tester, w, () => authenticated++);
