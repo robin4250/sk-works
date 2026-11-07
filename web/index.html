@@ -36,9 +36,9 @@
     #sko-startup { min-height: 100vh; min-height: 100dvh; box-sizing: border-box;
       display: grid; place-content: center; padding: 24px; text-align: center;
       color: #17233b; background: #f5f7fb; font-family: system-ui, sans-serif; }
-    #sko-startup[hidden], #sko-startup button[hidden] { display: none; }
+    #sko-startup[hidden], #sko-startup-retry[hidden] { display: none; }
     #sko-startup h1 { font-size: 28px; margin: 0 0 16px; }
-    #sko-startup button { margin: 20px auto 0; padding: 12px 24px; font: inherit;
+    #sko-startup-retry { display: inline-block; text-decoration: none; margin: 20px auto 0; padding: 12px 24px; font: inherit;
       border: 0; border-radius: 8px; color: white; background: #115bc2; cursor: pointer; }
   </style>
 </head>
@@ -46,7 +46,7 @@
   <section id="sko-startup" aria-label="SKO">
     <h1>SKO</h1>
     <p id="sko-startup-message" role="status" aria-live="polite">読み込み中です…</p>
-    <button id="sko-startup-retry" type="button" hidden>再読み込み</button>
+    <a id="sko-startup-retry" href="">再読み込み</a>
     <noscript>SKOを開くには、ブラウザのJavaScriptを有効にしてください。</noscript>
   </section>
   <script src="sko_startup.js"></script>

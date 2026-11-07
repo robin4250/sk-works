@@ -10,6 +10,7 @@
     message.textContent = 'Loading…';
     retry.textContent = 'Reload';
   }
+  retry.hidden = true;
   let finished = false;
   const fail = () => {
     if (finished) return;
@@ -20,7 +21,10 @@
     retry.hidden = false;
   };
   const timer = setTimeout(fail, 30000);
-  retry.addEventListener('click', () => window.location.reload());
+  retry.addEventListener('click', event => {
+    event.preventDefault();
+    window.location.reload();
+  });
   window.addEventListener('flutter-first-frame', () => {
     finished = true;
     clearTimeout(timer);
