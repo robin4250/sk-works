@@ -67,7 +67,13 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
       final items = await repository.loadAll();
       var linkEnabled = false;
       try {
-        linkEnabled = (await repository.linkWorkspace())['enabled'] == true;
+        final scope = repository.createLinkScope();
+        try {
+          await scope.loadContexts();
+          linkEnabled = scope.contexts.isNotEmpty;
+        } finally {
+          await scope.close();
+        }
       } catch (_) {
         // Older deployments retain their company directory until migration.
       }
