@@ -1,0 +1,32 @@
+name: Isolated web compile readiness
+on:
+  pull_request:
+    paths:
+      - 'tool/prepare_web_recovery.sh'
+      - 'docs/security/WEB_RECOVERY_READINESS_20261017.md'
+      - '.github/workflows/web-recovery-readiness.yml'
+permissions:
+  contents: read
+jobs:
+  compile-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - name: Prepare a separate clean worktree
+        run: |
+          git worktree add --detach ../sko-web-candidate HEAD
+          cd ../sko-web-candidate
+          SKO_ISOLATED_WEB_PREPARE=1 bash tool/prepare_web_recovery.sh
+          flutter pub get --enforce-lockfile
+          flutter build web --release --dart-define=SKO_MASTER_PASSWORD_V1=false
+      - name: Verify local output only
+        run: |
+          test -s ../sko-web-candidate/build/web/index.html
+          test -s ../sko-web-candidate/build/web/main.dart.js
+          echo "Compile only. No deploy. Google/Apple/Touch ID/browser trust/recovery NOT verified."
