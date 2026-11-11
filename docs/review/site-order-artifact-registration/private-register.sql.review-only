@@ -1,0 +1,224 @@
+-- REVIEW ONLY: internal registration contract, not a public upload API.
+-- Requires the actual consent/API candidates and the shared live master gate.
+-- No renderer is installed here; bytes must be generated inside the trusted
+-- canonical renderer command. Never grant this registration path to a client.
+begin;
+do $$ declare item record; proc pg_proc; begin
+ if to_regprocedure('trade_document_confirmation_api_private.actor()') is null
+ or to_regprocedure('trade_document_consent_private.render_approved(uuid,integer,uuid,boolean)') is null
+ or to_regprocedure('trade_document_consent_private.require_actor(uuid)') is null
+ or to_regprocedure('private.require_trade_documents_master_feature()') is null
+ or to_regclass('public.sites') is null or to_regclass('public.trade_companies') is null then
+  raise exception 'site_artifact_existing_guard_prerequisite_missing';
+ end if;
+ if to_regnamespace('site_order_artifact_private') is not null then
+  raise exception 'site_artifact_namespace_already_present_review_required';
+ end if;
+ for item in select * from (values
+  ('trade_document_confirmation_api_private.actor()','42329b7b0775eec0aad5ac018233011d',true),
+  ('trade_document_consent_private.require_actor(uuid)','672a165b2b721befce37aa706626be7c',true),
+  ('trade_document_consent_private.lock_pair(uuid,uuid)','a37ce3e8230a7efd5534fa879ad1b5b0',true),
+  ('trade_document_consent_private.render_approved(uuid,integer,uuid,boolean)','b53668611851ab0bc211660e6f6d1f86',true),
+  ('private.require_trade_documents_master_feature()','0dc45a5f0611ccbd832b77a03c0beb1a',true),
+  ('trade_document_consent_private.immutable()','73660d9947f20d6f99c59d8451078e7e',false)
+ ) v(signature,source_md5,expected_definer) loop
+  select * into proc from pg_proc where oid=to_regprocedure(item.signature);
+  if md5(proc.prosrc) is distinct from item.source_md5 or proc.prosecdef is distinct from item.expected_definer
+   or pg_get_userbyid(proc.proowner)<>'postgres'
+   or proc.proconfig is distinct from array['search_path=""']::text[]
+   or has_function_privilege('anon',proc.oid,'EXECUTE')
+   or has_function_privilege('authenticated',proc.oid,'EXECUTE') then
+   raise exception 'site_artifact_guard_changed: %',item.signature;
+  end if;
+ end loop;
+end $$;
+create schema site_order_artifact_private;
+revoke all on schema site_order_artifact_private from public,anon,authenticated,service_role;
+create table site_order_artifact_private.render_jobs (
+ id uuid primary key,
+ company_id uuid not null,
+ counterparty_company_id uuid not null check(counterparty_company_id<>company_id),
+ counterparty_name text not null check(length(trim(counterparty_name)) between 1 and 240),
+ counterparty_trade_company_id uuid not null,
+ counterparty_connection_fingerprint text not null check(counterparty_connection_fingerprint~'^[a-f0-9]{64}$'),
+ site_id uuid not null,
+ document_id uuid not null,
+ document_revision integer not null check(document_revision>0),
+ request_id uuid not null,
+ actor_id uuid not null,
+ session_id uuid not null,
+ render_hash text not null check(render_hash~'^[a-f0-9]{64}$'),
+ body_hash text not null check(body_hash~'^[a-f0-9]{64}$'),
+ evidence jsonb not null,
+ layout_contract text not null check(layout_contract='sko-original-form-20261029-v1'),
+ created_at timestamptz not null default clock_timestamp(),
+ unique(company_id,actor_id,request_id),
+ foreign key(document_id,document_revision)
+   references trade_document_consent_private.revisions(document_id,revision)
+);
+create table site_order_artifact_private.pdf_records (
+ job_id uuid primary key references site_order_artifact_private.render_jobs(id),
+ receipt_id uuid not null unique,
+ pdf_bytes bytea not null check(octet_length(pdf_bytes) between 16 and 20971520),
+ pdf_sha256 text generated always as (encode(sha256(pdf_bytes),'hex')) stored,
+ recorded_at timestamptz not null default clock_timestamp(),
+ check(substring(pdf_bytes from 1 for 5)=convert_to('%PDF-','UTF8'))
+);
+alter table site_order_artifact_private.render_jobs enable row level security;
+alter table site_order_artifact_private.pdf_records enable row level security;
+create trigger immutable_render_job before update or delete on site_order_artifact_private.render_jobs
+ for each row execute function trade_document_consent_private.immutable();
+create trigger immutable_pdf_record before update or delete on site_order_artifact_private.pdf_records
+ for each row execute function trade_document_consent_private.immutable();
+create trigger immutable_render_jobs_truncate before truncate on site_order_artifact_private.render_jobs
+ for each statement execute function trade_document_consent_private.immutable();
+create trigger immutable_pdf_records_truncate before truncate on site_order_artifact_private.pdf_records
+ for each statement execute function trade_document_consent_private.immutable();
+
+create function site_order_artifact_private.counterparty_context(p_company uuid,p_document uuid,p_trade uuid)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare d trade_document_consent_private.documents%rowtype;t public.trade_companies%rowtype;
+ cc private.company_connections%rowtype;peer_name text;binding jsonb;
+begin
+ select * into d from trade_document_consent_private.documents where id=p_document for share;
+ if d.id is null or d.issuer_company_id<>p_company then
+  raise exception 'site_artifact_issuer_required' using errcode='42501';
+ end if;
+ perform trade_document_consent_private.lock_pair(p_company,d.counterparty_company_id);
+ select name into peer_name from public.companies where id=d.counterparty_company_id for share;
+ select * into t from public.trade_companies where id=p_trade for share;
+ if t.id is null or t.company_id<>p_company or t.linked_company_id is distinct from d.counterparty_company_id
+ or t.link_status is distinct from 'linked' or coalesce(trim(peer_name),'')=''
+ or (case d.document_kind when 'order' then coalesce(t.trade_role,'') not in('subcontractor','both')
+ else coalesce(t.trade_role,'') not in('customer','both') end) then
+  raise exception 'site_artifact_exact_registered_counterparty_required' using errcode='42501';
+ end if;
+ select * into cc from private.company_connections where status='accepted' and
+ ((parent_company_id=p_company and child_company_id=d.counterparty_company_id)
+ or(parent_company_id=d.counterparty_company_id and child_company_id=p_company)) for share;
+ binding:=jsonb_build_object('connection',to_jsonb(cc),'trade_company_id',t.id,
+  'linked_company_id',t.linked_company_id,'trade_role',t.trade_role,'link_status',t.link_status,
+  'counterparty_name',peer_name);
+ return jsonb_build_object('company_id',d.counterparty_company_id,'name',peer_name,
+  'trade_company_id',t.id,'connection_fingerprint',encode(sha256(convert_to(binding::text,'UTF8')),'hex'));
+end $$;
+
+create function site_order_artifact_private.prepare_job(p_company uuid,p_site uuid,
+ p_document uuid,p_revision integer,p_request uuid,p_trade uuid) returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare uid uuid;sid uuid;evidence jsonb;peer jsonb;j site_order_artifact_private.render_jobs%rowtype;
+begin
+ uid:=trade_document_confirmation_api_private.actor();
+ sid:=(auth.jwt()->>'session_id')::uuid;
+ perform private.require_trade_documents_master_feature();
+ perform trade_document_consent_private.require_actor(p_company);
+ if p_request is null or p_site is null or not exists(select 1 from public.sites
+   where id=p_site and company_id=p_company) then
+  raise exception 'site_artifact_own_site_required' using errcode='42501';
+ end if;
+ peer:=site_order_artifact_private.counterparty_context(p_company,p_document,p_trade);
+ perform pg_advisory_xact_lock(hashtextextended('site-artifact:'||p_company::text||':'||p_request::text,0));
+ select * into j from site_order_artifact_private.render_jobs
+   where company_id=p_company and actor_id=uid and request_id=p_request for update;
+ if found then
+  if (j.site_id,j.document_id,j.document_revision,j.session_id,j.counterparty_company_id,
+    j.counterparty_name,j.counterparty_trade_company_id,j.counterparty_connection_fingerprint)
+   is distinct from(p_site,p_document,p_revision,sid,(peer->>'company_id')::uuid,
+    peer->>'name',(peer->>'trade_company_id')::uuid,peer->>'connection_fingerprint') then
+   raise exception 'site_artifact_request_changed' using errcode='40001';
+  end if;
+  return jsonb_build_object('contract_version',1,'job_id',j.id,'company_id',j.company_id,
+   'actor_id',j.actor_id,'session_id',j.session_id,'request_id',j.request_id,
+   'site_id',j.site_id,'document_id',j.document_id,'document_revision',j.document_revision,
+   'counterparty_company_id',j.counterparty_company_id,'counterparty_name',j.counterparty_name,
+   'counterparty_trade_company_id',j.counterparty_trade_company_id,
+   'counterparty_connection_fingerprint',j.counterparty_connection_fingerprint,
+   'render_hash',j.render_hash,'body_hash',j.body_hash,'layout_contract',j.layout_contract);
+ end if;
+ -- The original approved record and registered issuer seal are server-derived.
+ evidence:=trade_document_consent_private.render_approved(p_document,p_revision,p_company,false);
+ if evidence->>'render_seal_company_id' is distinct from p_company::text
+ or evidence#>>'{body,issuer_company_id}' is distinct from p_company::text
+ or evidence#>>'{body,counterparty_company_id}' is distinct from peer->>'company_id'
+ or evidence#>>'{body,counterparty,name}' is distinct from peer->>'name'
+ or coalesce(evidence#>>'{body,kind}','') not in('order','acceptance')
+ or evidence#>'{body,contract_terms}' is distinct from
+ '{"schema":1,"version":1,"title":"[ 工事請負契約条項 ]","source_sha256":"3acf9090f2c027840bba43351f4d9e173759baa8b7c0340c05db9e28731f0d1f","renderer_contract":"sko-original-form-20261029-v1","design_sha256":"942bad918b696b4c2c527dbf2fca9d050e4fb38a3674cff115eb0755793b8a18"}'::jsonb
+ or jsonb_array_length(evidence->'seals') is distinct from 1 then
+  raise exception 'site_artifact_exact_approved_form_required' using errcode='22023';
+ end if;
+ insert into site_order_artifact_private.render_jobs(id,company_id,counterparty_company_id,
+  counterparty_name,counterparty_trade_company_id,counterparty_connection_fingerprint,site_id,document_id,
+  document_revision,request_id,actor_id,session_id,render_hash,body_hash,evidence,layout_contract)
+ values(gen_random_uuid(),p_company,(peer->>'company_id')::uuid,peer->>'name',
+  (peer->>'trade_company_id')::uuid,peer->>'connection_fingerprint',p_site,p_document,p_revision,p_request,uid,sid,
+  evidence->>'render_hash',evidence->>'body_hash',evidence,'sko-original-form-20261029-v1') returning * into j;
+ perform trade_document_confirmation_api_private.actor();
+ perform private.require_trade_documents_master_feature();
+ return jsonb_build_object('contract_version',1,'job_id',j.id,'company_id',j.company_id,
+   'actor_id',j.actor_id,'session_id',j.session_id,'request_id',j.request_id,
+   'site_id',j.site_id,'document_id',j.document_id,'document_revision',j.document_revision,
+   'counterparty_company_id',j.counterparty_company_id,'counterparty_name',j.counterparty_name,
+   'counterparty_trade_company_id',j.counterparty_trade_company_id,
+   'counterparty_connection_fingerprint',j.counterparty_connection_fingerprint,
+   'render_hash',j.render_hash,'body_hash',j.body_hash,'layout_contract',j.layout_contract);
+end $$;
+
+-- INTERNAL ONLY. A renderer coordinator must generate bytes from j.evidence;
+-- caller-supplied PDFs are never accepted through a public wrapper.
+create function site_order_artifact_private.register_canonical_pdf(p_job uuid,p_pdf bytea)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare uid uuid;sid uuid;j site_order_artifact_private.render_jobs%rowtype;
+ r site_order_artifact_private.pdf_records%rowtype;current_evidence jsonb;peer jsonb;
+begin
+ uid:=trade_document_confirmation_api_private.actor();sid:=(auth.jwt()->>'session_id')::uuid;
+ perform private.require_trade_documents_master_feature();
+ select * into j from site_order_artifact_private.render_jobs where id=p_job for update;
+ if j.id is null or j.actor_id<>uid or j.session_id<>sid then
+  raise exception 'site_artifact_original_actor_session_required' using errcode='42501';
+ end if;
+ perform trade_document_consent_private.require_actor(j.company_id);
+ peer:=site_order_artifact_private.counterparty_context(j.company_id,j.document_id,j.counterparty_trade_company_id);
+ if (j.counterparty_company_id,j.counterparty_name,j.counterparty_trade_company_id,j.counterparty_connection_fingerprint)
+ is distinct from((peer->>'company_id')::uuid,peer->>'name',(peer->>'trade_company_id')::uuid,peer->>'connection_fingerprint') then
+  raise exception 'site_artifact_counterparty_changed' using errcode='40001';
+ end if;
+ if not exists(select 1 from public.sites where id=j.site_id and company_id=j.company_id) then
+  raise exception 'site_artifact_own_site_required' using errcode='42501';
+ end if;
+ -- First registration must still be the currently approved revision. Exact
+ -- existing originals may be retried as historical originals, never regenerated.
+ select * into r from site_order_artifact_private.pdf_records where job_id=j.id;
+ current_evidence:=trade_document_consent_private.render_approved(j.document_id,
+   j.document_revision,j.company_id,r.job_id is not null);
+ if current_evidence is distinct from j.evidence or current_evidence->>'render_hash' is distinct from j.render_hash then
+  raise exception 'site_artifact_approved_evidence_changed' using errcode='40001';
+ end if;
+ if p_pdf is null or octet_length(p_pdf) not between 16 and 20971520
+   or substring(p_pdf from 1 for 5)<>convert_to('%PDF-','UTF8') then
+  raise exception 'site_artifact_pdf_bytes_required' using errcode='22023';
+ end if;
+ if r.job_id is not null then
+  if r.pdf_bytes is distinct from p_pdf then
+   raise exception 'site_artifact_pdf_original_changed' using errcode='40001';
+  end if;
+ else
+  insert into site_order_artifact_private.pdf_records(job_id,receipt_id,pdf_bytes)
+    values(j.id,gen_random_uuid(),p_pdf) returning * into r;
+ end if;
+ perform trade_document_confirmation_api_private.actor();
+ perform private.require_trade_documents_master_feature();
+ return jsonb_build_object('contract_version',1,'receipt_id',r.receipt_id,'job_id',j.id,
+  'actor_id',j.actor_id,'session_id',j.session_id,'request_id',j.request_id,
+  'company_id',j.company_id,'site_id',j.site_id,'document_id',j.document_id,
+  'document_revision',j.document_revision,'render_hash',j.render_hash,'body_hash',j.body_hash,
+  'counterparty_company_id',j.counterparty_company_id,'counterparty_name',j.counterparty_name,
+  'counterparty_trade_company_id',j.counterparty_trade_company_id,
+  'counterparty_connection_fingerprint',j.counterparty_connection_fingerprint,
+  'pdf_sha256',r.pdf_sha256,'pdf_byte_length',octet_length(r.pdf_bytes),
+  'layout_contract',j.layout_contract);
+end $$;
+revoke all on all tables in schema site_order_artifact_private from public,anon,authenticated,service_role;
+revoke all on all functions in schema site_order_artifact_private from public,anon,authenticated,service_role;
+-- No public RPC, worker grant, canonical renderer or delivery is installed.
+commit;

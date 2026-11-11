@@ -6,7 +6,8 @@ import 'dart:typed_data';
 import 'dart:convert';
 import 'dart:math' as math;
 
-import 'package:flutter/services.dart' show rootBundle;
+import 'company_pdf_assets_io.dart'
+    if (dart.library.ui) 'company_pdf_assets_flutter.dart' as pdf_assets;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
@@ -29,7 +30,7 @@ class CompanySealPdf {
     if (CompanySealDesign.isPng(style)) {
       final design = CompanySealDesign.designs[style]!;
       if (!_pngBytes.containsKey(style)) {
-        final bytes = (await rootBundle.load(
+        final bytes = (await pdf_assets.load(
           design.asset,
         )).buffer.asUint8List();
         if (crypto.sha256.convert(bytes).toString() != design.sha256) {
@@ -44,7 +45,7 @@ class CompanySealPdf {
     try {
       await unsupportedReishoCharacters('');
       return pw.Font.ttf(
-        await (_reishoFontData ??= rootBundle.load(
+        await (_reishoFontData ??= pdf_assets.load(
           '$_reishoAssets/AoyagiReisho.ttf',
         )),
       );
@@ -56,7 +57,7 @@ class CompanySealPdf {
 
   static Future<String> unsupportedReishoCharacters(String name) async {
     try {
-      final coverage = await (_reishoCoverage ??= rootBundle
+      final coverage = await (_reishoCoverage ??= pdf_assets
           .loadString('$_reishoAssets/coverage.json')
           .then((value) => (jsonDecode(value) as List).cast<int>().toSet()));
       _loadedReishoCoverage = coverage;
@@ -162,7 +163,7 @@ class CompanySealPdf {
 
   static Future<ByteData> _loadFontData() async {
     try {
-      return await rootBundle.load(
+      return await pdf_assets.load(
         'assets/fonts/company-seal/NotoSansJP-Bold.ttf',
       );
     } catch (_) {

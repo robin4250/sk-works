@@ -1,0 +1,70 @@
+name: Site order canonical renderer
+on:
+  pull_request:
+    paths:
+      - 'lib/features/shared/company_pdf_assets_*.dart'
+      - 'lib/features/shared/company_seal_pdf.dart'
+      - 'tool/canonical_renderer/**'
+      - 'tool/render_site_order_canonical.dart'
+      - 'tool/site_order_canonical_*.mjs'
+      - 'tool/verify_site_order_canonical_registration.mjs'
+      - 'test/site_order_canonical_renderer_equivalence_test.dart'
+      - '.github/workflows/site-order-canonical-renderer.yml'
+permissions:
+  contents: read
+jobs:
+  actual-renderer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: '3.47.5', channel: stable, cache: true}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22.21.0'}
+      - run: flutter pub get --enforce-lockfile
+      - run: dart pub get --enforce-lockfile --directory=tool/canonical_renderer
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts
+      - run: flutter analyze lib/features/shared/company_pdf_assets_flutter.dart lib/features/shared/company_pdf_assets_io.dart lib/features/shared/company_seal_pdf.dart tool/render_site_order_canonical.dart test/site_order_canonical_renderer_equivalence_test.dart
+      - run: node --test tool/site_order_canonical_renderer.test.mjs
+      - name: Actual standalone Dart process and private registration
+        env:
+          SKO_CANONICAL_PDF_OUTPUT_DIR: /tmp/sko-canonical-compare
+          SKO_CONFIRMED_TERMS_HOOK: content-v1
+          SKO_MONTHLY_PAYMENT_REVIEW_HOOK: contract-v1
+          SKO_TRADE_DOCUMENT_API_REVIEW_HOOK: contract-v1
+          SKO_SITE_ORDER_ARTIFACT_REGISTRATION_HOOK: contract-v1
+        run: |
+          export SKO_CANONICAL_DART="$(command -v dart)"
+          node --test tool/site_order_canonical_pdf.test.mjs
+          node tool/verify_site_order_canonical_registration.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
+      - name: Actual Flutter application uses same immutable body and assets
+        env: {SKO_CANONICAL_PDF_OUTPUT_DIR: /tmp/sko-canonical-compare}
+        run: flutter test test/site_order_canonical_renderer_equivalence_test.dart test/company_seal_document_pdf_test.dart test/company_seal_png_pdf_test.dart test/company_seal_reisho_pdf_test.dart test/company_uploaded_seal_pdf_test.dart
+      - run: python -m pip install PyMuPDF==1.26.4
+      - name: Exact page text and pixels, adopted A4 and full terms
+        run: |
+          python - <<'PY'
+          import fitz,json
+          from pathlib import Path
+          root=Path('/tmp/sko-canonical-compare')
+          expected=json.loads(Path('docs/fixtures/trade-document-terms/user-confirmed-20261029-v1.json').read_text())
+          compact=lambda text:''.join(text.split())
+          legal=[compact(part) for title,body in expected for part in [title]+body]
+          for kind in ['order','acceptance']:
+            for schema in [1,2]:
+              name=f'{kind}-v{schema}'
+              a,b=[fitz.open(root/f'{side}-{name}.pdf') for side in ['app','server']]
+              assert len(a)==len(b)==2,name
+              for x,y in zip(a,b):
+                assert abs(x.rect.width-595.28)<.1 and abs(x.rect.height-841.89)<.1,name
+                assert x.get_text()==y.get_text(),name
+                assert x.get_pixmap(matrix=fitz.Matrix(2,2)).samples==y.get_pixmap(matrix=fitz.Matrix(2,2)).samples,name
+              assert all(part in compact(''.join(p.get_text() for p in b)) for part in legal),name
+          registered=fitz.open(root/'registered-order.pdf')
+          assert len(registered)==2
+          assert all(part in compact(''.join(p.get_text() for p in registered)) for part in legal)
+          print('PASS four exact app/server text+pixel pairs and actual private-registered PDF')
+          PY
+      - run: git diff --exit-code -- pubspec.yaml pubspec.lock tool/canonical_renderer/pubspec.yaml tool/canonical_renderer/pubspec.lock tool/security/fixture_dependencies/package-lock.json tool/verify_trade_document_bound_seal_consent.mjs tool/fixtures/trade_reciprocal_gate/source_manifest.json

@@ -1,0 +1,7 @@
+name: sko_canonical_renderer
+publish_to: none
+environment:
+  sdk: '>=3.9.0 <4.0.0'
+dependencies:
+  crypto: 3.0.7
+  pdf: 3.13.1
