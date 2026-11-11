@@ -79,9 +79,10 @@ class WorkerDocumentChangeCapability {
     if (raw is! Map ||
         raw.length != 5 ||
         raw['version'] is! int ||
-        raw['version'] != 1 ||
+        !const [1, 2].contains(raw['version']) ||
         raw['change_requests_available'] is! bool ||
-        raw['new_upload_available'] != false ||
+        raw['new_upload_available'] is! bool ||
+        (raw['version'] == 1 && raw['new_upload_available'] != false) ||
         raw['max_photos'] is! int ||
         raw['max_photos'] != 20 ||
         raw['self_approval_allowed'] != false) {

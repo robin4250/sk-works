@@ -1,0 +1,20 @@
+name: Document change capability contract
+on:
+  pull_request:
+    paths:
+      - 'lib/features/people/worker_document_change_repository.dart'
+      - 'test/document_change_capability_contract_test.dart'
+      - '.github/workflows/document-change-capability-contract.yml'
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/people/worker_document_change_repository.dart test/document_change_capability_contract_test.dart
+      - run: flutter test test/document_change_capability_contract_test.dart
