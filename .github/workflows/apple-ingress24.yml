@@ -1,0 +1,32 @@
+name: Apple bounded JWKS and shared rate candidate
+on:
+  pull_request:
+    paths:
+      - 'docs/review/apple-ingress24/**'
+      - '.github/workflows/apple-ingress24.yml'
+permissions:
+  contents: read
+jobs:
+  candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: fixture
+          POSTGRES_DB: apple_rate_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:fixture@127.0.0.1:5432/apple_rate_fixture
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-save --prefix apple-enrollment-sql-runtime @electric-sql/pglite@0.5.8 pg@8.16.3
+      - run: node --test docs/review/apple-ingress24/apple_ingress.test.mjs
+      - run: SKO_PGLITE_PATH="$GITHUB_WORKSPACE/apple-enrollment-sql-runtime/node_modules/@electric-sql/pglite/dist/index.js" node --test docs/review/apple-ingress24/wired/shared_rate.test.mjs
+      - run: SKO_PG_PATH="$GITHUB_WORKSPACE/apple-enrollment-sql-runtime/node_modules/pg/lib/index.js" node docs/review/apple-ingress24/wired/native_rate_test.mjs
