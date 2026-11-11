@@ -1,0 +1,50 @@
+-- REVIEW ONLY / OFF. Owner-internal producer completion, no API/runtime grant.
+-- The trusted producer MUST decrypt the actual retained encrypted bytes and
+-- compare them to the locked canonical export before calling this function.
+-- SQL cannot attest encryption, independent custody, WORM or key management.
+begin;
+set local search_path='';
+create unique index authority_source_revision_once on archive_readback_private.authority_records(authority_id,company_id,event_id,revision);
+create function archive_readback_private.register_locked_source(p_event uuid,p_revision bigint,p_deployment text,
+ p_authority uuid,p_snapshot_sha256 text,p_payload bytea,p_object_id text)
+returns jsonb language plpgsql security definer set search_path='' as $register$
+declare s jsonb;r archive_readback_private.authority_records%rowtype;d jsonb;
+ payload_hash text;canonical text;object_hash text;
+begin
+ if p_authority is null or p_snapshot_sha256 is null or p_snapshot_sha256!~'^[a-f0-9]{64}$'
+ or p_object_id is null or p_object_id!~'^[a-f0-9]{64}$'
+ or p_payload is null or octet_length(p_payload) not between 1 and 65536
+ then raise exception 'archive_source_registration_invalid';end if;
+ s:=archive_readback_private.lock_source_export(p_event,p_revision,p_deployment);
+ if s->>'snapshot_sha256' is distinct from p_snapshot_sha256 then
+  raise exception 'archive_source_snapshot_changed';end if;
+ payload_hash:=encode(sha256(p_payload),'hex');
+ -- Match the existing byte store's exact bounded, canonical object encoding.
+ -- Every interpolation is a checked UUID/hash/integer/base64, never free text.
+ canonical:='{"schema":1,"company_id":"'||(s->>'company_id')||'","event_id":"'||p_event::text||
+  '","revision":'||p_revision::text||',"snapshot_sha256":"'||p_snapshot_sha256||
+  '","payload_sha256":"'||payload_hash||'","payload_base64":"'||replace(encode(p_payload,'base64'),chr(10),'')||'"}';
+ object_hash:=encode(sha256(convert_to(canonical,'UTF8')),'hex');
+ if object_hash<>p_object_id then raise exception 'archive_source_object_changed';end if;
+ insert into archive_readback_private.authority_records(object_id,authority_id,company_id,owner_id,deployment_id,
+  event_id,revision,snapshot_sha256,payload_sha256,byte_length)
+ values(object_hash,p_authority,(s->>'company_id')::uuid,(s->>'owner_id')::uuid,p_deployment,
+  p_event,p_revision,p_snapshot_sha256,payload_hash,octet_length(p_payload)) on conflict do nothing;
+ select * into strict r from archive_readback_private.authority_records
+ where authority_id=p_authority and company_id=(s->>'company_id')::uuid and event_id=p_event and revision=p_revision for share;
+ if r.object_id is distinct from object_hash or r.owner_id is distinct from (s->>'owner_id')::uuid
+ or r.deployment_id is distinct from p_deployment or r.snapshot_sha256 is distinct from p_snapshot_sha256
+ or r.payload_sha256 is distinct from payload_hash or r.byte_length is distinct from octet_length(p_payload)
+ then raise exception 'archive_source_registration_conflict';end if;
+ d:=jsonb_build_object('status','stored_unattested','schema',1,'company_id',r.company_id,'event_id',r.event_id,
+  'revision',r.revision,'snapshot_sha256',r.snapshot_sha256,'payload_sha256',r.payload_sha256,
+  'byte_length',r.byte_length,'object_id',r.object_id);
+ return jsonb_build_object('status','registered_unattested','descriptor',d);
+end $register$;
+revoke all on function archive_readback_private.register_locked_source(uuid,bigint,text,uuid,text,bytea,text) from public,anon,authenticated,service_role;
+do $$begin
+ if exists(select 1 from pg_proc p cross join lateral aclexplode(coalesce(p.proacl,acldefault('f',p.proowner)))a
+ where p.oid='archive_readback_private.register_locked_source(uuid,bigint,text,uuid,text,bytea,text)'::regprocedure and a.grantee<>p.proowner)
+ then raise exception 'archive_source_unexpected_registration_grant';end if;
+end$$;
+commit;

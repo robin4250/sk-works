@@ -61,3 +61,28 @@ jobs:
           node-version: '24'
       - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
       - run: node tool/security/notice-archive-candidate/tests/archive-runtime-readiness-native.mjs
+
+  source-export-native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17.6
+        env:
+          POSTGRES_PASSWORD: notice-fixture-only
+          POSTGRES_DB: security_notice_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
+      - run: node tool/security/notice-archive-candidate/tests/run-source-native.mjs
+        env:
+          SKO_NOTICE_PG_FIXTURE_URL: postgresql://postgres:notice-fixture-only@127.0.0.1:5432/security_notice_fixture
