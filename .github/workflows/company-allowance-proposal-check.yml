@@ -1,0 +1,33 @@
+name: Company allowance proposal check
+on:
+  pull_request:
+    paths:
+      - 'docs/payroll/proposals/company_allowance_catalog.sql'
+      - 'docs/payroll/company_allowance_source_contract.md'
+      - 'tool/verify_company_allowance_catalog_proposal.mjs'
+      - '.github/workflows/company-allowance-proposal-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'docs/payroll/proposals/company_allowance_catalog.sql'
+      - 'docs/payroll/company_allowance_source_contract.md'
+      - 'tool/verify_company_allowance_catalog_proposal.mjs'
+      - '.github/workflows/company-allowance-proposal-check.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  isolated-proposal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install pinned isolated SQL runtime
+        run: npm install --prefix "$RUNNER_TEMP/allowance-proposal-runtime" --no-audit --no-fund --ignore-scripts @electric-sql/pglite@0.3.14
+      - name: Check verifier syntax
+        run: node --check tool/verify_company_allowance_catalog_proposal.mjs
+      - name: Verify isolated proposal only
+        run: node tool/verify_company_allowance_catalog_proposal.mjs "$RUNNER_TEMP/allowance-proposal-runtime/node_modules/@electric-sql/pglite/dist/index.js"
