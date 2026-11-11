@@ -1,0 +1,231 @@
+-- REVIEW ONLY. Requires saved-photo approval candidate and ordered-baseline patch.
+-- Extends the existing queue; no production migration, activation or new upload.
+begin;
+do $$begin
+ if to_regprocedure('private.require_reauthentication_session()') is null
+ or to_regclass('public.member_feature_permissions') is null
+ or to_regclass('private.qualification_approved_write_permits') is null
+ or not exists(select 1 from pg_proc where oid=to_regprocedure('private.personal_qualification_submission(text,jsonb)')
+  and md5(prosrc)='e1dd246978182b2baf5222bc7ef03cbf')
+ or not exists(select 1 from pg_proc where oid=to_regprocedure('private.guard_qualification_registered_update()')
+   and md5(prosrc)='3415998f97ed433516c2833591bd8032') then
+  raise exception 'qualification approval prerequisite drift; review required' using errcode='55000';
+ end if;
+end$$;
+
+alter table private.qualification_submissions
+ add column admin_record_change text check(admin_record_change in ('metadata','delete')),
+ add column admin_change_reason text;
+
+create function private.qualification_record_change_result(r private.qualification_submissions)
+returns jsonb language sql stable security invoker set search_path='' as $$
+ select jsonb_build_object('version',1,'contract','qualification_admin_record_change',
+ 'id',r.id,'company_id',r.company_id,'target_id',r.target_id,'requested_by',r.requested_by,
+ 'status',r.status,'operation',r.admin_record_change,'reason',r.admin_change_reason,
+ 'previous',r.previous,'proposed',case when r.admin_record_change='metadata' then
+  jsonb_build_object('certificate_number',r.certificate_number,'issuer',r.issuer,
+   'issued_at',r.issued_at,'expires_at',r.expires_at,'notes',r.notes) else null end,
+ 'reviewed_by',r.reviewed_by,'reviewed_at',r.reviewed_at);
+$$;
+revoke all on function private.qualification_record_change_result(private.qualification_submissions)
+ from public,anon,authenticated,service_role;
+
+create function private.admin_qualification_record_change(p_action text,p_data jsonb)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare uid uuid:=auth.uid(); cid uuid; target uuid; request_id uuid; kind text; why text;
+ req private.qualification_submissions%rowtype; oldrow public.worker_qualifications%rowtype;
+ proposed jsonb; snapshot jsonb; allowed boolean; reviewer boolean; key text;
+begin
+ perform private.require_reauthentication_session();
+ if uid is null or private.account_access_allowed() is not true then
+  raise exception 'account unavailable' using errcode='42501';end if;
+ cid:=nullif(p_data->>'company_id','')::uuid;
+ if cid is null then raise exception 'exact company required' using errcode='22023';end if;
+ perform 1 from public.company_members where company_id=cid and user_id=uid for share;
+ perform 1 from public.member_feature_permissions where company_id=cid and user_id=uid for share;
+ select exists(select 1 from public.company_members where company_id=cid and user_id=uid
+  and role::text in ('owner','admin','manager'))
+  and private.has_company_feature(cid,'can_manage_people') is true into allowed;
+ if p_action='admin_record_change_capability' then
+  return jsonb_build_object('version',1,'contract','qualification_admin_record_change',
+   'company_id',cid,'actor_id',uid,'available',allowed,'self_approval_allowed',false);
+ end if;
+ if not allowed then raise exception 'current people manager required' using errcode='42501';end if;
+ select exists(select 1 from public.company_members where company_id=cid and user_id=uid
+  and role::text in ('owner','admin')) or exists(select 1 from public.company_approval_assignees
+  where company_id=cid and user_id=uid) into reviewer;
+ if p_action in ('inspect_admin_record','prepare_admin_record_change') then
+  target:=(p_data->>'target_id')::uuid;
+  if target is null then raise exception 'exact target required' using errcode='22023';end if;
+  if p_action='prepare_admin_record_change' then
+   request_id:=(p_data->>'request_id')::uuid;kind:=p_data->>'operation';
+   why:=nullif(trim(p_data->>'reason'),'');proposed:=p_data->'proposed';
+   if request_id is null or kind is null or kind not in ('metadata','delete') or why is null or length(why)>1000
+    or jsonb_typeof(p_data->'expected_snapshot') is distinct from 'object' then
+    raise exception 'exact change, reason and reviewed snapshot required' using errcode='22023';end if;
+   if kind='metadata' then
+    if jsonb_typeof(proposed) is distinct from 'object' or
+     (select count(*) from jsonb_object_keys(proposed))<>5 or
+     exists(select 1 from jsonb_object_keys(proposed) k where k not in
+      ('certificate_number','issuer','issued_at','expires_at','notes')) then
+     raise exception 'metadata fields required' using errcode='22023';end if;
+    for key in select jsonb_object_keys(proposed) loop
+     if jsonb_typeof(proposed->key) not in ('null','string') or length(proposed->>key)>4000 then
+      raise exception 'metadata value invalid' using errcode='22023';end if;
+    end loop;
+    -- Parse dates before writing anything. The immutable snapshot includes all photos.
+    proposed:=proposed||jsonb_build_object('issued_at',nullif(proposed->>'issued_at','')::date,
+      'expires_at',nullif(proposed->>'expires_at','')::date);
+   elsif proposed is not null and proposed<>'null'::jsonb then
+    raise exception 'delete has no replacement fields' using errcode='22023';
+   end if;
+   select * into req from private.qualification_submissions where id=request_id for update;
+   if found then
+    if req.company_id is distinct from cid or req.target_id is distinct from target
+     or req.requested_by is distinct from uid or req.admin_record_change is distinct from kind
+     or req.admin_change_reason is distinct from why or req.previous is distinct from p_data->'expected_snapshot'
+     or (kind='metadata' and jsonb_build_object('certificate_number',req.certificate_number,'issuer',req.issuer,
+       'issued_at',req.issued_at,'expires_at',req.expires_at,'notes',req.notes) is distinct from proposed) then
+     raise exception 'request ID conflict' using errcode='23505';end if;
+    return private.qualification_record_change_result(req);
+   end if;
+  end if;
+  select q.* into oldrow from public.worker_qualifications q
+   join public.workers w on w.id=q.worker_id and w.company_id=q.company_id and w.status::text='active'
+   join public.qualification_master m on m.id=q.qualification_master_id and m.company_id=q.company_id
+   where q.id=target and q.company_id=cid;
+  if not found then raise exception 'qualification unavailable' using errcode='42501';end if;
+  perform pg_advisory_xact_lock(hashtextextended(oldrow.worker_id::text||oldrow.qualification_master_id::text,0));
+  select q.* into oldrow from public.worker_qualifications q
+   join public.workers w on w.id=q.worker_id and w.company_id=q.company_id and w.status::text='active'
+   join public.qualification_master m on m.id=q.qualification_master_id and m.company_id=q.company_id
+   where q.id=target and q.company_id=cid and q.worker_id=oldrow.worker_id
+    and q.qualification_master_id=oldrow.qualification_master_id for update of q for share of w,m;
+  if not found then raise exception 'qualification identity changed' using errcode='40001';end if;
+  snapshot:=to_jsonb(oldrow);
+  if p_action='inspect_admin_record' then return jsonb_build_object('version',1,
+   'contract','qualification_admin_record_change','snapshot',snapshot);end if;
+  if snapshot is distinct from p_data->'expected_snapshot' then
+   raise exception 'qualification changed; reload before applying' using errcode='40001';end if;
+  if kind='metadata' and proposed->>'expires_at' is null and exists(select 1 from public.qualification_master
+   where id=oldrow.qualification_master_id and company_id=cid and expiry_required) then
+   raise exception 'expiry required' using errcode='22023';end if;
+  -- A second producer with the same absent ID cannot make two requests.
+  insert into private.qualification_submissions(id,company_id,worker_id,qualification_master_id,target_id,
+   certificate_number,issuer,issued_at,expires_at,notes,requested_by,previous,attachment_path,
+   admin_record_change,admin_change_reason)
+  values(request_id,cid,oldrow.worker_id,oldrow.qualification_master_id,target,
+   case when kind='metadata' then proposed->>'certificate_number' else oldrow.certificate_number end,
+   case when kind='metadata' then proposed->>'issuer' else oldrow.issuer end,
+   case when kind='metadata' then (proposed->>'issued_at')::date else oldrow.issued_at end,
+   case when kind='metadata' then (proposed->>'expires_at')::date else oldrow.expires_at end,
+   case when kind='metadata' then proposed->>'notes' else oldrow.notes end,
+   uid,snapshot,oldrow.attachment_path,kind,why) returning * into req;
+  return private.qualification_record_change_result(req);
+ end if;
+ select * into req from private.qualification_submissions where id=(p_data->>'id')::uuid
+  and company_id=cid and admin_record_change is not null for update;
+ if not found then raise exception 'change request unavailable' using errcode='42501';end if;
+ if p_action='get_admin_record_change' then
+  if req.requested_by is distinct from uid and not reviewer then
+   raise exception 'request unavailable' using errcode='42501';end if;
+  return private.qualification_record_change_result(req);
+ end if;
+ if p_action in ('submit_admin_record_change','cancel_admin_record_change') then
+  if req.requested_by is distinct from uid then raise exception 'requester required' using errcode='42501';end if;
+  if p_action='submit_admin_record_change' and req.status in ('pending','approved') then
+   return private.qualification_record_change_result(req);end if;
+  if p_action='cancel_admin_record_change' and req.status='rejected' and req.photo_cancelled then
+   return private.qualification_record_change_result(req);end if;
+  if req.status<>'draft' then raise exception 'draft required' using errcode='55000';end if;
+  if p_action='cancel_admin_record_change' then
+   update private.qualification_submissions set status='rejected',photo_cancelled=true,
+    reason='管理側の未送信資格変更申請を取消' where id=req.id returning * into req;
+   return private.qualification_record_change_result(req);end if;
+ elsif p_action in ('approve_admin_record_change','reject_admin_record_change') then
+  if not reviewer or req.requested_by is not distinct from uid then
+   raise exception 'independent reviewer required' using errcode='42501';end if;
+  if req.status in ('approved','rejected') and req.reviewed_by=uid and
+    ((p_action='approve_admin_record_change' and req.status='approved') or
+     (p_action='reject_admin_record_change' and req.status='rejected')) then
+   return private.qualification_record_change_result(req);end if;
+  if req.status<>'pending' then raise exception 'pending required' using errcode='55000';end if;
+  perform 1 from public.company_members where company_id=cid and user_id=req.requested_by for share;
+  perform 1 from public.member_feature_permissions where company_id=cid and user_id=req.requested_by for share;
+  if not exists(select 1 from public.company_members where company_id=cid and user_id=req.requested_by
+   and (role::text in ('owner','admin') or (role::text='manager' and exists(select 1 from public.member_feature_permissions fp where fp.company_id=cid and fp.user_id=req.requested_by and fp.can_manage_people is true)))) or public.account_server_access_allowed(req.requested_by) is not true
+   then raise exception 'requester authority changed' using errcode='42501';end if;
+  if p_action='reject_admin_record_change' then
+   if nullif(trim(p_data->>'reason'),'') is null then raise exception 'rejection reason required' using errcode='22023';end if;
+   update private.qualification_submissions set status='rejected',reason=p_data->>'reason',reviewed_by=uid,
+    reviewed_at=now() where id=req.id returning * into req;
+   return private.qualification_record_change_result(req);end if;
+ else raise exception 'unsupported action' using errcode='22023';end if;
+ perform pg_advisory_xact_lock(hashtextextended(req.worker_id::text||req.qualification_master_id::text,0));
+ select to_jsonb(q) into snapshot from public.worker_qualifications q
+  join public.workers w on w.id=q.worker_id and w.company_id=q.company_id and w.status::text='active'
+  join public.qualification_master m on m.id=q.qualification_master_id and m.company_id=q.company_id
+  where q.id=req.target_id and q.company_id=cid and q.worker_id=req.worker_id
+   and q.qualification_master_id=req.qualification_master_id for update of q for share of w,m;
+ if snapshot is distinct from req.previous then raise exception 'qualification changed' using errcode='40001';end if;
+ if p_action='submit_admin_record_change' then
+  update private.qualification_submissions set status='pending' where id=req.id returning * into req;
+ else
+  if req.admin_record_change='metadata' then
+   if req.expires_at is null and exists(select 1 from public.qualification_master
+    where id=req.qualification_master_id and company_id=cid and expiry_required) then
+    raise exception 'expiry required' using errcode='22023';end if;
+   perform private.permit_qualification_approved_update(req);
+   update public.worker_qualifications set certificate_number=req.certificate_number,issuer=req.issuer,
+    issued_at=req.issued_at,expires_at=req.expires_at,notes=req.notes,updated_at=now() where id=req.target_id and company_id=cid;
+  else
+   insert into private.qualification_approved_write_permits values(txid_current(),req.target_id,uid,req.id,req.previous,'{}');
+   delete from public.worker_qualifications where id=req.target_id and company_id=cid;
+  end if;
+  update private.qualification_submissions set status='approved',reviewed_by=uid,reviewed_at=now()
+   where id=req.id returning * into req;
+ end if;
+ return private.qualification_record_change_result(req);
+end$$;
+revoke all on function private.admin_qualification_record_change(text,jsonb) from public,anon,authenticated,service_role;
+
+-- A deletion consumes the same transaction-local permit as an approved update.
+-- The existing photo/history AFTER DELETE triggers keep every original reference.
+do $patch$
+declare body text; definition text; patched text;
+begin
+ select prosrc,pg_get_functiondef(oid) into body,definition from pg_proc
+ where oid='private.guard_qualification_registered_update()'::regprocedure;
+ patched:=replace(body,$old$ if tg_op='DELETE' then raise exception 'registered qualification deletion requires separate review' using errcode='42501';end if;$old$,
+ $new$ if tg_op='DELETE' then
+ delete from private.qualification_approved_write_permits p where p.transaction_id=txid_current()
+ and p.target_id=old.id and p.actor_id=auth.uid() and p.old_snapshot=to_jsonb(old) and p.expected_snapshot='{}'::jsonb
+ and exists(select 1 from private.qualification_submissions r where r.id=p.request_id and r.target_id=old.id
+  and r.company_id=old.company_id and r.worker_id=old.worker_id and r.qualification_master_id=old.qualification_master_id
+  and r.status='pending' and r.admin_record_change='delete' and r.requested_by is distinct from auth.uid()
+  and r.previous=p.old_snapshot);
+ get diagnostics permitted=row_count;
+ if permitted<>1 then raise exception 'approved qualification deletion required' using errcode='42501';end if;
+ return old;end if;$new$);
+ if patched=body then raise exception 'delete guard anchor drift' using errcode='55000';end if;
+ execute replace(definition,body,patched);
+end $patch$;
+
+-- Existing queue and generic reviewer route dispatch to this contract; personal paths remain intact.
+do $patch$
+declare body text; definition text; patched text;
+begin
+ select prosrc,pg_get_functiondef(oid) into body,definition from pg_proc
+ where oid='private.personal_qualification_submission(text,jsonb)'::regprocedure;
+ patched:=replace(body,$old$ if p_action in ('prepare_admin_saved_photos','admin_saved_photo_capability')$old$,
+ $new$ if p_action in ('admin_record_change_capability','inspect_admin_record','prepare_admin_record_change',
+  'get_admin_record_change','submit_admin_record_change','cancel_admin_record_change','approve_admin_record_change','reject_admin_record_change') then
+  return private.admin_qualification_record_change(p_action,p_data);end if;
+ if p_action in ('approve','reject') and exists(select 1 from private.qualification_submissions
+  where id=(p_data->>'id')::uuid and admin_record_change is not null) then
+  return private.admin_qualification_record_change(p_action||'_admin_record_change',p_data);end if;
+ if p_action in ('prepare_admin_saved_photos','admin_saved_photo_capability')$new$);
+ if patched=body then raise exception 'management dispatch anchor drift' using errcode='55000';end if;
+ execute replace(definition,body,patched);
+end $patch$;
+commit;
