@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
           fetch-depth: 0
@@ -42,7 +42,7 @@ jobs:
           PY
       - run: flutter analyze lib/features/payroll/payroll_fixed_deductions.dart test/payroll_fixed_deductions_test.dart test/individual_payroll_ui_tabs_test.dart
       - run: flutter test test/payroll_fixed_deductions_test.dart test/individual_payroll_ui_tabs_test.dart
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: legacy-insurance-original-red

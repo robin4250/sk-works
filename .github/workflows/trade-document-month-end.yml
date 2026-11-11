@@ -27,8 +27,8 @@ jobs:
         options: >-
           --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with: {node-version: '22.14.0'}
       - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
       - if: matrix.runtime == 'pglite'
@@ -40,7 +40,7 @@ jobs:
   defaults-and-pdf:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
         with: {flutter-version: '3.47.5', channel: stable, cache: true}
       - run: flutter pub get --enforce-lockfile
@@ -85,7 +85,7 @@ jobs:
           assert len(list(out.glob('*.pdf')))==7
           print('Actual Japanese form defaults, grouped issuer, complete terms and invoice page order verified')
           PYCODE
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with: {name: formal-defaults-pdf-output, path: /tmp/trade-defaults-output}
       - run: git diff --exit-code -- pubspec.yaml pubspec.lock

@@ -19,9 +19,9 @@ jobs:
   pglite:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: {persist-credentials: false}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: {node-version: '24'}
       - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
       - run: node tool/security/r25_fixture.mjs "$PWD/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
@@ -42,9 +42,9 @@ jobs:
       SKO_R19_DB_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_r19_fixture
       SKO_R19_REST_URL: http://127.0.0.1:3099
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: {persist-credentials: false}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: {node-version: '24'}
       - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
       - name: Start disposable PostgREST

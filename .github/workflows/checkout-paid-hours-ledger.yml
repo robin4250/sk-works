@@ -26,10 +26,10 @@ jobs:
         ports: ['5432:5432']
         options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
       - run: npm ci --ignore-scripts --no-audit --no-fund --prefix tool/security/fixture_dependencies
@@ -52,10 +52,10 @@ jobs:
         ports: ['5432:5432']
         options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
       - run: npm ci --ignore-scripts --no-audit --no-fund --prefix tool/security/fixture_dependencies
@@ -67,7 +67,7 @@ jobs:
           SKO_PAID_HOURS_PATCHES: ${{ runner.temp }}/paid-hours-patches.sql
           SKO_PAID_HOURS_EXPORT: ${{ runner.temp }}/signed-paid-hours-payroll.json
         run: node tool/verify_checkout_paid_hours_source_chain.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
       - uses: subosito/flutter-action@v2
@@ -85,7 +85,7 @@ jobs:
           SKO_PDF_FONT_PATH: build/pdf-fixtures/NotoSansJP-Regular.ttf
           SKO_PDF_OUTPUT_DIR: build/paid-hours-proof
         run: flutter test --reporter expanded test/paid_work_hours_payroll_pdf_test.dart
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: signed-paid-hours-actual-payroll-pdf

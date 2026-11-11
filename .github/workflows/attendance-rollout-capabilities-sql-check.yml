@@ -28,28 +28,28 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Checkout immutable staged vehicle fixture
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: 3662a29171a8a3e947780165a674c4134ea46f37
           path: rollout-fixtures/vehicle
       - name: Checkout immutable staged group fixture
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: fa44c2badcecddb501c5637d7ca6656b13b84b36
           path: rollout-fixtures/group
       - name: Checkout immutable scoped report attachment fixture
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: 8708d1d3101c7a3ec31ad397b9d38d6ba661ee0c
           path: rollout-fixtures/attachment
       - name: Checkout immutable vehicle report meter attachment fixture
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: 4e5e835276d87b3a48b4f4353298201d4dd7ebeb
           path: rollout-fixtures/vehicle-attachment
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
       - name: Verify read-only capability scope and fail-closed gates

@@ -15,10 +15,10 @@ jobs:
       SKO_PERSONNEL_BIRTHDAY_REAL_AUTH: contract-v1
       SKO_PERSONNEL_BIRTHDAY_PG_MODULE: /tmp/personnel-birthday-pg/node_modules/pg/lib/index.js
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
       - run: npm install --prefix /tmp/personnel-birthday-pg --no-save --ignore-scripts --no-audit --no-fund pg@8.16.3

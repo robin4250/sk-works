@@ -19,7 +19,7 @@ jobs:
   composer:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: python3 -m unittest discover -s tool/security -p test_p34_atomic.py
   pglite-regression:
     strategy:
@@ -28,8 +28,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
       - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
@@ -65,8 +65,8 @@ jobs:
       SKO_PERSONNEL_FIXTURE_URL: postgres://postgres:fixture-only@127.0.0.1:5432/sko_personnel_fixture
       SKO_PERSONNEL_POSTGREST_URL: http://127.0.0.1:3000
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
       - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies

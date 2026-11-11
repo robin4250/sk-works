@@ -19,8 +19,8 @@ jobs:
   isolate-confirmed-imports:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '20'
       - name: Verify drafts, own-worker privacy, Master flags, ordinary approval and invoice math
@@ -43,8 +43,8 @@ jobs:
     env:
       SKO_LINE_IMPORT_POSTGRES_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_line_import_fixture
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '20'
       - name: Install fixture-only database driver
@@ -58,7 +58,7 @@ jobs:
   targeted-line-ui:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.47.5'

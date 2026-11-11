@@ -54,13 +54,13 @@ jobs:
         options: >-
           --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
           ref: 4f04488f77ff909d0d48a9a74247eb549823ca83
           path: invoice-calculation-candidate
       - run: python3 docs/review/invoice-month-close/generate_approver_core.py "$SKO_NOTICE_SOURCE_PREVIEW" "$SKO_NOTICE_APPROVER_CORE"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
       - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund

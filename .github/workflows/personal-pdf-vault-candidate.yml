@@ -22,8 +22,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '22.14.0'
       - run: node --test test/personal_vault_manifest.test.mjs
@@ -31,7 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.47.5'
@@ -60,7 +60,7 @@ jobs:
     env:
       PGPASSWORD: fixture-only
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: psql -h localhost -U postgres -d vault_fixture -v ON_ERROR_STOP=1 -f docs/review/personal-vault24/read-api-test.sql
       - run: psql -h localhost -U postgres -d vault_fixture -v ON_ERROR_STOP=1 -f docs/review/personal-vault24/receipt-immutability-test.sql
       - run: psql -h localhost -U postgres -d vault_fixture -v ON_ERROR_STOP=1 -f docs/review/personal-vault25-delivery/source-binding-test.sql
