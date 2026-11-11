@@ -161,6 +161,11 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
             icon: const Icon(Icons.print_outlined),
           ),
           IconButton(
+            tooltip: '資格マスター管理',
+            onPressed: _loading || !_canManageWorkerQualifications ? null : _manageMasters,
+            icon: const Icon(Icons.manage_accounts_outlined),
+          ),
+          IconButton(
             tooltip: '資格マスター追加',
             onPressed: _loading || !_canManageMaster ? null : _addMaster,
             icon: const Icon(Icons.library_add_outlined),
@@ -664,7 +669,7 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
   Future<void> _changeMasterCategory(Map<String, dynamic> master) async {
     final repository = _repository;
     final masterId = master['id']?.toString() ?? '';
-    if (repository == null || masterId.isEmpty || !_canManageMaster) return;
+    if (repository == null || masterId.isEmpty || !_canManageWorkerQualifications) return;
     final choice = await showDialog<String>(context: context, builder: (context) =>
       SimpleDialog(title: const Text('資格区分を変更'), children: [
         const Padding(padding: EdgeInsets.symmetric(horizontal: 24),
@@ -682,6 +687,44 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('資格区分を更新できませんでした')));
+    }
+  }
+
+  Future<void> _manageMasters() async {
+    if (!_canManageWorkerQualifications) return;
+    await showDialog<void>(context: context, builder: (dialogContext) =>
+      SimpleDialog(title: const Text('資格マスター管理'), children: [
+        for (final master in _masters)
+          ListTile(title: Text(master['name']?.toString() ?? '資格'),
+            subtitle: Text(master['category']?.toString() ?? '区分未設定'),
+            trailing: Wrap(children: [
+              IconButton(tooltip: '区分を変更', icon: const Icon(Icons.edit_outlined),
+                onPressed: () { Navigator.pop(dialogContext); _changeMasterCategory(master); }),
+              IconButton(tooltip: '削除', icon: const Icon(Icons.delete_outline),
+                onPressed: () { Navigator.pop(dialogContext); _deleteMaster(master); }),
+            ])),
+      ]));
+  }
+
+  Future<void> _deleteMaster(Map<String, dynamic> master) async {
+    final repository = _repository;
+    final id = master['id']?.toString() ?? '';
+    if (repository == null || id.isEmpty || !_canManageWorkerQualifications) return;
+    final confirmed = await showDialog<bool>(context: context, builder: (dialogContext) =>
+      AlertDialog(title: const Text('資格マスターを削除'),
+        content: const Text('登録済みの資格に使われている場合は削除できません。'),
+        actions: [TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('戻る')),
+          TextButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('削除'))]));
+    if (confirmed != true) return;
+    try {
+      await repository.deleteMaster(id);
+      if (!mounted) return;
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('資格マスターを削除しました')));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('削除できませんでした。登録済み資格で使用中か、権限を確認してください。')));
     }
   }
 
@@ -718,9 +761,12 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
               Text('保有者: ${worker?['name'] ?? '不明'}'),
               if ((master?['category']?.toString() ?? '').isNotEmpty)
                 Text('分類: ${master?['category']}'),
-              if (_canManageMaster && master != null)
+              if (_canManageWorkerQualifications && master != null)
                 TextButton(onPressed: () { Navigator.pop(sheetContext); _changeMasterCategory(master); },
                   child: const Text('資格区分を変更')),
+              if (_canManageWorkerQualifications && master != null)
+                TextButton(onPressed: () { Navigator.pop(sheetContext); _deleteMaster(master); },
+                  child: const Text('資格マスターを削除')),
               if ((row['issuer']?.toString() ?? '').isNotEmpty)
                 Text('発行元: ${row['issuer']}'),
               if ((row['certificate_number']?.toString() ?? '').isNotEmpty)
