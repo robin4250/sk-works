@@ -1,0 +1,29 @@
+name: Generic formal C admission and cache observation
+on:
+  pull_request:
+    paths:
+      - 'tool/formal_c_stop_protocol/**'
+      - 'docs/review/formal-c-stop-protocol/**'
+      - '.github/workflows/formal-c-stop-protocol.yml'
+permissions: {contents: read}
+jobs:
+  generic-native-stop-observation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    services:
+      postgres:
+        image: postgres:17.6
+        env: {POSTGRES_PASSWORD: fixture-only, POSTGRES_DB: sko_stop_fixture}
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22.21.0'}
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts
+      - run: node --test tool/formal_c_stop_protocol/resource_cleanup.test.mjs
+      - name: Native observation, not a C installer
+        env:
+          SKO_STOP_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_stop_fixture
+        run: node tool/formal_c_stop_protocol/native-protocol-fixture.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"
