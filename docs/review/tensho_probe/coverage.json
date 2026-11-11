@@ -1,0 +1,158 @@
+{
+  "research_only": true,
+  "work": "新撰篆書字典",
+  "license": "CC BY-SA 4.0",
+  "license_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "credit": "篆書字体データセット（国文学研究資料館収集／CODH・DHII加工） doi:10.20676/00000390",
+  "archives": [
+    {
+      "dataset": "TE00024",
+      "url": "https://codh.rois.ac.jp/tensho/dataset/v2/TE00024.zip",
+      "sha256": "fd401585501fb25106286e2d14fb0025f1538da4946eebd37c1db5031c00ebe4",
+      "bytes": 19721460
+    },
+    {
+      "dataset": "TE00025",
+      "url": "https://codh.rois.ac.jp/tensho/dataset/v2/TE00025.zip",
+      "sha256": "f9b8cdc08e7ab65365e996d1011e02f5684aaa6cf5df2d8e8fa7f1d66eda8e1c",
+      "bytes": 20183635
+    },
+    {
+      "dataset": "TE00026",
+      "url": "https://codh.rois.ac.jp/tensho/dataset/v2/TE00026.zip",
+      "sha256": "ed1d458944179c8f1b923009d564e3ef2f27996db5a7ee807240e5caf8038922",
+      "bytes": 16885838
+    }
+  ],
+  "names": [
+    {
+      "name": "山川建設株式会社",
+      "candidates": {
+        "U+5C71": [
+          "TE00026/characters/U+5C71/U+5C71_TE00026_0056_1_X3387_Y2893.jpg",
+          "TE00026/characters/U+5C71/U+5C71_TE00026_0056_1_X3597_Y3232.jpg",
+          "TE00026/characters/U+5C71/U+5C71_TE00026_0056_1_X3605_Y2902.jpg",
+          "TE00026/characters/U+5C71/U+5C71_TE00026_0056_1_X3849_Y3226.jpg"
+        ],
+        "U+5DDD": [
+          "TE00026/characters/U+5DDD/U+5DDD_TE00026_0014_1_X0843_Y2880.jpg",
+          "TE00026/characters/U+5DDD/U+5DDD_TE00026_0014_1_X1093_Y3198.jpg"
+        ],
+        "U+5EFA": [
+          "TE00026/characters/U+5EFA/U+5EFA_TE00026_0018_1_X0615_Y3206.jpg",
+          "TE00026/characters/U+5EFA/U+5EFA_TE00026_0058_1_X4100_Y0938.jpg",
+          "TE00026/characters/U+5EFA/U+5EFA_TE00026_0058_1_X4348_Y0935.jpg",
+          "TE00026/characters/U+5EFA/U+5EFA_TE00026_0058_1_X4363_Y1271.jpg"
+        ],
+        "U+8A2D": [
+          "TE00024/characters/U+8A2D/U+8A2D_TE00024_0022_1_X2180_Y2315.jpg"
+        ],
+        "U+682A": [
+          "TE00025/characters/U+682A/U+682A_TE00025_0008_1_X1183_Y1351.jpg"
+        ],
+        "U+5F0F": [
+          "TE00026/characters/U+5F0F/U+5F0F_TE00026_0058_1_X2241_Y1271.jpg"
+        ],
+        "U+4F1A": [],
+        "U+793E": [
+          "TE00025/characters/U+793E/U+793E_TE00025_0057_1_X4127_Y1963.jpg",
+          "TE00025/characters/U+793E/U+793E_TE00025_0057_1_X4374_Y2261.jpg"
+        ]
+      },
+      "missing": [
+        "U+4F1A"
+      ],
+      "ambiguous": [
+        "U+5C71",
+        "U+5DDD",
+        "U+5EFA",
+        "U+793E"
+      ]
+    },
+    {
+      "name": "青山土木株式会社",
+      "candidates": {
+        "U+9752": [
+          "TE00024/characters/U+9752/U+9752_TE00024_0059_1_X0604_Y1914.jpg",
+          "TE00024/characters/U+9752/U+9752_TE00024_0059_1_X0842_Y1904.jpg",
+          "TE00024/characters/U+9752/U+9752_TE00024_0059_1_X0842_Y2246.jpg",
+          "TE00024/characters/U+9752/U+9752_TE00024_0059_1_X1077_Y2238.jpg"
+        ],
+        "U+5C71": [
+          "TE00026/characters/U+5C71/U+5C71_TE00026_0056_1_X3387_Y2893.jpg",
+          "TE00026/characters/U+5C71/U+5C71_TE00026_0056_1_X3597_Y3232.jpg",
+          "TE00026/characters/U+5C71/U+5C71_TE00026_0056_1_X3605_Y2902.jpg",
+          "TE00026/characters/U+5C71/U+5C71_TE00026_0056_1_X3849_Y3226.jpg"
+        ],
+        "U+571F": [
+          "TE00026/characters/U+571F/U+571F_TE00026_0048_1_X3615_Y3200.jpg",
+          "TE00026/characters/U+571F/U+571F_TE00026_0048_1_X3621_Y2873.jpg",
+          "TE00026/characters/U+571F/U+571F_TE00026_0048_1_X3852_Y3180.jpg"
+        ],
+        "U+6728": [
+          "TE00025/characters/U+6728/U+6728_TE00025_0005_1_X4067_Y2871.jpg",
+          "TE00025/characters/U+6728/U+6728_TE00025_0005_1_X4306_Y3187.jpg"
+        ],
+        "U+682A": [
+          "TE00025/characters/U+682A/U+682A_TE00025_0008_1_X1183_Y1351.jpg"
+        ],
+        "U+5F0F": [
+          "TE00026/characters/U+5F0F/U+5F0F_TE00026_0058_1_X2241_Y1271.jpg"
+        ],
+        "U+4F1A": [],
+        "U+793E": [
+          "TE00025/characters/U+793E/U+793E_TE00025_0057_1_X4127_Y1963.jpg",
+          "TE00025/characters/U+793E/U+793E_TE00025_0057_1_X4374_Y2261.jpg"
+        ]
+      },
+      "missing": [
+        "U+4F1A"
+      ],
+      "ambiguous": [
+        "U+9752",
+        "U+5C71",
+        "U+571F",
+        "U+6728",
+        "U+793E"
+      ]
+    },
+    {
+      "name": "山川",
+      "candidates": {
+        "U+5C71": [
+          "TE00026/characters/U+5C71/U+5C71_TE00026_0056_1_X3387_Y2893.jpg",
+          "TE00026/characters/U+5C71/U+5C71_TE00026_0056_1_X3597_Y3232.jpg",
+          "TE00026/characters/U+5C71/U+5C71_TE00026_0056_1_X3605_Y2902.jpg",
+          "TE00026/characters/U+5C71/U+5C71_TE00026_0056_1_X3849_Y3226.jpg"
+        ],
+        "U+5DDD": [
+          "TE00026/characters/U+5DDD/U+5DDD_TE00026_0014_1_X0843_Y2880.jpg",
+          "TE00026/characters/U+5DDD/U+5DDD_TE00026_0014_1_X1093_Y3198.jpg"
+        ]
+      },
+      "missing": [],
+      "ambiguous": [
+        "U+5C71",
+        "U+5DDD"
+      ]
+    },
+    {
+      "name": "𠮷山",
+      "candidates": {
+        "U+20BB7": [],
+        "U+5C71": [
+          "TE00026/characters/U+5C71/U+5C71_TE00026_0056_1_X3387_Y2893.jpg",
+          "TE00026/characters/U+5C71/U+5C71_TE00026_0056_1_X3597_Y3232.jpg",
+          "TE00026/characters/U+5C71/U+5C71_TE00026_0056_1_X3605_Y2902.jpg",
+          "TE00026/characters/U+5C71/U+5C71_TE00026_0056_1_X3849_Y3226.jpg"
+        ]
+      },
+      "missing": [
+        "U+20BB7"
+      ],
+      "ambiguous": [
+        "U+5C71"
+      ]
+    }
+  ]
+}

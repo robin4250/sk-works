@@ -1,0 +1,13 @@
+原本画像公開元・所蔵者一覧
+- 『金石韻府』　HOLLIS（ハーバード大学図書館ハーバード燕京図書館） https://iiif.lib.harvard.edu/manifests/view/drs:15674071
+- 『摭古遺文』　HOLLIS（ハーバード大学図書館ハーバード燕京図書館） https://iiif.lib.harvard.edu/manifests/view/drs:15755656
+- 『聯珠篆文』　新日本古典籍総合データベース（新潟大学附属図書館） https://kotenseki.nijl.ac.jp/biblio/100250413/
+- 『万象千字文』　新日本古典籍総合データベース（お茶の水女子大学附属図書館） http://kotenseki.nijl.ac.jp/biblio/100260826/
+- 『汗簡』　新日本古典籍総合データベース（国文学研究資料館） https://kotenseki.nijl.ac.jp/biblio/200013970/
+- 『韻府古篆彙選』　国立国会図書館デジタルコレクション（国立国会図書館） https://dl.ndl.go.jp/info:ndljp/pid/2607394
+- 『偏類六書通』　国立国会図書館デジタルコレクション（国立国会図書館） https://dl.ndl.go.jp/info:ndljp/pid/2608575
+- 『新撰篆書字典』　国立国会図書館デジタルコレクション（国立国会図書館） https://dl.ndl.go.jp/info:ndljp/pid/1181876 https://dl.ndl.go.jp/info:ndljp/pid/1181885 https://dl.ndl.go.jp/info:ndljp/pid/1181893
+- 『印篆貫珠』　国立国会図書館デジタルコレクション（国立国会図書館） https://dl.ndl.go.jp/info:ndljp/pid/2607618
+- 『説文解字』　東方學デジタル圖書館（京都大学人文科学研究所） http://kanji.zinbun.kyoto-u.ac.jp/db-machine/toho/html/A028menu.html
+- 『選集漢印分韻』　古典籍総合データベース（早稲田大学図書館） http://www.wul.waseda.ac.jp/kotenseki/html/i04/i04_03159_c101/index.html
+- 『朝陽閣字鑑』　古典籍総合データベース（早稲田大学図書館） http://www.wul.waseda.ac.jp/kotenseki/html/ho04/ho04_00459_0002/index.html
