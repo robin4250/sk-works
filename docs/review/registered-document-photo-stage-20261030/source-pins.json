@@ -1,0 +1,19 @@
+{
+  "observed_main": "bcf6ab6b77ee07bde6b7ac6a9989d92c595f9bd4",
+  "scope": "review-only design; no installer/client activation/RLS/Auth changes",
+  "source_sha256": {
+    "docs/candidates/worker_document_change_session_20261029/install.sql.review-only": "1f078c9a60e8c19163e7656a5067dec8ae9e20e0703cbd06073069c9e6f830ca",
+    "docs/candidates/worker_document_change_session_20261029/restore-unused.sql.review-only": "22a5b160761a6e631858fd29d81263367ffe1bad7eed21be7446a8d055bc4e82",
+    "lib/features/people/worker_document_change_flow.dart": "7f35d3784eeb17e00ce9291ce3816b2b099b14b8b1bc21bda75f9b8932e4f642",
+    "lib/features/people/worker_document_change_repository.dart": "74131e96b8ba922f96c608ed18634a06e11e6e87dae4694cba9fd3aef74ca96e",
+    "lib/features/people/worker_document_change_review_page.dart": "876117d3489a9a3ba06fa1e13f45e864c50d1a464a100930fe07518928fdefb4",
+    "lib/features/people/worker_document_repository.dart": "68b67a882e26623698423c65c632f89f510e9093b3a9aa9f9df11df45727ab40",
+    "supabase/migrations/20261010222524_worker_document_multiple_photos.sql": "6f628675124a342491838337de6762812d6b1319557584e86f39f7d3e21430b8",
+    "supabase/migrations/20261011033201_worker_document_photo_upload_scope.sql": "b3bc1f993024c93973b92449b11d9201377ecab4c6d9b19ee533e5ea3c06acb1",
+    "supabase/migrations/20261011053526_worker_document_managed_photo_storage.sql": "a5bb803f1bea5d3c5dbc063df99228bff8c59d1b022d660571a89a929e8c02ed"
+  },
+  "implementation_complete": false,
+  "new_upload_available": false,
+  "production_applied": false,
+  "release_candidate_1611_changed": false
+}
