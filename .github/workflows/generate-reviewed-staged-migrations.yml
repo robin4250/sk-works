@@ -1,0 +1,154 @@
+name: Generate reviewed staged migrations
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/generate-reviewed-staged-migrations.yml'
+permissions:
+  contents: read
+jobs:
+  generate-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          path: generator
+      - uses: actions/checkout@v4
+        with:
+          ref: bde05a64af4e2150372bde4ca1c1e31c08eebfd0
+          persist-credentials: false
+          path: source-invoice
+      - uses: actions/checkout@v4
+        with:
+          ref: df73d422c91bdc8bfd55d1138aff77c987c8f705
+          persist-credentials: false
+          path: source-site
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      # Official setup-cli v2.1.1; pinned source and CLI release.
+      - uses: supabase/setup-cli@3c2f5e2ae34c34e428e8e206e2c4d21fa2d20fbf
+        with:
+          version: '2.121.0'
+      - name: Discover installed CLI commands before generation
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/reviewed-migrations/logs"
+          supabase --version | tee "$RUNNER_TEMP/reviewed-migrations/logs/cli-version.txt"
+          supabase --help > "$RUNNER_TEMP/reviewed-migrations/logs/cli-help.txt"
+          supabase init --help > "$RUNNER_TEMP/reviewed-migrations/logs/init-help.txt"
+          supabase migration --help > "$RUNNER_TEMP/reviewed-migrations/logs/migration-help.txt"
+          supabase migration new --help > "$RUNNER_TEMP/reviewed-migrations/logs/migration-new-help.txt"
+      - name: Run source-pinned isolated permission and rollout assertions
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix "$RUNNER_TEMP/migration-isolation" --no-audit --no-fund --ignore-scripts --save-exact @electric-sql/pglite@0.3.14
+          node "$GITHUB_WORKSPACE/source-invoice/tool/test_invoice_month_end_notifications.mjs" "$RUNNER_TEMP/migration-isolation/node_modules/@electric-sql/pglite/dist/index.js" | tee "$RUNNER_TEMP/reviewed-migrations/logs/invoice-isolation.txt"
+          mkdir -p "$RUNNER_TEMP/migration-isolation/tool/staged"
+          cp "$GITHUB_WORKSPACE/source-site/tool/test_site_identity_links.mjs" "$RUNNER_TEMP/migration-isolation/tool/"
+          cp "$GITHUB_WORKSPACE/source-site/tool/staged/site_identity_links.sql" "$RUNNER_TEMP/migration-isolation/tool/staged/"
+          (cd "$RUNNER_TEMP/migration-isolation" && node tool/test_site_identity_links.mjs) | tee "$RUNNER_TEMP/reviewed-migrations/logs/site-isolation.txt"
+      - name: Generate real CLI migration filenames and verification manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          import crypto from 'node:crypto';
+          import assert from 'node:assert/strict';
+          import {execFileSync} from 'node:child_process';
+          const base=process.env.GITHUB_WORKSPACE;
+          const out=path.join(process.env.RUNNER_TEMP,'reviewed-migrations');
+          const work=path.join(process.env.RUNNER_TEMP,'migration-cli-workspace');
+          fs.mkdirSync(work,{recursive:true});
+          const version=fs.readFileSync(path.join(out,'logs/cli-version.txt'),'utf8').trim();
+          assert.match(version,/^2\.121\.0$/);
+          const run=(args)=>execFileSync('supabase',args,{cwd:work,encoding:'utf8',stdio:['ignore','pipe','pipe']});
+          fs.writeFileSync(path.join(out,'logs/init.txt'),run(['init']));
+          const migrationDir=path.join(work,'supabase/migrations');
+          fs.mkdirSync(migrationDir,{recursive:true});
+          fs.mkdirSync(path.join(out,'migrations'),{recursive:true});
+          fs.mkdirSync(path.join(out,'sources'),{recursive:true});
+          const definitions=[
+            {key:'invoice_month_end_approval_notifications',sourceDir:'source-invoice',sha:'bde05a64af4e2150372bde4ca1c1e31c08eebfd0',source:'tool/staged/invoice_month_end_approval_notifications.sql',rollout_control:'company_rows_default_false; no company enabled by SQL',deployable:false},
+            {key:'site_identity_links',sourceDir:'source-site',sha:'df73d422c91bdc8bfd55d1138aff77c987c8f705',source:'tool/staged/site_identity_links.sql',rollout_control:'not_present; deployment blocked pending separate rollout design',deployable:false}
+          ];
+          const hash=b=>crypto.createHash('sha256').update(b).digest('hex');
+          const manifest={
+            generated_by:'supabase migration new',
+            cli_version:version,
+            setup_cli_commit:'3c2f5e2ae34c34e428e8e206e2c4d21fa2d20fbf',
+            workflow_commit:process.env.GITHUB_SHA,
+            workflow_run:process.env.GITHUB_RUN_ID,
+            deployable:false,
+            database_connected:false,
+            production_ddl_executed:false,
+            cron_enabled:false,
+            real_notifications_sent:false,
+            generation_does_not_apply_sql:true,
+            isolation:{runtime:'PGlite 0.3.14',invoice_exit:0,site_exit:0,evidence:['logs/invoice-isolation.txt','logs/site-isolation.txt']},
+            migrations:[]
+          };
+          for(const [index,d] of definitions.entries()){
+            const sourceRoot=path.join(base,d.sourceDir);
+            const actual=execFileSync('git',['rev-parse','HEAD'],{cwd:sourceRoot,encoding:'utf8'}).trim();
+            assert.equal(actual,d.sha);
+            const bytes=fs.readFileSync(path.join(sourceRoot,d.source));
+            const text=bytes.toString('utf8');
+            if(d.key==='invoice_month_end_approval_notifications'){
+              assert.match(text,/enabled boolean not null default false/);
+              assert.doesNotMatch(text,/insert\s+into\s+private\.invoice_month_end_rollout/i);
+              assert.match(text,/from public,anon,authenticated,service_role/);
+              assert.doesNotMatch(text,/^\s*select\s+cron\.schedule/im);
+            }else{
+              assert.doesNotMatch(text,/\brollout\b|\benabled\b/i);
+              assert.match(text,/revoke all on function public\.site_identity_change_link[\s\S]*from public,anon;/);
+              assert.match(text,/revoke all on all functions in schema site_identity_private from public,anon,authenticated;/);
+            }
+            // The CLI owns timestamps. Do not synthesize or rename filenames.
+            // Separate calls avoid the CLI's one-second version collision.
+            if(index)await new Promise(resolve=>setTimeout(resolve,2100));
+            const before=new Set(fs.readdirSync(migrationDir));
+            const log=run(['migration','new',d.key]);
+            fs.writeFileSync(path.join(out,'logs',d.key+'-cli.txt'),log);
+            const created=fs.readdirSync(migrationDir).filter(name=>!before.has(name));
+            assert.equal(created.length,1);
+            const filename=created[0];
+            assert.match(filename,new RegExp('^\\d{14}_'+d.key+'\\.sql$'));
+            fs.writeFileSync(path.join(migrationDir,filename),bytes);
+            assert.deepEqual(fs.readFileSync(path.join(migrationDir,filename)),bytes);
+            fs.copyFileSync(path.join(migrationDir,filename),path.join(out,'migrations',filename));
+            fs.writeFileSync(path.join(out,'sources',d.key+'.sql'),bytes);
+            manifest.migrations.push({
+              ...d,filename,source_sha256:hash(bytes),
+              migration_sha256:hash(fs.readFileSync(path.join(out,'migrations',filename))),
+              exact_sql_match:true,
+              anonymous_rpc_permission_check:'source checks plus successful pinned isolated role assertions',
+              rollout_evidence:d.key==='invoice_month_end_approval_notifications'
+                ?'default false and isolated OFF-compatibility assertions'
+                :'No rollout gate exists; this artifact must not be treated as deployment approval'
+            });
+          }
+          assert.equal(new Set(manifest.migrations.map(m=>m.filename.slice(0,14))).size,2);
+          fs.writeFileSync(path.join(out,'verification-manifest.json'),JSON.stringify(manifest,null,2)+'\n');
+          fs.writeFileSync(path.join(out,'README.txt'),
+            'REVIEW ARTIFACT ONLY. NOT DEPLOYABLE.\n'+
+            'Generated filenames came from the real pinned Supabase CLI.\n'+
+            'SQL bytes are unchanged from the two pinned staged sources.\n'+
+            'Invoice rollout defaults OFF. Site identity has NO rollout gate.\n'+
+            'No DB connection, migration application, cron enablement or actual notice occurred.\n'+
+            'Review artifact hashes and prerequisites before any separate migration commit.\n');
+          console.log(JSON.stringify(manifest,null,2));
+          NODE
+      - name: Save generated migrations and verification evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: reviewed-staged-migrations-${{ github.run_id }}
+          path: ${{ runner.temp }}/reviewed-migrations/
+          if-no-files-found: error
+          retention-days: 30
