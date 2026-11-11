@@ -1,0 +1,21 @@
+name: Site contract company roles
+on:
+  pull_request:
+    paths: ['tool/staged/site_contract_company_roles.sql', 'tool/verify_site_contract_company_roles.mjs', '.github/workflows/site-contract-company-roles.yml']
+  push:
+    branches: [main]
+    paths: ['tool/staged/site_contract_company_roles.sql', 'tool/verify_site_contract_company_roles.mjs', '.github/workflows/site-contract-company-roles.yml']
+permissions: {contents: read}
+jobs:
+  both-directions:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: {reverse: ['0', '1']}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - run: npm install --prefix /tmp/site-role-proof --ignore-scripts --no-audit --no-fund @electric-sql/pglite@0.3.14
+      - run: node tool/verify_site_contract_company_roles.mjs /tmp/site-role-proof/node_modules/@electric-sql/pglite/dist/index.js
+        env:
+          SKO_SITE_SHARE_REVERSED: ${{ matrix.reverse }}
