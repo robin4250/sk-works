@@ -1,0 +1,38 @@
+name: Collector proof registration isolated review
+on:
+  pull_request:
+    paths:
+      - 'supabase/functions/reauthenticate-operation/**'
+      - 'tool/staged/reauthentication_proofs.sql'
+      - 'tool/staged/master_device_lock_reauthentication.sql'
+      - 'tool/security/collector_proof_registration_gotrue.mjs'
+      - 'docs/review/collector-proof-registration-20261024.md'
+      - '.github/workflows/collector-proof-registration-review.yml'
+permissions:
+  contents: read
+jobs:
+  existing-handler-regressions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node --test tool/security/reauthentication_handler_test.mjs tool/security/master_device_lock_handler_test.mjs
+  real-gotrue-private-consumer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --no-audit --no-fund --prefix tool/security/fixture_dependencies
+      - run: node --check tool/security/collector_proof_registration_gotrue.mjs
+      - name: Local GoTrue JWT to Edge password proof to exact private collector consumer
+        run: node tool/security/collector_proof_registration_gotrue.mjs
