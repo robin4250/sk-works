@@ -6,6 +6,8 @@ on:
       - 'tool/verify_paid_leave_postgres17.mjs'
       - 'tool/paid_leave_pg17_database_guard*'
       - 'tool/fixtures/paid_leave_pg17/**'
+      - 'supabase/migrations/20261009011357_company_seal_aoyagi_style.sql'
+      - 'supabase/migrations/20261009012730_company_seal_document_snapshots.sql'
       - 'supabase/tests/payroll*.sql'
       - 'supabase/tests/invoice_stamp_approval_workflow.sql'
       - 'supabase/migrations/*payroll*.sql'
@@ -20,6 +22,8 @@ on:
       - 'tool/verify_paid_leave_postgres17.mjs'
       - 'tool/paid_leave_pg17_database_guard*'
       - 'tool/fixtures/paid_leave_pg17/**'
+      - 'supabase/migrations/20261009011357_company_seal_aoyagi_style.sql'
+      - 'supabase/migrations/20261009012730_company_seal_document_snapshots.sql'
       - 'supabase/migrations/20261008200018_paid_leave_wage_contract.sql'
       - '.github/workflows/paid-leave-postgres17-preflight.yml'
   workflow_dispatch:
