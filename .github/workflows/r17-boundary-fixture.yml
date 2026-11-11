@@ -1,0 +1,20 @@
+name: R17 isolated boundary design
+on:
+  pull_request:
+    paths:
+      - 'tool/security/r17_boundary*'
+      - '.github/workflows/r17-boundary-fixture.yml'
+permissions:
+  contents: read
+jobs:
+  synthetic-sql:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
+      - run: node tool/security/r17_boundary_fixture.mjs "$PWD/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
