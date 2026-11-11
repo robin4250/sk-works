@@ -1,0 +1,45 @@
+-- Non-public experiment. This does not create a PostgREST RPC or permit grants.
+-- Preview is provisional and never approves, issues, shares or changes invoices.
+begin;
+create schema invoice_owner_preview_candidate;
+revoke all on schema invoice_owner_preview_candidate from public,anon,authenticated,service_role;
+create table invoice_owner_preview_candidate.settings(singleton boolean primary key default true check(singleton), enabled boolean not null default false);
+insert into invoice_owner_preview_candidate.settings values(true,false);
+alter table invoice_owner_preview_candidate.settings enable row level security;
+revoke all on invoice_owner_preview_candidate.settings from public,anon,authenticated,service_role;
+create function invoice_owner_preview_candidate.read(p_invoice_id uuid)
+returns jsonb language plpgsql security definer set search_path='' set timezone='UTC' as $$
+declare actor uuid:=auth.uid(); sid uuid; enabled boolean; master_enabled boolean; cid uuid; membership_role text; allowed boolean; v jsonb;
+begin
+ sid:=private.require_reauthentication_session();
+ if actor is null or sid is null or p_invoice_id is null then raise exception 'preview_unavailable' using errcode='42501'; end if;
+ select s.enabled into enabled from invoice_owner_preview_candidate.settings s where singleton for share;
+ if not coalesce(enabled,false) then raise exception 'preview_disabled' using errcode='42501'; end if;
+ select m.enabled into master_enabled from private.master_admins m where m.user_id=actor for share;
+ if not found or not coalesce(master_enabled,false) then raise exception 'preview_unavailable' using errcode='42501'; end if;
+ select company_id into cid from public.invoices where id=p_invoice_id;
+ select role::text into membership_role from public.company_members where company_id=cid and user_id=actor for share;
+ if not found or membership_role not in ('owner','admin','manager') then raise exception 'preview_unavailable' using errcode='42501'; end if;
+ select can_manage_invoices into allowed from public.member_feature_permissions where company_id=cid and user_id=actor for share;
+ if (membership_role not in ('owner','admin') and not coalesce(allowed,false))
+ or not coalesce(private.has_company_feature(cid,'can_manage_invoices'),false)
+ or not coalesce(private.account_access_allowed(),false) then raise exception 'preview_unavailable' using errcode='42501'; end if;
+ if to_regprocedure('invoice_correction_preview_private.preview(uuid)') is null then raise exception 'preview_dependency_unavailable' using errcode='55000'; end if;
+ -- The preview itself must authenticate the live session and verify company,
+ -- invoice access, frozen original, source consistency and saved prices.
+ execute 'select invoice_correction_preview_private.preview($1)' into v using p_invoice_id;
+ if jsonb_typeof(v) is distinct from 'object' or v->>'original_invoice_id' is distinct from p_invoice_id::text
+ or v->'calculation_blocked' is distinct from 'false'::jsonb
+ or coalesce(v->>'source_fingerprint','') !~ '^[0-9a-f]{64}$'
+ or coalesce(v->>'original_invoice_fingerprint','') !~ '^[0-9a-f]{64}$'
+ or jsonb_typeof(v->'proposed_snapshot') is distinct from 'object'
+ or (v->'proposed_snapshot') ? 'company_seal_snapshot' or (v->'proposed_snapshot') ? 'approval_snapshot'
+ or jsonb_typeof(v->'subtotal') is distinct from 'number' or jsonb_typeof(v->'tax') is distinct from 'number'
+ or jsonb_typeof(v->'welfare') is distinct from 'number' or jsonb_typeof(v->'grand_total') is distinct from 'number'
+ then raise exception 'preview_invalid' using errcode='55000'; end if;
+ return jsonb_build_object('status','unissued_reference_only','invoice_id',p_invoice_id,
+  'source_fingerprint',v->'source_fingerprint','original_invoice_fingerprint',v->'original_invoice_fingerprint',
+  'snapshot',v->'proposed_snapshot','subtotal',v->'subtotal','tax',v->'tax','welfare',v->'welfare','grand_total',v->'grand_total');
+end $$;
+revoke all on function invoice_owner_preview_candidate.read(uuid) from public,anon,authenticated,service_role;
+commit;

@@ -1,0 +1,128 @@
+-- Isolated review candidate: no public wrapper and no grants. Not for deployment.
+begin;
+create schema invoice_revision_candidate;
+revoke all on schema invoice_revision_candidate from public, anon, authenticated, service_role;
+create table invoice_revision_candidate.settings(singleton boolean primary key default true check(singleton), enabled boolean not null default false);
+insert into invoice_revision_candidate.settings values(true,false);
+create table invoice_revision_candidate.proposals(
+ id uuid primary key, original_invoice_id uuid not null,
+ company_id uuid not null, actor_id uuid not null, session_id uuid not null,
+ source_fingerprint text not null check(source_fingerprint ~ '^[0-9a-f]{64}$'),
+ original_fingerprint text not null check(original_fingerprint ~ '^[0-9a-f]{64}$'),
+ original_record jsonb not null, proposed_snapshot jsonb not null,
+ subtotal numeric not null, tax numeric not null, welfare numeric not null, grand_total numeric not null,
+ reason text not null check(length(btrim(reason)) between 1 and 500),
+ state text not null default 'prepared' check(state in ('prepared','cancelled')),
+ created_at timestamptz not null default clock_timestamp());
+create unique index revision_one_prepared_per_original on invoice_revision_candidate.proposals(original_invoice_id) where state='prepared';
+alter table invoice_revision_candidate.settings enable row level security;
+alter table invoice_revision_candidate.proposals enable row level security;
+revoke all on all tables in schema invoice_revision_candidate from public, anon, authenticated, service_role;
+-- Only privileged server orchestration may call this prototype. There is no
+-- public RPC, publication, approval, share or changes to the original invoice.
+create function invoice_revision_candidate.stage(p_invoice_id uuid,p_command_id uuid,
+ p_expected_source text,p_expected_original text,p_reason text)
+returns jsonb language plpgsql security definer set search_path='' set timezone='UTC' as $$
+declare actor uuid:=auth.uid(); sid uuid; cid uuid; locked_role text; locked_manage boolean;
+ old_invoice public.invoices%rowtype;
+ prior invoice_revision_candidate.proposals%rowtype; v jsonb; original_hash text; enabled boolean;
+begin
+ sid:=private.require_reauthentication_session();
+ if actor is null or sid is null or p_invoice_id is null or p_command_id is null or
+    p_expected_source is null or p_expected_original is null or
+    p_expected_source !~ '^[0-9a-f]{64}$' or p_expected_original !~ '^[0-9a-f]{64}$' or
+    p_reason is null or length(btrim(p_reason)) not between 1 and 500 then
+  raise exception 'revision_request_invalid' using errcode='22023'; end if;
+ select s.enabled into enabled from invoice_revision_candidate.settings s where singleton for share;
+ if not coalesce(enabled,false) then raise exception 'revision_disabled' using errcode='42501'; end if;
+ select company_id into cid from public.invoices where id=p_invoice_id;
+ if cid is null then raise exception 'revision_denied' using errcode='42501'; end if;
+ -- Serialize a concurrent role/permission revoke with this transaction.
+ select m.role::text into locked_role from public.company_members m where m.company_id=cid and m.user_id=actor for share;
+ if not found then raise exception 'revision_denied' using errcode='42501'; end if;
+ select m.can_manage_invoices into locked_manage from public.member_feature_permissions m where m.company_id=cid and m.user_id=actor for share;
+ if locked_role not in ('owner','admin') and not coalesce(locked_manage,false) then
+  raise exception 'revision_denied' using errcode='42501'; end if;
+ if not coalesce(private.has_company_feature(cid,'can_manage_invoices'),false)
+    or not coalesce(private.account_access_allowed(),false) then raise exception 'revision_denied' using errcode='42501'; end if;
+ perform pg_advisory_xact_lock(hashtextextended(p_invoice_id::text, 271011));
+ select * into old_invoice from public.invoices where id=p_invoice_id for update;
+ if not found or old_invoice.company_id is distinct from cid then raise exception 'revision_denied' using errcode='42501'; end if;
+ select * into prior from invoice_revision_candidate.proposals where id=p_command_id;
+ if found then
+   if prior.original_invoice_id<>p_invoice_id or prior.actor_id<>actor or prior.session_id<>sid
+      or prior.source_fingerprint<>p_expected_source or prior.original_fingerprint<>p_expected_original
+      or prior.reason<>btrim(p_reason) then raise exception 'revision_request_reuse_conflict' using errcode='40001'; end if;
+   return jsonb_build_object('proposal_id',prior.id,'status','prepared','replayed',true);
+ end if;
+ if old_invoice.invoice_seal_frozen is distinct from true then raise exception 'revision_original_not_frozen' using errcode='22023'; end if;
+ if exists(select 1 from invoice_revision_candidate.proposals p where p.original_invoice_id=p_invoice_id and p.state='prepared') then
+  raise exception 'revision_existing_proposal' using errcode='40001'; end if;
+ original_hash:=encode(sha256(convert_to(to_jsonb(old_invoice)::text,'UTF8')),'hex');
+ if original_hash<>p_expected_original then raise exception 'revision_original_changed' using errcode='40001'; end if;
+ -- The trusted read-only preview is independently owned and has not yet been
+ -- wired. The function cannot operate until its real dependency is installed.
+ if to_regprocedure('invoice_correction_preview_private.preview(uuid)') is null then
+  raise exception 'revision_preview_unavailable' using errcode='55000'; end if;
+ execute 'select invoice_correction_preview_private.preview($1)' into v using p_invoice_id;
+ if jsonb_typeof(v) is distinct from 'object' or v->>'original_invoice_id' is distinct from p_invoice_id::text
+    or v->>'source_fingerprint' is distinct from p_expected_source
+    or v->>'original_invoice_fingerprint' is distinct from original_hash
+    or v->'calculation_blocked' is distinct from 'false'::jsonb
+    or jsonb_typeof(v->'proposed_snapshot') is distinct from 'object'
+    or (v->'proposed_snapshot') ? 'company_seal_snapshot'
+    or (v->'proposed_snapshot') ? 'approval_snapshot'
+    or jsonb_typeof(v->'subtotal') is distinct from 'number' or jsonb_typeof(v->'tax') is distinct from 'number'
+    or jsonb_typeof(v->'welfare') is distinct from 'number' or jsonb_typeof(v->'grand_total') is distinct from 'number'
+ then raise exception 'revision_preview_invalid_or_changed' using errcode='40001'; end if;
+ insert into invoice_revision_candidate.proposals(id,original_invoice_id,company_id,actor_id,session_id,
+  source_fingerprint,original_fingerprint,original_record,proposed_snapshot,subtotal,tax,welfare,grand_total,reason)
+ values(p_command_id,p_invoice_id,old_invoice.company_id,actor,sid,p_expected_source,original_hash,
+  to_jsonb(old_invoice),v->'proposed_snapshot',(v->>'subtotal')::numeric,(v->>'tax')::numeric,
+  (v->>'welfare')::numeric,(v->>'grand_total')::numeric,btrim(p_reason));
+ return jsonb_build_object('proposal_id',p_command_id,'status','prepared','replayed',false);
+end $$;
+revoke all on function invoice_revision_candidate.stage(uuid,uuid,text,text,text) from public, anon, authenticated, service_role;
+-- An internal review read, never a public invoice/approval/share endpoint.
+-- Publication remains unavailable even when this review read succeeds.
+create function invoice_revision_candidate.read_prepared(p_command_id uuid)
+returns jsonb language plpgsql security definer set search_path='' set timezone='UTC' as $$
+declare actor uuid:=auth.uid(); sid uuid; proposal invoice_revision_candidate.proposals%rowtype;
+ parent public.invoices%rowtype; locked_role text; locked_manage boolean; enabled boolean; v jsonb; original_hash text;
+begin
+ sid:=private.require_reauthentication_session();
+ if actor is null or sid is null or p_command_id is null then raise exception 'revision_denied' using errcode='42501'; end if;
+ select s.enabled into enabled from invoice_revision_candidate.settings s where singleton for share;
+ if not coalesce(enabled,false) then raise exception 'revision_disabled' using errcode='42501'; end if;
+ select * into proposal from invoice_revision_candidate.proposals p
+  where p.id=p_command_id and p.actor_id=actor and p.state='prepared' for share;
+ if not found then raise exception 'revision_denied' using errcode='42501'; end if;
+ select m.role::text into locked_role from public.company_members m where m.company_id=proposal.company_id and m.user_id=actor for share;
+ if not found then raise exception 'revision_denied' using errcode='42501'; end if;
+ select m.can_manage_invoices into locked_manage from public.member_feature_permissions m where m.company_id=proposal.company_id and m.user_id=actor for share;
+ if (locked_role not in ('owner','admin') and not coalesce(locked_manage,false))
+   or not coalesce(private.has_company_feature(proposal.company_id,'can_manage_invoices'),false)
+   or not coalesce(private.account_access_allowed(),false) then raise exception 'revision_denied' using errcode='42501'; end if;
+ select * into parent from public.invoices i where i.id=proposal.original_invoice_id and i.company_id=proposal.company_id for share;
+ if not found then raise exception 'revision_original_unavailable' using errcode='55000'; end if;
+ original_hash:=encode(sha256(convert_to(to_jsonb(parent)::text,'UTF8')),'hex');
+ if original_hash<>proposal.original_fingerprint then raise exception 'revision_original_changed' using errcode='40001'; end if;
+ if to_regprocedure('invoice_correction_preview_private.preview(uuid)') is null then raise exception 'revision_preview_unavailable' using errcode='55000'; end if;
+ execute 'select invoice_correction_preview_private.preview($1)' into v using proposal.original_invoice_id;
+ if jsonb_typeof(v) is distinct from 'object' or v->>'original_invoice_id' is distinct from proposal.original_invoice_id::text
+   or v->>'original_invoice_fingerprint' is distinct from proposal.original_fingerprint
+   or v->>'source_fingerprint' is distinct from proposal.source_fingerprint
+   or v->'calculation_blocked' is distinct from 'false'::jsonb
+   or v->'proposed_snapshot' is distinct from proposal.proposed_snapshot
+   or v->'subtotal' is distinct from to_jsonb(proposal.subtotal)
+   or v->'tax' is distinct from to_jsonb(proposal.tax)
+   or v->'welfare' is distinct from to_jsonb(proposal.welfare)
+   or v->'grand_total' is distinct from to_jsonb(proposal.grand_total)
+ then raise exception 'revision_preview_changed' using errcode='40001'; end if;
+ return jsonb_build_object('proposal_id',proposal.id,'status','review_only',
+  'original_invoice_id',proposal.original_invoice_id,'created_at',proposal.created_at,
+  'proposed_snapshot',proposal.proposed_snapshot,'subtotal',proposal.subtotal,
+  'tax',proposal.tax,'welfare',proposal.welfare,'grand_total',proposal.grand_total);
+end $$;
+revoke all on function invoice_revision_candidate.read_prepared(uuid) from public,anon,authenticated,service_role;
+commit;
