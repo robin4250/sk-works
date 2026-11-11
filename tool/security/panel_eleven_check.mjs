@@ -1,0 +1,72 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import {createHash,randomBytes} from 'node:crypto';
+const pg=(await import(process.argv[2]??'pg')).default;
+const url=new URL(process.env.SKO_PANEL_FIXTURE_URL??'');
+if(!['127.0.0.1','localhost','[::1]'].includes(url.hostname)||url.pathname!='/sko_panel_eleven_fixture')throw Error('Disposable loopback fixture only');
+const clients=[];async function conn(){const c=new pg.Client({connectionString:url.href});await c.connect();clients.push(c);return c;}
+const a='10000000-0000-0000-0000-000000000001',b='10000000-0000-0000-0000-000000000002';
+const source='20000000-0000-0000-0000-000000000001',target='20000000-0000-0000-0000-000000000002',otherSid='20000000-0000-0000-0000-000000000003';
+const oldKey='synthetic-source-key-000000000000000000000000',newKey='synthetic-target-key-000000000000000000000000',oldId='40000000-0000-0000-0000-000000000001';
+const hash=v=>createHash('sha256').update(v).digest('hex');
+async function actor(c,id=a,sid=target){await c.query("select set_config('request.jwt.claims',$1,false)",[JSON.stringify({sub:id,role:'authenticated',session_id:sid})]);await c.query('set role authenticated');}
+const denied=p=>assert.rejects(p,e=>e.code==='42501');
+try{
+ const db=await conn();assert.match((await db.query('show server_version')).rows[0].server_version,/^17\./);
+ await db.query(`create role authenticated;create role anon;create role service_role;
+ create schema auth;create schema private;create schema extensions;create extension pgcrypto with schema extensions;
+ create function auth.jwt() returns jsonb language sql stable as $$select coalesce(nullif(current_setting('request.jwt.claims',true),''),'{}')::jsonb$$;
+ create function auth.uid() returns uuid language sql stable as $$select (auth.jwt()->>'sub')::uuid$$;
+ create table auth.users(id uuid primary key,provider text not null);
+ create table auth.sessions(id uuid primary key,user_id uuid not null,not_after timestamptz);
+ create table private.master_admins(user_id uuid primary key,enabled boolean not null);
+ create table private.account_deletion_access_restrictions(user_id uuid primary key);
+ create function private.account_deletion_barrier_key(p_actor uuid) returns bigint language sql immutable as $$select hashtextextended('deletion:'||p_actor::text,0)$$;
+ create function private.account_access_allowed() returns boolean language sql stable security definer set search_path='' as $$select auth.uid() is not null and not exists(select 1 from private.account_deletion_access_restrictions where user_id=auth.uid())$$;
+ create function public.is_current_user_master_admin() returns boolean language sql stable security definer set search_path='' as $$select exists(select 1 from private.master_admins where user_id=auth.uid() and enabled)$$;
+ create table public.company_members(user_id uuid,company_id uuid,role text);
+ create table public.user_secondary_credentials(user_id uuid,password_hash text);
+ create table private.master_admin_audit_log(actor_user_id uuid,action text,target_user_id uuid,details jsonb);
+ grant usage on schema public,auth to authenticated,anon,service_role;
+ revoke all on schema private,extensions from public,anon,authenticated,service_role;
+ `);
+ await db.query(await fs.readFile(new URL('../../supabase/migrations/20260929221500_add_master_device_foundation.sql',import.meta.url),'utf8'));
+ await db.query('insert into auth.users values($1,$3),($2,$4)',[a,b,'google','apple']);
+ await db.query('insert into auth.sessions values($1,$4,null),($2,$4,null),($3,$5,null)',[source,target,otherSid,a,b]);
+ await db.query('insert into private.master_admins values($1,true)',[a]);
+ await db.query('insert into public.company_members values($1,$3,$4),($2,$3,$5)',[a,b,'30000000-0000-0000-0000-000000000001','owner','admin']);
+ await db.query("insert into public.user_secondary_credentials values($1,'synthetic-hash-never-used')",[a]);
+ await db.query("insert into private.master_devices(id,master_user_id,device_key,device_name,device_type) values($1,$2,$3,'synthetic iPhone','iphone')",[oldId,a,oldKey]);
+ const snapshot=async()=> (await db.query(`select jsonb_build_object('users',(select jsonb_agg(to_jsonb(x) order by id) from auth.users x),'roles',(select jsonb_agg(to_jsonb(x) order by user_id) from private.master_admins x),'members',(select jsonb_agg(to_jsonb(x) order by user_id) from public.company_members x),'credentials',(select jsonb_agg(to_jsonb(x) order by user_id) from public.user_secondary_credentials x),'old_device',(select to_jsonb(d) from private.master_devices d where id=$1)) s`,[oldId])).rows[0].s;
+ const before=await snapshot();
+ await db.query(await fs.readFile(new URL('../staged/panel_eleven.sql.review-only',import.meta.url),'utf8'));
+ assert.deepEqual(await snapshot(),before);
+ const t=await conn(),s=await conn(),other=await conn(),issuer=await conn();await actor(t);await actor(s,a,source);await actor(other,b,otherSid);await issuer.query('set role service_role');
+ const begin=(c,key=newKey)=>c.query('select public.panel_eleven_begin($1,$2,$3,$4) r',[key,'synthetic tablet','ipad','synthetic']);
+ await denied(begin(t));await db.query('update private.panel_eleven_flags set enabled=true');
+ await denied(begin(other));await denied(begin(t,oldKey));
+ const r=(await begin(t)).rows[0].r;assert.equal(r.protocol,'sko-panel-eleven-v1');assert.match(r.nonce,/^[0-9a-f]{64}$/);
+ const approve=(c,proof,key=oldKey)=>c.query('select public.panel_eleven_approve($1,$2,$3)',[r.request_id,key,proof]);
+ const complete=(c,key=newKey,nonce=r.nonce)=>c.query('select public.panel_eleven_complete($1,$2,$3) r',[r.request_id,key,nonce]);
+ await denied(complete(t));await denied(approve(s,'arbitrary-client-face-true'));await denied(approve(other,'arbitrary'));
+ const proof=randomBytes(32).toString('hex');
+ await denied(t.query('select public.panel_eleven_issue($1,$2,$3,$4,$5)',[a,source,oldKey,r.request_id,hash(proof)]));
+ await issuer.query('select public.panel_eleven_issue($1,$2,$3,$4,$5)',[a,source,oldKey,r.request_id,hash(proof)]);
+ await denied(approve(t,proof));await denied(approve(s,proof,'wrong-key'));
+ await approve(s,proof);await denied(approve(s,proof));await denied(complete(s));await denied(complete(other));
+ await denied(complete(t,newKey,'wrong-nonce'));await denied(complete(t,'wrong-key'));
+ await db.query('update private.master_devices set is_locked=true where id=$1',[oldId]);await denied(complete(t));await db.query('update private.master_devices set is_locked=false where id=$1',[oldId]);
+ await db.query("update auth.sessions set not_after=clock_timestamp()-interval '1 second' where id=$1",[source]);await denied(complete(t));await db.query('update auth.sessions set not_after=null where id=$1',[source]);
+ // Two completion callers cannot append duplicate registrations or consume twice.
+ const competing=await conn();await actor(competing);
+ await t.query('begin');const result=(await complete(t)).rows[0].r;assert.equal(result.status,'completed');
+ const pid=(await competing.query('select pg_backend_pid() p')).rows[0].p;const pending=denied(complete(competing));let blocked=false;
+ for(let i=0;i<100;i++){if((await db.query('select cardinality(pg_blocking_pids($1))>0 b',[pid])).rows[0].b){blocked=true;break;}await new Promise(r=>setTimeout(r,10));}
+ assert.equal(blocked,true);await t.query('commit');await pending;await denied(complete(t));
+ assert.equal((await db.query('select count(*)::int n from private.master_devices where master_user_id=$1',[a])).rows[0].n,2);
+ assert.deepEqual(await snapshot(),before,'existing iPhone key/id/state, Google identity, roles/company/shared credential unchanged');
+ const anonymous=await conn();await anonymous.query('set role anon');await denied(begin(anonymous));
+ await denied(t.query('select * from private.panel_eleven_proofs'));
+ await db.query('update private.panel_eleven_flags set enabled=false');await denied(begin(t,'another-synthetic-key-000000000000000000'));
+ console.log('PASS PostgreSQL 17 synthetic contract: default OFF; trusted-source service proof seam; same actor/two sessions; exact target/key/nonce; single use/concurrent completion; source lock/session expiry/anonymous/company admin denial; original iPhone/ID/provider/company/roles/credential unchanged. NO real Google verifier or native enrollment validation.');
+}finally{await Promise.all(clients.map(c=>c.end()));}

@@ -1,0 +1,118 @@
+-- REVIEW ONLY. No deployed provider verifier is wired to the service issuer.
+-- Default OFF. Existing devices, keys, credentials, roles and recovery stay intact.
+begin;
+create table private.panel_eleven_flags(singleton boolean primary key default true check(singleton),enabled boolean not null default false);
+insert into private.panel_eleven_flags(singleton) values(true);
+create table private.panel_eleven_requests(
+ id uuid primary key default gen_random_uuid(),owner_id uuid not null,target_sid uuid not null,
+ target_hash text not null,nonce_hash text not null,label text not null,kind text not null,platform text,
+ created_at timestamptz not null default clock_timestamp(),expires_at timestamptz not null,
+ source_sid uuid,source_device_id uuid,approved_at timestamptz,used_at timestamptz);
+create table private.panel_eleven_proofs(
+ hash text primary key,owner_id uuid not null,source_sid uuid not null,source_device_id uuid not null,
+ request_id uuid not null,target_hash text not null,expires_at timestamptz not null,used_at timestamptz);
+alter table private.panel_eleven_flags enable row level security;
+alter table private.panel_eleven_requests enable row level security;
+alter table private.panel_eleven_proofs enable row level security;
+revoke all on private.panel_eleven_flags,private.panel_eleven_requests,private.panel_eleven_proofs from public,anon,authenticated;
+create function private.panel_eleven_context() returns uuid language plpgsql security definer set search_path='' as $$
+declare actor uuid:=auth.uid(); sid uuid; enabled boolean;
+begin
+ if current_setting('transaction_isolation')<>'read committed' then raise sqlstate '42501' using message='operation_unavailable'; end if;
+ select f.enabled into enabled from private.panel_eleven_flags f where singleton for share;
+ if enabled is distinct from true or actor is null or not private.account_access_allowed() then raise sqlstate '42501' using message='operation_unavailable'; end if;
+ if not pg_try_advisory_xact_lock_shared(private.account_deletion_barrier_key(actor)) then raise sqlstate '42501' using message='operation_unavailable';end if;
+ perform 1 from private.master_admins ma where ma.user_id=actor and ma.enabled for update;
+ if not found then raise sqlstate '42501' using message='operation_unavailable'; end if;
+ begin sid:=(auth.jwt()->>'session_id')::uuid;exception when others then raise sqlstate '42501' using message='operation_unavailable';end;
+ perform 1 from auth.sessions where id=sid and user_id=actor and (not_after is null or not_after>clock_timestamp()) for share;
+ if not found then raise sqlstate '42501' using message='operation_unavailable'; end if;
+ return sid;
+end $$;
+revoke all on function private.panel_eleven_context() from public,anon,authenticated;
+create function public.panel_eleven_begin(p_key text,p_label text,p_kind text,p_platform text default null) returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare sid uuid; nonce text; rid uuid; expiry timestamptz;
+begin
+ sid:=private.panel_eleven_context();
+ if p_key is null or length(p_key) not between 32 and 256 or length(btrim(coalesce(p_label,''))) not between 1 and 120
+ or p_kind not in ('iphone','ipad','mac','other') or length(coalesce(p_platform,''))>120 then raise sqlstate '22023' using message='invalid_request';end if;
+ -- INSERT only: never turn a locked or revoked old registration into an addition.
+ if exists(select 1 from private.master_devices where master_user_id=auth.uid() and device_key=p_key)
+ or exists(select 1 from private.panel_eleven_requests where owner_id=auth.uid() and target_sid=sid and used_at is null and expires_at>clock_timestamp()) then
+ raise sqlstate '42501' using message='operation_unavailable';end if;
+ nonce:=encode(extensions.gen_random_bytes(32),'hex');expiry:=clock_timestamp()+interval '120 seconds';
+ insert into private.panel_eleven_requests(owner_id,target_sid,target_hash,nonce_hash,label,kind,platform,expires_at)
+ values(auth.uid(),sid,encode(extensions.digest(p_key,'sha256'),'hex'),encode(extensions.digest(nonce,'sha256'),'hex'),btrim(p_label),p_kind,p_platform,expiry) returning id into rid;
+ return jsonb_build_object('protocol','sko-panel-eleven-v1','request_id',rid,'nonce',nonce,'expires_at',expiry);
+end $$;
+revoke all on function public.panel_eleven_begin(text,text,text,text) from public,anon;
+grant execute on function public.panel_eleven_begin(text,text,text,text) to authenticated;
+-- Integration seam: ONLY a service which independently verifies fresh provider
+-- possession may issue. This function is NOT that provider verifier.
+create function public.panel_eleven_issue(p_owner uuid,p_sid uuid,p_key text,p_request uuid,p_hash text) returns timestamptz
+language plpgsql security definer set search_path='' as $$
+declare r private.panel_eleven_requests%rowtype; d uuid; expiry timestamptz; enabled boolean;
+begin
+ if current_setting('transaction_isolation')<>'read committed' or p_hash !~ '^[0-9a-f]{64}$' or p_hash is null then raise sqlstate '42501' using message='operation_unavailable';end if;
+ select f.enabled into enabled from private.panel_eleven_flags f where singleton for share;
+ if enabled is distinct from true then raise sqlstate '42501' using message='operation_unavailable';end if;
+ if not pg_try_advisory_xact_lock_shared(private.account_deletion_barrier_key(p_owner)) then raise sqlstate '42501' using message='operation_unavailable';end if;
+ perform 1 from private.master_admins ma where ma.user_id=p_owner and ma.enabled for update;
+ if not found or exists(select 1 from private.account_deletion_access_restrictions where user_id=p_owner) then raise sqlstate '42501' using message='operation_unavailable';end if;
+ select * into r from private.panel_eleven_requests where id=p_request and owner_id=p_owner and used_at is null and approved_at is null and expires_at>clock_timestamp() for update;
+ if not found or r.target_sid=p_sid then raise sqlstate '42501' using message='operation_unavailable';end if;
+ select id into d from private.master_devices where master_user_id=p_owner and device_key=p_key and revoked_at is null and not is_locked for share;
+ if not found then raise sqlstate '42501' using message='operation_unavailable';end if;
+ perform 1 from auth.sessions where id=p_sid and user_id=p_owner and (not_after is null or not_after>clock_timestamp()) for share;
+ if not found then raise sqlstate '42501' using message='operation_unavailable';end if;
+ perform 1 from auth.sessions where id=r.target_sid and user_id=p_owner and (not_after is null or not_after>clock_timestamp()) for share;
+ if not found then raise sqlstate '42501' using message='operation_unavailable';end if;
+ expiry:=least(r.expires_at,clock_timestamp()+interval '120 seconds');
+ insert into private.panel_eleven_proofs(hash,owner_id,source_sid,source_device_id,request_id,target_hash,expires_at)
+ values(p_hash,p_owner,p_sid,d,p_request,r.target_hash,expiry);
+ return expiry;
+end $$;
+revoke all on function public.panel_eleven_issue(uuid,uuid,text,uuid,text) from public,anon,authenticated;
+grant execute on function public.panel_eleven_issue(uuid,uuid,text,uuid,text) to service_role;
+create function public.panel_eleven_approve(p_request uuid,p_key text,p_proof text) returns void
+language plpgsql security definer set search_path='' as $$
+declare sid uuid; r private.panel_eleven_requests%rowtype; d uuid; consumed text;
+begin
+ sid:=private.panel_eleven_context();
+ select * into r from private.panel_eleven_requests where id=p_request and owner_id=auth.uid() and used_at is null and approved_at is null and expires_at>clock_timestamp() for update;
+ if not found or r.target_sid=sid then raise sqlstate '42501' using message='operation_unavailable';end if;
+ select id into d from private.master_devices where master_user_id=auth.uid() and device_key=p_key and revoked_at is null and not is_locked for share;
+ if not found then raise sqlstate '42501' using message='operation_unavailable';end if;
+ update private.panel_eleven_proofs set used_at=clock_timestamp() where hash=encode(extensions.digest(p_proof,'sha256'),'hex')
+ and owner_id=auth.uid() and source_sid=sid and source_device_id=d and request_id=p_request and target_hash=r.target_hash
+ and used_at is null and expires_at>clock_timestamp() returning hash into consumed;
+ if consumed is null then raise sqlstate '42501' using message='operation_unavailable';end if;
+ update private.panel_eleven_requests set approved_at=clock_timestamp(),source_sid=sid,source_device_id=d where id=p_request;
+end $$;
+revoke all on function public.panel_eleven_approve(uuid,text,text) from public,anon;
+grant execute on function public.panel_eleven_approve(uuid,text,text) to authenticated;
+create function public.panel_eleven_complete(p_request uuid,p_key text,p_nonce text) returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare sid uuid; r private.panel_eleven_requests%rowtype; did uuid;
+begin
+ sid:=private.panel_eleven_context();
+ select * into r from private.panel_eleven_requests where id=p_request and owner_id=auth.uid() and target_sid=sid
+ and approved_at is not null and used_at is null and expires_at>clock_timestamp()
+ and target_hash=encode(extensions.digest(p_key,'sha256'),'hex') and nonce_hash=encode(extensions.digest(p_nonce,'sha256'),'hex') for update;
+ if not found then raise sqlstate '42501' using message='operation_unavailable';end if;
+ perform 1 from private.master_devices where id=r.source_device_id and master_user_id=auth.uid() and revoked_at is null and not is_locked for share;
+ if not found then raise sqlstate '42501' using message='operation_unavailable';end if;
+ perform 1 from auth.sessions where id=r.source_sid and user_id=auth.uid() and (not_after is null or not_after>clock_timestamp()) for share;
+ if not found then raise sqlstate '42501' using message='operation_unavailable';end if;
+ if exists(select 1 from private.master_devices where master_user_id=auth.uid() and device_key=p_key) then raise sqlstate '42501' using message='operation_unavailable';end if;
+ insert into private.master_devices(master_user_id,device_key,device_name,device_type,platform,last_used_at)
+ values(auth.uid(),p_key,r.label,r.kind,r.platform,clock_timestamp()) returning id into did;
+ update private.panel_eleven_requests set used_at=clock_timestamp() where id=p_request;
+ insert into private.master_admin_audit_log(actor_user_id,action,target_user_id,details)
+ values(auth.uid(),'device_addition_completed',auth.uid(),jsonb_build_object('request_id',p_request,'device_id',did,'source_device_id',r.source_device_id));
+ return jsonb_build_object('protocol','sko-panel-eleven-v1','status','completed','device_id',did);
+end $$;
+revoke all on function public.panel_eleven_complete(uuid,text,text) from public,anon;
+grant execute on function public.panel_eleven_complete(uuid,text,text) to authenticated;
+commit;
