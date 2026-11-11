@@ -1,0 +1,227 @@
+{
+  "captured_at": "2026-10-16",
+  "scope": "Read-only catalog definitions; Storage SELECT subset, HTTP signing not tested. Unrelated bucket policies are not replayed.",
+  "records": [
+    {
+      "kind": "policy",
+      "definition": {
+        "cmd": "ALL",
+        "qual": "( SELECT private.account_access_allowed() AS account_access_allowed)",
+        "roles": [
+          "authenticated"
+        ],
+        "tablename": "site_entrance_photos",
+        "permissive": "RESTRICTIVE",
+        "policyname": "account_deletion_access_guard",
+        "schemaname": "public",
+        "with_check": "( SELECT private.account_access_allowed() AS account_access_allowed)"
+      }
+    },
+    {
+      "kind": "policy",
+      "definition": {
+        "cmd": "DELETE",
+        "qual": "(EXISTS ( SELECT 1\n   FROM company_members m\n  WHERE ((m.company_id = site_entrance_photos.company_id) AND (m.user_id = ( SELECT auth.uid() AS uid)) AND ((m.role)::text = ANY (ARRAY['owner'::text, 'admin'::text, 'manager'::text])))))",
+        "roles": [
+          "authenticated"
+        ],
+        "tablename": "site_entrance_photos",
+        "permissive": "PERMISSIVE",
+        "policyname": "site_photos_delete",
+        "schemaname": "public",
+        "with_check": null
+      }
+    },
+    {
+      "kind": "policy",
+      "definition": {
+        "cmd": "INSERT",
+        "qual": null,
+        "roles": [
+          "authenticated"
+        ],
+        "tablename": "site_entrance_photos",
+        "permissive": "PERMISSIVE",
+        "policyname": "site_photos_insert",
+        "schemaname": "public",
+        "with_check": "(EXISTS ( SELECT 1\n   FROM (sites s\n     JOIN company_members m ON ((m.company_id = s.company_id)))\n  WHERE ((s.id = site_entrance_photos.site_id) AND (s.company_id = site_entrance_photos.company_id) AND (m.user_id = ( SELECT auth.uid() AS uid)) AND ((m.role)::text = ANY (ARRAY['owner'::text, 'admin'::text, 'manager'::text])))))"
+      }
+    },
+    {
+      "kind": "policy",
+      "definition": {
+        "cmd": "SELECT",
+        "qual": "(EXISTS ( SELECT 1\n   FROM company_members m\n  WHERE ((m.company_id = site_entrance_photos.company_id) AND (m.user_id = ( SELECT auth.uid() AS uid)))))",
+        "roles": [
+          "authenticated"
+        ],
+        "tablename": "site_entrance_photos",
+        "permissive": "PERMISSIVE",
+        "policyname": "site_photos_read",
+        "schemaname": "public",
+        "with_check": null
+      }
+    },
+    {
+      "kind": "policy",
+      "definition": {
+        "cmd": "UPDATE",
+        "qual": "(EXISTS ( SELECT 1\n   FROM company_members m\n  WHERE ((m.company_id = site_entrance_photos.company_id) AND (m.user_id = ( SELECT auth.uid() AS uid)) AND ((m.role)::text = ANY (ARRAY['owner'::text, 'admin'::text, 'manager'::text])))))",
+        "roles": [
+          "authenticated"
+        ],
+        "tablename": "site_entrance_photos",
+        "permissive": "PERMISSIVE",
+        "policyname": "site_photos_update",
+        "schemaname": "public",
+        "with_check": "(EXISTS ( SELECT 1\n   FROM (sites s\n     JOIN company_members m ON ((m.company_id = s.company_id)))\n  WHERE ((s.id = site_entrance_photos.site_id) AND (s.company_id = site_entrance_photos.company_id) AND (m.user_id = ( SELECT auth.uid() AS uid)) AND ((m.role)::text = ANY (ARRAY['owner'::text, 'admin'::text, 'manager'::text])))))"
+      }
+    },
+    {
+      "kind": "policy",
+      "definition": {
+        "cmd": "ALL",
+        "qual": "( SELECT private.account_access_allowed() AS account_access_allowed)",
+        "roles": [
+          "authenticated"
+        ],
+        "tablename": "objects",
+        "permissive": "RESTRICTIVE",
+        "policyname": "account_deletion_access_guard",
+        "schemaname": "storage",
+        "with_check": "( SELECT private.account_access_allowed() AS account_access_allowed)"
+      }
+    },
+    {
+      "kind": "policy",
+      "definition": {
+        "cmd": "SELECT",
+        "qual": "((bucket_id = 'site-entrance-photos'::text) AND (EXISTS ( SELECT 1\n   FROM (site_entrance_photos p\n     JOIN company_members m ON ((m.company_id = p.company_id)))\n  WHERE ((p.storage_path = objects.name) AND (m.user_id = ( SELECT auth.uid() AS uid))))))",
+        "roles": [
+          "authenticated"
+        ],
+        "tablename": "objects",
+        "permissive": "PERMISSIVE",
+        "policyname": "entrance_photo_read",
+        "schemaname": "storage",
+        "with_check": null
+      }
+    },
+    {
+      "kind": "policy",
+      "definition": {
+        "cmd": "SELECT",
+        "qual": "((bucket_id = 'site-entrance-photos'::text) AND private.can_access_site_photo_request(name, false))",
+        "roles": [
+          "authenticated"
+        ],
+        "tablename": "objects",
+        "permissive": "PERMISSIVE",
+        "policyname": "site_photo_request_read",
+        "schemaname": "storage",
+        "with_check": null
+      }
+    },
+    {
+      "kind": "function",
+      "definition": {
+        "name": "private.can_access_site_photo_request(text,boolean)",
+        "definition": "CREATE OR REPLACE FUNCTION private.can_access_site_photo_request(p_path text, p_upload boolean)\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n select auth.uid() is not null and exists(select 1 from private.site_photo_requests r join public.company_members m on m.company_id=r.company_id and m.user_id=auth.uid()\n where r.storage_path=p_path and (\n  (p_upload and r.status='uploading' and r.requested_by=auth.uid() and m.role::text<>'viewer') or\n  (not p_upload and (r.requested_by=auth.uid() or m.role::text in ('owner','admin') or exists(select 1 from public.company_approval_assignees a where a.company_id=r.company_id and a.user_id=auth.uid())))\n ))\n$function$\n"
+      }
+    },
+    {
+      "kind": "function",
+      "definition": {
+        "name": "private.account_access_allowed()",
+        "definition": "CREATE OR REPLACE FUNCTION private.account_access_allowed()\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n select auth.uid() is not null and not exists(\n  select 1 from private.account_deletion_access_restrictions where user_id=auth.uid())\n$function$\n"
+      }
+    },
+    {
+      "kind": "column",
+      "definition": {
+        "name": "site_id",
+        "type": "uuid",
+        "table": "site_entrance_photos",
+        "notnull": true
+      }
+    },
+    {
+      "kind": "column",
+      "definition": {
+        "name": "company_id",
+        "type": "uuid",
+        "table": "site_entrance_photos",
+        "notnull": true
+      }
+    },
+    {
+      "kind": "column",
+      "definition": {
+        "name": "slot",
+        "type": "smallint",
+        "table": "site_entrance_photos",
+        "notnull": true
+      }
+    },
+    {
+      "kind": "column",
+      "definition": {
+        "name": "storage_path",
+        "type": "text",
+        "table": "site_entrance_photos",
+        "notnull": true
+      }
+    },
+    {
+      "kind": "column",
+      "definition": {
+        "name": "updated_at",
+        "type": "timestamp with time zone",
+        "table": "site_entrance_photos",
+        "notnull": true
+      }
+    },
+    {
+      "kind": "constraint",
+      "definition": {
+        "name": "site_entrance_photos_check",
+        "definition": "CHECK ((storage_path ~~ ((((company_id)::text || '/'::text) || (site_id)::text) || '/%'::text)))"
+      }
+    },
+    {
+      "kind": "constraint",
+      "definition": {
+        "name": "site_entrance_photos_company_id_fkey",
+        "definition": "FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE"
+      }
+    },
+    {
+      "kind": "constraint",
+      "definition": {
+        "name": "site_entrance_photos_pkey",
+        "definition": "PRIMARY KEY (site_id, slot)"
+      }
+    },
+    {
+      "kind": "constraint",
+      "definition": {
+        "name": "site_entrance_photos_site_id_fkey",
+        "definition": "FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE"
+      }
+    },
+    {
+      "kind": "constraint",
+      "definition": {
+        "name": "site_entrance_photos_slot_check",
+        "definition": "CHECK (((slot >= 1) AND (slot <= 3)))"
+      }
+    },
+    {
+      "kind": "constraint",
+      "definition": {
+        "name": "site_entrance_photos_storage_path_key",
+        "definition": "UNIQUE (storage_path)"
+      }
+    }
+  ]
+}

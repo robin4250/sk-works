@@ -1,0 +1,32 @@
+name: Site identity image reference preservation
+on:
+  pull_request:
+    paths:
+      - 'tool/test_site_identity_image_preservation.mjs'
+      - 'tool/fixtures/site_image_safety/catalog.json'
+      - '.github/workflows/site-identity-image-preservation.yml'
+permissions:
+  contents: read
+jobs:
+  isolated:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: c4d039c99a00302d60d0ad0c8fee93b1ffcfe0b3
+          path: identity-source
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: a8fe1e2ecd95f8f23d01cffdd0f3b32b1d208f56
+          path: app-source
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-save --ignore-scripts --no-audit --no-fund @electric-sql/pglite@0.3.14
+      - run: node tool/test_site_identity_image_preservation.mjs identity-source app-source
