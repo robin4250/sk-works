@@ -1,0 +1,84 @@
+name: Common legacy publication review fixture
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/company-common-legacy-publication-fixture.yml'
+      - 'docs/candidates/company_common_legacy_publication_20261021.sql.review-only'
+      - 'tool/verify_company_common_legacy_publication.mjs'
+      - 'tool/verify_company_common_legacy_integration.mjs'
+      - 'tool/verify_company_common_legacy_bounded.mjs'
+      - 'tool/verify_company_common_future_policy.mjs'
+      - 'tool/verify_company_common_future_connection.mjs'
+      - 'docs/candidates/company_common_future_connection_20261022.sql.review-only'
+      - 'docs/candidates/company_common_future_policy_20261022.sql.review-only'
+      - 'docs/candidates/company_common_legacy_bounded_20261022.sql.review-only'
+      - 'docs/candidates/company_common_legacy_integration_20261022.sql.review-only'
+      - 'tool/payroll_scope_fixture_setup.mjs'
+      - 'tool/staged_company_common_allowances.sql.review-only'
+      - 'docs/candidates/company_common_payroll_*'
+      - 'docs/candidates/company_common_canonical_*'
+      - 'tool/verify_company_common_canonical_*.mjs'
+      - 'tool/security/prepare_common_canonical_deployment_review.py'
+      - 'tool/security/test_prepare_common_canonical_deployment_review.py'
+      - 'docs/review/company-common-canonical-deployment-preparation-20261022.md'
+      - 'supabase/migrations/**'
+      - 'supabase/tests/**'
+permissions:
+  contents: read
+jobs:
+  fixture:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - fixture: publication
+            script: verify_company_common_legacy_publication.mjs
+          - fixture: integration
+            script: verify_company_common_legacy_integration.mjs
+          - fixture: bounded
+            script: verify_company_common_legacy_bounded.mjs
+          - fixture: future-policy
+            script: verify_company_common_future_policy.mjs
+          - fixture: future-connection
+            script: verify_company_common_future_connection.mjs
+          - fixture: canonical-snapshot
+            script: verify_company_common_canonical_snapshot.mjs
+          - fixture: canonical-resolver
+            script: verify_company_common_canonical_resolver.mjs
+          - fixture: canonical-publisher
+            script: verify_company_common_canonical_publisher.mjs
+          - fixture: canonical-publisher-future
+            script: verify_company_common_canonical_publisher_future.mjs
+          - fixture: canonical-deployment
+            script: verify_company_common_canonical_deployment.mjs
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: sko_common_legacy_fixture
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_common_legacy_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install locked fixture-only dependencies
+        run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
+      - name: Offline deployment preparation guards
+        if: matrix.fixture == 'canonical-deployment'
+        run: python3 tool/security/test_prepare_common_canonical_deployment_review.py
+      - name: PGlite synthetic fixture
+        run: node tool/${{ matrix.script }} "$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
+      - name: Native PostgreSQL 17 synthetic fixture
+        env:
+          SKO_COMMON_LEGACY_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_common_legacy_fixture
+        run: node tool/${{ matrix.script }} "$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js" postgres

@@ -1,0 +1,65 @@
+name: Common payroll actual SQL to PDF proof
+on:
+  pull_request:
+    paths:
+      - 'tool/verify_company_common_canonical_publisher.mjs'
+      - 'docs/candidates/company_common_canonical_*'
+      - 'test/company_common_canonical_payroll_pdf_test.dart'
+      - 'test/fixtures/company_common_canonical_payroll_flow.json'
+      - 'lib/features/payroll/payroll_pdf_service.dart'
+      - 'lib/features/payroll/payroll_statement_repository.dart'
+      - '.github/workflows/common-payroll-sql-pdf.yml'
+permissions:
+  contents: read
+jobs:
+  actual-sql-pdf:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: sko_common_legacy_fixture
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_common_legacy_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
+      - name: Generate actual synthetic payroll from PostgreSQL 17
+        env:
+          SKO_COMMON_LEGACY_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_common_legacy_fixture
+          SKO_CANONICAL_PAYROLL_FLOW_OUTPUT: ${{ runner.temp }}/canonical-payroll-native.json
+        run: |
+          node tool/verify_company_common_canonical_publisher.mjs "$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js" postgres
+          cp "$RUNNER_TEMP/canonical-payroll-native.json" test/fixtures/company_common_canonical_payroll_flow.json
+      - run: python3 -m pip install PyMuPDF==1.26.6 fonttools==4.61.1
+      - run: python3 tool/prepare_pdf_fixture_font.py
+      - run: flutter pub get --enforce-lockfile
+      - run: git diff --exit-code -- pubspec.lock
+      - run: flutter analyze
+      - name: Verify actual mapper and PDF money without duplicate allowances
+        env:
+          SKO_PDF_FONT_PATH: build/pdf-fixtures/NotoSansJP-Regular.ttf
+          SKO_PDF_OUTPUT_DIR: build/common-payroll-proof
+          SKO_COMMON_PUBLIC_PDF_LOG: '1'
+        run: timeout 240s flutter test --reporter expanded --timeout 60s test/company_common_canonical_payroll_pdf_test.dart
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: common-payroll-actual-sql-pdf
+          path: build/common-payroll-proof/

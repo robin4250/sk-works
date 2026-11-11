@@ -1,0 +1,37 @@
+name: Canonical common payroll real Auth review
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/company-common-canonical-auth.yml'
+      - 'tool/payroll_auth_api_gotrue_e2e.mjs'
+      - 'tool/payroll_common_canonical_auth_hook.mjs'
+      - 'tool/payroll_scope_fixture_setup.mjs'
+      - 'tool/fixtures/payroll_auth_predicates_20261019.json'
+      - 'docs/candidates/company_common_canonical_*.sql.review-only'
+      - 'docs/candidates/company_common_payroll_*.sql.review-only'
+      - 'tool/staged_company_common_allowances.sql.review-only'
+      - 'tool/security/fixture_dependencies/package*.json'
+      - 'supabase/tests/**'
+      - 'supabase/migrations/**'
+permissions:
+  contents: read
+concurrency:
+  group: canonical-common-auth-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  local-auth-rpc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --no-audit --no-fund --prefix tool/security/fixture_dependencies
+      - run: node --check tool/payroll_auth_api_gotrue_e2e.mjs && node --check tool/payroll_common_canonical_auth_hook.mjs
+      - name: Existing payroll proof and canonical preview publication receipt
+        env:
+          SKO_PAYROLL_AUTH_REVIEW_HOOK: canonical-common-v3
+        run: node tool/payroll_auth_api_gotrue_e2e.mjs

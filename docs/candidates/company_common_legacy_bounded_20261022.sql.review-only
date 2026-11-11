@@ -1,0 +1,355 @@
+-- REVIEW ONLY. All-scope preview and bounded integration. Product callers unchanged.
+begin;
+create function common_payroll_legacy_review_private.worker_plan_selected(
+ cid uuid,wid uuid,p_month date,p_company_plan jsonb,
+ p_bindings jsonb default null,p_expected_worker_settings_md5 text default null)
+returns jsonb language plpgsql stable security invoker set search_path='' as $$
+declare fresh jsonb; raw_settings jsonb; effective_settings jsonb; settings_hash text;
+ entry jsonb; binding jsonb; bindings jsonb:='[]'; reasons jsonb:='[]';
+ expected_ids uuid[]:='{}'; seen_ids uuid[]:='{}'; matching_slots integer[];
+ suggested_slot integer; chosen_slot integer; own_rate numeric; selected_days integer;
+ legacy_count integer:=0; statement public.payroll_statements%rowtype; own_items jsonb;
+begin
+ if p_company_plan is null or p_month is null or p_month<>date_trunc('month',p_month)::date then
+  raise exception 'explicit company plan and canonical month required' using errcode='22023';end if;
+ fresh:=common_payroll_legacy_review_private.company_plan(cid,p_company_plan->>'payroll_type');
+ if fresh is distinct from p_company_plan then raise exception 'common source changed' using errcode='40001';end if;
+ if not coalesce(private.payroll_settings_allowed(cid,wid,'edit'),false) then
+  raise exception 'worker payroll edit authorization required' using errcode='42501';end if;
+ select to_jsonb(s) into raw_settings from public.worker_payroll_settings s
+  join public.workers w on w.company_id=s.company_id and w.id=s.worker_id
+  where s.company_id=cid and s.worker_id=wid;
+ if raw_settings is null then raise exception 'worker settings unavailable' using errcode='55000';end if;
+ settings_hash:=md5(raw_settings::text);effective_settings:=raw_settings;
+ reasons:=fresh->'reasons';
+ if raw_settings->>'pay_type' is distinct from fresh->>'payroll_type' then
+  reasons:=reasons||jsonb_build_array(jsonb_build_object('code','other_payroll_type'));end if;
+ select * into statement from public.payroll_statements where company_id=cid and worker_id=wid and period_start=p_month;
+ if found and (statement.automatic_calculation is distinct from true or statement.workflow_state is distinct from 'draft'
+  or statement.finalized_at is not null or exists(select 1 from payroll_final_private.documents d where d.statement_id=statement.id)) then
+  reasons:=reasons||jsonb_build_array(jsonb_build_object('code','finalized_or_manual_statement'));end if;
+ if p_bindings is not null and (jsonb_typeof(p_bindings)<>'array' or octet_length(p_bindings::text)>16384
+  or p_expected_worker_settings_md5 is distinct from settings_hash) then
+  raise exception 'worker source/bindings changed' using errcode='40001';end if;
+ select coalesce(items,'[]'::jsonb) into own_items from payroll_unit_private.conditions
+  where company_id=cid and worker_id=wid and starts_on<=p_month order by starts_on desc limit 1;
+ for entry in select value from jsonb_array_elements(fresh->'snapshot_items') where value->>'origin'='company_legacy' loop
+  legacy_count:=legacy_count+1;expected_ids:=array_append(expected_ids,(entry->>'id')::uuid);
+  select coalesce(array_agg(n order by n),'{}'::integer[]) into matching_slots
+   from generate_series(1,3) n where nullif(btrim(raw_settings->>('allowance_name_'||n)),'')=entry->>'name';
+  suggested_slot:=case when cardinality(matching_slots)=1 then matching_slots[1] else null end;
+  own_rate:=case when suggested_slot is not null then coalesce((raw_settings->>('allowance_'||suggested_slot))::numeric,0) else null end;
+  select count(distinct ae.work_date) into selected_days from public.attendance_entries ae
+   where ae.company_id=cid and ae.worker_id=wid and ae.work_date between p_month and (p_month+interval '1 month - 1 day')::date
+    and ae.work_date<=(current_timestamp at time zone 'Asia/Tokyo')::date
+    and (entry->>'name')=any(coalesce(ae.allowance_names,'{}'::text[]));
+  bindings:=bindings||jsonb_build_array(jsonb_build_object('common_id',entry->'id',
+   'legacy_generation',entry->'legacy_generation','worker_slot',suggested_slot,'action','inherit',
+   'legacy_selected_days',selected_days));
+  if cardinality(matching_slots)>1 then
+   reasons:=reasons||jsonb_build_array(jsonb_build_object('code','ambiguous_worker_legacy_name','common_id',entry->'id'));
+  elsif suggested_slot is not null and own_rate is distinct from (entry->>'amount_yen')::numeric then
+   reasons:=reasons||jsonb_build_array(jsonb_build_object('code','individual_rate_override_unresolved','common_id',entry->'id'));
+  end if;
+  if exists(select 1 from jsonb_array_elements(coalesce(own_items,'[]'::jsonb)) e where btrim(e->>'name')=btrim(entry->>'name'))
+   or exists(select 1 from jsonb_array_elements(coalesce(raw_settings->'custom_earnings','[]'::jsonb)) e where btrim(e->>'name')=btrim(entry->>'name')) then
+   reasons:=reasons||jsonb_build_array(jsonb_build_object('code','individual_item_overlap_unresolved','common_id',entry->'id'));end if;
+  if p_bindings is null then continue;end if;
+  if (select count(*) from jsonb_array_elements(p_bindings) b where b->>'common_id'=entry->>'id')<>1 then
+   reasons:=reasons||jsonb_build_array(jsonb_build_object('code','explicit_identity_binding_required','common_id',entry->'id'));continue;end if;
+  select b into binding from jsonb_array_elements(p_bindings) b where b->>'common_id'=entry->>'id';
+  if jsonb_typeof(binding)<>'object' or (select count(*) from jsonb_object_keys(binding))<>4
+   or not(binding ?& array['common_id','legacy_generation','worker_slot','action'])
+   or binding->'legacy_generation' is distinct from entry->'legacy_generation'
+   or binding->>'action' is distinct from 'inherit'
+   or binding->'worker_slot' is distinct from coalesce(to_jsonb(suggested_slot),'null'::jsonb) then
+   reasons:=reasons||jsonb_build_array(jsonb_build_object('code','binding_differs_from_observed_source','common_id',entry->'id'));continue;end if;
+  seen_ids:=array_append(seen_ids,(entry->>'id')::uuid);
+  if suggested_slot is not null then
+   -- Overlay only. The underlying individual value/ID/history is not updated.
+   effective_settings:=jsonb_set(effective_settings,array['allowance_'||suggested_slot],'0'::jsonb);
+  end if;
+ end loop;
+ if p_bindings is null and legacy_count>0 then
+  reasons:=reasons||jsonb_build_array(jsonb_build_object('code','explicit_identity_bindings_required'));
+ elsif p_bindings is not null and (jsonb_array_length(p_bindings)<>legacy_count or cardinality(seen_ids)<>legacy_count) then
+  reasons:=reasons||jsonb_build_array(jsonb_build_object('code','binding_set_incomplete'));end if;
+ return jsonb_build_object('contract_version',1,'review_only',true,'company_id',cid,'worker_id',wid,
+  'month',p_month,'company_plan',fresh,'worker_settings_md5',settings_hash,
+  'suggested_bindings',bindings,'reasons',reasons,'ready',reasons='[]'::jsonb,
+  'effective_worker_settings',case when reasons='[]'::jsonb then effective_settings else null end);
+end $$;
+
+create function common_payroll_legacy_review_private.apply_month_plan(
+ cid uuid,p_month date,p_company_plan jsonb,p_workers jsonb,p_request_id uuid,p_expected_version bigint)
+returns jsonb language plpgsql volatile security invoker set search_path='' as $$
+declare typ text:=p_company_plan->>'payroll_type'; payload jsonb; receipt record; v bigint; w jsonb; verified jsonb; result jsonb;
+begin
+ if p_request_id is null or p_expected_version is null or p_expected_version<0
+  or p_month is null or p_month<>date_trunc('month',p_month)::date
+  or p_month<date_trunc('month',current_timestamp at time zone 'Asia/Tokyo')::date
+  or p_month>=(date_trunc('month',current_timestamp at time zone 'Asia/Tokyo')+interval '12 months')::date
+  or jsonb_typeof(p_workers) is distinct from 'array' or jsonb_array_length(p_workers)=0
+  or jsonb_array_length(p_workers)>100 or octet_length(p_workers::text)>1048576 then
+  raise exception 'bounded current-or-future explicit plan required' using errcode='22023';end if;
+ -- This phase requires one explicit worker plan for every included scope. It does
+ -- not silently include five newly generated workers or bulk historical months.
+ payload:=jsonb_build_object('month',p_month,'company_plan',p_company_plan,'workers',p_workers,'expected_version',p_expected_version);
+ perform 1 from public.companies where id=cid for update;
+ if not found then raise exception 'company unavailable';end if;
+ if company_common_allowance_private.admin_state(cid)->>'can_edit' is distinct from 'true' then
+  raise exception 'access denied' using errcode='42501';end if;
+ select * into receipt from common_payroll_legacy_review_private.receipts where company_id=cid and request_id=p_request_id;
+ if found then
+  if receipt.payload is distinct from payload then raise exception 'request conflict' using errcode='40001';end if;
+  return receipt.result;end if;
+ select coalesce(max(version),0) into v from common_payroll_legacy_review_private.publications where company_id=cid and payroll_type=typ and starts_on=p_month;
+ if v<>p_expected_version then raise exception 'publication changed' using errcode='40001';end if;
+ if p_company_plan is distinct from common_payroll_legacy_review_private.company_plan(cid,typ)
+  or p_company_plan->>'ready' is distinct from 'true' then raise exception 'company source changed' using errcode='40001';end if;
+ if exists(select 1 from jsonb_array_elements(p_company_plan->'snapshot_items') e where e->>'origin' is distinct from 'company_legacy' or e->>'unit' is distinct from 'day') then
+  raise exception 'nonlegacy snapshot requires integration review' using errcode='55000';end if;
+ if exists(select 1 from jsonb_array_elements(p_workers) e group by e->>'worker_id' having count(*)>1) then
+  raise exception 'duplicate worker plan' using errcode='22023';end if;
+ -- Acquire the same worker row before validating/finalization-sensitive state.
+ for w in select value from jsonb_array_elements(p_workers) order by value->>'worker_id' loop
+  perform 1 from public.workers where company_id=cid and id=(w->>'worker_id')::uuid for update;
+  if not found then raise exception 'worker unavailable';end if;
+  verified:=common_payroll_legacy_review_private.worker_plan_selected(cid,(w->>'worker_id')::uuid,p_month,p_company_plan,w->'bindings',w->>'worker_settings_md5');
+  if verified->>'ready' is distinct from 'true' then raise exception 'worker plan unresolved' using errcode='55000';end if;
+ end loop;
+ v:=v+1;
+ insert into common_payroll_legacy_review_private.publications values(cid,typ,p_month,v,p_company_plan,p_request_id,auth.uid(),clock_timestamp());
+ for w in select value from jsonb_array_elements(p_workers) loop
+  verified:=common_payroll_legacy_review_private.worker_plan_selected(cid,(w->>'worker_id')::uuid,p_month,p_company_plan,w->'bindings',w->>'worker_settings_md5');
+  if verified->>'ready' is distinct from 'true' then raise exception 'worker changed during publication' using errcode='40001';end if;
+  insert into common_payroll_legacy_review_private.bindings values(cid,typ,p_month,v,(w->>'worker_id')::uuid,w->>'worker_settings_md5',w->'bindings',verified->'effective_worker_settings');
+ end loop;
+ insert into common_payroll_legacy_review_private.activations values(cid,typ,p_month,v)
+ on conflict(company_id,payroll_type,starts_on) do update set version=excluded.version;
+ result:=jsonb_build_object('review_only',true,'request_id',p_request_id,'version',v,'included_workers',jsonb_array_length(p_workers),'recalculated',false);
+ insert into common_payroll_legacy_review_private.receipts values(cid,p_request_id,payload,result);
+ return result;
+end $$;
+
+create table common_payroll_legacy_review_private.quantity_contracts(
+ company_id uuid not null,payroll_type text not null,starts_on date not null,version bigint not null,contracts jsonb not null,
+ primary key(company_id,payroll_type,starts_on,version),
+ foreign key(company_id,payroll_type,starts_on,version) references common_payroll_legacy_review_private.publications);
+alter table common_payroll_legacy_review_private.quantity_contracts enable row level security;
+revoke all on common_payroll_legacy_review_private.quantity_contracts from public,anon,authenticated,service_role;
+
+create function common_payroll_legacy_review_private.quantity_contracts_valid(p_plan jsonb,p_contracts jsonb)
+returns boolean language plpgsql immutable security invoker set search_path='' as $$
+declare item jsonb;c jsonb;
+begin
+ if jsonb_typeof(p_contracts) is distinct from 'array' or jsonb_array_length(p_contracts)<>jsonb_array_length(p_plan->'snapshot_items') then return false;end if;
+ for item in select value from jsonb_array_elements(p_plan->'snapshot_items') loop
+  if (select count(*) from jsonb_array_elements(p_contracts) e where e->>'id'=item->>'id')<>1 then return false;end if;
+  select value into c from jsonb_array_elements(p_contracts) where value->>'id'=item->>'id';
+  if c->'generation' is distinct from item->'legacy_generation' or c->'source_unit' is distinct from item->'legacy_source_unit'
+   or c->>'basis' is distinct from 'attendance_selected_distinct_dates' or c->'aliases' is distinct from jsonb_build_array(item->>'name') then return false;end if;
+ end loop;return true;
+ exception when others then return false;
+end $$;
+
+create function common_payroll_legacy_review_private.apply_month_selected(cid uuid,p_month date,p_plan jsonb,p_workers jsonb,p_request_id uuid,p_expected_version bigint,p_contracts jsonb)
+returns jsonb language plpgsql volatile security invoker set search_path='' as $$
+declare item jsonb; c jsonb; result jsonb; old_contracts jsonb;
+begin
+ if jsonb_typeof(p_contracts) is distinct from 'array' or jsonb_array_length(p_contracts)<>jsonb_array_length(p_plan->'snapshot_items') then
+  raise exception 'explicit per-identity quantity contract required' using errcode='55000';end if;
+ for item in select value from jsonb_array_elements(p_plan->'snapshot_items') loop
+  if (select count(*) from jsonb_array_elements(p_contracts) e where e->>'id'=item->>'id')<>1 then raise exception 'quantity identity missing/duplicated';end if;
+  select value into c from jsonb_array_elements(p_contracts) where value->>'id'=item->>'id';
+  if c->'generation' is distinct from item->'legacy_generation' or c->'source_unit' is distinct from item->'legacy_source_unit'
+   or c->>'basis' is distinct from 'attendance_selected_distinct_dates'
+   or c->'aliases' is distinct from jsonb_build_array(item->>'name') then
+   raise exception 'unresolved quantity contract or unsupported historical alias' using errcode='55000';end if;
+ end loop;
+ result:=common_payroll_legacy_review_private.apply_month_plan(cid,p_month,p_plan,p_workers,p_request_id,p_expected_version);
+ select contracts into old_contracts from common_payroll_legacy_review_private.quantity_contracts where company_id=cid and payroll_type=p_plan->>'payroll_type' and starts_on=p_month and version=(result->>'version')::bigint;
+ if found and old_contracts is distinct from p_contracts then raise exception 'quantity contract request conflict' using errcode='40001';end if;
+ insert into common_payroll_legacy_review_private.quantity_contracts values(cid,p_plan->>'payroll_type',p_month,(result->>'version')::bigint,p_contracts) on conflict do nothing;
+ return result;
+end $$;
+
+create function common_payroll_legacy_review_private.resolve_selected(cid uuid,wid uuid,p_month date)
+returns jsonb language plpgsql stable security invoker set search_path='' as $$
+declare typ text; raw jsonb; publication record; binding record; qty integer; item jsonb; contract jsonb; contracts jsonb; items jsonb:='[]'; earnings jsonb:='[]';
+begin
+ if not coalesce(private.payroll_settings_allowed(cid,wid,'view'),false) then raise exception 'access denied' using errcode='42501';end if;
+ select to_jsonb(s),s.pay_type into raw,typ from public.worker_payroll_settings s where company_id=cid and worker_id=wid;
+ select p.* into publication from common_payroll_legacy_review_private.activations a
+ join common_payroll_legacy_review_private.publications p using(company_id,payroll_type,starts_on,version)
+ where a.company_id=cid and a.payroll_type=typ and a.starts_on=p_month;
+ if not found then return jsonb_build_object('review_only',true,'active',false,'blocked',false,'items','[]'::jsonb,'earnings','[]'::jsonb);end if;
+ select * into binding from common_payroll_legacy_review_private.bindings b where b.company_id=cid and b.payroll_type=typ and b.starts_on=p_month and b.version=publication.version and b.worker_id=wid;
+ if not found or binding.worker_settings_md5 is distinct from md5(raw::text) then
+  return jsonb_build_object('review_only',true,'active',true,'blocked',true,'reason','explicit_binding_missing_or_changed','items','[]'::jsonb,'earnings','[]'::jsonb);end if;
+ if exists(select 1 from public.payroll_statements s where s.company_id=cid and s.worker_id=wid and s.period_start=p_month
+  and (s.automatic_calculation is distinct from true or s.workflow_state is distinct from 'draft' or s.finalized_at is not null)) then
+  return jsonb_build_object('review_only',true,'active',true,'blocked',true,'reason','finalized_or_manual_statement','items','[]'::jsonb,'earnings','[]'::jsonb);end if;
+ select q.contracts into contracts from common_payroll_legacy_review_private.quantity_contracts q where q.company_id=cid and q.payroll_type=typ and q.starts_on=p_month and q.version=publication.version;
+ if contracts is null then return jsonb_build_object('review_only',true,'active',true,'blocked',true,'reason','quantity_basis_unresolved','items','[]'::jsonb,'earnings','[]'::jsonb);end if;
+ for item in select value from jsonb_array_elements(publication.company_plan->'snapshot_items') loop
+  -- This first integration supports legacy daily earnings only. Other active
+  -- units must be resolved by their existing product resolver, never guessed.
+  if item->>'origin' is distinct from 'company_legacy' or item->>'unit' is distinct from 'day' then
+   return jsonb_build_object('review_only',true,'active',true,'blocked',true,'reason','unsupported_nonlegacy_snapshot','items','[]'::jsonb,'earnings','[]'::jsonb);end if;
+  select value into contract from jsonb_array_elements(contracts) where value->>'id'=item->>'id';
+  if contract->>'basis' is distinct from 'attendance_selected_distinct_dates' then
+   return jsonb_build_object('active',true,'blocked',true,'reason','quantity_basis_unresolved','items','[]'::jsonb);end if;
+  select count(distinct ae.work_date) into qty from public.attendance_entries ae where ae.company_id=cid and ae.worker_id=wid
+   and ae.work_date>=p_month and ae.work_date<(p_month+interval '1 month')::date
+   and ae.work_date<=(current_timestamp at time zone 'Asia/Tokyo')::date
+   and exists(select 1 from jsonb_array_elements_text(contract->'aliases') alias where alias=any(coalesce(ae.allowance_names,'{}'::text[])));
+  items:=items||jsonb_build_array(item||jsonb_build_object('quantity',qty,'rate_yen',item->'amount_yen','amount_yen',(item->>'amount_yen')::numeric*qty,'inherited',true,'readonly',true,'quantity_basis',contract->'basis','source_unit',contract->'source_unit'));
+  earnings:=earnings||jsonb_build_array(jsonb_build_object('name',item->>'name','amount_yen',(item->>'amount_yen')::numeric*qty));
+ end loop;
+ return jsonb_build_object('review_only',true,'active',true,'blocked',false,'version',publication.version,'month',p_month,
+  'items',items,'earnings',earnings,'effective_settings',binding.effective_settings);
+end $$;
+
+create function common_payroll_legacy_review_private.augment_selected(cid uuid,wid uuid,p_start date,p_end date,settings jsonb)
+returns jsonb language plpgsql stable security invoker set search_path='' as $$
+declare common jsonb; effective jsonb; base jsonb; unit jsonb;
+begin
+ common:=common_payroll_legacy_review_private.resolve_selected(cid,wid,p_start);
+ if common->>'active' is distinct from 'true' then return payroll_unit_private.augment_settings(cid,wid,p_start,p_end,settings);end if;
+ -- Existing product publications must not be silently combined with candidate.
+ if exists(select 1 from company_common_allowance_private.payroll_activation a where a.company_id=cid and a.starts_on<=p_start) then
+  raise exception 'existing common activation requires integration review' using errcode='55000';end if;
+ if common->>'blocked'='true' then
+  return settings||jsonb_build_object('_unit_resolution',jsonb_build_object('blocked',true,'items','[]'::jsonb,'reason',common->>'reason'));end if;
+ effective:=common->'effective_settings';
+ base:=payroll_unit_private.augment_settings(cid,wid,p_start,p_end,effective);
+ unit:=coalesce(base->'_unit_resolution',jsonb_build_object('blocked',false,'items','[]'::jsonb));
+ return base||jsonb_build_object('custom_earnings',coalesce(base->'custom_earnings','[]'::jsonb)||(common->'earnings'),
+ '_unit_resolution',unit||jsonb_build_object('items',coalesce(unit->'items','[]'::jsonb)||(common->'items'),'company_legacy_inheritance',common-'effective_settings'));
+end $$;
+create function common_payroll_legacy_review_private.preview_scopes(cid uuid,typ text,p_start date,p_end date,p_quantity_contracts jsonb default null)
+returns jsonb language plpgsql stable security invoker set search_path='' as $$
+declare cp jsonb; scopes jsonb:='[]'; scope record; wp jsonb; status text; reason text; current_month date:=date_trunc('month',current_timestamp at time zone 'Asia/Tokyo')::date;
+begin
+ if p_start is null or p_end is null or p_start<>date_trunc('month',p_start)::date or p_end<>date_trunc('month',p_end)::date
+  or p_start<current_month or p_end<p_start or p_end>=(current_month+interval '12 months')::date then
+  raise exception 'bounded nonpast canonical month range required' using errcode='22023';end if;
+ cp:=common_payroll_legacy_review_private.company_plan(cid,typ);
+ for scope in
+  with candidates as (
+   select w.id worker_id,p_start month_key from public.workers w join public.worker_payroll_settings s on s.company_id=w.company_id and s.worker_id=w.id
+    where w.company_id=cid and s.pay_type=typ and w.status='active'
+   union
+   select s.worker_id,s.period_start from public.payroll_statements s where s.company_id=cid and s.period_start between p_start and p_end
+  )
+  select c.worker_id,c.month_key,to_jsonb(s) statement,ws.pay_type,md5(to_jsonb(ws)::text) settings_md5,
+   coalesce((select max(p.version) from common_payroll_legacy_review_private.publications p where p.company_id=cid and p.payroll_type=typ and p.starts_on=c.month_key),0) publication_version
+  from candidates c left join public.payroll_statements s on s.company_id=cid and s.worker_id=c.worker_id and s.period_start=c.month_key
+  left join public.worker_payroll_settings ws on ws.company_id=cid and ws.worker_id=c.worker_id order by c.month_key,c.worker_id
+ loop
+  if jsonb_array_length(scopes)>=100 then raise exception 'scope limit exceeded; narrow month range' using errcode='54000';end if;
+  status:='target';reason:=null;wp:=null;
+  if scope.pay_type is distinct from typ then status:='excluded';reason:='different_or_missing_payroll_type';
+  elsif scope.statement is not null and (scope.statement->>'automatic_calculation' is distinct from 'true' or scope.statement->>'workflow_state' is distinct from 'draft' or scope.statement->>'finalized_at' is not null) then
+   status:='excluded';reason:='manual_or_finalized';
+  else
+   begin
+    wp:=common_payroll_legacy_review_private.worker_plan_selected(cid,scope.worker_id,scope.month_key,cp);
+    if exists(select 1 from jsonb_array_elements(wp->'reasons') e where e->>'code'<>'explicit_identity_bindings_required') then
+     status:='unresolved';reason:='individual_binding_or_source_conflict';end if;
+   exception when insufficient_privilege then status:='excluded';reason:='worker_not_editable';
+    when others then status:='unresolved';reason:='worker_plan_failed';end;
+  end if;
+  scopes:=scopes||jsonb_build_array(jsonb_build_object('worker_id',scope.worker_id,'month',scope.month_key,'status',status,'reason',reason,
+   'attendance_md5',(select md5(coalesce(jsonb_agg(to_jsonb(a) order by a.id)::text,'[]')) from public.attendance_entries a where a.company_id=cid and a.worker_id=scope.worker_id and a.work_date>=scope.month_key and a.work_date<(scope.month_key+interval '1 month')::date),
+   'statement_md5',md5(coalesce(scope.statement::text,'absent')),'settings_md5',scope.settings_md5,'publication_version',scope.publication_version,
+   'binding_suggestions',wp->'suggested_bindings','binding_reasons',wp->'reasons'));
+ end loop;
+ return jsonb_build_object('review_only',true,'company_id',cid,'payroll_type',typ,'start_month',p_start,'end_month',p_end,'company_plan',cp,'quantity_contracts',p_quantity_contracts,'quantity_basis_resolved',common_payroll_legacy_review_private.quantity_contracts_valid(cp,p_quantity_contracts),'scopes',scopes,
+  'target_count',(select count(*) from jsonb_array_elements(scopes) e where e->>'status'='target'),
+  'excluded_count',(select count(*) from jsonb_array_elements(scopes) e where e->>'status'='excluded'),
+  'unresolved_count',(select count(*) from jsonb_array_elements(scopes) e where e->>'status'='unresolved')+case when common_payroll_legacy_review_private.quantity_contracts_valid(cp,p_quantity_contracts) then 0 else 1 end);
+end $$;
+
+create function common_payroll_legacy_review_private.apply_bounded(cid uuid,p_preview jsonb,p_decisions jsonb,p_request_id uuid)
+returns jsonb language plpgsql volatile security invoker set search_path='' as $$
+declare fresh jsonb; payload jsonb; receipt record; scope jsonb; decision jsonb; m date; month_workers jsonb; expected bigint; counts integer:=0; readback jsonb:='[]'; after_row jsonb; original_excluded jsonb:='[]'; original_hash text; final_hash text; result jsonb;
+begin
+ if p_request_id is null or jsonb_typeof(p_decisions) is distinct from 'array' or octet_length(p_decisions::text)>1048576 then raise exception 'bounded decisions required';end if;
+ perform 1 from public.companies where id=cid for update;
+ if company_common_allowance_private.admin_state(cid)->>'can_edit' is distinct from 'true' then raise exception 'access denied' using errcode='42501';end if;
+ payload:=jsonb_build_object('preview',p_preview,'decisions',p_decisions,'operation','bounded');
+ select * into receipt from common_payroll_legacy_review_private.receipts where company_id=cid and request_id=p_request_id;
+ if found then
+  if receipt.payload is distinct from payload then raise exception 'request conflict' using errcode='40001';end if;return receipt.result;end if;
+ fresh:=common_payroll_legacy_review_private.preview_scopes(cid,p_preview->>'payroll_type',(p_preview->>'start_month')::date,(p_preview->>'end_month')::date,nullif(p_preview->'quantity_contracts','null'::jsonb));
+ if fresh is distinct from p_preview then raise exception 'scope/source preview changed' using errcode='40001';end if;
+ if (fresh->>'unresolved_count')::int>0 then raise exception 'unresolved scopes require explicit resolution' using errcode='55000';end if;
+ if jsonb_array_length(p_decisions)<>(fresh->>'target_count')::int or jsonb_array_length(p_decisions)=0 then raise exception 'every target requires one explicit decision';end if;
+ -- Guard until integration owner actually wires the candidate into both product
+ -- callers. Merely installing these review functions must not recalculate money.
+ if exists(
+  select 1 from (values
+   ('private.refresh_automatic_payroll_internal(uuid,uuid,date)','558e0a31a311bd82cfddf697c5595fa6'),
+   ('private.apply_payroll_custom_money()','0dfd5a83ae413ef12c879cf9bdfa87f7'),
+   ('payroll_tax_private.calculate(uuid,uuid,date,date,bigint,bigint)','3eb17d8dd2d0205c2a3d4dd031b08bbd')
+  ) expected(signature,source_md5)
+  left join pg_proc actual on actual.oid=to_regprocedure(expected.signature)
+  where actual.oid is null or md5(actual.prosrc) is distinct from expected.source_md5
+ ) then
+  raise exception 'candidate calculation callers not integrated' using errcode='55000';end if;
+ for scope in select value from jsonb_array_elements(fresh->'scopes') order by value->>'worker_id',value->>'month' loop
+  perform 1 from public.workers where company_id=cid and id=(scope->>'worker_id')::uuid for update;
+  perform 1 from public.payroll_statements where company_id=cid and worker_id=(scope->>'worker_id')::uuid and period_start=(scope->>'month')::date for update;
+  if scope->>'status'='target' and (select count(*) from jsonb_array_elements(p_decisions) d where d->>'worker_id'=scope->>'worker_id' and d->>'month'=scope->>'month')<>1 then raise exception 'target decision missing or duplicated';end if;
+ end loop;
+ if common_payroll_legacy_review_private.preview_scopes(cid,p_preview->>'payroll_type',(p_preview->>'start_month')::date,(p_preview->>'end_month')::date,nullif(p_preview->'quantity_contracts','null'::jsonb)) is distinct from p_preview then raise exception 'scope/source changed after lock' using errcode='40001';end if;
+ -- Freeze excluded originals before ANY publication/activation/recalculation.
+ for scope in select value from jsonb_array_elements(fresh->'scopes') where value->>'status'='excluded' loop
+  select md5(coalesce(to_jsonb(s)::text,'absent')) into original_hash from public.payroll_statements s
+   where company_id=cid and worker_id=(scope->>'worker_id')::uuid and period_start=(scope->>'month')::date;
+  original_hash:=coalesce(original_hash,md5('absent'));
+  if original_hash is distinct from scope->>'statement_md5' then raise exception 'excluded original changed after lock' using errcode='40001';end if;
+  original_excluded:=original_excluded||jsonb_build_array(jsonb_build_object('worker_id',scope->'worker_id','month',scope->'month','statement_md5',original_hash));
+ end loop;
+ for m in select distinct (value->>'month')::date from jsonb_array_elements(fresh->'scopes') where value->>'status'='target' order by 1 loop
+  select jsonb_agg(jsonb_build_object('worker_id',s->'worker_id','worker_settings_md5',s->'settings_md5','bindings',d->'bindings') order by s->>'worker_id'),max((s->>'publication_version')::bigint)
+   into month_workers,expected from jsonb_array_elements(fresh->'scopes') s join jsonb_array_elements(p_decisions) d on d->>'worker_id'=s->>'worker_id' and d->>'month'=s->>'month'
+   where s->>'status'='target' and (s->>'month')::date=m;
+  perform common_payroll_legacy_review_private.apply_month_selected(cid,m,fresh->'company_plan',month_workers,md5(p_request_id::text||m::text)::uuid,expected,fresh->'quantity_contracts');
+ end loop;
+ -- Complete ALL target mutations before checking any excluded final hash:
+ -- a later target's trigger must not modify an already checked exclusion.
+ for scope in select value from jsonb_array_elements(fresh->'scopes') where value->>'status'='target' order by value->>'month',value->>'worker_id' loop
+  perform private.refresh_automatic_payroll(cid,(scope->>'worker_id')::uuid,(scope->>'month')::date);counts:=counts+1;
+ end loop;
+ for scope in select value from jsonb_array_elements(fresh->'scopes') order by value->>'month',value->>'worker_id' loop
+  select to_jsonb(s) into after_row from public.payroll_statements s where company_id=cid and worker_id=(scope->>'worker_id')::uuid and period_start=(scope->>'month')::date;
+  if scope->>'status'='target' and (after_row is null or after_row->>'calculation_blocked' is distinct from 'false'
+   or greatest((after_row->>'gross_pay')::numeric-(after_row->>'deductions')::numeric,0) is distinct from (after_row->>'net_pay')::numeric) then
+   raise exception 'recalculation readback failed' using errcode='55000';end if;
+  if scope->>'status'='excluded' then
+   select e->>'statement_md5' into original_hash from jsonb_array_elements(original_excluded) e
+    where e->>'worker_id'=scope->>'worker_id' and e->>'month'=scope->>'month';
+   final_hash:=md5(coalesce(after_row::text,'absent'));
+   if original_hash is null or final_hash is distinct from original_hash or final_hash is distinct from scope->>'statement_md5' then
+    raise exception 'excluded statement changed' using errcode='55000';end if;
+  end if;
+  readback:=readback||jsonb_build_array(jsonb_build_object('worker_id',scope->'worker_id','month',scope->'month','status',scope->'status','reason',scope->'reason',
+   'revision',after_row->'revision','net_consistent',case when scope->>'status'='target' then true else null end,'preserved',scope->>'status'='excluded'));
+ end loop;
+ result:=jsonb_build_object('review_only',true,'request_id',p_request_id,'recalculated',counts,'excluded',(fresh->>'excluded_count')::int,'readback',readback);
+ insert into common_payroll_legacy_review_private.receipts values(cid,p_request_id,payload,result);return result;
+end $$;
+create function public.read_company_common_legacy_inheritance_review(p_company_id uuid,p_worker_id uuid,p_month date)
+returns jsonb language plpgsql stable security definer set search_path='' as $$
+declare resolved jsonb;
+begin
+ resolved:=common_payroll_legacy_review_private.resolve_selected(p_company_id,p_worker_id,p_month);
+ return jsonb_build_object('review_only',true,'active',resolved->'active','blocked',resolved->'blocked','reason',resolved->'reason',
+  'month',p_month,'version',resolved->'version','items',resolved->'items');
+end $$;
+revoke all on function public.read_company_common_legacy_inheritance_review(uuid,uuid,date) from public,anon,authenticated,service_role;
+revoke all on all functions in schema common_payroll_legacy_review_private from public,anon,authenticated,service_role;
+commit;

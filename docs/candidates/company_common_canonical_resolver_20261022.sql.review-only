@@ -1,0 +1,189 @@
+-- REVIEW ONLY. Canonical resolver connection, no publication/activation/data change.
+begin;
+set local lock_timeout='5s';
+do $$begin
+ if exists(select 1 from (values
+ ('payroll_unit_private.resolve_company_common(uuid,uuid,date,date)','d56f5fa295167f8c49f6e9c1dd97b7f0'),
+ ('payroll_unit_private.augment_settings(uuid,uuid,date,date,jsonb)','47ee121481cea77af1e0275c686c65db'),
+ ('payroll_unit_private.common_state(uuid,uuid,date)','a2de405fc0e6721fd1eaf81325a60b8d')
+ ) expected(signature,source_md5) left join pg_proc p on p.oid=to_regprocedure(expected.signature)
+ where p.oid is null or md5(p.prosrc) is distinct from expected.source_md5
+ or pg_get_userbyid(p.proowner) is distinct from 'postgres' or not p.prosecdef
+ or p.provolatile is distinct from 's'::"char" or p.prorettype is distinct from 'jsonb'::regtype or p.proretset
+ or p.proconfig is distinct from array['search_path=""']::text[]
+ or p.proargmodes is not null or p.proallargtypes is not null
+ or p.proargnames is distinct from case when expected.signature like '%augment_settings%' then array['cid','wid','p_start','p_end','settings']::text[] when expected.signature like '%common_state%' then array['cid','wid','p_month']::text[] else array['cid','wid','p_start','p_end']::text[] end
+ or p.prokind is distinct from 'f'::"char" or p.prolang is distinct from (select oid from pg_language where lanname='plpgsql')
+ or p.proparallel is distinct from 'u'::"char" or p.proleakproof or p.proisstrict or p.provariadic<>0
+ or array(select a::text from unnest(coalesce(p.proacl,acldefault('f',p.proowner))) a order by a::text) is distinct from array['postgres=X/postgres']::text[])
+ or exists(select 1 from (values
+ ('payroll_unit_private',array['authenticated=U/postgres','postgres=UC/postgres']::text[]),
+ ('company_common_canonical_review_private',array['postgres=UC/postgres']::text[])
+ ) expected(schema_name,acl) left join pg_namespace n on n.nspname=expected.schema_name
+ where n.oid is null or pg_get_userbyid(n.nspowner) is distinct from 'postgres'
+ or array(select a::text from unnest(coalesce(n.nspacl,acldefault('n',n.nspowner))) a order by a::text) is distinct from expected.acl)
+ or to_regprocedure('company_common_canonical_review_private.snapshot_plan(uuid,text,bigint,jsonb,jsonb,text)') is null then
+ raise exception 'canonical payroll resolver prerequisite differs' using errcode='55000';end if;
+end $$;
+-- New opt-in metadata is empty at code installation. Absence of a mode row
+-- preserves the historical global activation contract, including missing history.
+create table company_common_allowance_private.payroll_activation_modes(
+ company_id uuid primary key references public.companies(id),mode text not null check(mode='per_type'),
+ actor_id uuid not null,request_id uuid not null,established_at timestamptz not null default clock_timestamp());
+create table company_common_allowance_private.payroll_type_activation(
+ company_id uuid not null references public.companies(id),payroll_type text not null check(payroll_type in ('daily','hourly','monthly')),
+ starts_on date not null check(starts_on=date_trunc('month',starts_on)::date),actor_id uuid not null,request_id uuid not null,changed_at timestamptz not null default clock_timestamp(),primary key(company_id,payroll_type));
+create table company_common_allowance_private.payroll_type_activation_events(
+ company_id uuid not null references public.companies(id),payroll_type text not null check(payroll_type in ('daily','hourly','monthly')),
+ request_id uuid not null,actor_id uuid not null,previous_starts_on date,starts_on date not null,recorded_at timestamptz not null default clock_timestamp(),primary key(company_id,request_id));
+ alter table company_common_allowance_private.payroll_type_activation_events enable row level security;
+ revoke all on company_common_allowance_private.payroll_type_activation_events from public,anon,authenticated,service_role;
+ create trigger immutable_payroll_type_activation_event before update or delete on company_common_allowance_private.payroll_type_activation_events for each row execute function company_common_allowance_private.protect_payroll_publication();
+alter table company_common_allowance_private.payroll_activation_modes enable row level security;
+alter table company_common_allowance_private.payroll_type_activation enable row level security;
+revoke all on company_common_allowance_private.payroll_activation_modes,company_common_allowance_private.payroll_type_activation from public,anon,authenticated,service_role;
+create trigger immutable_payroll_activation_mode before update or delete on company_common_allowance_private.payroll_activation_modes for each row execute function company_common_allowance_private.protect_payroll_publication();
+
+create function company_common_canonical_review_private.resolve_legacy(cid uuid,wid uuid,p_start date,p_end date,publication_items jsonb,p_version bigint,p_effective date)
+returns jsonb language plpgsql stable security invoker set search_path='' as $$
+declare raw jsonb;effective jsonb;item jsonb;slots integer[];slot integer;quantity numeric;amount numeric;individual_items jsonb;
+ rows jsonb:='[]';earnings jsonb:='[]';reasons jsonb:='[]';catalog jsonb;classification jsonb:='[]';selection record;sources jsonb;paired boolean;state text;
+begin
+ select to_jsonb(s) into raw from public.worker_payroll_settings s join public.workers w on w.id=s.worker_id and w.company_id=s.company_id where s.company_id=cid and s.worker_id=wid;
+ if raw is null then return jsonb_build_object('items',rows,'earnings',earnings,'blocked',true,'reasons',jsonb_build_array(jsonb_build_object('code','worker_scope_missing')));end if;
+ effective:=raw;
+ if exists(select 1 from jsonb_array_elements(publication_items) e group by e->>'id' having count(*)>1)
+ or exists(select 1 from jsonb_array_elements(publication_items) e group by btrim(e->>'name') having count(*)>1) then
+ return jsonb_build_object('items',rows,'earnings',earnings,'blocked',true,'reasons',jsonb_build_array(jsonb_build_object('code','publication_source_collision')));end if;
+ select c.items into individual_items from payroll_unit_private.conditions c where c.company_id=cid and c.worker_id=wid and c.starts_on<=p_start order by c.starts_on desc limit 1;
+ select coalesce(jsonb_agg(source),'[]'::jsonb) into catalog from(
+  select jsonb_build_object('kind',case when e->>'origin'='company_legacy' then 'company_legacy' else 'company_publication' end,'id',e->'id','name',e->'name','rate_yen',e->'amount_yen') source from jsonb_array_elements(publication_items) e
+  union all select jsonb_build_object('kind','individual_legacy','slot',k,'name',btrim(raw->>('allowance_name_'||k)),'rate_yen',coalesce((raw->>('allowance_'||k))::numeric,0)) from generate_series(1,3) k where nullif(btrim(raw->>('allowance_name_'||k)),'') is not null
+  union all select jsonb_build_object('kind','individual_unit','id',e->'id','name',e->'name') from jsonb_array_elements(coalesce(individual_items,'[]'::jsonb)) e
+  union all select jsonb_build_object('kind','individual_custom','index',ord,'name',e->'name') from jsonb_array_elements(coalesce(raw->'custom_earnings','[]'::jsonb)) with ordinality x(e,ord)
+ ) candidates;
+ for selection in select distinct name from public.attendance_entries a cross join unnest(coalesce(a.allowance_names,'{}'::text[])) name where a.company_id=cid and a.worker_id=wid and a.work_date between p_start and p_end and a.work_date<=(current_timestamp at time zone 'Asia/Tokyo')::date order by name loop
+  select coalesce(jsonb_agg(e order by e->>'kind',e::text),'[]'::jsonb) into sources from jsonb_array_elements(catalog) e where e->>'name'=selection.name;
+  paired:=jsonb_array_length(sources)=2 and exists(select 1 from jsonb_array_elements(sources) p join jsonb_array_elements(sources) l on p->>'kind'='company_legacy' and l->>'kind'='individual_legacy' and p->'rate_yen'=l->'rate_yen');
+  if sources='[]'::jsonb then state:='interpretation_unconfirmed';reasons:=reasons||jsonb_build_array(jsonb_build_object('code','attendance_interpretation_unconfirmed','name',selection.name));
+  elsif jsonb_array_length(sources)>1 and not paired then state:='source_collision_unresolved';reasons:=reasons||jsonb_build_array(jsonb_build_object('code','attendance_source_collision','name',selection.name));
+  else state:=case when paired then 'approved_same_rate_legacy_pair' else 'known_source' end;end if;
+  classification:=classification||jsonb_build_array(jsonb_build_object('name',selection.name,'state',state,'sources',(select coalesce(jsonb_agg(e-'rate_yen'),'[]'::jsonb) from jsonb_array_elements(sources) e)));
+ end loop;
+ for item in select value from jsonb_array_elements(publication_items) where value->>'origin'='company_legacy' loop
+  if item->>'quantity_basis' is distinct from 'attendance_selected_distinct_dates' or item->>'individual_reconciliation' is distinct from 'inherit_absent_or_same_rate_otherwise_unresolved'
+   or item->'selection_aliases' is distinct from jsonb_build_array(item->>'name') or item->>'generation' is null or item->>'id' is null
+   or (item->>'amount_yen')::numeric<=0 or (item->>'generation')::bigint<=0
+   or item->>'section' is distinct from 'earning' or item->>'unit' is distinct from 'day' then
+   reasons:=reasons||jsonb_build_array(jsonb_build_object('code','legacy_contract_unconfirmed','id',item->'id','name',item->'name'));continue;end if;
+  if exists(select 1 from jsonb_array_elements(publication_items) e where e<>item and (e->>'id'=item->>'id' or btrim(e->>'name')=btrim(item->>'name'))) then
+   reasons:=reasons||jsonb_build_array(jsonb_build_object('code','publication_source_collision','id',item->'id','name',item->'name'));continue;end if;
+  select coalesce(array_agg(k order by k),'{}'::integer[]) into slots from generate_series(1,3) k where nullif(btrim(raw->>('allowance_name_'||k)),'')=item->>'name';
+  if cardinality(slots)>1 then reasons:=reasons||jsonb_build_array(jsonb_build_object('code','ambiguous_individual_name','id',item->'id','name',item->'name'));continue;end if;
+  if cardinality(slots)=1 then slot:=slots[1];
+   if coalesce((raw->>('allowance_'||slot))::numeric,0) is distinct from (item->>'amount_yen')::numeric then reasons:=reasons||jsonb_build_array(jsonb_build_object('code','individual_override_unresolved','id',item->'id','name',item->'name'));continue;end if;
+   effective:=jsonb_set(effective,array['allowance_'||slot],'0'::jsonb);
+  end if;
+  if exists(select 1 from jsonb_array_elements(coalesce(raw->'custom_earnings','[]'::jsonb)||coalesce(individual_items,'[]'::jsonb)) e where btrim(e->>'name')=btrim(item->>'name')) then reasons:=reasons||jsonb_build_array(jsonb_build_object('code','individual_item_overlap_unresolved','id',item->'id','name',item->'name'));continue;end if;
+  select count(distinct a.work_date) into quantity from public.attendance_entries a where a.company_id=cid and a.worker_id=wid and a.work_date between p_start and p_end and a.work_date<=(current_timestamp at time zone 'Asia/Tokyo')::date and item->>'name'=any(coalesce(a.allowance_names,'{}'::text[]));
+  amount:=round((item->>'amount_yen')::numeric*quantity);
+  if amount<0 or amount>2147483647 then raise exception 'canonical legacy amount exceeds range' using errcode='22023';end if;
+  rows:=rows||jsonb_build_array(jsonb_build_object('id',item->'id','generation',item->'generation','origin','company_common','source_origin','company_legacy','payroll_type',raw->>'pay_type','section','earning','unit','day','source_unit',item->'source_unit','quantity_basis',item->'quantity_basis','name',item->'name','rate_yen',item->'amount_yen','quantity',quantity,'quantity_month',p_start,'amount_yen',amount,'publication_version',p_version,'starts_on',p_effective,'inherited',true));
+  earnings:=earnings||jsonb_build_array(jsonb_build_object('name',item->>'name','amount_yen',amount));
+ end loop;
+ return jsonb_build_object('items',rows,'earnings',earnings,'blocked',reasons<>'[]'::jsonb,'reasons',reasons,'selection_classification',classification,'effective_settings',case when reasons='[]'::jsonb then effective else null end);
+end $$;
+revoke all on function company_common_canonical_review_private.resolve_legacy(uuid,uuid,date,date,jsonb,bigint,date) from public,anon,authenticated,service_role;
+
+create or replace function payroll_unit_private.resolve_company_common(cid uuid,wid uuid,p_start date,p_end date)
+returns jsonb language plpgsql stable security definer set search_path='' as $$
+declare item jsonb; publication company_common_allowance_private.payroll_publications%rowtype;
+ legacy_result jsonb;raw jsonb;typ text;quantity numeric;amount numeric;rows jsonb:='[]';earnings jsonb:='[]';deductions jsonb:='[]';blocked boolean:=false;
+begin
+ if p_start is null or p_end is null or p_start<>date_trunc('month',p_start)::date
+ or p_end<>(p_start+interval '1 month - 1 day')::date then
+  raise exception 'canonical payroll month required' using errcode='22023';end if;
+ if not exists(select 1 from company_common_allowance_private.payroll_activation a where a.company_id=cid and a.starts_on<=p_start) then
+  return jsonb_build_object('items',rows,'earnings',earnings,'deductions',deductions,'blocked',false,'history_missing',false);end if;
+ select s.pay_type into typ from public.worker_payroll_settings s join public.workers w on w.company_id=s.company_id and w.id=s.worker_id where s.company_id=cid and s.worker_id=wid;
+ if exists(select 1 from company_common_allowance_private.payroll_activation_modes m where m.company_id=cid and m.mode='per_type')
+ and not exists(select 1 from company_common_allowance_private.payroll_type_activation a where a.company_id=cid and a.payroll_type=typ and a.starts_on<=p_start) then
+  return jsonb_build_object('items',rows,'earnings',earnings,'deductions',deductions,'blocked',false,'history_missing',false);end if;
+ select * into publication from company_common_allowance_private.payroll_publications p
+  where p.company_id=cid and p.payroll_type=typ and p.starts_on<=p_start order by p.starts_on desc,p.version desc limit 1;
+ if not found then
+  return jsonb_build_object('items',rows,'earnings',earnings,'deductions',deductions,'blocked',true,'history_missing',true);end if;
+ if exists(select 1 from jsonb_array_elements(publication.items) e where e->>'origin'='company_legacy') then
+  legacy_result:=company_common_canonical_review_private.resolve_legacy(cid,wid,p_start,p_end,publication.items,publication.version,publication.starts_on);
+  rows:=legacy_result->'items';earnings:=legacy_result->'earnings';blocked:=(legacy_result->>'blocked')::boolean;
+ else legacy_result:=null;end if;
+ for item in select value from jsonb_array_elements(publication.items) where value->>'origin' is distinct from 'company_legacy' loop
+  quantity:=null;amount:=null;
+  if item->>'unit'='month' then quantity:=1;
+  elsif item->>'unit'='day' then
+   select count(distinct ae.work_date) into quantity from public.attendance_entries ae
+    where ae.company_id=cid and ae.worker_id=wid and ae.work_date between p_start and p_end
+     and ae.work_date<=(current_timestamp at time zone 'Asia/Tokyo')::date and ae.base_man_days>0;
+  elsif item->>'unit'='hour' then
+   select q.hours into quantity from payroll_unit_private.quantities q
+    where q.company_id=cid and q.worker_id=wid and q.item_id=(item->>'id')::uuid and q.month=p_start;
+  end if;
+  if quantity is null then blocked:=true;
+  else
+   amount:=round((item->>'amount_yen')::numeric*quantity);
+   if amount>2147483647 then raise exception 'company common amount exceeds range' using errcode='22023';end if;
+   if item->>'section'='earning' then earnings:=earnings||jsonb_build_array(jsonb_build_object('name',item->>'name','amount_yen',amount));
+   else deductions:=deductions||jsonb_build_array(jsonb_build_object('name',item->>'name','amount_yen',amount));end if;
+  end if;
+  rows:=rows||jsonb_build_array(jsonb_build_object('id',item->>'id','origin','company_common',
+   'payroll_type',typ,'section',item->>'section','unit',item->>'unit','name',item->>'name',
+   'rate_yen',item->'amount_yen','quantity',quantity,'quantity_month',p_start,'amount_yen',amount,
+   'publication_version',publication.version,'starts_on',publication.starts_on));
+ end loop;
+ return jsonb_build_object('items',rows,'earnings',earnings,'deductions',deductions,'blocked',blocked,
+  'history_missing',false,'publication_version',publication.version,'starts_on',publication.starts_on)||case when legacy_result is null then '{}'::jsonb else jsonb_build_object('legacy_resolution',legacy_result-'effective_settings','effective_settings',legacy_result->'effective_settings') end;
+end $$;
+create or replace function payroll_unit_private.augment_settings(cid uuid,wid uuid,p_start date,p_end date,settings jsonb)
+returns jsonb language plpgsql stable security definer set search_path='' as $$
+declare resolved jsonb;common_items jsonb;effective jsonb:=settings;raw jsonb;
+begin
+ resolved:=payroll_unit_private.resolve(cid,wid,p_start,p_end);
+ common_items:=payroll_unit_private.resolve_company_common(cid,wid,p_start,p_end);
+ if jsonb_typeof(common_items->'effective_settings')='object' then
+  select to_jsonb(s) into raw from public.worker_payroll_settings s where s.company_id=cid and s.worker_id=wid;
+  if raw is distinct from settings then raise exception 'fresh canonical worker settings required' using errcode='40001';end if;
+  effective:=common_items->'effective_settings';
+ end if;
+ resolved:=resolved||jsonb_build_object('items',(resolved->'items')||(common_items->'items'),
+  'earnings',(resolved->'earnings')||(common_items->'earnings'),'deductions',(resolved->'deductions')||(common_items->'deductions'),
+  'blocked',(resolved->>'blocked')::boolean or (common_items->>'blocked')::boolean,
+  'company_common_history_missing',common_items->'history_missing');
+ if common_items->'legacy_resolution' is not null then
+  resolved:=resolved||jsonb_build_object('company_common_resolution',jsonb_build_object('blocked',common_items->'blocked','reasons',common_items#>'{legacy_resolution,reasons}','selection_classification',common_items#>'{legacy_resolution,selection_classification}'));
+ end if;
+ if resolved->'items'='[]'::jsonb and (resolved->>'blocked')::boolean is not true then return effective;end if;
+ return coalesce(effective,'{}')||jsonb_build_object('custom_earnings',coalesce(effective->'custom_earnings','[]')||(resolved->'earnings'),
+ 'custom_deductions',coalesce(effective->'custom_deductions','[]')||(resolved->'deductions'),'_unit_resolution',resolved);
+end $$;
+create or replace function payroll_unit_private.common_state(cid uuid,wid uuid,p_month date)
+returns jsonb language plpgsql stable security definer set search_path='' as $$
+declare result jsonb;typ text;activation date;frozen public.payroll_statements%rowtype;items jsonb;
+begin
+ select * into frozen from public.payroll_statements ps where ps.company_id=cid and ps.worker_id=wid and ps.period_start=p_month
+  and (ps.workflow_state is distinct from 'draft' or ps.automatic_calculation is distinct from true or ps.finalized_at is not null) limit 1;
+ if found then
+  select coalesce(jsonb_agg(i order by ord),'[]') into items from jsonb_array_elements(coalesce(frozen.detail#>'{unit_resolution,items}','[]')) with ordinality e(i,ord)
+   where i->>'origin'='company_common';
+  return jsonb_build_object('contract_version',1,'items',items,'history_missing',false,'frozen',true,
+   'source',jsonb_build_object('statement_id',frozen.id,'statement_revision',frozen.revision,'items',items))||case when frozen.detail#>'{unit_resolution,company_common_resolution}' is null then '{}'::jsonb else jsonb_build_object('resolution',frozen.detail#>'{unit_resolution,company_common_resolution}') end;
+ end if;
+ result:=payroll_unit_private.resolve_company_common(cid,wid,p_month,(p_month+interval '1 month - 1 day')::date);
+ select pay_type into typ from public.worker_payroll_settings where company_id=cid and worker_id=wid;
+ select starts_on into activation from company_common_allowance_private.payroll_activation where company_id=cid;
+ if exists(select 1 from company_common_allowance_private.payroll_activation_modes m where m.company_id=cid and m.mode='per_type') then
+  select starts_on into activation from company_common_allowance_private.payroll_type_activation a where a.company_id=cid and a.payroll_type=typ;
+ end if;
+ return jsonb_build_object('contract_version',1,'items',result->'items','history_missing',result->'history_missing','frozen',false,'source',
+  jsonb_build_object('starts_on',activation,'pay_type',typ,'items',result->'items','publication_version',result->'publication_version'))||case when result->'legacy_resolution' is null then '{}'::jsonb else jsonb_build_object('resolution',jsonb_build_object('blocked',result->'blocked','reasons',result#>'{legacy_resolution,reasons}','selection_classification',result#>'{legacy_resolution,selection_classification}')) end;
+end $$;
+commit;

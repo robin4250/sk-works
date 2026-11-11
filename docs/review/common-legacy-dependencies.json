@@ -1,0 +1,153 @@
+{
+  "base": "dcfadfb89282de97aabfbbb9e38fb91fec621941",
+  "dependencies": [
+    {
+      "path": "docs/candidates/company_common_payroll_bridge_20261020.sql.review-only",
+      "git_blob_sha1": "4aebbb4a6bd1065d229917107b7f64e5cd8f3dbf"
+    },
+    {
+      "path": "docs/candidates/company_common_payroll_effective_20261020.sql.review-only",
+      "git_blob_sha1": "16e0f4e70826b02aa76852f9c59bc51e578d71a1"
+    },
+    {
+      "path": "supabase/migrations/20260922020000_add_company_rate_settings_management.sql",
+      "git_blob_sha1": "ab7f017ce07598202c00b5529e1e11ed0e04bce7"
+    },
+    {
+      "path": "supabase/migrations/20261003002700_add_attendance_allowance_display_units.sql",
+      "git_blob_sha1": "d128655e8400c8ba96353c7c28a4d93e7cd0d84c"
+    },
+    {
+      "path": "supabase/migrations/20261006162510_payroll_flexible_earnings_deductions_payment_day.sql",
+      "git_blob_sha1": "5712ba1573aee80f5d883005285dec023678d38a"
+    },
+    {
+      "path": "supabase/migrations/20261007021000_worker_monthly_salary_mode.sql",
+      "git_blob_sha1": "874aea933a3e4632f763c1636d7bbb15bc01d236"
+    },
+    {
+      "path": "supabase/migrations/20261008001025_payroll_statement_pay_type_metadata.sql",
+      "git_blob_sha1": "25d17c3249b91e3e4846696d2636d9884155ceff"
+    },
+    {
+      "path": "supabase/migrations/20261008004129_payroll_assigned_confirmation_notifications.sql",
+      "git_blob_sha1": "ab3d08ccf9d1ae705e5c3c4f7ed58869f8b8f7dd"
+    },
+    {
+      "path": "supabase/migrations/20261008035104_stabilize_automatic_payroll_totals.sql",
+      "git_blob_sha1": "24ad0992f98bfb3ddecaa4ae82205cf02438a4e8"
+    },
+    {
+      "path": "supabase/migrations/20261008040428_generate_fixed_monthly_payroll_without_attendance.sql",
+      "git_blob_sha1": "736a604a438759b2e8d2148d246c952cf4fa9453"
+    },
+    {
+      "path": "supabase/migrations/20261008042817_prevent_paid_leave_attendance_overlap.sql",
+      "git_blob_sha1": "3478e4c4d223e5f474595c239a84f297ac1f2fc2"
+    },
+    {
+      "path": "supabase/migrations/20261008043151_align_future_attendance_monthly_payroll_boundary.sql",
+      "git_blob_sha1": "1b03d111a26056ba3ca704590a0e03141672e08d"
+    },
+    {
+      "path": "supabase/migrations/20261008043823_atomic_company_rate_and_allowance_units_save.sql",
+      "git_blob_sha1": "5530aa4326ce210fc12f8afb74618fbc7b85e8d3"
+    },
+    {
+      "path": "supabase/migrations/20261008045401_preserve_payroll_named_financial_details.sql",
+      "git_blob_sha1": "a634f2f7fa1e79384ce5b5bcf586f22f3b8b14f3"
+    },
+    {
+      "path": "supabase/migrations/20261008200018_paid_leave_wage_contract.sql",
+      "git_blob_sha1": "a64c7d44af714d6d17ed09f41ff73cbf51fea480"
+    },
+    {
+      "path": "supabase/migrations/20261009011357_company_seal_aoyagi_style.sql",
+      "git_blob_sha1": "3e211950b4376fcc27623576782bc4c88bbb09e7"
+    },
+    {
+      "path": "supabase/migrations/20261009012730_company_seal_document_snapshots.sql",
+      "git_blob_sha1": "edd4dd5496d5e637678950ce8412265df46fe429"
+    },
+    {
+      "path": "supabase/migrations/20261009151946_company_payroll_rate_registry.sql",
+      "git_blob_sha1": "e44764ab14ade1e3e84587a6424d62b80b31b24e"
+    },
+    {
+      "path": "supabase/migrations/20261009161427_resident_tax_effective_month.sql",
+      "git_blob_sha1": "0539907ad32090e764a482ea9e4292959c0da1b1"
+    },
+    {
+      "path": "supabase/migrations/20261009165026_finalized_payroll_document_snapshot.sql",
+      "git_blob_sha1": "cbe0c25743d01fbc5ddb7db2e1ed14a10d491a34"
+    },
+    {
+      "path": "supabase/migrations/20261009171504_payroll_refresh_scope_order.sql",
+      "git_blob_sha1": "bfcc9355d9c942e3a4ca25d99acbc4b47c15501e"
+    },
+    {
+      "path": "supabase/migrations/20261009201229_company_allowance_identity_lifecycle.sql",
+      "git_blob_sha1": "6af0ecd2c9a921f03e96034e1d07dbb0de6f747f"
+    },
+    {
+      "path": "supabase/migrations/20261010030208_connect_payroll_tax_calculation.sql",
+      "git_blob_sha1": "2117a6b65b469db7d9c01304e613ac7a3d0b29cc"
+    },
+    {
+      "path": "supabase/migrations/20261013175452_payroll_unit_conditions.sql",
+      "git_blob_sha1": "4df17aaf1d0fdee35281a4c7d33122035de436fa"
+    },
+    {
+      "path": "supabase/tests/company_allowance_identity_access_fixture.sql",
+      "git_blob_sha1": "c52bc35d90274a195abf917fe7ad89daaba39fc9"
+    },
+    {
+      "path": "supabase/tests/finalized_payroll_document_access_fixture.sql",
+      "git_blob_sha1": "fe22f270dab240f78ad9b01fa42a323b71389aca"
+    },
+    {
+      "path": "supabase/tests/finalized_payroll_live_source_fixture.sql",
+      "git_blob_sha1": "20a67444d3c8cf56d45a7e57cc631494fe6665b5"
+    },
+    {
+      "path": "supabase/tests/invoice_stamp_approval_workflow.sql",
+      "git_blob_sha1": "f9207ba704e27208c6b8f0e12564b4078a4dd270"
+    },
+    {
+      "path": "supabase/tests/payroll_calculation_invariant_fixture.sql",
+      "git_blob_sha1": "7d029607130fccde2e722ef8189b6f15026c282a"
+    },
+    {
+      "path": "supabase/tests/payroll_live_linkage_snapshot.sql",
+      "git_blob_sha1": "8ee792f783e20a4e63a1afc2408b39ea97deb7d9"
+    },
+    {
+      "path": "supabase/tests/payroll_pay_type_metadata_assertions.sql",
+      "git_blob_sha1": "fcd9d55e011790ad629a1e5e919b9e0c88312232"
+    },
+    {
+      "path": "supabase/tests/payroll_private_bank_assertions.sql",
+      "git_blob_sha1": "0847047a56c8a8b210bc9dc2c6923502f47601d2"
+    },
+    {
+      "path": "supabase/tests/payroll_refresh_scope_access_fixture.sql",
+      "git_blob_sha1": "accb7caa15d4aca4bf85a3a9c0ee2e6c3461af9e"
+    },
+    {
+      "path": "supabase/tests/payroll_refresh_scope_live_source_fixture.sql",
+      "git_blob_sha1": "c49fc89e629e26e0aba8ce898099671c174193f3"
+    },
+    {
+      "path": "supabase/tests/resident_tax_effective_month_access_fixture.sql",
+      "git_blob_sha1": "776d685b3f1897109a9b74a501ab9dd5ffcf132c"
+    },
+    {
+      "path": "tool/payroll_scope_fixture_setup.mjs",
+      "git_blob_sha1": "8249e0f19c19e5ccc0c41c59ac75d007aaf0ceac"
+    },
+    {
+      "path": "tool/staged_company_common_allowances.sql.review-only",
+      "git_blob_sha1": "fd0bff09faba5caa2a88379ffff313366b5ba0ec"
+    }
+  ]
+}
