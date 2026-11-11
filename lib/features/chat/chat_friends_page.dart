@@ -12,6 +12,7 @@ import 'chat_friends_strings.dart';
 import 'chat_friend_profile_page.dart';
 import 'chat_friend_order.dart';
 import 'chat_actor_guard.dart';
+import 'sko_id_search_input.dart';
 
 class ChatFriendsPage extends StatefulWidget {
   const ChatFriendsPage({
@@ -20,9 +21,12 @@ class ChatFriendsPage extends StatefulWidget {
     this.selectForChat = false,
     this.selectForGroupInvite = false,
     this.onPhoneInvitation,
+    this.onReturnToChats,
     this.existingGroups = const [],
   });
 
+  /// Returns through the existing chat route; never creates another chat page.
+  final VoidCallback? onReturnToChats;
   final ChatCloudRepository? repository;
   final bool selectForChat;
   final bool selectForGroupInvite;
@@ -181,7 +185,7 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> with WidgetsBindingOb
     final actor = _actor;
     final epoch = _profileActorEpoch.value;
     if (!mounted || !_isCurrent(actor, epoch)) return;
-    final value = _search.text.trim();
+    final value = skoIdSearchValue(_search.text);
     if (repository == null || value.isEmpty || _busy) return;
 
     setState(() {
@@ -435,7 +439,10 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> with WidgetsBindingOb
     }
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
-        builder: (_) => ChatFriendsPage(repository: _repository),
+        builder: (_) => ChatFriendsPage(
+          repository: _repository,
+          onReturnToChats: widget.onReturnToChats,
+        ),
       ),
     );
     if (_isCurrent(actor, epoch)) await _load();
@@ -495,6 +502,7 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> with WidgetsBindingOb
         content: SingleChildScrollView(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text(
           '右上の更新ボタンで申請・承認の最新状態を取得できます。アプリへ戻った時も自動更新します。\n\n'
           '登録済み友達の氏名・公開会社名・SKO IDを検索できます。検索を消すと一覧へ戻ります。\n\n'
+          '戻るとチャット一覧へ戻ります。SKO ID検索はSKO-より後ろだけ入力します。完全なSKO IDの貼り付けもできます。\n\n'
           '友達を押すと公開名とSKO IDを確認し、「チャットを始める」で既存の個別チャットを開きます。写真・所属会社は承認済み友達の公開情報だけを表示します。写真は短時間の閲覧URLを使用し、取得できない場合は標準アイコンになります。\n\n'
           '左から右へスワイプするとピン留め／解除できます。この端末のログイン中ユーザーごとに保存し、友達や会話は削除しません。並びはピン留め、既存の個別チャット相手、その他の登録順です。登録日時が無い行は取得順を保ちます。\n\n'
           '右上の「SKO招待」から名前・電話番号を入力する招待画面を開けます。下の「追加」→「ID検索」で申請・承認を管理します。「電話番号通知」も同じ招待画面を開きます。招待機能ONと利用権限が必要です。正式な配布URL未登録ではSMSを作成できません。送信を押すとSMS作成画面が開き、実際の送信はそこで行います。トーク本文や全履歴の検索はこの画面では行いません。',
@@ -528,7 +536,15 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> with WidgetsBindingOb
             )
             .toList();
 
-    return Scaffold(
+    return PopScope<dynamic>(
+      onPopInvokedWithResult: (didPop, result) {
+        final returnToChats = widget.onReturnToChats;
+        if (didPop && result == null && returnToChats != null) {
+          // Wait until the completed native/onscreen pop unlocks Navigator.
+          WidgetsBinding.instance.addPostFrameCallback((_) => returnToChats());
+        }
+      },
+      child: Scaffold(
       bottomNavigationBar: widget.selectForChat
           ? SafeArea(
               child: Padding(
@@ -679,19 +695,26 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> with WidgetsBindingOb
                           TextField(
                             controller: _search,
                             textCapitalization: TextCapitalization.characters,
+                            autocorrect: false,
+                            enableSuggestions: false,
+                            inputFormatters: const [SkoIdSuffixInputFormatter()],
                             decoration: InputDecoration(
                               labelText: ChatFriendsStrings.tr('SKO ID検索'),
-                              hintText: 'SKO-XXXXXXXXXX',
-                              prefixIcon: const Icon(Icons.search),
+                              hintText: 'XXXXXXXXXX',
+                              prefixIcon: const Padding(
+                                padding: EdgeInsets.symmetric(horizontal: 12),
+                                child: Center(widthFactor: 1, child: Text('SKO-')),
+                              ),
+                              prefixIconConstraints: const BoxConstraints(minHeight: 44),
+                              isDense: true,
+                              suffixIcon: IconButton(
+                                tooltip: ChatFriendsStrings.tr('検索'),
+                                onPressed: _busy ? null : _find,
+                                icon: const Icon(Icons.search),
+                              ),
                               border: const OutlineInputBorder(),
                             ),
                             onSubmitted: (_) => _find(),
-                          ),
-                          const SizedBox(height: 8),
-                          FilledButton.icon(
-                            onPressed: _busy ? null : _find,
-                            icon: const Icon(Icons.person_search_outlined),
-                            label: Text(ChatFriendsStrings.tr('検索')),
                           ),
                           if (_searchResult != null) ...[
                             const Divider(height: 24),
@@ -813,6 +836,7 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> with WidgetsBindingOb
                       ),
                 ],
               ),
+      ),
       ),
     );
   }

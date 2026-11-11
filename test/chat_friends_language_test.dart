@@ -109,8 +109,9 @@ void main() {
       final repo = FriendsRepository();
       await showPage(tester, ChatFriendsPage(repository: repo), language: 'ja');
       await tester.enterText(find.byType(TextField), '  SKO-ABCDEFGHIJ  ');
-      await tapVisible(tester, find.text('検索'));
+      await tapVisible(tester, find.byTooltip('検索'));
       expect(repo.searched, ['SKO-ABCDEFGHIJ']);
+      expect(find.text('SKO-'), findsOneWidget);
       final state = tester.state(find.byType(ChatFriendsPage));
       SkoLanguageController.pack.value = LanguagePackRegistry.resolve('en');
       await tester.pumpAndSettle();
@@ -118,11 +119,13 @@ void main() {
       expect(find.text('Friends'), findsOneWidget);
       expect(find.text('My SKO ID'), findsOneWidget);
       expect(find.text('Search by SKO ID'), findsOneWidget);
+      expect(find.byTooltip('Search'), findsOneWidget);
+      expect(find.text('SKO-'), findsOneWidget);
       expect(find.text('No friends yet'), findsOneWidget);
       expect(find.text(person['display_name']), findsOneWidget);
       expect(
         tester.widget<TextField>(find.byType(TextField)).controller!.text,
-        '  SKO-ABCDEFGHIJ  ',
+        'ABCDEFGHIJ',
       );
       expect(repo.loads, 1);
       await tapVisible(tester, find.text('Request'));
@@ -279,7 +282,7 @@ void main() {
     final repo = FriendsRepository()..result = {'sko_id': 'SKO-ABCDEFGHIJ'};
     await showPage(tester, ChatFriendsPage(repository: repo), language: 'ja');
     await tester.enterText(find.byType(TextField), 'SKO-ABCDEFGHIJ');
-    await tapVisible(tester, find.text('検索'));
+    await tapVisible(tester, find.byTooltip('検索'));
     await tapVisible(tester, find.text('申請'));
     SkoLanguageController.pack.value = LanguagePackRegistry.resolve('en');
     await tester.pumpAndSettle();
@@ -294,19 +297,19 @@ void main() {
       final repo = FriendsRepository()..result = null;
       await showPage(tester, ChatFriendsPage(repository: repo));
       await tester.enterText(find.byType(TextField), 'SKO-ABCDEFGHIJ');
-      await tapVisible(tester, find.text('Search'));
+      await tapVisible(tester, find.byTooltip('Search'));
       expect(find.text('No matching SKO ID found'), findsOneWidget);
       final messenger = tester.state<ScaffoldMessengerState>(
         find.byType(ScaffoldMessenger),
       );
       messenger.removeCurrentSnackBar();
       repo.failure = 'fixture detail';
-      await tapVisible(tester, find.text('Search'));
+      await tapVisible(tester, find.byTooltip('Search'));
       expect(find.text('Could not search: fixture detail'), findsOneWidget);
       messenger.removeCurrentSnackBar();
       repo.failure = null;
       repo.result = person;
-      await tapVisible(tester, find.text('Search'));
+      await tapVisible(tester, find.byTooltip('Search'));
       repo.failure = 'fixture detail';
       await tapVisible(tester, find.text('Request'));
       await tapVisible(tester, find.text('Send request'));
@@ -317,7 +320,7 @@ void main() {
       expect(find.text('Friend request sent'), findsNothing);
       expect(
         tester.widget<TextField>(find.byType(TextField)).controller!.text,
-        'SKO-ABCDEFGHIJ',
+        'ABCDEFGHIJ',
       );
       expect(repo.loads, 1);
       expect(tester.takeException(), isNull);
@@ -336,9 +339,10 @@ void main() {
     final repo = FriendsRepository();
     await showPage(tester, ChatFriendsPage(repository: repo));
     await tester.enterText(find.byType(TextField), 'SKO-ABCDEFGHIJ');
-    await tapVisible(tester, find.text('Search'));
+    await tapVisible(tester, find.byTooltip('Search'));
     await tapVisible(tester, find.text('Request'));
     expect(find.text('Send a friend request?'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }
+

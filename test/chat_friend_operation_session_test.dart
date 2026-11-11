@@ -48,7 +48,7 @@ Future<void> _start(WidgetTester tester, _Repository repo, {bool picker = false,
 }
 Future<void> _search(WidgetTester tester) async {
   await tester.enterText(find.byType(TextField).first, 'SKO-FOUND');
-  await tester.tap(find.text('検索'));
+  await tester.tap(find.byTooltip('検索'));
   await tester.pumpAndSettle();
 }
 void main() {
@@ -58,7 +58,7 @@ void main() {
       final repo = _Repository()..search = Completer<Map<String, dynamic>?>();
       await _start(tester, repo);
       await tester.enterText(find.byType(TextField).first, 'SKO-FOUND');
-      await tester.tap(find.text('検索')); await tester.pump();
+      await tester.tap(find.byTooltip('検索')); await tester.pump();
       repo.aba(); await tester.pumpAndSettle();
       if (failure) { repo.search!.completeError(StateError('obsolete-search')); }
       else { repo.search!.complete({'display_name': 'OLD-RESULT', 'sko_id': 'SKO-OLD'}); }
@@ -117,3 +117,4 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 }
+
