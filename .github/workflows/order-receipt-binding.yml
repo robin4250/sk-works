@@ -1,0 +1,22 @@
+name: Order receipt binding proof
+on:
+  pull_request:
+    paths:
+      - 'tool/staged/site_contract_receipt_binding.sql'
+      - 'tool/verify_order_receipt_binding.mjs'
+      - '.github/workflows/order-receipt-binding.yml'
+permissions:
+  contents: read
+jobs:
+  isolated:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pinned disposable PostgreSQL
+        run: npm install --prefix /tmp/order-binding-proof --ignore-scripts --no-audit --no-fund @electric-sql/pglite@0.3.14
+      - name: Verify internal binding preparation
+        run: node tool/verify_order_receipt_binding.mjs /tmp/order-binding-proof/node_modules/@electric-sql/pglite/dist/index.js
