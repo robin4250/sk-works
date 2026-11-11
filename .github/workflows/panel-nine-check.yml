@@ -1,0 +1,24 @@
+name: Apple existing account preservation
+on:
+  pull_request:
+    paths:
+      - 'lib/features/auth/panel_nine_probe.dart'
+      - 'test/panel_nine_probe_test.dart'
+      - 'docs/security/PANEL_NINE_CHECK_20261017.md'
+      - '.github/workflows/panel-nine-check.yml'
+permissions:
+  contents: read
+jobs:
+  preservation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/auth/panel_nine_probe.dart test/panel_nine_probe_test.dart
+      - run: flutter test test/panel_nine_probe_test.dart test/identity_link_sdk_contract_test.dart

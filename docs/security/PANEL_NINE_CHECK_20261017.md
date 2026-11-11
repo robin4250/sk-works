@@ -1,0 +1,13 @@
+# Apple existing-account preservation candidate
+
+Baseline c75d1099ab085c828edbc21a666df168de1228ef. Reuses the already merged identity_link_sdk_contract_test.dart and IDENTITY_LINK_PREPARATION_20261017.md; no working historical product Apple implementation was located in bounded current-tree/commit searches. A negative search is not proof of historical absence.
+
+The new helper is unconnected and read-only. It captures the server-validated existing UID/current token, stable identity IDs/providers and authorized company-role rows. A later read must retain the same actor/token, all original identities, an added Apple identity and identical company roles. No OAuth launch, signup, identity linking/unlinking, password, Auth/provider, role or database write is implemented. The normal account settings owner separately owns getUser/provider display; this helper is for future action preservation, not a second settings implementation.
+
+This is necessary preservation validation, not authorization for linking. Before any actual linking: verify Apple provider and manual linking configuration, supported fresh server reauthentication for Google-only users and the existing callback. Use authenticated linkIdentity(apple) with pinned PKCE; never anonymous signInWithOAuth(apple) or email/name/private-relay matching to merge users. Current settings UI must state these prerequisites are unverified rather than claim a live Apple-add button. Existing users with unlinked Apple must retain their working provider login.
+
+Browser OAuth reuses com.skworks.sko://login-callback/. Native Apple ID-token flow is separate and requires raw nonce/SHA256 binding, native capability/profile entitlement and an existing-UID linkIdentityWithIdToken path; no native package/capability is silently introduced. Signed iPhone entitlements, real Apple callback, collision behavior on a real isolated server, same-company/role comparison, logout and linked Apple re-login remain unverified. A same-token read snapshot is not a single-use operation proof, does not authorize a server write and may safely reject a legitimate token refresh.
+
+Dedicated tests use the actual pinned SDK with synthetic .invalid HTTP and actual SDK actor switching; they are not real GoTrue/Apple/Face ID verification. Snapshot values/tokens remain in memory, are not logged or persisted. Test execution is recorded on the exact CI head separately. Product login/secondary/Master code and dirty files remain untouched.
+
+Official references: https://supabase.com/docs/reference/dart/auth-linkidentity ; https://supabase.com/docs/reference/dart/auth-linkidentitywithidtoken ; https://supabase.com/docs/guides/auth/auth-identity-linking .
