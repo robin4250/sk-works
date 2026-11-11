@@ -1,0 +1,48 @@
+name: Authenticated employee invitation review-only integration
+on:
+  pull_request:
+    paths:
+      - 'docs/candidates/employee_authenticated_invite_v2*'
+      - 'docs/review/employee_authenticated_invite_v2*'
+      - 'tool/security/employee_authenticated_invite_v2*'
+      - 'tool/security/employee_onboarding_*.fixture.sql'
+      - 'tool/security/employee_invite_foundation.main.fixture.sql'
+      - '.github/workflows/employee-authenticated-invite-v2.yml'
+permissions:
+  contents: read
+jobs:
+  isolated-source-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        slice: [ledger, profile, approval]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify reviewed source hashes
+        run: |
+          python3 - <<'PY'
+          import pathlib,json,hashlib
+          manifest=json.loads(pathlib.Path('docs/review/employee_authenticated_invite_v2_manifest_20261020.json').read_text())
+          for record in manifest['files']:
+              assert hashlib.sha256(pathlib.Path(record['path']).read_bytes()).hexdigest()==record['sha256'],record['path']
+          PY
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
+      - name: Execute synthetic SQL integration only
+        env:
+          SKO_PGLITE_MODULE: ${{ github.workspace }}/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js
+          SLICE: ${{ matrix.slice }}
+        run: |
+          unset SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD SUPABASE_PROJECT_REF SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY SUPABASE_SECRET_KEY SUPABASE_ANON_KEY
+          case "$SLICE" in
+            ledger) node tool/security/employee_authenticated_invite_v2_ledger_integration.mjs ;;
+            profile) node tool/security/employee_authenticated_invite_v2_profile_integration.mjs ;;
+            approval) node tool/security/employee_authenticated_invite_v2_approval_integration.mjs ;;
+            *) exit 1 ;;
+          esac
