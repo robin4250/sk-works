@@ -1,0 +1,45 @@
+name: Affiliation transition planning candidate
+on:
+  pull_request:
+    paths:
+      - 'docs/review/affiliation-build24/**'
+      - '.github/workflows/affiliation-transition-plan.yml'
+permissions:
+  contents: read
+jobs:
+  planning:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test docs/review/affiliation-build24/transition_plan.test.mjs
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
+      - run: PGLITE_MODULE="file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js" node docs/review/affiliation-build24/sql/ledger.fixture.mjs
+
+  native-ledger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    services:
+      postgres:
+        image: postgres:17.6
+        env:
+          POSTGRES_PASSWORD: fixture_only
+          POSTGRES_DB: fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
+      - run: PG_MODULE="file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js" node docs/review/affiliation-build24/sql/ledger.fixture.mjs
+        env:
+          DATABASE_URL: postgresql://postgres:fixture_only@localhost:5432/fixture

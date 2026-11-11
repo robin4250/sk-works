@@ -1,0 +1,75 @@
+-- Isolated OFF candidate. No public API or grants. No membership/worker writes.
+begin;
+create schema affiliation_transition_candidate;
+revoke all on schema affiliation_transition_candidate from public,anon,authenticated,service_role;
+create table affiliation_transition_candidate.requests(
+ request_id uuid primary key, actor_id uuid not null, session_id uuid not null,
+ subject_id uuid not null, source_company_id uuid not null, target_company_id uuid not null,
+ plan jsonb not null, state text not null default 'prepared' check(state in ('prepared','cancelled','applied')),
+ created_at timestamptz not null default clock_timestamp(), expires_at timestamptz not null,
+ check(source_company_id<>target_company_id),check(jsonb_typeof(plan)='object'));
+create unique index one_open_transition_per_person on affiliation_transition_candidate.requests(subject_id) where state='prepared';
+create function affiliation_transition_candidate.protect_plan() returns trigger language plpgsql set search_path='' as $$
+begin
+ if tg_op='DELETE' then raise exception 'transition_history_required';end if;
+ if (to_jsonb(new)-'state') is distinct from (to_jsonb(old)-'state') then raise exception 'immutable_transition_plan';end if;
+ if old.state<>'prepared' or new.state<>'cancelled' then raise exception 'transition_execution_unavailable';end if;
+ return new;
+end $$;
+create trigger immutable_transition_plan before update or delete on affiliation_transition_candidate.requests for each row execute function affiliation_transition_candidate.protect_plan();
+revoke all on function affiliation_transition_candidate.protect_plan() from public,anon,authenticated,service_role;
+-- Trusted evidence provisioning is intentionally unavailable until its verifier
+-- and vault receipt adapter are reviewed. No client/service table privileges.
+create table affiliation_transition_candidate.evidence(
+ request_id uuid not null, kind text not null check(kind in('identity_consent','company_match','representative_authority','personal_archive')),
+ plan jsonb not null, valid_until timestamptz not null,
+ primary key(request_id,kind));
+alter table affiliation_transition_candidate.requests enable row level security;
+alter table affiliation_transition_candidate.evidence enable row level security;
+revoke all on all tables in schema affiliation_transition_candidate from public,anon,authenticated,service_role;
+create function affiliation_transition_candidate.prepare(p_request uuid,p_plan jsonb) returns uuid
+language plpgsql security definer set search_path='' as $$
+declare a uuid:=auth.uid();sid uuid;subject uuid;src uuid;dst uuid;wid uuid;required_keys text[];
+ r affiliation_transition_candidate.requests%rowtype;k text;day_text text;cutoff date;
+begin
+ sid:=private.require_reauthentication_session();
+ if jsonb_typeof(p_plan) is distinct from 'object' or p_request is null then raise exception 'invalid_plan';end if;
+ if (select array_agg(x order by x) from jsonb_object_keys(p_plan)x) is distinct from
+ array['direction','effective_date','link_companies','partner_registration_id','source_company_id','source_worker_id','subject_id','target_company_id']::text[] then raise exception 'invalid_plan_keys';end if;
+ if p_plan->>'direction' is null or p_plan->>'direction' not in('employee_to_representative','representative_to_employee') or jsonb_typeof(p_plan->'link_companies') is distinct from 'boolean' then raise exception 'invalid_plan';end if;
+ subject:=(p_plan->>'subject_id')::uuid;src:=(p_plan->>'source_company_id')::uuid;dst:=(p_plan->>'target_company_id')::uuid;wid:=(p_plan->>'source_worker_id')::uuid;
+ if subject is null or src is null or dst is null or wid is null or src=dst or nullif(p_plan->>'partner_registration_id','') is null then raise exception 'invalid_scope';end if;
+ day_text:=p_plan->>'effective_date';cutoff:=day_text::date;
+ if day_text is null or cutoff is null or day_text !~ '^20[0-9]{2}-[0-9]{2}-[0-9]{2}$' or to_char(cutoff,'YYYY-MM-DD')<>day_text or cutoff<(current_timestamp at time zone 'Asia/Tokyo')::date then raise exception 'invalid_date';end if;
+ required_keys:=array['affiliation_switch','sko_id_linking','personal_pdf_vault'];
+ if (p_plan->>'link_companies')::boolean then required_keys:=required_keys||'partner_auto_link'::text;end if;
+ if p_plan->>'direction'='representative_to_employee' then required_keys:=required_keys||'company_lifecycle'::text;end if;
+ foreach k in array required_keys loop
+  perform 1 from private.master_feature_settings where feature_key=k and enabled for share;
+  if not found then raise sqlstate '42501' using message='feature_off';end if;
+ end loop;
+ perform 1 from public.company_members where company_id=src and user_id=a and role::text in('owner','admin') for share;
+ if not found then raise sqlstate '42501' using message='source_admin_required';end if;
+ perform 1 from public.workers where id=wid and company_id=src and user_id=subject for share;
+ if not found then raise sqlstate '42501' using message='worker_scope_changed';end if;
+ -- Existing company and partner registration must be selected, never created.
+ perform 1 from public.companies where id in(src,dst) order by id for share;
+ if (select count(*) from public.companies where id in(src,dst))<>2 then raise exception 'company_missing';end if;
+ perform 1 from public.partner_companies where id=(p_plan->>'partner_registration_id')::uuid and company_id=src for share;
+ if not found then raise exception 'partner_scope_changed';end if;
+ perform pg_advisory_xact_lock(hashtextextended(subject::text,0));
+ select * into r from affiliation_transition_candidate.requests where request_id=p_request for update;
+ if found then
+  if r.actor_id=a and r.session_id=sid and r.plan=p_plan and r.state='prepared' and r.expires_at>clock_timestamp() then return r.request_id;end if;
+  raise exception 'request_reuse_mismatch';
+ end if;
+ foreach k in array array['identity_consent','company_match','representative_authority','personal_archive'] loop
+  perform 1 from affiliation_transition_candidate.evidence where request_id=p_request and kind=k and plan=p_plan and valid_until>clock_timestamp() for share;
+  if not found then raise exception 'verified_evidence_required';end if;
+ end loop;
+ insert into affiliation_transition_candidate.requests(request_id,actor_id,session_id,subject_id,source_company_id,target_company_id,plan,expires_at)
+ values(p_request,a,sid,subject,src,dst,p_plan,clock_timestamp()+interval '10 minutes');
+ return p_request;
+end $$;
+revoke all on function affiliation_transition_candidate.prepare(uuid,jsonb) from public,anon,authenticated,service_role;
+commit;
