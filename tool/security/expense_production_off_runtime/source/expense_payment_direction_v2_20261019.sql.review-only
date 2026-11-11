@@ -1,0 +1,283 @@
+-- REVIEW ONLY. Isolated fixture only; not a deployable migration.
+-- No rollout is enabled. Existing v1 rows are never converted by this candidate.
+do $preflight$
+declare item record;
+begin
+ for item in select * from (values
+ ('private.refresh_automatic_payment_certificate(uuid,uuid,date)','499b5154730aeef5ae53c763ba82a421'),
+ ('private.expense_cost_finalize()','538cdf28ac2aefb36040f799dced3078'),
+ ('private.read_expense_document(text,uuid)','194b68f6f3933850b16ddb3e8eae633d')) x(signature,hash) loop
+ if (select md5(prosrc) from pg_proc where oid=to_regprocedure(item.signature)) is distinct from item.hash
+ then raise exception 'expense direction prerequisite differs: %',item.signature;end if;
+ end loop;
+end $preflight$;
+
+create function private.expense_cost_direction_v2_enabled(cid uuid) returns boolean
+language sql stable security invoker set search_path='' as $$select false$$;
+revoke all on function private.expense_cost_direction_v2_enabled(uuid) from public,anon,authenticated;
+
+create function private.expense_payment_v2_envelope(cid uuid,doc uuid,subject uuid,day date,revision integer,amount numeric,claims jsonb)
+returns jsonb language plpgsql immutable security invoker set search_path='' as $$
+declare row jsonb; minimal jsonb:='[]';seen uuid[]:='{}';identifier uuid;total numeric:=0;
+begin
+ if cid is null or doc is null or subject is null or day is null or revision is null or revision<1
+ or amount is null or amount<0 or amount<>trunc(amount) or amount>9007199254740991
+ or jsonb_typeof(claims) is distinct from 'array' then raise exception 'invalid payment expense v2 envelope';end if;
+ for row in select value from jsonb_array_elements(claims) loop
+ if jsonb_typeof(row) is distinct from 'object' or jsonb_typeof(row->'id') is distinct from 'string'
+ or jsonb_typeof(row->'revision') is distinct from 'number' or (row->>'revision')!~'^[1-9][0-9]*$'
+ or jsonb_typeof(row->'amount_yen') is distinct from 'number' or (row->>'amount_yen')!~'^[1-9][0-9]*$'
+ or (row->>'amount_yen')::numeric>9007199254740991 then raise exception 'invalid v2 original claim';end if;
+ identifier:=(row->>'id')::uuid;
+ if identifier=any(seen) then raise exception 'duplicate v2 claim';end if;
+ seen:=array_append(seen,identifier);total:=total+(row->>'amount_yen')::numeric;
+ if total>9007199254740991 then raise exception 'v2 original amount overflow';end if;
+ minimal:=minimal||jsonb_build_array(jsonb_build_object('id',identifier,'revision',(row->>'revision')::integer,'amount_yen',(row->>'amount_yen')::bigint));
+ end loop;
+ if total<>amount then raise exception 'v2 original amount differs';end if;
+ return jsonb_build_object('version',2,'contract','expense_cost_direction','document_kind','paymentCertificate','direction','deduction',
+ 'company_id',cid,'document_id',doc,'subject_id',subject,'month',to_char(day,'YYYY-MM'),'document_revision',revision,'amount_yen',amount,'claims',minimal);
+end $$;
+revoke all on function private.expense_payment_v2_envelope(uuid,uuid,uuid,date,integer,numeric,jsonb) from public,anon,authenticated;
+
+create function private.expense_payment_v2_guard() returns trigger
+language plpgsql security definer set search_path='' as $$
+declare envelope jsonb:=new.snapshot->'expense_cost_direction_v2';basis jsonb;expected jsonb;gross numeric;
+begin
+ if tg_op='DELETE' then
+ if old.snapshot?'expense_cost_direction_v2' and old.status='finalized' then raise exception 'finalized v2 payment immutable';end if;
+ return old;end if;
+ if tg_op='UPDATE' and old.snapshot?'expense_cost_direction_v2' then
+ if not new.snapshot?'expense_cost_direction_v2' then raise exception 'v2 downgrade refused';end if;
+ if old.status='finalized' and (to_jsonb(old)-'updated_at') is distinct from (to_jsonb(new)-'updated_at') then raise exception 'finalized v2 payment immutable';end if;
+ end if;
+ if not new.snapshot?'expense_cost_direction_v2' then return new;end if;
+ if not new.automatic_calculation or new.snapshot?'expense_extra_source_version'
+ or new.snapshot?'expense_extra_amount_yen' or new.snapshot?'expense_extra_claims'
+ then raise exception 'mixed or manual v2 expense source refused';end if;
+ if new.company_id is null or new.id is null or new.partner_company_id is null or new.period_start is null or new.period_end is null
+ or new.revision is null or new.gross_amount is null or new.deductions is null or new.net_amount is null
+ or jsonb_typeof(new.snapshot->'calculation_rows') is distinct from 'array'
+ or jsonb_typeof(envelope) is distinct from 'object' or envelope->>'version' is distinct from '2'
+ or new.period_start<>date_trunc('month',new.period_start)::date
+ or new.period_end<>(date_trunc('month',new.period_start)+interval '1 month - 1 day')::date
+ then raise exception 'v2 document period differs';end if;
+ expected:=private.expense_payment_v2_envelope(new.company_id,new.id,new.partner_company_id,new.period_start,new.revision,
+ (envelope->>'amount_yen')::numeric,envelope->'claims');
+ if envelope is distinct from expected then raise exception 'v2 document scope or claims differ';end if;
+ select coalesce(sum((r->>'amount_yen')::numeric),0) into gross from jsonb_array_elements(new.snapshot->'calculation_rows') r;
+ basis:=jsonb_build_object('company_id',new.company_id,'document_id',new.id,'subject_id',new.partner_company_id,
+ 'month',to_char(new.period_start,'YYYY-MM'),'document_revision',new.revision,'gross_before_expense_yen',gross,'other_deductions_yen',0);
+ if new.snapshot->'expense_cost_basis' is distinct from basis or gross<0 or new.gross_amount<>gross
+ or new.deductions<>(envelope->>'amount_yen')::numeric or new.net_amount<>gross-new.deductions
+ then raise exception 'v2 payment amount or calculation basis differs';end if;
+ return new;
+end $$;
+revoke all on function private.expense_payment_v2_guard() from public,anon,authenticated;
+create trigger expense_direction_v2_guard before insert or update or delete on public.payment_certificates for each row execute function private.expense_payment_v2_guard();
+CREATE OR REPLACE FUNCTION private.refresh_automatic_payment_certificate(cid uuid, partner uuid, day date)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare
+ expense_component jsonb; expense_amount numeric:=0;
+ first_day date:=date_trunc('month',day)::date;
+ last_day date:=(date_trunc('month',day)+interval '1 month - 1 day')::date;
+ existing public.payment_certificates%rowtype;
+ settings public.partner_payment_settings%rowtype;
+ attendance_count int:=0;
+ gross numeric:=0;
+ subtotal numeric:=0;
+ welfare numeric:=0;
+ tax numeric:=0;
+ partner_name text;
+ snapshot_value jsonb;
+ use_v2 boolean; direction_doc uuid; direction_revision integer;
+ expense_deductions numeric:=0; expense_net numeric;
+ calculation_rows jsonb;
+ s record;
+ allowance_cfg record;
+ allowance_qty numeric;
+ allowance_rate numeric;
+ hours_per_day numeric:=8;
+ overtime_mul numeric:=1.25;
+ early_mul numeric:=1.25;
+ night_mul numeric:=1.5;
+ night_ot_mul numeric:=1.5;
+ holiday_mul numeric:=1.35;
+ holiday_ot_mul numeric:=1.35;
+ holiday_night_mul numeric:=1.6;
+ holiday_night_ot_mul numeric:=1.6;
+ r_daily numeric:=0;
+ r_ot numeric:=0;
+ r_early numeric:=0;
+ r_night numeric:=0;
+ r_night_ot numeric:=0;
+ r_holiday numeric:=0;
+ r_holiday_ot numeric:=0;
+ r_holiday_night numeric:=0;
+ r_holiday_night_ot numeric:=0;
+begin
+ if auth.uid() is null or partner is null then return; end if;
+ perform pg_advisory_xact_lock(hashtextextended(
+   'payment-certificate:'||cid::text||partner::text||first_day::text,0
+ ));
+
+ select * into existing
+ from public.payment_certificates
+ where company_id=cid and partner_company_id=partner
+   and period_start=first_day and period_end=last_day
+ for update;
+ if found and (existing.status<>'draft' or not existing.automatic_calculation) then return; end if;
+ if existing.snapshot?'expense_cost_direction_v2' and not private.expense_cost_direction_v2_enabled(cid) then return;end if;
+ use_v2:=private.expense_cost_direction_v2_enabled(cid) and (existing.id is null or existing.snapshot?'expense_cost_direction_v2');
+ direction_doc:=coalesce(existing.id,gen_random_uuid());direction_revision:=coalesce(existing.revision,1);
+
+ select * into settings
+ from public.partner_payment_settings
+ where company_id=cid and partner_company_id=partner;
+
+ select pc.name into partner_name
+ from public.partner_companies pc
+ where pc.id=partner and pc.company_id=cid;
+
+ select count(*) into attendance_count
+ from public.attendance_entries a
+ join public.workers w on w.id=a.worker_id and w.company_id=a.company_id
+ where a.company_id=cid
+   and w.partner_company_id=partner
+   and a.work_date between first_day and last_day;
+
+ 
+ expense_component:=private.expense_cost_components('paymentCertificate',cid,partner,first_day,last_day,existing.id);
+ expense_amount:=(expense_component->>'amount_yen')::numeric;
+ if attendance_count=0 and not (expense_component->>'has_choices')::boolean
+  and existing.id is not null and existing.snapshot?'expense_extra_source_version' then
+  update public.payment_certificates set gross_amount=0,deductions=0,net_amount=0,
+   snapshot=existing.snapshot||jsonb_build_object('calculation_rows','[]'::jsonb,'attendance_count',0,
+    'expense_extra_amount_yen',0,'expense_extra_claims','[]'::jsonb),
+   calculation_blocked=false,revision=revision+1,updated_at=now() where id=existing.id;
+  return;
+ end if;
+ if attendance_count=0 and not (expense_component->>'has_choices')::boolean and (not use_v2 or existing.id is null) then
+ 
+   if existing.id is not null and existing.status='draft'
+      and existing.automatic_calculation then
+     delete from public.payment_certificates where id=existing.id;
+   end if;
+   return;
+ end if;
+
+ select coalesce(jsonb_agg(to_jsonb(r)),'[]'::jsonb),coalesce(sum(r.amount_yen),0)
+ into calculation_rows,gross
+ from private.certificate_calculation_rows(cid,partner,first_day,last_day) r;
+
+ if use_v2 then expense_deductions:=expense_amount;else gross:=gross+expense_amount;end if;
+ expense_net:=gross-expense_deductions;
+ snapshot_value:=jsonb_build_object(
+   'partner_company_name',coalesce(partner_name,''),
+   'period_start',first_day,'period_end',last_day,
+   'attendance_count',attendance_count,
+   'settings_missing',settings.partner_company_id is null,
+   'rate_formula',coalesce(settings.rate_formula,'{}'::jsonb),
+   'welfare_rate',coalesce(settings.welfare_rate,0),
+   'tax_rate',coalesce(settings.tax_rate,10),
+   'calculation_rows',calculation_rows,
+   'calculation_version',2
+ );
+
+ 
+ if use_v2 then
+ snapshot_value:=snapshot_value||jsonb_build_object(
+ 'expense_cost_direction_v2',private.expense_payment_v2_envelope(cid,direction_doc,partner,first_day,direction_revision,expense_amount,expense_component->'claims'),
+ 'expense_cost_basis',jsonb_build_object('company_id',cid,'document_id',direction_doc,'subject_id',partner,'month',to_char(first_day,'YYYY-MM'),'document_revision',direction_revision,'gross_before_expense_yen',gross,'other_deductions_yen',0));
+ elsif coalesce((expense_component->>'has_choices')::boolean,false) or existing.snapshot?'expense_extra_source_version' then
+  snapshot_value:=snapshot_value||jsonb_build_object('expense_extra_amount_yen',expense_amount,
+   'expense_extra_claims',expense_component->'claims','expense_extra_source_version',1);
+ end if;
+ snapshot_value:=snapshot_value||private.document_company_seal_snapshot
+ (existing.snapshot,cid,existing.id is null);
+  if existing.id is null then
+   insert into public.payment_certificates(
+     id,company_id,partner_company_id,period_start,period_end,status,
+     gross_amount,deductions,net_amount,snapshot,
+     automatic_calculation,calculation_blocked
+   )
+   values(
+     direction_doc,cid,partner,first_day,last_day,'draft',
+     gross::int,expense_deductions::int,expense_net::int,snapshot_value,true,false
+   );
+ elsif existing.gross_amount is distinct from gross::int
+    or existing.net_amount is distinct from expense_net::int
+    or (use_v2 and existing.deductions is distinct from expense_deductions::int)
+    or existing.snapshot is distinct from snapshot_value
+    or existing.calculation_blocked then
+   update public.payment_certificates
+   set gross_amount=gross::int,deductions=expense_deductions::int,net_amount=expense_net::int,
+       snapshot=case when use_v2 then jsonb_set(jsonb_set(snapshot_value,'{expense_cost_direction_v2,document_revision}',to_jsonb(existing.revision+1)),'{expense_cost_basis,document_revision}',to_jsonb(existing.revision+1)) else snapshot_value end,calculation_blocked=false,
+       revision=revision+1,updated_at=now()
+   where id=existing.id;
+ end if;
+end
+$function$
+;
+
+-- Keep existing scope locks, claim/choice locks, consumption PK and source guards.
+do $patch_finalize$
+declare definition text;anchor text:=' if (component->>''has_choices'')::boolean or new.snapshot->>''expense_extra_source_version''=''1'' then';
+begin
+ definition:=pg_get_functiondef('private.expense_cost_finalize()'::regprocedure);
+ if (length(definition)-length(replace(definition,anchor,'')))/length(anchor)<>1 then raise exception 'v2 finalizer anchor differs';end if;
+ definition:=replace(definition,anchor,$body$
+ if kind='paymentCertificate' and new.snapshot?'expense_cost_direction_v2' then
+ if new.snapshot->'expense_cost_direction_v2' is distinct from private.expense_payment_v2_envelope(new.company_id,new.id,subject,first_day,new.revision,(component->>'amount_yen')::numeric,component->'claims')
+ then raise exception 'v2 allocated expenses changed' using errcode='40001';end if;
+ elsif (component->>'has_choices')::boolean or new.snapshot->>'expense_extra_source_version'='1' then
+ $body$);
+ definition:=replace(definition,
+ 'if found and (captured.document_kind is distinct from kind or captured.document_id is distinct from new.id) then',
+ 'if found and (captured.document_kind is distinct from kind or captured.document_id is distinct from new.id or (kind=''paymentCertificate'' and new.snapshot?''expense_cost_direction_v2'' and (captured.company_id is distinct from new.company_id or captured.document_revision is distinct from new.revision or captured.claim_revision is distinct from (claim->>''revision'')::integer or captured.amount_yen is distinct from (claim->>''amount_yen'')::integer))) then');
+ execute definition;
+end $patch_finalize$;
+
+do $patch_reader$
+declare definition text;anchor text:='return jsonb_build_object(''kind''';
+begin
+ definition:=pg_get_functiondef('private.read_expense_document(text,uuid)'::regprocedure);
+ if (length(definition)-length(replace(definition,anchor,'')))/length(anchor)<>1 then raise exception 'v2 detail reader anchor differs';end if;
+ definition:=replace(definition,anchor,$body$
+ if p_kind='paymentCertificate' and row_data->'snapshot'?'expense_cost_direction_v2' then
+ select coalesce(jsonb_agg(c.value order by c.ordinality),'[]') into claims
+ from jsonb_array_elements(coalesce(claims,'[]')) with ordinality c(value,ordinality)
+ where exists(select 1 from jsonb_array_elements(row_data->'snapshot'->'expense_cost_direction_v2'->'claims') s(value)
+ where s.value->>'id'=c.value->>'id' and s.value->>'revision'=c.value->>'revision' and s.value->>'amount_yen'=c.value->>'amount_yen');
+ if row_data->'snapshot'->'expense_cost_direction_v2' is distinct from private.expense_payment_v2_envelope(cid,p_document,subject,expense_month,version,
+ (row_data->'snapshot'->'expense_cost_direction_v2'->>'amount_yen')::numeric,claims)
+ then raise exception 'v2 details differ from saved scope/version' using errcode='40001';end if;
+ return jsonb_build_object('kind',p_kind,'document_id',p_document,'company_id',cid,'subject_id',subject,'month',date_trunc('month',expense_month)::date,
+ 'revision',version,'updated_at',row_data->'updated_at','frozen',not coalesce(live,false),'claims',claims,
+ 'cost_recovery_amount_yen',(row_data->'snapshot'->'expense_cost_direction_v2'->>'amount_yen')::integer,
+ 'expense_cost_direction_v2',row_data->'snapshot'->'expense_cost_direction_v2','expense_cost_basis',row_data->'snapshot'->'expense_cost_basis');
+ end if;
+ return jsonb_build_object('kind'
+ $body$);
+ execute definition;
+end $patch_reader$;
+
+-- Read-only capability for a client explicitly opting into source version 2.
+-- The generator gate above remains OFF; this adds no rollout or write action.
+create function private.expense_payment_direction_capability(cid uuid) returns jsonb
+language plpgsql stable security definer set search_path='' as $$
+begin
+ if auth.uid() is null or private.account_access_allowed() is not true
+ or not exists(select 1 from public.company_members where company_id=cid and user_id=auth.uid() and role::text in ('owner','admin','manager'))
+ then raise exception 'payment direction access denied' using errcode='42501';end if;
+ return jsonb_build_object('version',1,'contract','expense_payment_direction_v2','company_id',cid,'actor_id',auth.uid(),
+ 'document_kind','paymentCertificate','max_source_version',2,'read_enabled',private.expense_cost_direction_v2_enabled(cid));
+end $$;
+create function public.expense_payment_direction_capability(p_company uuid) returns jsonb
+language sql stable security invoker set search_path='' as $$select private.expense_payment_direction_capability(p_company)$$;
+revoke all on function private.expense_payment_direction_capability(uuid),public.expense_payment_direction_capability(uuid) from public,anon,service_role;
+grant execute on function private.expense_payment_direction_capability(uuid),public.expense_payment_direction_capability(uuid) to authenticated;
