@@ -1,0 +1,17 @@
+name: Security trusted observation projection
+on:
+  pull_request:
+    paths:
+      - 'tool/security/observation-notice-candidate/**'
+      - '.github/workflows/security-observation-notice.yml'
+permissions:
+  contents: read
+jobs:
+  isolated-projection:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test tool/security/observation-notice-candidate/observation-notice.test.mjs
