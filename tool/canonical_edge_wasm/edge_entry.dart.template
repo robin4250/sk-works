@@ -1,0 +1,41 @@
+// Isolated JS entry for the frozen, verified canonical renderer experiment.
+// No endpoint, database, credentials, network, arbitrary path or default creation.
+import 'dart:convert';
+import 'dart:typed_data';
+import 'dart:js_interop';
+import 'lib/domain/company_seal_snapshot.dart';
+import 'lib/domain/trade_document_terms_snapshot.dart';
+import 'lib/features/shared/trade_document_form_renderer.dart';
+
+@JS('skoCanonicalPdfRender')
+external set exportRender(JSFunction value);
+JSPromise<JSUint8Array> render(JSString value) => _render(value.toDart).toJS;
+Future<JSUint8Array> _render(String value) async {
+ try {
+  if(utf8.encode(value).length>2*1024*1024)throw StateError('bounded_evidence_required');
+  final raw=jsonDecode(value);
+  if(raw is! Map || raw['body'] is! Map || raw['seals'] is! List ||
+   (raw['seals'] as List).length!=1 || raw['consents'] is! List ||
+   (raw['consents'] as List).length!=1 ||
+   !RegExp(r'^[a-f0-9]{64}$').hasMatch(raw['render_hash']?.toString()??'')) {
+   throw StateError('exact_approved_evidence_required');
+  }
+  final body=Map<String,dynamic>.from(raw['body'] as Map);
+  final seal=(raw['seals'] as List).single,consent=(raw['consents'] as List).single;
+  final issuer=body['issuer_company_id'];
+  if(issuer is! String || issuer==body['counterparty_company_id'] || seal is! Map || consent is! Map ||
+   seal['company_id']!=issuer || consent['company_id']!=issuer || raw['render_seal_company_id']!=issuer ||
+   seal['seal_hash']!=consent['seal_hash'] || seal['version_key']!=consent['version_key'] ||
+   body.containsKey('company_seal_snapshot') || body.containsKey('company_seal_enabled')) {
+   throw StateError('issuer_seal_binding_required');
+  }
+  TradeDocumentTermsSnapshot.fromJson(body['contract_terms']);
+  final snapshot=CompanySealSnapshot.fromJson(seal['seal_snapshot']);
+  if(snapshot.registeredName('')!=(body['issuer'] as Map?)?['name'])throw StateError('issuer_name_mismatch');
+  final bytes=await TradeDocumentFormRenderer.canonical(<String,dynamic>{...body,
+   'company_seal_snapshot':seal['seal_snapshot'],'company_seal_enabled':true});
+  if(bytes.length>20*1024*1024)throw StateError('bounded_pdf_required');
+  return bytes.toJS;
+ }catch(_){throw StateError('canonical_render_rejected');}
+}
+void main(){exportRender=render.toJS;}

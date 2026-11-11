@@ -1,0 +1,82 @@
+{
+  "baseline": "native Dart CLI canonical renderer; app equivalence separately established by PR1632",
+  "current": "gzip-embedded Wasm on official Deno 1.46.3",
+  "results": [
+    {
+      "case": "order-v1",
+      "pages": [
+        {
+          "page": 1,
+          "text_equal": true,
+          "pixels_equal": true,
+          "width": 1191,
+          "height": 1684
+        },
+        {
+          "page": 2,
+          "text_equal": true,
+          "pixels_equal": true,
+          "width": 1191,
+          "height": 1684
+        }
+      ]
+    },
+    {
+      "case": "order-v2",
+      "pages": [
+        {
+          "page": 1,
+          "text_equal": true,
+          "pixels_equal": true,
+          "width": 1191,
+          "height": 1684
+        },
+        {
+          "page": 2,
+          "text_equal": true,
+          "pixels_equal": true,
+          "width": 1191,
+          "height": 1684
+        }
+      ]
+    },
+    {
+      "case": "acceptance-v1",
+      "pages": [
+        {
+          "page": 1,
+          "text_equal": true,
+          "pixels_equal": true,
+          "width": 1191,
+          "height": 1684
+        },
+        {
+          "page": 2,
+          "text_equal": true,
+          "pixels_equal": true,
+          "width": 1191,
+          "height": 1684
+        }
+      ]
+    },
+    {
+      "case": "acceptance-v2",
+      "pages": [
+        {
+          "page": 1,
+          "text_equal": true,
+          "pixels_equal": true,
+          "width": 1191,
+          "height": 1684
+        },
+        {
+          "page": 2,
+          "text_equal": true,
+          "pixels_equal": true,
+          "width": 1191,
+          "height": 1684
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,370 @@
+[
+  {
+    "version": "2.9.6",
+    "case": "order-v1",
+    "exit": 0,
+    "wall_s": 1.1390822090033907,
+    "user_cpu_s": 1.203494,
+    "system_cpu_s": 0.32525699999999996,
+    "total_cpu_s": 1.528751,
+    "peak_rss_bytes": 204103680,
+    "binary_sha256": "bceb5b6a6239b0b010418406d8c77a508f67cf4337d94288f1c19fe71304aab0",
+    "deno": {
+      "runtime": {
+        "deno": "2.9.6",
+        "v8": "15.0.245.2-rusty",
+        "typescript": "6.0.3"
+      },
+      "boot": {
+        "wall_ms": 167.875313,
+        "cpu": {
+          "user_us": 144938,
+          "system_us": 81661
+        },
+        "memory": {
+          "rss": 94920704,
+          "heapTotal": 21245952,
+          "heapUsed": 19225512,
+          "external": 15093348
+        }
+      },
+      "results": [
+        {
+          "name": "order-v1",
+          "pdf_bytes": 92371,
+          "wall_ms": 738.407254,
+          "cpu": {
+            "user_us": 846532,
+            "system_us": 158835
+          },
+          "memory": {
+            "rss": 205004800,
+            "heapTotal": 121171968,
+            "heapUsed": 68999288,
+            "external": 1040043
+          }
+        }
+      ],
+      "total_wall_ms": 909.026728
+    }
+  },
+  {
+    "version": "2.9.6",
+    "case": "order-v2",
+    "exit": 0,
+    "wall_s": 1.087075092997111,
+    "user_cpu_s": 1.148323,
+    "system_cpu_s": 0.32715099999999997,
+    "total_cpu_s": 1.475474,
+    "peak_rss_bytes": 204230656,
+    "binary_sha256": "bceb5b6a6239b0b010418406d8c77a508f67cf4337d94288f1c19fe71304aab0",
+    "deno": {
+      "runtime": {
+        "deno": "2.9.6",
+        "v8": "15.0.245.2-rusty",
+        "typescript": "6.0.3"
+      },
+      "boot": {
+        "wall_ms": 131.36685799999998,
+        "cpu": {
+          "user_us": 142784,
+          "system_us": 50571
+        },
+        "memory": {
+          "rss": 94920704,
+          "heapTotal": 21245952,
+          "heapUsed": 19183232,
+          "external": 15093348
+        }
+      },
+      "results": [
+        {
+          "name": "order-v2",
+          "pdf_bytes": 94042,
+          "wall_ms": 801.7769089999999,
+          "cpu": {
+            "user_us": 892297,
+            "system_us": 244875
+          },
+          "memory": {
+            "rss": 205058048,
+            "heapTotal": 121438208,
+            "heapUsed": 70902728,
+            "external": 1043385
+          }
+        }
+      ],
+      "total_wall_ms": 935.817184
+    }
+  },
+  {
+    "version": "2.9.6",
+    "case": "acceptance-v1",
+    "exit": 0,
+    "wall_s": 0.8826352230025805,
+    "user_cpu_s": 1.022638,
+    "system_cpu_s": 0.191472,
+    "total_cpu_s": 1.21411,
+    "peak_rss_bytes": 200667136,
+    "binary_sha256": "bceb5b6a6239b0b010418406d8c77a508f67cf4337d94288f1c19fe71304aab0",
+    "deno": {
+      "runtime": {
+        "deno": "2.9.6",
+        "v8": "15.0.245.2-rusty",
+        "typescript": "6.0.3"
+      },
+      "boot": {
+        "wall_ms": 131.285004,
+        "cpu": {
+          "user_us": 151626,
+          "system_us": 44721
+        },
+        "memory": {
+          "rss": 91914240,
+          "heapTotal": 21245952,
+          "heapUsed": 19215088,
+          "external": 15093348
+        }
+      },
+      "results": [
+        {
+          "name": "acceptance-v1",
+          "pdf_bytes": 92241,
+          "wall_ms": 639.1209240000001,
+          "cpu": {
+            "user_us": 793250,
+            "system_us": 103688
+          },
+          "memory": {
+            "rss": 201469952,
+            "heapTotal": 120909824,
+            "heapUsed": 68864872,
+            "external": 1039783
+          }
+        }
+      ],
+      "total_wall_ms": 772.337091
+    }
+  },
+  {
+    "version": "2.9.6",
+    "case": "acceptance-v2",
+    "exit": 0,
+    "wall_s": 0.7835629010005505,
+    "user_cpu_s": 0.9958319999999999,
+    "system_cpu_s": 0.151197,
+    "total_cpu_s": 1.1470289999999999,
+    "peak_rss_bytes": 201420800,
+    "binary_sha256": "bceb5b6a6239b0b010418406d8c77a508f67cf4337d94288f1c19fe71304aab0",
+    "deno": {
+      "runtime": {
+        "deno": "2.9.6",
+        "v8": "15.0.245.2-rusty",
+        "typescript": "6.0.3"
+      },
+      "boot": {
+        "wall_ms": 117.15628900000002,
+        "cpu": {
+          "user_us": 148292,
+          "system_us": 30439
+        },
+        "memory": {
+          "rss": 92180480,
+          "heapTotal": 21245952,
+          "heapUsed": 19215088,
+          "external": 15093348
+        }
+      },
+      "results": [
+        {
+          "name": "acceptance-v2",
+          "pdf_bytes": 93936,
+          "wall_ms": 579.664631,
+          "cpu": {
+            "user_us": 781946,
+            "system_us": 96739
+          },
+          "memory": {
+            "rss": 202338304,
+            "heapTotal": 121176064,
+            "heapUsed": 71002144,
+            "external": 1043173
+          }
+        }
+      ],
+      "total_wall_ms": 699.6879429999999
+    }
+  },
+  {
+    "version": "1.46.3",
+    "case": "order-v1",
+    "exit": 0,
+    "wall_s": 0.9271871660021134,
+    "user_cpu_s": 1.118831,
+    "system_cpu_s": 0.220113,
+    "total_cpu_s": 1.338944,
+    "peak_rss_bytes": 180822016,
+    "binary_sha256": "94da970e983a4dc77ffa5e5daed20f3f50bc7504a228f0c1e4501ac9418a747a",
+    "deno": {
+      "runtime": {
+        "deno": "1.46.3",
+        "v8": "12.9.202.5-rusty",
+        "typescript": "5.5.2"
+      },
+      "boot": {
+        "wall_ms": 124,
+        "cpu": null,
+        "memory": {
+          "rss": 119201792,
+          "heapTotal": 22622208,
+          "heapUsed": 21610288,
+          "external": 31691726
+        }
+      },
+      "results": [
+        {
+          "name": "order-v1",
+          "pdf_bytes": 92371,
+          "wall_ms": 710,
+          "cpu": null,
+          "memory": {
+            "rss": 176869376,
+            "heapTotal": 78180352,
+            "heapUsed": 44332408,
+            "external": 3146519
+          }
+        }
+      ],
+      "total_wall_ms": 834
+    }
+  },
+  {
+    "version": "1.46.3",
+    "case": "order-v2",
+    "exit": 0,
+    "wall_s": 1.132439772998623,
+    "user_cpu_s": 1.273714,
+    "system_cpu_s": 0.254802,
+    "total_cpu_s": 1.528516,
+    "peak_rss_bytes": 180645888,
+    "binary_sha256": "94da970e983a4dc77ffa5e5daed20f3f50bc7504a228f0c1e4501ac9418a747a",
+    "deno": {
+      "runtime": {
+        "deno": "1.46.3",
+        "v8": "12.9.202.5-rusty",
+        "typescript": "5.5.2"
+      },
+      "boot": {
+        "wall_ms": 164,
+        "cpu": null,
+        "memory": {
+          "rss": 116178944,
+          "heapTotal": 22622208,
+          "heapUsed": 21610640,
+          "external": 31691726
+        }
+      },
+      "results": [
+        {
+          "name": "order-v2",
+          "pdf_bytes": 94042,
+          "wall_ms": 908,
+          "cpu": null,
+          "memory": {
+            "rss": 173518848,
+            "heapTotal": 78184448,
+            "heapUsed": 47711968,
+            "external": 3149861
+          }
+        }
+      ],
+      "total_wall_ms": 1072
+    }
+  },
+  {
+    "version": "1.46.3",
+    "case": "acceptance-v1",
+    "exit": 0,
+    "wall_s": 0.9448767270005192,
+    "user_cpu_s": 1.1495630000000001,
+    "system_cpu_s": 0.180476,
+    "total_cpu_s": 1.3300390000000002,
+    "peak_rss_bytes": 178098176,
+    "binary_sha256": "94da970e983a4dc77ffa5e5daed20f3f50bc7504a228f0c1e4501ac9418a747a",
+    "deno": {
+      "runtime": {
+        "deno": "1.46.3",
+        "v8": "12.9.202.5-rusty",
+        "typescript": "5.5.2"
+      },
+      "boot": {
+        "wall_ms": 142,
+        "cpu": null,
+        "memory": {
+          "rss": 116629504,
+          "heapTotal": 22622208,
+          "heapUsed": 21610640,
+          "external": 31691726
+        }
+      },
+      "results": [
+        {
+          "name": "acceptance-v1",
+          "pdf_bytes": 92241,
+          "wall_ms": 746,
+          "cpu": null,
+          "memory": {
+            "rss": 173502464,
+            "heapTotal": 78180352,
+            "heapUsed": 45377072,
+            "external": 3146259
+          }
+        }
+      ],
+      "total_wall_ms": 890
+    }
+  },
+  {
+    "version": "1.46.3",
+    "case": "acceptance-v2",
+    "exit": 0,
+    "wall_s": 1.135107269998116,
+    "user_cpu_s": 1.2992569999999999,
+    "system_cpu_s": 0.22833399999999998,
+    "total_cpu_s": 1.527591,
+    "peak_rss_bytes": 181772288,
+    "binary_sha256": "94da970e983a4dc77ffa5e5daed20f3f50bc7504a228f0c1e4501ac9418a747a",
+    "deno": {
+      "runtime": {
+        "deno": "1.46.3",
+        "v8": "12.9.202.5-rusty",
+        "typescript": "5.5.2"
+      },
+      "boot": {
+        "wall_ms": 162,
+        "cpu": null,
+        "memory": {
+          "rss": 116285440,
+          "heapTotal": 22622208,
+          "heapUsed": 21610640,
+          "external": 31691726
+        }
+      },
+      "results": [
+        {
+          "name": "acceptance-v2",
+          "pdf_bytes": 93936,
+          "wall_ms": 908,
+          "cpu": null,
+          "memory": {
+            "rss": 172138496,
+            "heapTotal": 77922304,
+            "heapUsed": 45741328,
+            "external": 3149649
+          }
+        }
+      ],
+      "total_wall_ms": 1072
+    }
+  }
+]

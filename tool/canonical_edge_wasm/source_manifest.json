@@ -1,0 +1,131 @@
+{
+  "source_commit": "65eb8fcec6af422c6a78269c273ec900db1d0d42",
+  "files": {
+    "lib/features/shared/trade_document_company_name_pdf.dart": {
+      "git_blob": "370da4096126a75ec9174d6c5f1810fdd321c148",
+      "sha256": "8d0b63d0dac1fe27cb6be75b1af495f887ae60a22aecf403c4771829ce62a5b6"
+    },
+    "lib/features/shared/trade_document_form_pdf_v1.dart": {
+      "git_blob": "da5540d310df39e60c7cf04cbfbe534291936358",
+      "sha256": "f9f64b77c436f109126599053334fa4ef4e021ec4ec10beffd5e6dc50e68eaac"
+    },
+    "lib/features/payroll/payment_order_layout.dart": {
+      "git_blob": "42afbaeb9819d078e7839c55ee3bf440fc808342",
+      "sha256": "0d1e6e295aeb292f438548c68577a94f10377b85bfd8c53e5c87c57b05620836"
+    },
+    "lib/features/shared/trade_document_form_renderer.dart": {
+      "git_blob": "2816d98256677d967ec57b96f185b6316e38a48a",
+      "sha256": "dd66c038bfdcf7f39f399c1ebd8921b91a30554b04351c6df95e4d692d40ce52"
+    },
+    "lib/features/payroll/payment_order_pdf.dart": {
+      "git_blob": "2a0cd61d4f1ab59c54d1b8b58db5d74df74f2753",
+      "sha256": "6caedf78fa522393df3a18e0709a1252384ba0d9312b5fc679a956e563ce5cab"
+    },
+    "lib/features/shared/trade_document_form_geometry.dart": {
+      "git_blob": "323ab76283e3a2a5a51a475bb20ed4ed390e3728",
+      "sha256": "897204b8d52608f53bab0342a8a266fa699fe046e180e241a3a929142a490427"
+    },
+    "lib/domain/trade_document_terms_snapshot.dart": {
+      "git_blob": "f29d2069c755810036ae67012b8572e878e0033b",
+      "sha256": "bb1bab9e4da4dc95b89334f700daa98ed8509c8da25c39fdb0541c530505e2ef"
+    },
+    "lib/domain/company_seal_snapshot.dart": {
+      "git_blob": "d0cc41a0b6a6f2f7b426b967caca832f015b2f52",
+      "sha256": "46055ce3beb988242d6efbd66c128b2e1125e42d8291734117be84ed0c55929f"
+    },
+    "lib/features/shared/company_seal_pdf.dart": {
+      "git_blob": "1e751cd05cf06eb00abeaf8ac5edd44cb08ff8eb",
+      "sha256": "a81eac62b2c4a0be49efed046d2d8468aebc2e44232ac4968eb9a389b30b487e"
+    },
+    "tool/render_site_order_canonical.dart": {
+      "git_blob": "0b9a612c3ea192dc2df3042a1440ccfd0816148e",
+      "sha256": "3a56570ed77472df1f922b5d3d66ef33040851d0c4e15e289a9f568fa217978e"
+    },
+    "lib/domain/company_seal_design.dart": {
+      "git_blob": "7864ef029c0c73ee531b321d796c4cd1a3d198fe",
+      "sha256": "dda6f6b8fca8140c247d1108752279dd081f381ea6c7e7e40ee2679da9376fec"
+    },
+    "lib/domain/company_uploaded_seal_png.dart": {
+      "git_blob": "91af9795eb46c40807f874fa77114925baaf315c",
+      "sha256": "3040be503107191e01dc302fc8766ad00aa09248ddba27f0a48e9808b10f1030"
+    },
+    "lib/features/invoices/invoice_order_acceptance_pdf.dart": {
+      "git_blob": "bb30ec0b8a266fba998d765a26981f636112519a",
+      "sha256": "9fcca18c8a66136c7151bcdf5428e5adcafc1da6c021dcad6b1137659956f808"
+    },
+    "lib/domain/trade_document_terms_source.dart": {
+      "git_blob": "c2f80e7c0f9ec28c9e8c5a6b44ae2b44e1f2b170",
+      "sha256": "cdc074ba7ab4adc4bc844065600d64e36122434e2ec4a5c18d1047237b1d47a1"
+    },
+    "lib/features/shared/trade_document_form_pdf.dart": {
+      "git_blob": "a4e3f8c83d4427aecbe87c05757985d6fc803c7b",
+      "sha256": "fef970d790f801a45e2d188a840dbdb6673df0401dec0164d21d2c6fa8f91df0"
+    },
+    "lib/domain/partner_company_bank_account.dart": {
+      "git_blob": "00341717a10e420f8602092f196505006cd269df",
+      "sha256": "58667d3bd2ac5ccb54953016ea554868c0feee9dc1855ff03bb06a2e415b0d62"
+    },
+    "lib/features/shared/trade_document_output_layout.dart": {
+      "git_blob": "8bf19013af78920010b63e7fbcd12c41a5ee2a63",
+      "sha256": "e052bed86669451299fb2dcf4ec432b7a0f1bf2d5c2282ad482056fc3204671f"
+    },
+    "lib/features/shared/trade_document_attachment.dart": {
+      "git_blob": "3b6e7f728e75a40d143ce748ee9ac212c350f6cf",
+      "sha256": "1467ad1785a1522b489faaf75afe5fb7d57551bfd1872f3c31f557dd99defefd"
+    },
+    "lib/features/shared/trade_document_form_pdf_v2.dart": {
+      "git_blob": "283ca4afc6eaffc22688c487f8c8057ec3f406a3",
+      "sha256": "581792f0cb0808165f0f4952cb12feab6db2143d0fabbaaae81aaf827c39c7a4"
+    },
+    "lib/features/shared/trade_document_terms_pdf.dart": {
+      "git_blob": "0e602fc36bd561eaecc59bf72a074c0c2c0b2ce7",
+      "sha256": "3989a9dc625ff72db7f672b8aea37a148b2571ac7956a84a4d6fbcda5d20779b"
+    },
+    "lib/features/shared/company_pdf_assets_io.dart": {
+      "git_blob": "5c6d3164014a203e4a1312f7e957602394b7b00f",
+      "sha256": "21837aa6ea8d7d4830c6e91768ad6c62afa62021e8b94489f9dad5602aa04ee8"
+    },
+    "lib/domain/trade_document_form_draft.dart": {
+      "git_blob": "a3462eb315c604fe1ad090e92e0c9d674abde803",
+      "sha256": "c70cf3adf1f8e6fa7b55079ebad27e196898edb913822296cb036c3174c9b9d8"
+    },
+    "lib/features/shared/company_pdf_assets_flutter.dart": {
+      "git_blob": "2b12f586eef86d8021e94233e02411bce73208e4",
+      "sha256": "9fbd53d79154983f1c302202a8e5fc356b19590faea55add79cbdace04925418"
+    },
+    "tool/canonical_renderer/pubspec.yaml": {
+      "git_blob": "346a630707b036c38ff304275e89cc431f610215",
+      "sha256": "c35b5b6673295edc6b5624fa2d4c30bfb6f200510e52ad951ad239e446671d14"
+    },
+    "tool/canonical_renderer/pubspec.lock": {
+      "git_blob": "9f166744fa420c8bd402663eb3f2b77005fcd66a",
+      "sha256": "ee145975411247ffbbc513fec10e8908b047b947ef63e87528e8e0d4e138f52b"
+    }
+  },
+  "assets": {
+    "assets/fonts/company-seal/NotoSansJP-Bold.ttf": {
+      "sha256": "60aa355a4881177ce785dfa69a7951c563d0396c588d24d07bff9e8946e667a3",
+      "bytes": 5761728
+    },
+    "assets/fonts/company-seal/aoyagi-reisho/AoyagiReisho.ttf": {
+      "sha256": "a4c55ad5f72e65a482931d967725e97ff206eb3019c87281d9e5514a63bb8db9",
+      "bytes": 4412684
+    },
+    "assets/fonts/company-seal/aoyagi-reisho/coverage.json": {
+      "sha256": "a18634f26175c1277ec3b344b2641dad167a5cd6f38fc225ab8f76483bf7152a",
+      "bytes": 102367
+    },
+    "assets/images/company-seals/sumida-v1/standard.png": {
+      "sha256": "612e6c684b684ecb5f84230e79a5accad3e1a1e52a19470e5deae53ee478bbd1",
+      "bytes": 1470871
+    },
+    "assets/images/company-seals/sumida-v1/light.png": {
+      "sha256": "9a92a7eddcff164a871f0fb663febe381f2bb8076e2a232e220211bf0a38e8ba",
+      "bytes": 911617
+    },
+    "assets/images/company-seals/sumida-v1/worn.png": {
+      "sha256": "071cb3b850ade006c3c8a99c07a3af1dc193caac04ac001d1436303f182373cf",
+      "bytes": 1549046
+    }
+  }
+}

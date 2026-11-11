@@ -1,0 +1,15 @@
+// Private renderer port only. No HTTP handler, JWT verifier, SQL or storage API.
+import {createCanonicalWasmRenderer} from './runtime.mjs';
+export async function createCanonicalEdgeRenderer() {
+ let render;
+ try { render=await createCanonicalWasmRenderer(); }
+ catch { throw Error('canonical_renderer_unavailable'); }
+ return async evidence=>{
+  // Only the trusted coordinator's structured immutable evidence is accepted.
+  // This is a shape boundary, not an authorization claim.
+  if(evidence===null||typeof evidence!=='object'||Array.isArray(evidence))
+   throw Error('canonical_render_rejected');
+  try { return await render(evidence); }
+  catch { throw Error('canonical_render_rejected'); }
+ };
+}

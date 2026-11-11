@@ -1,0 +1,27 @@
+// Internal experiment module only. Never expose this as a client seal/PDF upload.
+import {compile} from './main.mjs';
+let initialization;
+export function createCanonicalWasmRenderer(){
+ return initialization??=(async()=>{
+  const bytes=await Deno.readFile(new URL('./main.wasm',import.meta.url));
+  const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('');
+  if(hash!=='@WASM_SHA256@')throw Error('canonical_runtime_changed');
+  const app=await(await compile(bytes)).instantiate({});app.invokeMain();
+  const render=globalThis.skoCanonicalPdfRender;delete globalThis.skoCanonicalPdfRender;
+  if(typeof render!=='function')throw Error('canonical_runtime_unavailable');
+  let busy=false;
+  return async evidence=>{
+   if(busy)throw Error('canonical_renderer_busy');
+   busy=true;
+   try{
+    const input=typeof evidence==='string'?evidence:JSON.stringify(evidence);
+    if(input.length>2*1024*1024||new TextEncoder().encode(input).length>2*1024*1024)throw Error('bounded_evidence_required');
+    const pdf=await render(input);
+    if(!(pdf instanceof Uint8Array)||pdf.length<16||pdf.length>20*1024*1024||
+      new TextDecoder().decode(pdf.subarray(0,5))!=='%PDF-')throw Error('canonical_pdf_required');
+    return new Uint8Array(pdf);
+   }catch{throw Error('canonical_render_rejected');}
+   finally{busy=false;}
+  };
+ })();
+}
