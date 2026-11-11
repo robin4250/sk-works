@@ -1,0 +1,36 @@
+name: Trade central OFF foundation review
+on:
+  pull_request:
+    paths:
+      - 'docs/candidates/trade_central_off_foundation_20261024.sql.review-only'
+      - 'tool/fixtures/trade_central_off/**'
+      - 'tool/verify_trade_central_off_foundation.py'
+      - '.github/workflows/trade-central-off-foundation.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-central-off:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: trade_gate_fixture
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Native source-bound foundation verification
+        env:
+          TRADE_GATE_FIXTURE_DATABASE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/trade_gate_fixture
+        run: python3 tool/verify_trade_central_off_foundation.py
