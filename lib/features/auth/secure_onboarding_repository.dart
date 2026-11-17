@@ -71,6 +71,29 @@ class SecureOnboardingRepository {
     return established;
   }
 
+  Future<void> registerApprovedPhone({
+    required String phone,
+    required String password,
+    required String approvalCode,
+  }) async {
+    try {
+      await _client.functions
+          .invoke(
+            'register-approved-phone',
+            body: {
+              'phone': normalizeJapanesePhone(phone),
+              'password': password,
+              'approvalCode': approvalCode,
+            },
+          )
+          .timeout(const Duration(seconds: 20));
+    } on FunctionException {
+      throw const AuthException(
+        '登録できませんでした。電話番号と承認コードを確認してください。登録済みの方はログインしてください。',
+      );
+    }
+  }
+
   Future<void> resendSmsCode({required String phone, String? captchaToken}) async {
     await _client.auth.resend(
       type: OtpType.sms,

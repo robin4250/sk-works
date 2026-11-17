@@ -146,7 +146,10 @@ class _SupabaseAuthGateState extends State<SupabaseAuthGate> {
         final invitation = _companyInvitation;
         return switch (state.status) {
           _GateStatus.unauthenticated =>
-            SecureAuthPage(onAuthenticated: _reload),
+            SecureAuthPage(
+              onAuthenticated: _reload,
+              companyInvitationCode: invitation?.code,
+            ),
           _GateStatus.employeePassword => EmployeePrimaryPasswordPage(
               name: state.employee!.name,
               onCompleted: _reload,
@@ -179,12 +182,17 @@ class _SupabaseAuthGateState extends State<SupabaseAuthGate> {
               onSignOut: _signOut,
             ),
           _GateStatus.authenticated => SupabaseBackend.client.auth.currentUser == null
-            ? SecureAuthPage(onAuthenticated: _reload)
+            ? SecureAuthPage(
+                onAuthenticated: _reload,
+                companyInvitationCode: invitation?.code,
+              )
             : CheckoutReportGateActivation(
             key: ValueKey(binding),
             actorId: SupabaseBackend.client.auth.currentUser!.id,
             onReauthenticate: _signOut,
-            child: invitation == null
+            child: invitation == null ||
+                    invitation.title == companySignupInvitationTitle ||
+                    invitation.title == workPassInvitationTitle
                 ? widget.homeBuilder(_signOut)
                 : TradeCompanyInvitationAcceptancePage(
                     key: ValueKey((binding, invitation.code)),

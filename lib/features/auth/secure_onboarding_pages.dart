@@ -12,11 +12,12 @@ import 'secure_onboarding_repository.dart';
 import 'existing_google_login.dart';
 
 class SecureAuthPage extends StatefulWidget {
-  const SecureAuthPage({super.key, required this.onAuthenticated, this.repository, this.googleLogin});
+  const SecureAuthPage({super.key, required this.onAuthenticated, this.repository, this.googleLogin, this.companyInvitationCode});
 
   final VoidCallback onAuthenticated;
   final SecureOnboardingRepository? repository;
   final ExistingGoogleLogin? googleLogin;
+  final String? companyInvitationCode;
 
   @override
   State<SecureAuthPage> createState() => _SecureAuthPageState();
@@ -47,6 +48,7 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
   @override
   void initState() {
     super.initState();
+    _registerMode = widget.companyInvitationCode != null;
     WidgetsBinding.instance.addObserver(this);
   }
 
@@ -217,6 +219,21 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
 
     await _run(() async {
       if (_registerMode) {
+        final approvalCode = widget.companyInvitationCode;
+        if (approvalCode != null) {
+          await repository.registerApprovedPhone(
+            phone: _phone.text,
+            password: _password.text,
+            approvalCode: approvalCode,
+          );
+          if (!mounted) return;
+          await repository.signInWithPhone(
+            phone: _phone.text,
+            password: _password.text,
+          );
+          if (mounted) widget.onAuthenticated();
+          return;
+        }
         final signedIn = await repository.registerAdmin(
           phone: _phone.text,
           password: _password.text,
@@ -489,8 +506,10 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
                                 _awaitingSms
                                     ? '承認する'
                                     : _registerMode
+                                        ? widget.companyInvitationCode == null
                                             ? '登録してSMS認証へ'
-                                            : 'ログイン',
+                                            : '承認コードで登録する'
+                                        : 'ログイン',
                                 style: const TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.w800,

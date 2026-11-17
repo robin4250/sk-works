@@ -6,11 +6,41 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sk_works/features/auth/secure_onboarding_repository.dart';
 import 'package:sk_works/features/companies/trade_company_invitation_page.dart';
 import 'package:sk_works/features/companies/trade_company_repository.dart';
 
 void main() {
   final code = 'a' * 48;
+
+  test('a new invite recipient enrolls through approved phone registration', () async {
+    final client = SupabaseClient(
+      'https://trade-invite-fixture.invalid',
+      'fixture-key',
+      authOptions: const AuthClientOptions(autoRefreshToken: false),
+      httpClient: MockClient((request) async {
+        expect(request.url.path, '/functions/v1/register-approved-phone');
+        expect(jsonDecode(request.body), {
+          'phone': '+819012345678',
+          'password': 'synthetic-password',
+          'approvalCode': code,
+        });
+        return http.Response(
+          '{}',
+          200,
+          headers: {'content-type': 'application/json'},
+          request: request,
+        );
+      }),
+    );
+    addTearDown(client.dispose);
+
+    await SecureOnboardingRepository.forClient(client).registerApprovedPhone(
+      phone: '09012345678',
+      password: 'synthetic-password',
+      approvalCode: code,
+    );
+  });
 
   test('Work Pass approval opens its own registration page', () {
     final link = companySignupInvitationLink(code, workPass: true);
