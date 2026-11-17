@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import 'app_v2.dart';
+import 'features/companies/company_invitation_tab.dart';
+import 'features/companies/trade_company_invitation_page.dart';
 import 'branding/sko_theme.dart';
 import 'data/supabase_backend.dart';
 import 'international/language_controller.dart';
@@ -26,5 +28,11 @@ Future<void> main() async {
   } catch (_) {
     // Fail closed in the app UI instead of terminating before runApp.
   }
-  runApp(const SkWorksApp());
+  final uri = Uri.base;
+  final invitation = readTradeCompanyInvitation(uri);
+  if (invitation != null) writeCompanyInvitationTab(uri.fragment);
+  final pendingInvitation = invitation ?? readTradeCompanyInvitation(
+    uri.replace(fragment: readCompanyInvitationTab() ?? ''),
+  );
+  runApp(SkWorksApp(companyInvitation: pendingInvitation));
 }

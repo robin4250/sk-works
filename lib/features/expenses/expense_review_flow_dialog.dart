@@ -54,7 +54,7 @@ class _ExpenseReviewFlowDialogState extends State<ExpenseReviewFlowDialog> {
         title: Text('${expenseBurdenLabel(category)}を選択'),
         children: [
           if (companies.isEmpty)
-            const Padding(padding: EdgeInsets.all(16), child: Text('登録済みの会社がありません。戻って負担先を選び直してください。')),
+            const Padding(padding: EdgeInsets.all(16), child: Text('選べる会社がありません。連携会社登録で会社と区分を確認してください。')),
           for (final company in companies)
             SimpleDialogOption(
               onPressed: () => Navigator.pop(dialogContext, company),

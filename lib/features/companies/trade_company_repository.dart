@@ -10,6 +10,7 @@ class TradeCompanyRecord {
     required this.name,
     required this.tradeRole,
     required this.linkStatus,
+    this.linkedCompanyId = '',
     required this.postalCode,
     required this.address,
     required this.phone,
@@ -30,6 +31,7 @@ class TradeCompanyRecord {
   final String name;
   final String tradeRole;
   final String linkStatus;
+  final String linkedCompanyId;
   final String postalCode;
   final String address;
   final String phone;
@@ -55,6 +57,7 @@ class TradeCompanyRecord {
       name: row['name']?.toString() ?? '',
       tradeRole: row['trade_role']?.toString() ?? 'customer',
       linkStatus: row['link_status']?.toString() ?? 'local',
+      linkedCompanyId: row['linked_company_id']?.toString() ?? '',
       postalCode: row['postal_code']?.toString() ?? '',
       address: row['address']?.toString() ?? '',
       phone: row['phone']?.toString() ?? '',
@@ -133,6 +136,27 @@ class TradeCompanyRepository {
   Future<Map<String, dynamic>> linkWorkspace() async {
     final raw = await _client.rpc('trade_company_link_workspace');
     return Map<String, dynamic>.from(raw as Map);
+  }
+
+  Future<String> siteDefaultRole({
+    required String tradeCompanyId,
+    required String sessionToken,
+    String? role,
+  }) async {
+    void verifySession() {
+      final session = _client.auth.currentSession;
+      if (session == null || session.isExpired || session.accessToken != sessionToken) {
+        throw StateError('ログイン状態が変わりました。');
+      }
+    }
+
+    verifySession();
+    final value = await _client.rpc('trade_company_site_default', params: {
+      'p_trade_company': tradeCompanyId,
+      if (role != null) 'p_role': role,
+    }).setHeader('Authorization', 'Bearer $sessionToken');
+    verifySession();
+    return value as String;
   }
 
   Future<void> setLinkEnabled(bool enabled) async {

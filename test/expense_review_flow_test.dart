@@ -65,6 +65,51 @@ void main() {
     expect(result!.approve,isFalse);expect(result!.destination,isNull);expect(result!.settlement,isNull);expect(result!.memo,'要確認');
     result=null;await tap('開く');await tap('キャンセル');expect(result,isNull);expect(tester.takeException(),isNull);
   });
+  testWidgets('one company keeps separate expense IDs for each role', (tester) async {
+    const companyName = '両方に登録された会社';
+    final destinations = [
+      ExpenseAllocation(ExpenseCategory.customer,
+        counterpartyId: 'billing-id', counterpartyName: companyName),
+      ExpenseAllocation(ExpenseCategory.subcontractor,
+        counterpartyId: 'payment-id', counterpartyName: companyName),
+    ];
+    ExpenseReviewDecision? result;
+    await tester.pumpWidget(MaterialApp(home: Builder(builder: (context) {
+      return Scaffold(body: TextButton(
+        onPressed: () async {
+          result = await showDialog<ExpenseReviewDecision>(
+            context: context,
+            builder: (_) => ExpenseReviewFlowDialog(
+              claim: claim(), destinations: destinations,
+            ),
+          );
+        },
+        child: const Text('開く'),
+      ));
+    })));
+    Future<void> tap(String label) async {
+      final target = find.text(label).last;
+      await tester.ensureVisible(target);
+      await tester.tap(target);
+      await tester.pumpAndSettle();
+    }
+
+    for (final destination in destinations) {
+      await tap('開く');
+      await tap('次へ');
+      await tap(expenseBurdenLabel(destination.category));
+      expect(find.text(companyName), findsOneWidget);
+      await tap(companyName);
+      await tap('次へ');
+      await tap('支払済み（対象外）');
+      await tap('次へ');
+      await tap('次へ');
+      await tap('確定');
+      expect(result!.destination!.category, destination.category);
+      expect(result!.destination!.counterpartyId, destination.counterpartyId);
+    }
+  });
+
   testWidgets('rejected detail keeps its memo and edit history actions accessible on narrow screens', (tester) async {
     tester.view.physicalSize = const Size(320, 900);
     tester.view.devicePixelRatio = 1;

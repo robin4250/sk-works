@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../../data/supabase_backend.dart';
 import '../attendance/checkout_report_gate.dart';
+import '../companies/company_invitation_tab.dart';
+import '../companies/trade_company_invitation_page.dart';
+import '../companies/trade_company_page.dart';
+import '../companies/trade_company_repository.dart';
 import 'admin_initial_setup_page.dart';
 import 'apple_session_navigation_binding.dart';
 import 'admin_initial_setup_repository.dart';
@@ -13,9 +17,11 @@ class SupabaseAuthGate extends StatefulWidget {
   const SupabaseAuthGate({
     super.key,
     required this.homeBuilder,
+    this.companyInvitation,
   });
 
   final Widget Function(VoidCallback onSignOut) homeBuilder;
+  final ({String code, String title})? companyInvitation;
 
   @override
   State<SupabaseAuthGate> createState() => _SupabaseAuthGateState();
@@ -23,6 +29,24 @@ class SupabaseAuthGate extends StatefulWidget {
 
 class _SupabaseAuthGateState extends State<SupabaseAuthGate> {
   late Future<_GateState> _state;
+  late var _companyInvitation = widget.companyInvitation;
+
+  void _closeCompanyInvitation() {
+    writeCompanyInvitationTab(null);
+    setState(() => _companyInvitation = null);
+  }
+
+  void _openCompanyDirectory() {
+    _closeCompanyInvitation();
+    Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => const TradeCompanyPage(
+          mode: TradeCompanyPageMode.customer,
+          unified: true,
+        ),
+      ),
+    );
+  }
 
   SecureOnboardingRepository? get _repository =>
       SecureOnboardingRepository.maybeCreate();
@@ -119,6 +143,7 @@ class _SupabaseAuthGateState extends State<SupabaseAuthGate> {
         } catch (_) {
           return _ErrorScreen(message: 'ログイン状態を確認できません。', onRetry: _reload);
         }
+        final invitation = _companyInvitation;
         return switch (state.status) {
           _GateStatus.unauthenticated =>
             SecureAuthPage(onAuthenticated: _reload),
@@ -159,7 +184,16 @@ class _SupabaseAuthGateState extends State<SupabaseAuthGate> {
             key: ValueKey(binding),
             actorId: SupabaseBackend.client.auth.currentUser!.id,
             onReauthenticate: _signOut,
-            child: widget.homeBuilder(_signOut),
+            child: invitation == null
+                ? widget.homeBuilder(_signOut)
+                : TradeCompanyInvitationAcceptancePage(
+                    key: ValueKey((binding, invitation.code)),
+                    client: SupabaseBackend.client,
+                    code: invitation.code,
+                    title: invitation.title,
+                    onDone: _closeCompanyInvitation,
+                    onOpenDirectory: _openCompanyDirectory,
+                  ),
           ),
         };
       },

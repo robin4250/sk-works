@@ -24,6 +24,8 @@ void main() {
               onSubmit: submit,
               loadTradeCompanies: () async => const [
                 SiteTradeCompanyOption(tradeCompanyId: 'trade-1',
+                    customerId: 'customer-1', name: '取引会社'),
+                SiteTradeCompanyOption(tradeCompanyId: 'legacy-directory-copy',
                     customerId: 'customer-1', name: '取引会社')],
               loadManagers: () async => const [],
             ),

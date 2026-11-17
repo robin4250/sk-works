@@ -333,6 +333,31 @@ class SiteCloudRepository {
         .toList(growable: false);
   }
 
+  String? get attendanceDirectionSession => _client.auth.currentSession?.accessToken;
+
+  Future<List<Map<String, dynamic>>> attendanceDirectionWorkspace({
+    required String siteId,
+    required String sessionToken,
+    String? itemId,
+    String? action,
+    String? requestId,
+  }) async {
+    if (attendanceDirectionSession != sessionToken ||
+        _client.auth.currentSession?.isExpired != false) {
+      throw StateError('ログイン状態が変わりました。');
+    }
+    final rows = await _client.rpc('site_attendance_direction_workspace', params: {
+      'p_site': siteId,
+      if (itemId != null) 'p_item': itemId,
+      if (action != null) 'p_action': action,
+      if (requestId != null) 'p_request': requestId,
+    }).setHeader('Authorization', 'Bearer $sessionToken');
+    if (attendanceDirectionSession != sessionToken) {
+      throw StateError('ログイン状態が変わりました。');
+    }
+    return List<Map<String, dynamic>>.from(rows as List);
+  }
+
   Future<int> sendSiteShare({
     required String siteId,
     required Iterable<String> targetCompanyIds,

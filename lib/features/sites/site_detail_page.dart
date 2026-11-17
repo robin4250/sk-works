@@ -3,6 +3,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../international/language_controller.dart';
+import 'site_attendance_direction_page.dart';
 import 'site_cloud_repository.dart';
 import 'site_page.dart';
 
@@ -596,6 +597,22 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
             ),
             const SizedBox(height: 8),
           ],
+          if (widget.canManage && _repository != null && site.id.isNotEmpty)
+            ListTile(
+              leading: const Icon(Icons.swap_horiz),
+              title: Text(_tr('出勤共有の方向', 'Attendance Sharing Direction')),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push<void>(
+                MaterialPageRoute(
+                  builder: (_) => SiteAttendanceDirectionPage(
+                    siteId: site.id,
+                    siteName: site.formalName.isEmpty ? site.name : site.formalName,
+                    siteAddress: site.address,
+                    repository: _repository,
+                  ),
+                ),
+              ),
+            ),
           Row(
             children: [
               Expanded(
@@ -838,7 +855,11 @@ class _SiteEditRequestPageState extends State<SiteEditRequestPage> {
       final managers = await (widget.loadManagers?.call() ??
           repository!.loadSiteManagers());
 
-      final customerItems = <SiteTradeCompanyOption>[...tradeCompanies];
+      final seenCustomers = <String>{};
+      final customerItems = [
+        for (final item in tradeCompanies)
+          if (seenCustomers.add(item.customerId)) item,
+      ];
       if (_customerId != null &&
           !customerItems.any((item) => item.customerId == _customerId) &&
           widget.site.customerName.isNotEmpty) {
@@ -1024,8 +1045,8 @@ class _SiteEditRequestPageState extends State<SiteEditRequestPage> {
         SnackBar(
           content: Text(
             _tr(
-              '登録済みの取引会社から取引先を選択してください',
-              'Select a registered business partner',
+              '連携会社登録にある取引会社から選択してください',
+              'Select a customer from the linked company directory',
             ),
           ),
         ),

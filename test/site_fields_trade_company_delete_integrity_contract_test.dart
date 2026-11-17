@@ -43,7 +43,7 @@ void main() {
     expect(page, contains("_tr('取引先', 'Business Partner')"));
     expect(
       page,
-      contains('登録済みの取引会社から取引先を選択してください'),
+      contains('連携会社登録にある取引会社から選択してください'),
     );
   });
 
