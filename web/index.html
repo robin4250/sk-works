@@ -49,7 +49,8 @@
     <a id="sko-startup-retry" href="">再読み込み</a>
     <noscript>SKOを開くには、ブラウザのJavaScriptを有効にしてください。</noscript>
   </section>
-  <script src="sko_startup.js"></script>
+  <script defer src="https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js"></script>
+  <script src="sko_startup.js?v=company-links-1"></script>
   <!--
     You can customize the "flutter_bootstrap.js" script.
     This is useful to provide a custom configuration to the Flutter loader
@@ -58,6 +59,6 @@
     For more details:
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
-  <script id="sko-flutter-bootstrap" src="flutter_bootstrap.js" async></script>
+  <script id="sko-flutter-bootstrap" src="flutter_bootstrap.js?v=company-links-1" async></script>
 </body>
 </html>
