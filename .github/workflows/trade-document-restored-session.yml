@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: {fetch-depth: 0}
       - uses: subosito/flutter-action@v2
         with: {flutter-version: '3.47.5', channel: stable, cache: true}
@@ -94,7 +94,7 @@ jobs:
             test/app_auth_mutation_gateway_test.dart \
             test/secondary_password_reset_page_test.dart \
             2>&1 | tee build/restored-session-proof/restored-candidate-green.log
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: restored-financial-session-proof

@@ -52,10 +52,10 @@ jobs:
     env:
       SKO_BILLING_RACE_DATABASE_URL: postgres://postgres:billing-quantity-fixture@127.0.0.1:5432/sko_billing_quantity_race_fixture
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
       - name: Install pinned isolated Postgres client
@@ -81,10 +81,10 @@ jobs:
     env:
       SKO_ROUTE_INVOICE_RACE_DATABASE_URL: postgres://postgres:route-invoice-fixture@127.0.0.1:5432/sko_route_invoice_race_fixture
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
       - name: Install pinned isolated database clients

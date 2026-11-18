@@ -24,7 +24,7 @@ jobs:
       PGUSER: postgres
       PGDATABASE: postgres
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Guarded install then unused-only restore on synthetic rows
         run: |
           dir=docs/review/employee-category-candidate

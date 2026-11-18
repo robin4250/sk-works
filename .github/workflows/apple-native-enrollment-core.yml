@@ -26,10 +26,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
       - run: node --test docs/review/apple-existing-login-candidate/native_apple_enrollment.test.mjs docs/review/apple-existing-login-candidate/native_apple_password_port.test.mjs docs/review/apple-existing-login-candidate/native_apple_enrollment_sql_port.test.mjs docs/review/apple-existing-login-candidate/native_apple_auth_port.test.mjs docs/review/apple-existing-login-candidate/native_apple_successor_handoff.test.mjs docs/review/apple-existing-login-candidate/native_apple_successor_db_port.test.mjs docs/review/apple-existing-login-candidate/native_apple_successor_broker.test.mjs docs/review/apple-existing-login-candidate/native_apple_auth_port_password_successor.test.mjs docs/review/apple-existing-login-candidate/native_apple_successor_password_broker.test.mjs
@@ -54,10 +54,10 @@ jobs:
         ports: ['5432:5432']
         options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
       - name: Install pinned fixture-only PostgreSQL driver

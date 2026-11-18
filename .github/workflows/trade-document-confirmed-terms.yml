@@ -42,9 +42,9 @@ jobs:
       SKO_MONTHLY_PAYMENT_REVIEW_HOOK: contract-v1
       SKO_TRADE_DOCUMENT_API_REVIEW_HOOK: contract-v1
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: {fetch-depth: 0}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: {node-version: '22.14.0'}
       - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
       - if: matrix.runtime == 'pglite'
@@ -66,15 +66,15 @@ jobs:
       SKO_CONFIRMED_TERMS_HOOK: content-v1
       PARTNER_BANK_TEST_DATABASE_URL: postgres://postgres:fixture-only@127.0.0.1:5432/partner_bank_fixture
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with: {node-version: '22.14.0'}
       - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
       - run: node docs/review/partner-company-bank-order/sql.test.mjs "$GITHUB_WORKSPACE/docs/review/partner-company-bank-order/native-db.mjs"
   two-page-pdfs:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: {fetch-depth: 0}
       - uses: subosito/flutter-action@v2
         with: {flutter-version: '3.47.5', channel: stable, cache: true}
@@ -186,7 +186,7 @@ jobs:
                   page.get_pixmap(matrix=fitz.Matrix(1.5,1.5)).save(folder/(case['file']+'.png'))
           print('PASS exact 22 confirmed articles, two A4 portrait pages with margins, adopted 9-row geometry and unchanged legacy pixels/text')
           PY
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with: {name: confirmed-contract-terms-proof, path: build/trade-terms-proof/}
       - run: git diff --exit-code -- pubspec.yaml pubspec.lock

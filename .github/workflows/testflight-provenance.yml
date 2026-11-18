@@ -14,7 +14,7 @@ jobs:
   provenance:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Executable ZIP, signing-tool and dirty-source regressions
         run: |
           python3 tool/test_testflight_provenance.py

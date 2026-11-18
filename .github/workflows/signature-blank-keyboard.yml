@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: {fetch-depth: 0}
       - uses: subosito/flutter-action@v2
         with: {flutter-version: '3.47.5', channel: stable, cache: true}
@@ -69,7 +69,7 @@ jobs:
           test/daily_report_shared_hours_integration_test.dart
           test/daily_report_approved_edit_start_test.dart
           test/route_visit_report_signed_ui_test.dart
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: signature-point-only-baseline

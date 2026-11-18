@@ -47,10 +47,10 @@ jobs:
       SKO_DOCUMENT_CHANGE_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_document_change_fixture
       SKO_DOCUMENT_PG_MODULE: /tmp/sko-document-native/node_modules/pg/lib/index.js
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
       - run: npm install --prefix /tmp/sko-document-native --no-save --ignore-scripts --no-audit --no-fund pg@8.16.3

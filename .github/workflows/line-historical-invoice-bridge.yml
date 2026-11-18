@@ -12,8 +12,8 @@ jobs:
   sql:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
       - run: npm install --prefix "$RUNNER_TEMP/line-bridge-sql" --save-exact @electric-sql/pglite@0.3.14
@@ -34,8 +34,8 @@ jobs:
     env:
       SKO_LINE_IMPORT_POSTGRES_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_line_import_fixture
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
       - run: npm install --prefix "$RUNNER_TEMP/line-bridge-pg" --save-exact pg@8.16.3

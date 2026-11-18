@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: {fetch-depth: 0}
       - uses: subosito/flutter-action@v2
         with: {flutter-version: '3.47.5', channel: stable, cache: true}
@@ -48,7 +48,7 @@ jobs:
           grep -F 'The earlier real SDK listener calls' build/confirmed-output-boundary/baseline.log
           echo 'Exact original callback returned cached bytes across the observed actual SDK boundary; corrected source restored by hash.'
       - run: flutter test --reporter expanded test/trade_document_confirmed_output_session_test.dart test/trade_document_confirmed_output_host_test.dart test/trade_document_confirmation_test.dart
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with: {name: confirmed-output-boundary, path: build/confirmed-output-boundary}
       - run: git diff --exit-code -- pubspec.yaml pubspec.lock

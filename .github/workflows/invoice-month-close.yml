@@ -20,12 +20,12 @@ jobs:
         ports: ['5432:5432']
         options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
           ref: 4f04488f77ff909d0d48a9a74247eb549823ca83
           path: invoice-calculation-candidate
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
       - run: npm install --no-save --ignore-scripts pg@8.16.3
@@ -61,12 +61,12 @@ jobs:
         ports: ['5432:5432']
         options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
           ref: 4f04488f77ff909d0d48a9a74247eb549823ca83
           path: invoice-calculation-candidate
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
       - run: npm install --no-save --ignore-scripts pg@8.16.3
@@ -95,20 +95,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: 02e532e500a2ebd1629bbbb5ecc11321d09e19f7
           path: reauth-source
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
       - run: npm ci --ignore-scripts --no-audit --no-fund --prefix tool/security/fixture_dependencies
       - run: node --check docs/review/invoice-month-close/verify_notice_gotrue.mjs
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: 4f04488f77ff909d0d48a9a74247eb549823ca83
           path: invoice-calculation-candidate

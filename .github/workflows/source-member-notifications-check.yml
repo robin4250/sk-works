@@ -29,10 +29,10 @@ jobs:
   verify-source-bound-notifications:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
       - name: Install isolated pinned synthetic SQL runtime
@@ -58,10 +58,10 @@ jobs:
     env:
       SKO_NOTIFICATION_RACE_DATABASE_URL: postgres://postgres:source-notification-fixture@127.0.0.1:5432/sko_notification_race_fixture
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
       - name: Install isolated pinned Postgres client

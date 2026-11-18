@@ -22,15 +22,15 @@ jobs:
         options: >-
           --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: candidate
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: supabase/auth
           ref: c3348e8f1cb31454e9783e4eb9eab1e71ad9652f
           path: gotrue
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version-file: gotrue/go.mod
           cache-dependency-path: gotrue/go.sum

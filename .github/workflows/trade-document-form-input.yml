@@ -24,7 +24,7 @@ jobs:
   typed-input:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
         with: {flutter-version: '3.47.5', channel: stable, cache: true}
       - run: flutter pub get --enforce-lockfile
@@ -56,7 +56,7 @@ jobs:
             if name=='a4Duplex':assert '/DuplexFlipLongEdge' in d.xref_object(d.pdf_catalog())
           print('Actual Japanese three-format complete content and dimensions passed')
           PYCODE
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with: {name: typed-form-output, path: /tmp/typed-form-output}
       - run: git diff --exit-code -- pubspec.yaml pubspec.lock

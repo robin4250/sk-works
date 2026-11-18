@@ -34,8 +34,8 @@ jobs:
       SKO_LINE_RELEASE_POSTGREST_URL: http://127.0.0.1:3000
       SKO_LINE_RELEASE_POSTGRES_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_line_release_fixture
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
       - run: npm ci --prefix tool/line_release_fixture_dependencies
@@ -44,8 +44,8 @@ jobs:
   pglite:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
       - run: npm ci --prefix tool/line_release_fixture_dependencies

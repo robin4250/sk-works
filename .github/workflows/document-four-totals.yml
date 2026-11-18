@@ -10,7 +10,7 @@ jobs:
   proof:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
         with: {flutter-version: '3.47.5', channel: stable, cache: true}
       - run: flutter pub get --enforce-lockfile
@@ -39,6 +39,6 @@ jobs:
                   assert block[0]>=-1 and block[1]>=-1 and block[2]<=page.rect.width+1 and block[3]<=page.rect.height+1,block
               page.get_pixmap(matrix=fitz.Matrix(1.5,1.5)).save(path.with_suffix('.png'))
           PY
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with: {name: four-document-totals-proof, path: 'build/four-totals*/'}

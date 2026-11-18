@@ -12,9 +12,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Reuse exact reviewed collector ingress source without merging or deploying it
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: robin4250/sk-works
           ref: 20f516d662e8e50458db68ba3e8a39772d93454d
@@ -22,7 +22,7 @@ jobs:
           sparse-checkout: supabase/functions/security-collector-ingest/handler.mjs
           sparse-checkout-cone-mode: false
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '24.22.1'
       - name: Install exact locked Miniflare and workerd without lifecycle scripts

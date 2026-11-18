@@ -20,8 +20,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
       - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
@@ -53,8 +53,8 @@ jobs:
       SKO_PLATFORM_FIXTURE_URL: postgres://postgres:platform-fixture-only@127.0.0.1:5432/sko_platform_fixture
       SKO_PLATFORM_POSTGREST_URL: http://127.0.0.1:3000
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
       - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
@@ -77,8 +77,8 @@ jobs:
     env:
       SKO_PLATFORM_CLICKHOUSE_URL: http://127.0.0.1:8123/
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
       - run: node tool/security/platform_log_clickhouse_check.mjs

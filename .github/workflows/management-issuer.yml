@@ -14,9 +14,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: {persist-credentials: false}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: {node-version: '24'}
       - run: npm ci --prefix tool/security/free-worker-candidate --ignore-scripts --no-audit --no-fund
       - run: node --test tool/security/free-worker-candidate/issuer/issuer-server.test.mjs tool/security/free-worker-candidate/issuer/issuer-transport.test.mjs
@@ -32,9 +32,9 @@ jobs:
         ports: ['5432:5432']
         options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: {persist-credentials: false}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: {node-version: '24'}
       - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
       - run: node tool/security/free-worker-candidate/issuer/verify-management-issuer-sql.mjs tool/security/free-worker-candidate/issuer/native-pg17-runtime.mjs --native
@@ -53,9 +53,9 @@ jobs:
         ports: ['5432:5432']
         options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: {persist-credentials: false}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: {node-version: '24'}
       - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
       - run: node tool/security/free-worker-candidate/issuer/verify-management-issuer-guards.mjs tool/security/free-worker-candidate/issuer/native-pg17-runtime.mjs --native
