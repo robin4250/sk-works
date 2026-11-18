@@ -45,7 +45,8 @@ Future<void> drainPortraitIo(WidgetTester tester) async {
  while(find.byType(LinearProgressIndicator).evaluate().isNotEmpty){
   if(clock.elapsed>const Duration(seconds:5)){throw StateError('portrait fixture IO did not settle');}
   await tester.runAsync(() async {await Future<void>.delayed(const Duration(milliseconds:5));});
-  await tester.pump(Duration.zero);
+  // Saving can pop the route while its progress indicator is still mounted.
+  await tester.pump(const Duration(milliseconds: 16));
  }
  await tester.pumpAndSettle();
 }
