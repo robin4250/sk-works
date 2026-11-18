@@ -10,7 +10,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -1841,7 +1841,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           weatherCard: _weatherHomeCard(),
           trafficCard: TrafficHomeCard(key: const ValueKey('home-traffic-card'), availability: _homeTrafficAvailability, shortcutScope: _trafficShortcutScope, canEditShortcuts: _isAdmin),
           showTrafficGuidance: !_hiddenHomeActionKeys.contains('traffic_guidance'),
-          showWeatherForecast: !_hiddenHomeActionKeys.contains('weather_forecast'),
+          showWeatherForecast:
+              (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) &&
+              !_hiddenHomeActionKeys.contains('weather_forecast'),
           tutorialCard: _tutorialUserId != null && _tutorialCompanyId != null
               ? TutorialHomeCard(userId: _tutorialUserId!, companyId: _tutorialCompanyId!,
                   availableActionKeys: _availableActionKeys,
