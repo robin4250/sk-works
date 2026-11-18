@@ -95,7 +95,7 @@ void main() {
     expect(page, contains("'www.google.com'"));
     expect(page, contains("'/maps/search/'"));
     expect(page, contains("'取引会社'"));
-    expect(page, contains("'下請け会社'"));
+    expect(page, contains("'協力会社'"));
     expect(page, contains("'最新の打刻位置'"));
     expect(repository, contains("final legacyCustomers = rows('customers')"));
     expect(repository, contains("final legacyPartners = rows('partners')"));
