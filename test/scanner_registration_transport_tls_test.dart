@@ -8,6 +8,7 @@ import 'package:http/testing.dart';
 import 'package:sk_works/features/qr_attendance/scanner_registration_key.dart';
 import 'package:sk_works/features/qr_attendance/scanner_registration_transport.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'fixtures/loopback_tls_fixture.dart';
 import 'scanner_registration_flow_test.dart' as fixture;
 
 class _NativeFixtureHttp extends HttpOverrides {}
@@ -30,16 +31,12 @@ class _RetiringHeaders extends http.BaseClient {
  @override Future<http.StreamedResponse> send(http.BaseRequest request)=>_RetiringFuture(Future.value(response),retire);
 }
 class _Tls {
- late Directory directory;late HttpServer server;late IOClient httpClient;late SupabaseClient auth;
+ late LoopbackTlsFixture tls;late HttpServer server;late IOClient httpClient;late SupabaseClient auth;
  late ScannerRegistrationSession owner;late ScannerRegistrationTransport transport;
  final closed=Completer<void>();final sockets=<Socket>[];int requests=0;Object? fixtureFailure;
  Future<void> open(Future<void> Function(HttpRequest request,Map<String,dynamic> body) handle) async {
-  directory=await Directory.systemTemp.createTemp('qr-registration-tls-');
-  final cert=File('${directory.path}/cert.pem'),key=File('${directory.path}/key.pem');
-  final generated=await Process.run('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',key.path,'-out',cert.path,'-days','1','-subj','/CN=localhost','-addext','subjectAltName=DNS:localhost,IP:127.0.0.1']);
-  if(generated.exitCode!=0)throw StateError('ephemeral TLS fixture unavailable');
-  final context=SecurityContext()..useCertificateChain(cert.path)..usePrivateKey(key.path);
-  server=await HttpServer.bindSecure(InternetAddress.loopbackIPv4,0,context);
+  tls=await LoopbackTlsFixture.create();
+  server=await HttpServer.bindSecure(InternetAddress.loopbackIPv4,0,tls.serverContext);
   server.listen((request) async {
    requests++;
    try{
@@ -48,8 +45,7 @@ class _Tls {
     await handle(request,body);
    }catch(error){if(error is TestFailure)fixtureFailure=error;try{await request.response.close();}catch(_){}}
   });
-  final trusted=SecurityContext(withTrustedRoots:false)..setTrustedCertificates(cert.path);
-  httpClient=IOClient(_NativeFixtureHttp().createHttpClient(trusted));
+  httpClient=IOClient(_NativeFixtureHttp().createHttpClient(tls.clientContext));
   auth=SupabaseClient('https://qr-auth-fixture.invalid','synthetic-public',authOptions:const AuthClientOptions(autoRefreshToken:false),httpClient:MockClient((r) async {
    expect(r.url.origin,'https://qr-auth-fixture.invalid');expect(r.url.path,'/auth/v1/user');expect(r.url.query,isEmpty);
    return http.Response(jsonEncode((jsonDecode(fixture.sdkSession()) as Map)['user']),200,headers:{'content-type':'application/json'});
@@ -66,7 +62,7 @@ class _Tls {
   socket.add(chunked?utf8.encode('1\r\n{\r\n'):[123]);await socket.flush();
  }
  Future<String?> receipt()=>transport.receipt(owner,ScannerRegistrationKey(actor:fixture.actor,company:fixture.company,device:fixture.device,handle:fixture.handle,publicKeyHex:fixture.publicKey),fixture.nonce,fixture.challengeId);
- Future<void> close() async {await owner.dispose();httpClient.close();for(final socket in sockets){socket.destroy();}await server.close(force:true);await auth.dispose();await directory.delete(recursive:true);if(fixtureFailure!=null)throw fixtureFailure!;}
+ Future<void> close() async {await owner.dispose();httpClient.close();for(final socket in sockets){socket.destroy();}await server.close(force:true);await auth.dispose();await tls.dispose();if(fixtureFailure!=null)throw fixtureFailure!;}
 }
 void main(){
  TestWidgetsFlutterBinding.ensureInitialized();

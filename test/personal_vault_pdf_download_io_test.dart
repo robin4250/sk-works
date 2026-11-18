@@ -6,6 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/io_client.dart';
 import 'package:sk_works/features/personal_vault/personal_vault_pdf_download.dart';
 
+import 'fixtures/loopback_tls_fixture.dart';
+
 // Native client only for this loopback fixture: no global override or bad cert callback.
 class _NativeFixtureHttp extends HttpOverrides {}
 
@@ -25,29 +27,19 @@ class _DetachedConnection {
 // Detached TLS sockets remain open until the client closes or test teardown.
 // Rejection tests must observe peer closure before releasing the server.
 void main() {
-  late Directory fixture;
-  late SecurityContext trusted;
+  late LoopbackTlsFixture tls;
   late HttpServer server;
   late Completer<void> invalidated;
   final pdf = utf8.encode('%PDF-1.7\nloopback fixture');
   final received = <Map<String,String>>[];
   final detached = <_DetachedConnection>[];
   final releases = <Completer<void>>[];
-  setUpAll(() async {
-    fixture = await Directory.systemTemp.createTemp('vault-tls-');
-    final result = await Process.run('openssl', ['req','-x509','-newkey','rsa:2048',
-      '-nodes','-keyout','${fixture.path}/key.pem','-out','${fixture.path}/cert.pem',
-      '-days','1','-subj','/CN=localhost','-addext','subjectAltName=IP:127.0.0.1']);
-    expect(result.exitCode,0,reason:'ephemeral TLS fixture generation');
-    trusted = SecurityContext(withTrustedRoots:false)
-      ..setTrustedCertificates('${fixture.path}/cert.pem');
-  });
-  tearDownAll(() async { await fixture.delete(recursive:true); });
+  setUpAll(() async { tls = await LoopbackTlsFixture.create(); });
+  tearDownAll(() async { await tls.dispose(); });
   setUp(() async {
-    final context = SecurityContext()
-      ..useCertificateChain('${fixture.path}/cert.pem')
-      ..usePrivateKey('${fixture.path}/key.pem');
-    server = await HttpServer.bindSecure(InternetAddress.loopbackIPv4,0,context);
+    server = await HttpServer.bindSecure(
+      InternetAddress.loopbackIPv4, 0, tls.serverContext,
+    );
     invalidated = Completer<void>(); received.clear(); detached.clear(); releases.clear();
   });
   tearDown(() async {
@@ -60,7 +52,7 @@ void main() {
     }
     await server.close(force:true);
   });
-  IOClient client() => IOClient(_NativeFixtureHttp().createHttpClient(trusted));
+  IOClient client() => IOClient(_NativeFixtureHttp().createHttpClient(tls.clientContext));
   Future<List<int>> download({Duration deadline = const Duration(seconds:20),
     String? hash,int? length}) => PersonalVaultPdfDownload(deadline:deadline,clientFactory:client)
       .download(uri:Uri.parse('https://127.0.0.1:${server.port}/private.pdf'),

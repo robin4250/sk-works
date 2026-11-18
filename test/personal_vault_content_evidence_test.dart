@@ -29,13 +29,35 @@ void main() {
     final dir=await Directory.systemTemp.createTemp('sko-vault-content-');
     addTearDown(() async => dir.delete(recursive:true));
     final file=File('${dir.path}/fixture.pdf');await file.writeAsBytes(bytes);
-    final extract=await Process.run('python3',['-c',r'''
-import hashlib,importlib.util,json,pathlib,sys
-s=importlib.util.spec_from_file_location('inspection','docs/review/personal-vault25-content/inspection_worker_candidate.py')
-m=importlib.util.module_from_spec(s);s.loader.exec_module(m)
-b=pathlib.Path(sys.argv[1]).read_bytes()
-r=m.observe_in_worker(b,enabled=True,expected_sha256=hashlib.sha256(b).hexdigest(),expected_owner='Only Owner',forbidden_markers=['OTHER_WORKER_PRIVATE_SENTINEL','COMPANY_INTERNAL_SENTINEL','SEAL_SECRET_SENTINEL'])
-print(json.dumps(r))
+    final extract=await Process.run('python3',['-I','-c',r'''
+import hashlib
+import json
+from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path('docs/review/personal-vault25-content').resolve()))
+data = Path(sys.argv[1]).read_bytes()
+options = {
+    'expected_sha256': hashlib.sha256(data).hexdigest(),
+    'expected_owner': 'Only Owner',
+    'forbidden_markers': [
+        'OTHER_WORKER_PRIVATE_SENTINEL', 'COMPANY_INTERNAL_SENTINEL', 'SEAL_SECRET_SENTINEL',
+    ],
+}
+try:
+    if sys.platform == 'linux':
+        from inspection_worker_candidate import observe_in_worker
+        result = observe_in_worker(data, enabled=True, **options)
+    else:
+        # Only the synthetic renderer output belongs here. The bounded worker
+        # stays Linux-only, and non-Linux hosts exercise the same PDF checks.
+        from inspect_pdf_candidate import inspect_candidate
+        result = inspect_candidate(data, **options)
+except ModuleNotFoundError as error:
+    if error.name != 'pymupdf':
+        raise
+    raise SystemExit('Install PyMuPDF==1.26.6 in the test Python environment.')
+print(json.dumps(result))
 ''',file.path]);
     expect(extract.exitCode,0,reason:extract.stderr.toString());
     final out=jsonDecode(extract.stdout.toString()) as Map;

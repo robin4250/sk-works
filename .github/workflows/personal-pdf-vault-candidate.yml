@@ -11,6 +11,7 @@ on:
       - 'test/personal_vault_content_evidence_test.dart'
       - 'test/personal_vault_pdf_download_test.dart'
       - 'test/personal_vault_pdf_download_io_test.dart'
+      - 'test/fixtures/loopback_tls_fixture.dart'
       - 'test/personal_vault_pdf_lease_test.dart'
       - 'docs/review/personal-vault25-content/**'
       - '.github/workflows/personal-pdf-vault-candidate.yml'

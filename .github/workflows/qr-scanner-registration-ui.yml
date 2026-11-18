@@ -5,6 +5,7 @@ on:
       - 'lib/features/qr_attendance/scanner_registration_*.dart'
       - 'test/scanner_registration_flow_test.dart'
       - 'test/scanner_registration_transport_tls_test.dart'
+      - 'test/fixtures/loopback_tls_fixture.dart'
       - 'tool/ios/qr_scanner_registration_journal.swift'
       - 'tool/tests/qr_scanner_journal_main.swift'
       - 'tool/prepare_ios.sh'
