@@ -105,8 +105,10 @@ Future<(SupabaseClient, SiteOrderWorkflowRepository)> fixture(Wire w) async {
     httpClient: w,
     authOptions: const AuthClientOptions(autoRefreshToken: false),
   );
-  await c.auth.setInitialSession(jsonEncode(w.session()));
-  await c.auth.recoverSession(jsonEncode(w.session()));
+  // Both SDK calls restore the same saved session, even at a clock tick.
+  final savedSession = jsonEncode(w.session());
+  await c.auth.setInitialSession(savedSession);
+  await c.auth.recoverSession(savedSession);
   return (c, SiteOrderWorkflowRepository(c));
 }
 
