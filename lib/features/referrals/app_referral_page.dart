@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'app_referral_repository.dart';
 import 'app_referral_composer.dart';
+import 'app_installation_invitation.dart';
 
 class AppReferralPage extends StatefulWidget {
   const AppReferralPage({
@@ -172,11 +173,10 @@ class _AppReferralPageState extends State<AppReferralPage> {
             ? '$_channel:${widget.invitationKind}'
             : '',
         guideUrl: switch (widget.friendInvite ? 'friend' : widget.guideKind) {
-          'friend' => 'https://skojapan.com/install/friends/',
-          'client' => 'https://skojapan.com/install/client/',
-          'partner' => 'https://skojapan.com/install/partner/',
-          'employee' => 'https://skojapan.com/install/employee/',
-          _ => 'https://skojapan.com/install/invite/',
+          'friend' => '$skoInvitationGuideUrl#general',
+          'client' || 'partner' => '$skoInvitationGuideUrl#company',
+          'employee' => '$skoInvitationGuideUrl#employee',
+          _ => skoInvitationGuideUrl,
         },
       );
       if (!mounted || !_actorScope.check()) {

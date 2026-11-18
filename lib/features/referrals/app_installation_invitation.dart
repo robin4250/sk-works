@@ -1,3 +1,5 @@
+const skoInvitationGuideUrl = 'https://skojapan.com/install/invite/';
+
 const skoTestFlightInvitationUrl = 'https://testflight.apple.com/join/1rNHSpdC';
 
 /// App installation is separate from the registration or company-link action.

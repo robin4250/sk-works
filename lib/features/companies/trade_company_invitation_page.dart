@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../international/countries/jp/japan_phone_rules.dart';
 import '../referrals/registration_completion_page.dart';
+import '../referrals/app_installation_invitation.dart';
 import 'trade_company_repository.dart';
 
 const customerInvitationTitle = '取引会社への招待';
@@ -180,6 +181,22 @@ class _TradeCompanyInvitationPageState
                   }
                 },
                 child: const Text('招待リンクをコピー'),
+              ),
+              OutlinedButton(
+                onPressed: () async {
+                  await Clipboard.setData(
+                    ClipboardData(
+                      text:
+                          '$_link\n\nSKOの利用案内\n$skoInvitationGuideUrl#company',
+                    ),
+                  );
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('招待と利用案内をコピーしました。')),
+                    );
+                  }
+                },
+                child: const Text('招待と利用案内をコピー'),
               ),
             ],
           ],
