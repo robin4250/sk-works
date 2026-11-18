@@ -16,9 +16,11 @@ class AttendancePdfService {
     WorkerAttendanceMonth data, {
     PdfPageFormat format = PdfPageFormat.a4,
     String? workerName,
+    pw.Font? regularFont,
+    pw.Font? boldFont,
   }) async {
-    final regular = await PdfGoogleFonts.notoSansJPRegular();
-    final bold = await PdfGoogleFonts.notoSansJPBold();
+    final regular = regularFont ?? await PdfGoogleFonts.notoSansJPRegular();
+    final bold = boldFont ?? await PdfGoogleFonts.notoSansJPBold();
     final document = pw.Document(
       theme: pw.ThemeData.withFont(base: regular, bold: bold),
     );

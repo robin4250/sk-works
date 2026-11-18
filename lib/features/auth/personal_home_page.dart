@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../data/supabase_backend.dart';
 import '../chat/chat_friends_page.dart';
+import '../personal_vault/personal_vault_screen.dart';
 import '../profile/personal_details_page.dart';
 
 const personalHomePreviewEnabled = bool.fromEnvironment(
@@ -13,11 +15,13 @@ class PersonalHomePage extends StatelessWidget {
     required this.onCompanySetup,
     required this.onSignOut,
     this.workPassOnly = false,
+    this.retirementVault = false,
   });
 
   final VoidCallback onCompanySetup;
   final Future<void> Function() onSignOut;
   final bool workPassOnly;
+  final bool retirementVault;
 
   @override
   Widget build(BuildContext context) {
@@ -49,6 +53,20 @@ class PersonalHomePage extends StatelessWidget {
                           ),
                         ),
                       ),
+                      if (retirementVault && SupabaseBackend.isInitialized)
+                        ListTile(
+                          leading: const Icon(Icons.folder_outlined),
+                          title: const Text('本人の書類保管倉庫'),
+                          subtitle: const Text('給与明細・出勤表・資格証画像'),
+                          onTap: () => Navigator.of(context).push<void>(
+                            MaterialPageRoute(
+                              builder: (_) => PersonalVaultScreen(
+                                client: SupabaseBackend.client,
+                                retirementArchive: true,
+                              ),
+                            ),
+                          ),
+                        ),
                       ListTile(
                         leading: const Icon(Icons.people_outline),
                         title: const Text('友達'),

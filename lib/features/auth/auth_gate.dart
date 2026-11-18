@@ -31,6 +31,7 @@ class SupabaseAuthGate extends StatefulWidget {
 
 class _SupabaseAuthGateState extends State<SupabaseAuthGate> {
   late Future<_GateState> _state;
+  String? _retiredCompanySetupActor;
   late var _companyInvitation = widget.companyInvitation;
 
   void _closeCompanyInvitation() {
@@ -87,6 +88,12 @@ class _SupabaseAuthGateState extends State<SupabaseAuthGate> {
 
     final hasCompany = await repository.hasCompanyMembership();
     if (!hasCompany) {
+      if (_retiredCompanySetupActor == user.id) {
+        return const _GateState.needsCompany();
+      }
+      if (await repository.hasArchivedRetirement(user.id)) {
+        return const _GateState.retired();
+      }
       if (user.appMetadata['sko_registration_purpose'] == 'work_pass') {
         return const _GateState.workPass();
       }
@@ -115,6 +122,7 @@ class _SupabaseAuthGateState extends State<SupabaseAuthGate> {
   }
 
   Future<void> _signOut() async {
+    _retiredCompanySetupActor = null;
     await _repository?.signOut();
     _reload();
   }
@@ -178,9 +186,24 @@ class _SupabaseAuthGateState extends State<SupabaseAuthGate> {
               onSignOut: _signOut,
             ),
           _GateStatus.needsCompany => CompanyProfileSetupPage(
-              onCompleted: _reload,
-              onDeferred: _reload,
+              onCompleted: () {
+                _retiredCompanySetupActor = null;
+                _reload();
+              },
+              onDeferred: () {
+                _retiredCompanySetupActor = null;
+                _reload();
+              },
               onSignOut: _signOut,
+            ),
+          _GateStatus.retired => PersonalHomePage(
+              key: ValueKey(binding),
+              onCompanySetup: () {
+                _retiredCompanySetupActor = SupabaseBackend.client.auth.currentUser?.id;
+                _reload();
+              },
+              onSignOut: _signOut,
+              retirementVault: true,
             ),
           _GateStatus.workPass => PersonalHomePage(
               key: ValueKey(binding),
@@ -289,6 +312,7 @@ enum _GateStatus {
   employeeInviteInvalid,
   needsCompany,
   workPass,
+  retired,
   companyDeferred,
   needsAdminInitialSetup,
   authenticated,
@@ -309,6 +333,7 @@ class _GateState {
       : this._(_GateStatus.employeeInviteInvalid);
   const _GateState.needsCompany()
       : this._(_GateStatus.needsCompany);
+  const _GateState.retired() : this._(_GateStatus.retired);
   const _GateState.workPass() : this._(_GateStatus.workPass);
   const _GateState.companyDeferred()
       : this._(_GateStatus.companyDeferred);

@@ -679,6 +679,44 @@ class WorkerAttendanceSheetRepository {
         )
         .order('confirmed_at');
 
+    final allApprovedLeaveRows = await _client
+        .from('paid_leave_requests')
+        .select('leave_date')
+        .eq('worker_id', targetWorkerId)
+        .eq('status', 'approved')
+        .order('leave_date');
+
+    final summaryRaw = await _client.rpc(
+      'paid_leave_worker_summary',
+      params: {'p_worker_id': targetWorkerId},
+    );
+    final summary = summaryRaw is Map
+        ? Map<String, dynamic>.from(summaryRaw)
+        : const <String, dynamic>{};
+    final grantedDays = _number(summary['granted_days']);
+
+    final rawUnits = await _client.rpc('my_attendance_allowance_units');
+    return projectMonth(month, attendanceRows: attendanceRows, registered: registered,
+      pendingReports: pendingReports, pendingDetailsUnavailable: pendingDetailsUnavailable,
+      verificationRows: verificationRows, allApprovedLeaveRows: allApprovedLeaveRows,
+      grantedDays: grantedDays, rawUnits: rawUnits);
+  }
+
+  /// The interactive screen and retirement renderer project the same signed,
+  /// confirmed and approved records using this method.
+  static WorkerAttendanceMonth projectMonth(
+    DateTime month, {
+    required Iterable<Map<String, dynamic>> attendanceRows,
+    required Map<String, List<DailyReportCompanyAllowanceSelection>> registered,
+    required Iterable<Map<String, dynamic>> verificationRows,
+    required Iterable<Map<String, dynamic>> allApprovedLeaveRows,
+    required double grantedDays,
+    required Object? rawUnits,
+    List<AttendancePendingReportDetails> pendingReports = const [],
+    bool pendingDetailsUnavailable = false,
+  }) {
+    final start = DateTime(month.year, month.month, 1);
+    final end = DateTime(month.year, month.month + 1, 1);
     final drafts = <DateTime, _DayDraft>{};
 
     for (final raw in attendanceRows) {
@@ -777,22 +815,6 @@ class WorkerAttendanceSheetRepository {
       }
     }
 
-    final allApprovedLeaveRows = await _client
-        .from('paid_leave_requests')
-        .select('leave_date')
-        .eq('worker_id', targetWorkerId)
-        .eq('status', 'approved')
-        .order('leave_date');
-
-    final summaryRaw = await _client.rpc(
-      'paid_leave_worker_summary',
-      params: {'p_worker_id': targetWorkerId},
-    );
-    final summary = summaryRaw is Map
-        ? Map<String, dynamic>.from(summaryRaw)
-        : const <String, dynamic>{};
-    final grantedDays = _number(summary['granted_days']);
-
     final approvedDates = <DateTime>{
       for (final row in allApprovedLeaveRows)
         if (_parseDate(row['leave_date']?.toString()) case final date?)
@@ -813,7 +835,6 @@ class WorkerAttendanceSheetRepository {
           .toDouble();
     }
 
-    final rawUnits = await _client.rpc('my_attendance_allowance_units');
     final allowanceUnits = rawUnits is Map
         ? {
             for (final entry in rawUnits.entries)
@@ -836,12 +857,12 @@ class WorkerAttendanceSheetRepository {
     );
   }
 
-  DateTime? _parseDate(String? value) {
+  static DateTime? _parseDate(String? value) {
     if (value == null || value.isEmpty) return null;
     return DateTime.tryParse(value.replaceAll('/', '-'));
   }
 
-  DateTime _dateOnly(DateTime value) =>
+  static DateTime _dateOnly(DateTime value) =>
       DateTime(value.year, value.month, value.day);
 
   String _dbDate(DateTime value) =>
@@ -849,7 +870,7 @@ class WorkerAttendanceSheetRepository {
       '${value.month.toString().padLeft(2, '0')}-'
       '${value.day.toString().padLeft(2, '0')}';
 
-  double _number(Object? value) =>
+  static double _number(Object? value) =>
       (value as num?)?.toDouble() ??
       double.tryParse(value?.toString() ?? '') ??
       0;

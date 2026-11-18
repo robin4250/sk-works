@@ -4,8 +4,9 @@ enum PersonalVaultAction { preview, save, print }
 
 class PersonalVaultEntry {
   const PersonalVaultEntry({required this.id, required this.label,
-    required this.sourceCompanyLabel, required this.periodLabel});
-  final String id, label, sourceCompanyLabel, periodLabel;
+    required this.sourceCompanyLabel, required this.periodLabel, this.contentType = 'application/pdf'});
+  final String id, label, sourceCompanyLabel, periodLabel, contentType;
+  bool get isPdf => contentType == 'application/pdf';
 }
 
 /// Read-only candidate page. The supplied gateway must authenticate every list
@@ -58,14 +59,16 @@ class _PersonalVaultPageState extends State<PersonalVaultPage> {
         if (entries.isEmpty) { return const Center(child: Text('保管済みの本人書類はありません。')); }
         return ListView(children: [
           const Padding(padding: EdgeInsets.all(16),child: Text(
-            '本人の出勤表・給与明細です。元の会社の正式記録は元の会社に残ります。')),
+            '本人の保管書類です。元の会社の正式記録は元の会社に残ります。')),
           for (final entry in entries) Card(child: ListTile(
             title: Text(entry.label),
             subtitle: Text('${entry.periodLabel}\n${entry.sourceCompanyLabel}'),
             isThreeLine: true,
             onTap: _busyId == null ? () => _open(entry, PersonalVaultAction.preview) : null,
             trailing: _busyId == entry.id ? const SizedBox(width: 24,height: 24,
-              child: CircularProgressIndicator()) : PopupMenuButton<PersonalVaultAction>(
+              child: CircularProgressIndicator()) : !entry.isPdf
+                ? const Icon(Icons.chevron_right)
+                : PopupMenuButton<PersonalVaultAction>(
                 enabled: _busyId == null,
                 tooltip: '閲覧・保存・印刷',
                 onSelected: (action) => _open(entry, action),

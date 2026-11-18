@@ -19,6 +19,15 @@ void main() {
    ...row,'kind':'company_internal'}]),throwsFormatException);
   expect(()=>PersonalVaultRepository.parseMine(null),throwsFormatException);
  });
+ test('retirement entries distinguish verified image MIME and PDF', () {
+  final image = {...row, 'request_id':row['manifest_id'],
+    'kind':'own_qualification_image','content_type':'image/png'};
+  final entries = PersonalVaultRepository.parseMine([image], retirement:true);
+  expect(entries.single.label, '資格証画像');
+  expect(entries.single.isPdf, isFalse);
+  expect(() => PersonalVaultRepository.parseMine([
+    {...image, 'content_type':'application/pdf'}], retirement:true), throwsFormatException);
+ });
  group('read session history', () {
   const actor = '30000000-0000-0000-0000-000000000001';
   const other = '30000000-0000-0000-0000-000000000002';

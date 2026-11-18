@@ -269,6 +269,22 @@ class SecureOnboardingRepository {
     return value == true;
   }
 
+  Future<bool> hasArchivedRetirement(String actorId) async {
+    final session = _client.auth.currentSession;
+    if (session == null || session.isExpired || session.user.id != actorId) {
+      return false;
+    }
+    try {
+      final entries = await _client.rpc('retirement_vault_list_mine')
+          .setHeader('Authorization', 'Bearer ${session.accessToken}');
+      return _client.auth.currentSession?.accessToken == session.accessToken &&
+          entries is List && entries.isNotEmpty;
+    } on PostgrestException catch (error) {
+      if (error.code == 'PGRST202' || error.code == '42883') return false;
+      rethrow;
+    }
+  }
+
   Future<bool> hasCompanyMembership() async {
     final user = _client.auth.currentUser;
     if (user == null) return false;
@@ -276,6 +292,7 @@ class SecureOnboardingRepository {
         .from('company_members')
         .select('company_id')
         .eq('user_id', user.id)
+        .isFilter('employment_ended_at', null)
         .limit(1);
     return rows.isNotEmpty;
   }

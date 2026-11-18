@@ -9,12 +9,14 @@ import 'personal_vault_pdf_download.dart';
 /// Candidate RPCs are authenticated and own-only on the server. No service key.
 class PersonalVaultRepository {
   PersonalVaultRepository(this._client, {Stream<AuthState>? authChanges,
-    http.Client Function()? downloadClientFactory})
+    http.Client Function()? downloadClientFactory,
+    this.retirementArchive = false})
       : _authChanges = authChanges,
         _download = PersonalVaultPdfDownload(clientFactory: downloadClientFactory);
   final SupabaseClient _client;
   final Stream<AuthState>? _authChanges;
   final PersonalVaultPdfDownload _download;
+  final bool retirementArchive;
   static final _uuid = RegExp(r'^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$');
   static final _hash = RegExp(r'^[a-f0-9]{64}$');
   String _session() {
@@ -36,30 +38,38 @@ class PersonalVaultRepository {
       await scope.close();
     }
   }
-  static List<PersonalVaultEntry> parseMine(Object? raw) {
+  static List<PersonalVaultEntry> parseMine(Object? raw, {bool retirement = false}) {
     if (raw is! List) { throw const FormatException('書類一覧を確認できません。'); }
     final seen = <String>{};
+    final idKey = retirement ? 'request_id' : 'manifest_id';
     return List.unmodifiable(raw.map((row) {
-      if (row is! Map || row['manifest_id'] is! String || !_uuid.hasMatch(row['manifest_id'] as String) ||
+      if (row is! Map || row[idKey] is! String || !_uuid.hasMatch(row[idKey] as String) ||
           row['artifact_key'] is! String || !_hash.hasMatch(row['artifact_key'] as String) ||
-          !['own_attendance','own_payroll'].contains(row['kind']) ||
           row['source_company_id'] is! String || !_uuid.hasMatch(row['source_company_id'] as String) ||
           row['completed_at'] is! String || DateTime.tryParse(row['completed_at'] as String) == null) {
         throw const FormatException('保管済み書類の応答を確認できません。');
       }
-      final id = '${row['manifest_id']}:${row['artifact_key']}';
+      final type = retirement ? row['content_type'] : 'application/pdf';
+      final label = switch ((row['kind'], type)) {
+        ('own_payroll', 'application/pdf') => '給与明細',
+        ('own_attendance', 'application/pdf') => '本人出勤表',
+        ('own_qualification_image', 'image/jpeg' || 'image/png') => '資格証画像',
+        _ => throw const FormatException('保管済み書類の種類を確認できません。'),
+      };
+      final id = '${row[idKey]}:${row['artifact_key']}';
       if (!seen.add(id)) { throw const FormatException('保管済み書類が重複しています。'); }
       return PersonalVaultEntry(id: id,
-        label: row['kind']=='own_payroll' ? '給与明細' : '本人出勤表',
-        sourceCompanyLabel: '元の会社の記録', periodLabel: '保管済みPDF');
+        label: label, contentType: type as String,
+        sourceCompanyLabel: '元の会社の記録',
+        periodLabel: type == 'application/pdf' ? '保管済みPDF' : '保管済み画像');
     }));
   }
   Future<List<PersonalVaultEntry>> loadMine() async {
     return _read((scope) async {
-      final rows = await _client.rpc('personal_vault24_list_mine')
+      final rows = await _client.rpc(retirementArchive ? 'retirement_vault_list_mine' : 'personal_vault24_list_mine')
           .setHeader('Authorization', 'Bearer ${scope.token}');
       await scope.check();
-      return parseMine(rows);
+      return parseMine(rows, retirement: retirementArchive);
     });
   }
   Future<Uint8List> downloadMine(PersonalVaultEntry entry) =>
@@ -94,8 +104,15 @@ class PersonalVaultRepository {
     if (parts.length != 2 || !_uuid.hasMatch(parts[0]) || !_hash.hasMatch(parts[1])) {
       throw const FormatException('本人書類のIDを確認できません。');
     }
-    final result = await _client.rpc('personal_vault24_item_mine',
-      params: {'mid': parts[0], 'artifact': parts[1]})
+    final extension = switch (entry.contentType) {
+      'application/pdf' => 'pdf',
+      'image/jpeg' when retirementArchive => 'jpg',
+      'image/png' when retirementArchive => 'png',
+      _ => throw const FormatException('本人書類の種類を確認できません。'),
+    };
+    final result = await _client.rpc(
+      retirementArchive ? 'retirement_vault_item_mine' : 'personal_vault24_item_mine',
+      params: {retirementArchive ? 'rid' : 'mid': parts[0], 'artifact': parts[1]})
         .setHeader('Authorization', 'Bearer ${scope.token}');
     await scope.check();
     if (result is! List || result.length != 1 || result.single is! Map) {
@@ -103,24 +120,28 @@ class PersonalVaultRepository {
     }
     final item = result.single as Map;
     final owner = scope.actor;
-    final path = 'personal-vault/$owner/${parts[1]}.pdf';
-    if (item['object_path'] != path || item['object_version'] is! String ||
-        (item['object_version'] as String).isEmpty || item['pdf_hash'] is! String ||
-        !_hash.hasMatch(item['pdf_hash'] as String) || item['byte_length'] is! int ||
+    final path = 'personal-vault/$owner/${parts[1]}.$extension';
+    final hash = item[retirementArchive ? 'sha256' : 'pdf_hash'];
+    if ((retirementArchive && item['content_type'] != entry.contentType) ||
+        item['object_path'] != path || item['object_version'] is! String ||
+        (item['object_version'] as String).isEmpty || hash is! String ||
+        !_hash.hasMatch(hash) || item['byte_length'] is! int ||
         (item['byte_length'] as int) < 1 || (item['byte_length'] as int) > 52428800) {
       throw StateError('本人PDFの保存記録を確認できません。');
     }
-    final storage = _client.storage.from('personal-pdf-vault');
+    final bucket = retirementArchive ? 'retirement-private-vault' : 'personal-pdf-vault';
+    final storage = _client.storage.from(bucket);
+    final objectApi = retirementArchive ? 'object/authenticated' : 'object';
     final headers = Map<String, String>.fromEntries(storage.headers.entries
         .where((entry) => entry.key.toLowerCase() != 'authorization'))
       ..['Authorization'] = 'Bearer ${scope.token}';
     final bytes = await _download.download(
-      uri: Uri.parse('${storage.url}/object/personal-pdf-vault/$path'),
+      uri: Uri.parse('${storage.url}/$objectApi/$bucket/$path'),
       headers: headers, expectedLength: item['byte_length'] as int,
-      expectedHash: item['pdf_hash'] as String, invalidated: scope.invalidated,
+      expectedHash: hash, expectedContentType: entry.contentType, invalidated: scope.invalidated,
       validateSession: scope.check);
     await scope.check();
-    if (bytes.length != item['byte_length'] || sha256.convert(bytes).toString() != item['pdf_hash']) {
+    if (bytes.length != item['byte_length'] || sha256.convert(bytes).toString() != hash) {
       throw StateError('保存されたPDFの整合性を確認できません。');
     }
     return bytes;

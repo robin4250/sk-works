@@ -20,8 +20,10 @@ class PersonalVaultPdfDownload {
   Future<Uint8List> download({required Uri uri,
     required Map<String, String> headers, required int expectedLength,
     required String expectedHash, required Future<void> invalidated,
+    String expectedContentType = 'application/pdf',
     required Future<void> Function() validateSession}) async {
-    if (uri.scheme != 'https' || uri.host.isEmpty || uri.userInfo.isNotEmpty ||
+    if (!const ['application/pdf', 'image/jpeg', 'image/png'].contains(expectedContentType) ||
+        uri.scheme != 'https' || uri.host.isEmpty || uri.userInfo.isNotEmpty ||
         uri.hasQuery || uri.hasFragment || expectedLength < 1 ||
         expectedLength > maxBytes || !RegExp(r'^[a-f0-9]{64}$').hasMatch(expectedHash) ||
         deadline <= Duration.zero) { throw _failure(); }
@@ -63,7 +65,7 @@ class PersonalVaultPdfDownload {
         }
         final encoding = response.headers['content-encoding'];
         if (response.statusCode != 200 || response.isRedirect ||
-            response.headers['content-type']?.split(';').first.trim().toLowerCase() != 'application/pdf' ||
+            response.headers['content-type']?.split(';').first.trim().toLowerCase() != expectedContentType ||
             encoding != null && encoding.toLowerCase() != 'identity' ||
             response.contentLength != null && response.contentLength != expectedLength) {
           // Cancel even a non-200 or oversized stream without reading its body.
