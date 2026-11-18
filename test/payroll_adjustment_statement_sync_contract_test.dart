@@ -43,7 +43,7 @@ void main() {
     final page = read('lib/features/payroll/payroll_statements_page.dart');
     final pdf = read('lib/features/payroll/payroll_pdf_service.dart');
 
-    expect(page, contains('PayrollPdfService.buildPdf(statement)'));
+    expect(page, contains('PayrollPdfService.buildPdf(statement, employmentContract: contract)'));
     expect(pdf, contains('static String _number(int value)'));
     expect(pdf, contains('static String _moneyExplanation('));
     expect(pdf, contains('_moneyPanel'));

@@ -17,7 +17,7 @@ void main() {
 
     expect(source, contains('PdfPreview('));
     expect(source, contains('initialPageFormat: PdfPageFormat.a4,'));
-    expect(source, contains('PayrollPdfService.buildPdf(statement)'));
+    expect(source, contains('PayrollPdfService.buildPdf(statement, employmentContract: contract)'));
   });
 
   test('payment certificate opens an A4 template PDF preview', () {

@@ -17,9 +17,9 @@ void main() {
     expect(repo, contains("rpc('trade_company_contact_workspace')"));
     expect(repo, contains("rpc('sync_trade_company_directory')"));
     expect(app, contains("key: 'trade_companies'"));
-    expect(app, contains("key: 'subcontractors'"));
-    expect(app, contains("SkoLanguageController.tr('取引会社登録')"));
-    expect(app, contains("SkoLanguageController.tr('協力会社登録')"));
+    expect(app, isNot(contains("key: 'subcontractors'")));
+    expect(app, contains("case 'subcontractors':"));
+    expect(app, contains("SkoLanguageController.tr('連携会社登録')"));
     expect(app, contains("case 'company_deliveries':"));
     expect(page, contains('onOpenDeliveries'));
     expect(app, contains("SkoLanguageController.tr('管理者・サブ管理者')"));
