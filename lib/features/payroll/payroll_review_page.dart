@@ -144,8 +144,9 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
           ],
         ),
       );
-      if (confirmed != true || !mounted || generation != _loadGeneration)
+      if (confirmed != true || !mounted || generation != _loadGeneration) {
         return;
+      }
       sent = true;
       final result = await repository.recalculateDraft(preview);
       if (!mounted) return;

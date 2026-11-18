@@ -164,12 +164,13 @@ class _PartnerEmploymentContractPageState
           approvalMonth,
         );
       }
-      if (mounted)
+      if (mounted) {
         _message(
           approvalMonth == null
               ? '雇用契約の下書きを保存しました。'
               : '対象月の給与明細に添付する契約書を登録しました。',
         );
+      }
     } catch (error) {
       if (!mounted) return;
       _message(

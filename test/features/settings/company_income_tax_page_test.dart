@@ -37,9 +37,6 @@ class FakeIncomeTaxRepository implements CompanyIncomeTaxRepository {
     return saved;
   }
   @override
-  Future<String> pdfUrl(String storagePath) async =>
-      throw StateError('PDF opening must use the authenticated download');
-  @override
   Future<Uint8List> downloadPdf(String storagePath) async {
     pdfReads.add(storagePath);
     return Uint8List.fromList(pdf().bytes);

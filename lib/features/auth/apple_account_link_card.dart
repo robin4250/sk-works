@@ -101,7 +101,9 @@ class _AppleAccountLinkCardState extends State<AppleAccountLinkCard>
       );
       if (!mounted || confirmed != true || password.isEmpty ||
           action != _actionGeneration ||
-          source.client.auth.currentSession?.accessToken != original.accessToken) return;
+          source.client.auth.currentSession?.accessToken != original.accessToken) {
+        return;
+      }
       final credential = await preparation.requestForExistingGoogleAccount();
       // The system sheet can deliver its result before Flutter reports resume.
       final resumeDeadline = Stopwatch()..start();

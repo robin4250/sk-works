@@ -260,7 +260,9 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
       final alreadyConfigured =
           await repository.secondaryPasswordConfigured(accessToken: token);
       if (!_acceptAttempt(generation, userId, token) ||
-          _lifecycle != AppLifecycleState.resumed) return;
+          _lifecycle != AppLifecycleState.resumed) {
+        return;
+      }
       if (alreadyConfigured) {
         setState(() {
           _secondaryConfigured = true;
