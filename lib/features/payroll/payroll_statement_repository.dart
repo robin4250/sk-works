@@ -59,6 +59,21 @@ class PayrollStatementRepository {
     return PayrollStatementRepository._(client);
   }
 
+  Future<Map<String, dynamic>?> loadEmploymentContract(
+    String statementId,
+    int revision,
+  ) async {
+    try {
+      final result = await _client.rpc('payroll_employment_contract_snapshot',
+        params: {'p_statement_id': statementId, 'p_revision': revision},
+      );
+      return result == null ? null : Map<String, dynamic>.from(result as Map);
+    } on PostgrestException catch (error) {
+      if (error.code == 'PGRST202') return null;
+      rethrow;
+    }
+  }
+
   Future<List<PayrollStatementRecord>> loadMyStatements() async {
     final rows = await _client.rpc(
       'my_payroll_statement_rows_with_adjustments',

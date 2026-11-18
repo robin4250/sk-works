@@ -38,6 +38,7 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
+    - assets/payroll/employment_contract.png
     - assets/fonts/web-ui/OFL.txt
     - assets/fonts/company-seal/
     - assets/images/company-seals/sumida-v1/

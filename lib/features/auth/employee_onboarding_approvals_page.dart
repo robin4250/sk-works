@@ -1,10 +1,14 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import '../people/worker_personnel_change_approvals_page.dart';
 import 'employee_onboarding_repository.dart';
 
 class EmployeeOnboardingApprovalsPage extends StatefulWidget {
-  const EmployeeOnboardingApprovalsPage({super.key});
+  const EmployeeOnboardingApprovalsPage({super.key, this.initialInviteId});
+
+  final String? initialInviteId;
 
   @override
   State<EmployeeOnboardingApprovalsPage> createState() =>
@@ -46,9 +50,12 @@ class _EmployeeOnboardingApprovalsPageState
         throw StateError('本登録を承認する権限がありません。');
       }
       final rows = await repository.loadPendingApprovals();
+      final inviteId = widget.initialInviteId;
       if (!mounted) return;
       setState(() {
-        _rows = rows;
+        _rows = inviteId == null
+            ? rows
+            : rows.where((row) => row['invite_id'] == inviteId).toList();
         _loading = false;
       });
     } catch (error) {
@@ -151,8 +158,8 @@ class _EmployeeOnboardingApprovalsPageState
       );
     }
 
-    return FutureBuilder<String>(
-      future: repository.signedUrl(path),
+    return FutureBuilder<Uint8List>(
+      future: repository.downloadAttachment(path),
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
           return ListTile(
@@ -180,7 +187,7 @@ class _EmployeeOnboardingApprovalsPageState
                 const SizedBox(height: 8),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(12),
-                  child: Image.network(
+                  child: Image.memory(
                     snapshot.data!,
                     height: 220,
                     fit: BoxFit.contain,

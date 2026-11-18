@@ -13,6 +13,7 @@ class EmployeeOnboardingState {
     required this.phone,
     required this.status,
     required this.passwordChanged,
+    this.claimedExistingAccount = false,
   });
 
   final String inviteId;
@@ -22,6 +23,7 @@ class EmployeeOnboardingState {
   final String phone;
   final String status;
   final bool passwordChanged;
+  final bool claimedExistingAccount;
 
   bool get needsPrimaryPassword =>
       status == 'invited' || status == 'password_changed';
@@ -170,7 +172,26 @@ class SecureOnboardingRepository {
       phone: row['phone']?.toString() ?? '',
       status: row['status']?.toString() ?? 'invited',
       passwordChanged: row['password_changed_at'] != null,
+      claimedExistingAccount: row['claimed_existing_account'] == true,
     );
+  }
+
+  Future<void> claimEmployeeInvite(String token) async {
+    final session = _client.auth.currentSession;
+    if (session == null || session.isExpired) {
+      throw StateError('ログイン状態を確認してください。');
+    }
+    final inviteId = await _client
+        .rpc(
+          'claim_employee_invite_as_existing_account',
+          params: {'p_token': token},
+        )
+        .setHeader('Authorization', 'Bearer ${session.accessToken}');
+    if (_client.auth.currentUser?.id != session.user.id ||
+        inviteId is! String ||
+        inviteId.isEmpty) {
+      throw StateError('招待の受領を確認できませんでした。');
+    }
   }
 
   Future<void> setEmployeePrimaryPassword(String password) async {

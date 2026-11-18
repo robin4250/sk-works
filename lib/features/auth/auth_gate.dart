@@ -10,6 +10,7 @@ import 'admin_initial_setup_page.dart';
 import 'apple_session_navigation_binding.dart';
 import 'admin_initial_setup_repository.dart';
 import 'employee_onboarding_pages.dart';
+import 'employee_bootstrap_identity.dart';
 import 'personal_home_page.dart';
 import 'secure_onboarding_pages.dart';
 import 'secure_onboarding_repository.dart';
@@ -67,8 +68,8 @@ class _SupabaseAuthGateState extends State<SupabaseAuthGate> {
     }
 
     final employee = await repository.employeeOnboardingState();
-    if (employee != null && employee.status == 'cancelled') {
-      return _GateState.employeeInviteInvalid(employee);
+    if (employee == null && hasEmployeeBootstrapEmail(user)) {
+      return const _GateState.employeeInviteInvalid();
     }
 
     if (employee != null && employee.status != 'approved') {
@@ -81,6 +82,7 @@ class _SupabaseAuthGateState extends State<SupabaseAuthGate> {
       if (employee.awaitingApproval) {
         return _GateState.employeeApprovalPending(employee);
       }
+      return const _GateState.employeeInviteInvalid();
     }
 
     final hasCompany = await repository.hasCompanyMembership();
@@ -161,6 +163,9 @@ class _SupabaseAuthGateState extends State<SupabaseAuthGate> {
             ),
           _GateStatus.employeeProfile => EmployeeProfileOnboardingPage(
               name: state.employee!.name,
+              claimedInviteId: state.employee!.claimedExistingAccount
+                  ? state.employee!.inviteId
+                  : null,
               onSubmitted: _reload,
               onSignOut: _signOut,
             ),
@@ -300,8 +305,8 @@ class _GateState {
       : this._(_GateStatus.employeeProfile, employee);
   const _GateState.employeeApprovalPending(EmployeeOnboardingState employee)
       : this._(_GateStatus.employeeApprovalPending, employee);
-  const _GateState.employeeInviteInvalid(EmployeeOnboardingState employee)
-      : this._(_GateStatus.employeeInviteInvalid, employee);
+  const _GateState.employeeInviteInvalid()
+      : this._(_GateStatus.employeeInviteInvalid);
   const _GateState.needsCompany()
       : this._(_GateStatus.needsCompany);
   const _GateState.workPass() : this._(_GateStatus.workPass);

@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../branding/product_brand.dart';
 import 'auth_error_message.dart';
 import 'employee_invite_scanner_page.dart';
+import 'employee_bootstrap_identity.dart';
 import 'secure_onboarding_repository.dart';
 import 'existing_google_login.dart';
 
@@ -1034,6 +1035,56 @@ class _CompanyProfileSetupPageState extends State<CompanyProfileSetupPage> {
   }
 
 
+  Future<void> _acceptEmployeeInvite() async {
+    final repository = _repository;
+    final actor = repository?.currentUser?.id;
+    if (_busy || repository == null || actor == null) return;
+    var input = '';
+    final token = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('従業員の招待を受け取る'),
+        content: TextField(
+          autocorrect: false,
+          enableSuggestions: false,
+          decoration: const InputDecoration(labelText: '招待コード'),
+          onChanged: (value) => input = value.trim(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('閉じる'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(input),
+            child: const Text('受け取る'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || token == null || repository.currentUser?.id != actor) {
+      return;
+    }
+    if (!RegExp(r'^[a-f0-9]{64}$').hasMatch(token)) {
+      setState(() => _message = '招待コードを確認してください。');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _message = null;
+    });
+    try {
+      await repository.claimEmployeeInvite(token);
+      if (mounted && repository.currentUser?.id == actor) widget.onCompleted();
+    } catch (_) {
+      if (mounted && repository.currentUser?.id == actor) {
+        setState(() => _message = '招待を受け取れませんでした。招待コードとアカウントを確認してください。');
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1071,6 +1122,14 @@ class _CompanyProfileSetupPageState extends State<CompanyProfileSetupPage> {
               ),
             ),
             const SizedBox(height: 14),
+            if (employeeExistingAccountClaimEnabled) ...[
+              OutlinedButton.icon(
+                onPressed: _busy ? null : _acceptEmployeeInvite,
+                icon: const Icon(Icons.badge_outlined),
+                label: const Text('従業員の招待を受け取る'),
+              ),
+              const SizedBox(height: 14),
+            ],
             _SectionCard(
               title: '本人情報',
               children: [

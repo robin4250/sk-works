@@ -23,6 +23,8 @@ class EmployeeInviteResult {
     required this.qrPayload,
     this.smsSent = false,
     this.testFlightUrl,
+    this.googlePlayUrl,
+    this.webUrl,
     this.deliveryMessage,
   });
 
@@ -33,6 +35,8 @@ class EmployeeInviteResult {
   final String qrPayload;
   final bool smsSent;
   final String? testFlightUrl;
+  final String? googlePlayUrl;
+  final String? webUrl;
   final String? deliveryMessage;
 }
 
@@ -145,6 +149,22 @@ class EmployeeInviteRepository {
     return _resultFromResponse(response);
   }
 
+  Future<String> issueExistingAccountClaim(String workerId) async {
+    final session = _client.auth.currentSession;
+    if (session == null || session.isExpired) {
+      throw StateError('ログイン状態を確認してください。');
+    }
+    final token = await _client.rpc(
+      'issue_existing_account_employee_claim',
+      params: {'p_worker': workerId},
+    ).setHeader('Authorization', 'Bearer ${session.accessToken}');
+    if (_client.auth.currentUser?.id != session.user.id ||
+        token is! String || !RegExp(r'^[a-f0-9]{64}$').hasMatch(token)) {
+      throw StateError('招待コードを確認できませんでした。');
+    }
+    return token;
+  }
+
   Future<EmployeeInviteResult> createInvite({
     required String name,
     required String phone,
@@ -191,6 +211,8 @@ class EmployeeInviteRepository {
       qrPayload: map['qrPayload']?.toString() ?? '',
       smsSent: map['smsSent'] == true,
       testFlightUrl: map['testFlightUrl']?.toString(),
+      googlePlayUrl: map['googlePlayUrl']?.toString(),
+      webUrl: map['webUrl']?.toString(),
       deliveryMessage: map['deliveryMessage']?.toString(),
     );
   }

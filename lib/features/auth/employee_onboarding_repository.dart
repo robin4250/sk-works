@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../data/authenticated_storage_download.dart';
 import '../../data/supabase_backend.dart';
 
 class EmployeeOnboardingRepository {
@@ -55,12 +56,14 @@ class EmployeeOnboardingRepository {
     required String kind,
     required Uint8List bytes,
     required String filename,
+    String? claimedInviteId,
     EmployeeOnboardingRequest? request,
   }) async {
     request?.check();
     final safeExt = filename.toLowerCase().endsWith('.png') ? 'png' : 'jpg';
+    final folder = [request?.userId ?? _userId, if (claimedInviteId != null) claimedInviteId].join('/');
     final path =
-        '${request?.userId ?? _userId}/$kind-${DateTime.now().microsecondsSinceEpoch}.$safeExt';
+        '$folder/$kind-${DateTime.now().microsecondsSinceEpoch}.$safeExt';
     final storage = _client.storage.from(bucket);
     if (request != null) storage.setHeader('Authorization', request.authorization);
     await storage.uploadBinary(
@@ -131,6 +134,31 @@ class EmployeeOnboardingRepository {
     request.check();
   }
 
+  Future<void> submitClaimedProfile({
+    required String inviteId,
+    required Map<String, String> fields,
+    String? portraitPath,
+    String? myNumberFrontPath,
+    String? myNumberBackPath,
+    required EmployeeOnboardingRequest request,
+  }) async {
+    request.check();
+    final result = await _client.rpc(
+      'submit_claimed_employee_profile',
+      params: {
+        'p_invite_id': inviteId,
+        'p_portrait_path': portraitPath,
+        'p_my_number_front_path': myNumberFrontPath,
+        'p_my_number_back_path': myNumberBackPath,
+        for (final entry in fields.entries) 'p_${entry.key}': entry.value.trim(),
+      },
+    ).setHeader('Authorization', request.authorization).retry(enabled: false);
+    request.check();
+    if (result != inviteId) {
+      throw StateError('招待に紐づくプロフィールの保存を確認できません。');
+    }
+  }
+
   Future<bool> canReview() async {
     final value = await _client.rpc('can_review_employee_onboarding');
     return value == true;
@@ -154,8 +182,8 @@ class EmployeeOnboardingRepository {
     );
   }
 
-  Future<String> signedUrl(String path) =>
-      _client.storage.from(bucket).createSignedUrl(path, 300);
+  Future<Uint8List> downloadAttachment(String path) =>
+      downloadAuthenticatedStorageObject(_client, bucket: bucket, path: path);
 }
 
 
