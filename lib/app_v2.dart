@@ -95,6 +95,7 @@ import 'features/qualifications/qualification_page.dart';
 import 'features/settings/company_module_settings_repository.dart';
 import 'features/settings/rollout_readiness_page.dart';
 import 'features/settings/settings_page.dart';
+import 'features/settings/company_registration_page.dart';
 import 'features/sites/admin_site_financial_page.dart';
 import 'features/sites/site_cloud_page.dart';
 import 'features/sites/site_map_page.dart';
@@ -1203,6 +1204,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         if (!SupabaseBackend.isInitialized) return;
         page = AppReferralPage(
           repository: AppReferralRepository(SupabaseBackend.client),
+          onInviteCompany: _isAdmin
+              ? () => Navigator.of(context).push<void>(
+                    MaterialPageRoute(
+                      builder: (_) => CompanyRegistrationPage(client: SupabaseBackend.client),
+                    ),
+                  )
+              : null,
         );
         break;
       case 'clock_in':

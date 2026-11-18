@@ -15,6 +15,7 @@ class AppReferralPage extends StatefulWidget {
     this.initialPhone = '',
     this.invitationKind = 'app',
     this.guideKind = '',
+    this.onInviteCompany,
   });
   final AppReferralRepository repository;
   final bool master;
@@ -23,6 +24,7 @@ class AppReferralPage extends StatefulWidget {
   final String initialPhone;
   final String invitationKind;
   final String guideKind;
+  final VoidCallback? onInviteCompany;
   @override
   State<AppReferralPage> createState() => _AppReferralPageState();
 }
@@ -311,6 +313,12 @@ class _AppReferralPageState extends State<AppReferralPage> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            if (widget.onInviteCompany != null)
+              FilledButton.icon(
+                onPressed: _actorScope.check() ? widget.onInviteCompany : null,
+                icon: const Icon(Icons.business_outlined),
+                label: const Text('会社の代表者を招待する'),
+              ),
             if (_error != null) ...[
               Text(_error!),
               TextButton(onPressed: _load, child: const Text('再読み込み')),

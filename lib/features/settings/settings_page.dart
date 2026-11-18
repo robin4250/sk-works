@@ -1,4 +1,6 @@
 import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'master_owner_access.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -16,6 +18,8 @@ import '../help/floating_help_controller.dart';
 import '../../branding/sko_theme.dart';
 import '../../international/language_controller.dart';
 import 'company_module_settings_page.dart';
+import 'company_registration_page.dart';
+import 'company_review_access_page.dart';
 import 'company_rate_settings_page.dart';
 import 'company_work_category_page.dart';
 import 'company_payroll_rates_page.dart';
@@ -378,6 +382,20 @@ class _SettingsPageState extends State<SettingsPage> {
                           Card(
                             child: ListTile(
                               leading: const Icon(Icons.link_outlined),
+                              title: const Text('SKO・ワークパス利用申請'),
+                              subtitle: const Text('会社から申請する・申請状況を確認する'),
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => CompanyRegistrationPage(client: _client!),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          Card(
+                            child: ListTile(
+                              leading: const Icon(Icons.link_outlined),
                               title: const Text('会社検索・連携設定'),
                               subtitle: const Text(
                                 '利用のON／OFF・開始月付き申請・承認履歴。'
@@ -483,6 +501,26 @@ class _SettingsPageState extends State<SettingsPage> {
                           const SizedBox(height: 16),
                         ],
                         if (_isMasterAdmin && MasterOwnerAccess.currentFor(_client)) ...[
+                          Card(
+                            child: ListTile(
+                              leading: const Icon(Icons.policy_outlined),
+                              title: const Text('会社からの利用申請'),
+                              subtitle: const Text('SKO通常利用・ワークパスの申請を審査する'),
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) {
+                                    final review = CompanyReviewAccessPage(client: _client!);
+                                    return kIsWeb ? review : MasterProtectedPage(
+                                      title: '会社からの利用申請',
+                                      child: review,
+                                    );
+                                  },
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
                           Card(
                             child: ListTile(
                               leading: const Icon(Icons.history_outlined),
