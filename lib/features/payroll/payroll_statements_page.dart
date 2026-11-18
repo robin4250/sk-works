@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'own_draft_bank_admission.dart';
 import 'own_draft_bank_repository.dart';
 import 'payroll_pending_attendance_panel.dart';
@@ -30,6 +31,7 @@ class _PayrollStatementsPageState extends State<PayrollStatementsPage> {
   final _repository = PayrollStatementRepository.maybeCreate();
 
   List<PayrollStatementRecord> _items = const [];
+  String? _selectedIssuer;
   bool _loading = true;
   String? _error;
 
@@ -75,6 +77,24 @@ class _PayrollStatementsPageState extends State<PayrollStatementsPage> {
   @override
   Widget build(BuildContext context) {
     SkoLanguageController.watch(context);
+    final issuerNames = <String, String>{};
+    for (final item in _items) {
+      final key = _issuerKey(item);
+      if (key != null) {
+        issuerNames.putIfAbsent(key, () => item.companyName.trim());
+      }
+    }
+    final issuers = issuerNames.entries.toList()
+      ..sort((a, b) => a.value.compareTo(b.value));
+    final selectedIssuer =
+        issuers.length > 1 && issuerNames.containsKey(_selectedIssuer)
+        ? _selectedIssuer
+        : null;
+    final visibleItems = selectedIssuer == null
+        ? _items
+        : _items
+              .where((item) => _issuerKey(item) == selectedIssuer)
+              .toList();
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -112,10 +132,39 @@ class _PayrollStatementsPageState extends State<PayrollStatementsPage> {
                 onRefresh: _load,
                 child: ListView.separated(
                   padding: const EdgeInsets.all(12),
-                  itemCount: _items.length,
+                  itemCount: visibleItems.length + (issuers.length > 1 ? 1 : 0),
                   separatorBuilder: (_, __) => const SizedBox(height: 10),
                   itemBuilder: (context, index) {
-                    final item = _items[index];
+                    if (issuers.length > 1 && index == 0) {
+                      final english = SkoLanguageController.isEnglish;
+                      return Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          ChoiceChip(
+                            label: Text(english ? 'All' : 'すべて'),
+                            selected: selectedIssuer == null,
+                            onSelected: (_) =>
+                                setState(() => _selectedIssuer = null),
+                          ),
+                          for (final issuer in issuers)
+                            ChoiceChip(
+                              label: Text(
+                                english
+                                    ? 'Pay from ${issuer.value}'
+                                    : '${issuer.value}からの給料',
+                              ),
+                              selected: selectedIssuer == issuer.key,
+                              onSelected: (selected) => setState(
+                                () =>
+                                    _selectedIssuer = selected ? issuer.key : null,
+                              ),
+                            ),
+                        ],
+                      );
+                    }
+                    final item =
+                        visibleItems[index - (issuers.length > 1 ? 1 : 0)];
                     return Card(
                       child: InkWell(
                         borderRadius: BorderRadius.circular(20),
@@ -169,9 +218,9 @@ class _PayrollStatementsPageState extends State<PayrollStatementsPage> {
                                       SkoLanguageController.isEnglish
                                           ? 'Net Pay'
                                           : '差引支給額',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .bodyMedium,
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.bodyMedium,
                                     ),
                                   ),
                                   Text(
@@ -197,6 +246,13 @@ class _PayrollStatementsPageState extends State<PayrollStatementsPage> {
     );
   }
 
+  static String? _issuerKey(PayrollStatementRecord item) {
+    final name = item.companyName.trim();
+    if (item.isDraft || item.issuedAt == null || name.isEmpty) return null;
+    final id = item.detail['issuer_company_id'];
+    return id is String && id.isNotEmpty ? 'id:$id' : 'name:$name';
+  }
+
   static String _yen(int value) {
     final digits = value.abs().toString();
     final groups = <String>[];
@@ -209,7 +265,15 @@ class _PayrollStatementsPageState extends State<PayrollStatementsPage> {
 }
 
 class PayrollStatementPreviewPage extends StatefulWidget {
-  const PayrollStatementPreviewPage({super.key, required this.statement, this.allowFinalization = false, this.sourceRepository, this.ownBankGateway, this.confirmationRepository, this.previewBuilder});
+  const PayrollStatementPreviewPage({
+    super.key,
+    required this.statement,
+    this.allowFinalization = false,
+    this.sourceRepository,
+    this.ownBankGateway,
+    this.confirmationRepository,
+    this.previewBuilder,
+  });
 
   final PayrollStatementRecord statement;
   final bool allowFinalization;
@@ -228,7 +292,9 @@ enum _PayrollConfirmationActionFailure { employeeReviewRequired, unknown }
 
 class _PayrollStatementPreviewPageState
     extends State<PayrollStatementPreviewPage> {
-  late final _confirmationRepository = widget.confirmationRepository ?? PayrollConfirmationRepository.maybeCreate();
+  late final _confirmationRepository =
+      widget.confirmationRepository ??
+      PayrollConfirmationRepository.maybeCreate();
   PayrollConfirmationStatus? _confirmation;
   PayrollStatementRecord? _refreshedStatement;
   bool _statementUnavailable = false;
@@ -243,60 +309,119 @@ class _PayrollStatementPreviewPageState
   final _pdfBytes = PdfBytesCache();
   OwnDraftBankGateway? _bankGateway;
   OwnDraftBankAdmission? _bankAdmission;
-  bool _bankLoading=false;
+  bool _bankLoading = false;
   String? _bankError;
-  int _bankGeneration=0;
+  int _bankGeneration = 0;
 
   @override
   void initState() {
     super.initState();
-    if(widget.statement.ownDraftBankPurpose && widget.statement.isDraft){
-      _bankGateway=widget.ownBankGateway??OwnDraftBankRepository.maybeCreate();
+    if (widget.statement.ownDraftBankPurpose && widget.statement.isDraft) {
+      _bankGateway =
+          widget.ownBankGateway ?? OwnDraftBankRepository.maybeCreate();
       _bankGateway?.addListener(_bankScopeChanged);
     }
     _loadConfirmation();
   }
 
-  void _ensureOwnBankGateway(){
-    if(_bankGateway!=null)return;
-    _bankGateway=widget.ownBankGateway??OwnDraftBankRepository.maybeCreate();
+  Future<Uint8List> _buildStatementPdf(PayrollStatementRecord statement) async {
+    PayrollEmploymentContractPage? contract;
+    final revision = statement.revision;
+    if (statement.workflowState == 'finalized' && revision != null) {
+      final data = await PayrollStatementRepository.maybeCreate()
+          ?.loadEmploymentContract(statement.id, revision);
+      if (data != null) {
+        contract = await PayrollEmploymentContractPage.fromDocument(
+          data, statementId: statement.id, statementRevision: revision,
+        );
+      }
+    }
+    return PayrollPdfService.buildPdf(statement, employmentContract: contract);
+  }
+
+  void _ensureOwnBankGateway() {
+    if (_bankGateway != null) return;
+    _bankGateway =
+        widget.ownBankGateway ?? OwnDraftBankRepository.maybeCreate();
     _bankGateway?.addListener(_bankScopeChanged);
   }
-  void _bankScopeChanged(){
-    if(!mounted||_bankGateway?.isCurrent==true)return;
-    _bankGeneration++;_bankAdmission=null;_pdfBytes.invalidate();
-    setState((){_bankLoading=false;_bankError='ログイン状態が変わりました。口座を再確認してください。';});
+
+  void _bankScopeChanged() {
+    if (!mounted || _bankGateway?.isCurrent == true) return;
+    _bankGeneration++;
+    _bankAdmission = null;
+    _pdfBytes.invalidate();
+    setState(() {
+      _bankLoading = false;
+      _bankError = 'ログイン状態が変わりました。口座を再確認してください。';
+    });
   }
+
   Future<void> _resolveOwnBank(PayrollStatementRecord source) async {
-    if(!source.isDraft||!source.ownDraftBankPurpose)return;
+    if (!source.isDraft || !source.ownDraftBankPurpose) return;
     _ensureOwnBankGateway();
-    final generation=++_bankGeneration;_bankAdmission=null;_pdfBytes.invalidate();
-    setState((){_bankLoading=true;_bankError=null;});
-    try{
-      final gateway=_bankGateway;if(gateway==null)throw StateError('口座確認を利用できません。');
-      final value=await gateway.read(source);
-      final current=_refreshedStatement??widget.statement;
-      if(!mounted||generation!=_bankGeneration||!gateway.isCurrent||current.id!=source.id||current.revision!=source.revision||!current.isDraft)return;
-      setState((){_bankAdmission=value.withLease(() {
-        if(!mounted||generation!=_bankGeneration)return false;
-        final active=_refreshedStatement??widget.statement;
-        return active.isDraft&&active.id==source.id&&active.revision==source.revision;
-      });_bankError=value.state==OwnDraftBankState.unavailable?'個人口座を確認できません。未登録とは判断せず、給与金額は保持しています。':null;_pdfBytes.invalidate();});
-    }catch(_){if(mounted&&generation==_bankGeneration)setState(()=>_bankError='個人口座を確認できません。未登録とは判断せず、給与金額は保持しています。');}
-    finally{if(mounted&&generation==_bankGeneration)setState(()=>_bankLoading=false);}
+    final generation = ++_bankGeneration;
+    _bankAdmission = null;
+    _pdfBytes.invalidate();
+    setState(() {
+      _bankLoading = true;
+      _bankError = null;
+    });
+    try {
+      final gateway = _bankGateway;
+      if (gateway == null) throw StateError('口座確認を利用できません。');
+      final value = await gateway.read(source);
+      final current = _refreshedStatement ?? widget.statement;
+      if (!mounted ||
+          generation != _bankGeneration ||
+          !gateway.isCurrent ||
+          current.id != source.id ||
+          current.revision != source.revision ||
+          !current.isDraft) {
+        return;
+      }
+      setState(() {
+        _bankAdmission = value.withLease(() {
+          if (!mounted || generation != _bankGeneration) return false;
+          final active = _refreshedStatement ?? widget.statement;
+          return active.isDraft &&
+              active.id == source.id &&
+              active.revision == source.revision;
+        });
+        _bankError = value.state == OwnDraftBankState.unavailable
+            ? '個人口座を確認できません。未登録とは判断せず、給与金額は保持しています。'
+            : null;
+        _pdfBytes.invalidate();
+      });
+    } catch (_) {
+      if (mounted && generation == _bankGeneration) {
+        setState(() => _bankError = '個人口座を確認できません。未登録とは判断せず、給与金額は保持しています。');
+      }
+    } finally {
+      if (mounted && generation == _bankGeneration) {
+        setState(() => _bankLoading = false);
+      }
+    }
   }
 
   Future<PayrollStatementRecord?> _loadConfirmation() async {
     final generation = ++_sourceGeneration;
-    final repository = widget.sourceRepository ?? PayrollStatementSourceRepository.maybeCreate();
+    final repository =
+        widget.sourceRepository ??
+        PayrollStatementSourceRepository.maybeCreate();
     if (repository == null) {
       if (SupabaseBackend.isInitialized) {
         setState(() => _statementUnavailable = true);
       }
       return null;
     }
-    _bankGeneration++;_bankAdmission=null;_pdfBytes.invalidate();
-    setState(() { _sourceLoading = true; _confirmationError = null; });
+    _bankGeneration++;
+    _bankAdmission = null;
+    _pdfBytes.invalidate();
+    setState(() {
+      _sourceLoading = true;
+      _confirmationError = null;
+    });
     try {
       final source = await repository.load(widget.statement);
       if (!mounted || generation != _sourceGeneration) return null;
@@ -313,28 +438,41 @@ class _PayrollStatementPreviewPageState
         setState(() {
           _confirmation = null;
           _confirmationError = SkoLanguageController.trParams(
-            '給与明細を再取得できませんでした: {error}', {'error': error});
+            '給与明細を再取得できませんでした: {error}',
+            {'error': error},
+          );
           _pdfBytes.invalidate();
         });
       }
       return null;
     } finally {
-      if (mounted && generation == _sourceGeneration) setState(() => _sourceLoading = false);
+      if (mounted && generation == _sourceGeneration) {
+        setState(() => _sourceLoading = false);
+      }
     }
   }
 
   Future<void> _confirm(bool cancel) async {
     final repository = _confirmationRepository;
     final status = _confirmation;
-    if (repository == null || status == null || _confirmationBusy || _finalizationBusy) return;
+    if (repository == null ||
+        status == null ||
+        _confirmationBusy ||
+        _finalizationBusy) {
+      return;
+    }
     if (cancel ? !status.canCancel : !status.canConfirm) return;
-    if (!cancel && !await confirmPayrollConditions(
-      context, payrollConditionWarnings(_pdfStatement.detail),
-    )) {
+    if (!cancel &&
+        !await confirmPayrollConditions(
+          context,
+          payrollConditionWarnings(_pdfStatement.detail),
+        )) {
       return;
     }
     if (!mounted) return;
-    _bankGeneration++; _bankAdmission = null; _pdfBytes.invalidate();
+    _bankGeneration++;
+    _bankAdmission = null;
+    _pdfBytes.invalidate();
     setState(() {
       _confirmationBusy = true;
       _statementUnavailable = true;
@@ -353,8 +491,11 @@ class _PayrollStatementPreviewPageState
       await _loadConfirmation();
     } catch (error) {
       if (!mounted) return;
-      final failure = error is PostgrestException && error.code == 'P0001' &&
-          error.message == 'check all employee statements before confirmation'
+      final failure =
+          error is PostgrestException &&
+              error.code == 'P0001' &&
+              error.message ==
+                  'check all employee statements before confirmation'
           ? _PayrollConfirmationActionFailure.employeeReviewRequired
           : _PayrollConfirmationActionFailure.unknown;
       // A rejection/unknown ACK never authorizes the previous cached statement.
@@ -374,7 +515,8 @@ class _PayrollStatementPreviewPageState
   }
 
   String get _confirmationActionMessage {
-    if (_confirmationActionFailure == _PayrollConfirmationActionFailure.employeeReviewRequired) {
+    if (_confirmationActionFailure ==
+        _PayrollConfirmationActionFailure.employeeReviewRequired) {
       return SkoLanguageController.isEnglish
           ? 'Review every employee payslip before confirming the month’s payroll.'
           : '全従業員の給与明細を確認してから、月の給与を確認してください。';
@@ -391,60 +533,114 @@ class _PayrollStatementPreviewPageState
 
   PayrollStatementRecord get _pdfStatement {
     final loaded = _refreshedStatement ?? widget.statement;
-    final original = loaded.ownDraftBankPurpose && loaded.isDraft ? asOwnDraftStatement(loaded,admission:_bankAdmission)
-        : widget.statement.managementBankHidden ? asManagementBankHiddenStatement(loaded) : loaded;
+    final original = loaded.ownDraftBankPurpose && loaded.isDraft
+        ? asOwnDraftStatement(loaded, admission: _bankAdmission)
+        : widget.statement.managementBankHidden
+        ? asManagementBankHiddenStatement(loaded)
+        : loaded;
     final status = _confirmation;
     return payrollStatementWithDraftReview(
-      original, confirmed: status?.confirmed,
+      original,
+      confirmed: status?.confirmed,
       draftCompanyName: widget.statement.companyName,
     );
   }
 
   void _showPreviewHelp() {
-    showModalBottomSheet<void>(context: context, showDragHandle: true,
-      builder: (context) => SafeArea(child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text(SkoLanguageController.isEnglish ? 'Preview help' : 'プレビューの使い方',
-            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
-          const SizedBox(height: 12),
-          Text(SkoLanguageController.isEnglish
-            ? 'Pinch to zoom. Drag to move while zoomed.'
-            : '2本指で拡大・縮小／拡大後はドラッグで移動'),
-          if (widget.allowFinalization) ...[
-            const SizedBox(height: 12),
-            const Text(PayrollFinalizationPanel.helpText),
-          ],
-          const SizedBox(height: 12),
-          TextButton(onPressed: () => Navigator.pop(context), child: Text(SkoLanguageController.tr('閉じる'))),
-        ]),
-      )));
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                SkoLanguageController.isEnglish ? 'Preview help' : 'プレビューの使い方',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 18,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                SkoLanguageController.isEnglish
+                    ? 'Pinch to zoom. Drag to move while zoomed.'
+                    : '2本指で拡大・縮小／拡大後はドラッグで移動',
+              ),
+              if (widget.allowFinalization) ...[
+                const SizedBox(height: 12),
+                const Text(PayrollFinalizationPanel.helpText),
+              ],
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text(SkoLanguageController.tr('閉じる')),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _showConfirmationDetails() {
     final status = _confirmation;
     if (status == null) return;
-    showModalBottomSheet<void>(context: context, showDragHandle: true,
-      builder: (context) => SafeArea(child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text(SkoLanguageController.trParams('確認 {confirmed}/{required}名',
-            {'confirmed': status.confirmedCount, 'required': status.requiredCount}),
-            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
-          for (final reviewer in status.reviewers) Padding(
-            padding: const EdgeInsets.only(top: 12),
-            child: Text(SkoLanguageController.trParams('{name}：{status}',
-              {'name': reviewer.name, 'status': SkoLanguageController.tr(reviewer.confirmed ? '確認済み' : '未確認')})),
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                SkoLanguageController.trParams('確認 {confirmed}/{required}名', {
+                  'confirmed': status.confirmedCount,
+                  'required': status.requiredCount,
+                }),
+                style: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 18,
+                ),
+              ),
+              for (final reviewer in status.reviewers)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Text(
+                    SkoLanguageController.trParams('{name}：{status}', {
+                      'name': reviewer.name,
+                      'status': SkoLanguageController.tr(
+                        reviewer.confirmed ? '確認済み' : '未確認',
+                      ),
+                    }),
+                  ),
+                ),
+              if (status.confirmationOpenDate != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Text(
+                    SkoLanguageController.trParams('確認開始：{date}', {
+                      'date':
+                          '${status.confirmationOpenDate!.month}/${status.confirmationOpenDate!.day}',
+                    }),
+                  ),
+                ),
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text(SkoLanguageController.tr('閉じる')),
+              ),
+            ],
           ),
-          if (status.confirmationOpenDate != null) Padding(
-            padding: const EdgeInsets.only(top: 12),
-            child: Text(SkoLanguageController.trParams('確認開始：{date}',
-              {'date': '${status.confirmationOpenDate!.month}/${status.confirmationOpenDate!.day}'})),
-          ),
-          const SizedBox(height: 12),
-          TextButton(onPressed: () => Navigator.pop(context), child: Text(SkoLanguageController.tr('閉じる'))),
-        ]),
-      )));
+        ),
+      ),
+    );
   }
 
   final TransformationController _zoomController = TransformationController();
@@ -452,9 +648,13 @@ class _PayrollStatementPreviewPageState
   @override
   void dispose() {
     _sourceGeneration++;
-    _bankGeneration++;_bankAdmission=null;_pdfBytes.invalidate();
+    _bankGeneration++;
+    _bankAdmission = null;
+    _pdfBytes.invalidate();
     _bankGateway?.removeListener(_bankScopeChanged);
-    if(widget.ownBankGateway==null)unawaited(_bankGateway?.close()??Future<void>.value());
+    if (widget.ownBankGateway == null) {
+      unawaited(_bankGateway?.close() ?? Future<void>.value());
+    }
     _zoomController.dispose();
     super.dispose();
   }
@@ -471,7 +671,9 @@ class _PayrollStatementPreviewPageState
         ),
         actions: [
           IconButton(
-            tooltip: SkoLanguageController.isEnglish ? 'Preview help' : 'プレビューの使い方',
+            tooltip: SkoLanguageController.isEnglish
+                ? 'Preview help'
+                : 'プレビューの使い方',
             onPressed: _showPreviewHelp,
             icon: const Icon(Icons.help_outline),
           ),
@@ -488,15 +690,34 @@ class _PayrollStatementPreviewPageState
       body: Column(
         children: [
           if (widget.allowFinalization)
-            PayrollFinalizationPanel(statement: _pdfStatement, showHelp: false,
-              statementAvailable: !_sourceLoading && !_statementUnavailable && _confirmationError == null,
+            PayrollFinalizationPanel(
+              statement: _pdfStatement,
+              showHelp: false,
+              statementAvailable:
+                  !_sourceLoading &&
+                  !_statementUnavailable &&
+                  _confirmationError == null,
               reloadStatement: _loadConfirmation,
-              onBusyChanged: (busy) { if (mounted) setState(() => _finalizationBusy = busy); },
-              onVerificationRequired: (needsVerification) { if (mounted) setState(() => _finalizationUncertain = needsVerification); },
-              onSaved: (saved) { if (mounted) { setState(() {
-                _refreshedStatement = saved; _confirmation = null; _finalizationUncertain = false;
-                _statementUnavailable = false; _pdfBytes.invalidate();
-              }); } }),
+              onBusyChanged: (busy) {
+                if (mounted) setState(() => _finalizationBusy = busy);
+              },
+              onVerificationRequired: (needsVerification) {
+                if (mounted) {
+                  setState(() => _finalizationUncertain = needsVerification);
+                }
+              },
+              onSaved: (saved) {
+                if (mounted) {
+                  setState(() {
+                    _refreshedStatement = saved;
+                    _confirmation = null;
+                    _finalizationUncertain = false;
+                    _statementUnavailable = false;
+                    _pdfBytes.invalidate();
+                  });
+                }
+              },
+            ),
           if (!_statementUnavailable)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -508,8 +729,10 @@ class _PayrollStatementPreviewPageState
             Padding(
               key: const ValueKey('payroll-confirmation-action-error'),
               padding: const EdgeInsets.all(8),
-              child: Text(_confirmationActionMessage,
-                style: TextStyle(color: Theme.of(context).colorScheme.error)),
+              child: Text(
+                _confirmationActionMessage,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
             ),
           if (_confirmationError != null)
             Padding(
@@ -525,18 +748,27 @@ class _PayrollStatementPreviewPageState
                     ),
                   ),
                   IconButton(
-                    onPressed: _finalizationBusy || _sourceLoading ? null : _loadConfirmation,
+                    onPressed: _finalizationBusy || _sourceLoading
+                        ? null
+                        : _loadConfirmation,
                     icon: const Icon(Icons.refresh),
                   ),
                 ],
               ),
             ),
-          if (widget.allowFinalization && statement.isDraft && !_sourceLoading &&
-              !_confirmationBusy && !_finalizationBusy && !_statementUnavailable && _confirmationError == null)
+          if (widget.allowFinalization &&
+              statement.isDraft &&
+              !_sourceLoading &&
+              !_confirmationBusy &&
+              !_finalizationBusy &&
+              !_statementUnavailable &&
+              _confirmationError == null)
             PayrollPendingAttendancePanel(
               key: ValueKey(statement),
               statementId: statement.id,
-              onReturn: () async { await _loadConfirmation(); },
+              onReturn: () async {
+                await _loadConfirmation();
+              },
             ),
           if (_confirmation != null)
             Padding(
@@ -549,8 +781,15 @@ class _PayrollStatementPreviewPageState
                   TextButton.icon(
                     onPressed: _showConfirmationDetails,
                     icon: const Icon(Icons.fact_check_outlined, size: 18),
-                    label: Text(SkoLanguageController.trParams('確認 {confirmed}/{required}名',
-                      {'confirmed': _confirmation!.confirmedCount, 'required': _confirmation!.requiredCount})),
+                    label: Text(
+                      SkoLanguageController.trParams(
+                        '確認 {confirmed}/{required}名',
+                        {
+                          'confirmed': _confirmation!.confirmedCount,
+                          'required': _confirmation!.requiredCount,
+                        },
+                      ),
+                    ),
                   ),
                   if (_confirmation!.canConfirm)
                     FilledButton(
@@ -569,48 +808,92 @@ class _PayrollStatementPreviewPageState
                 ],
               ),
             ),
-          if (!_statementUnavailable && !_sourceLoading && !_confirmationBusy &&
-              !_finalizationBusy && !_finalizationUncertain && _confirmationError == null)
-            PayrollInsuranceEvidenceCard(detail: statement.detail,
-              month: '${statement.periodStart.year.toString().padLeft(4, '0')}-${statement.periodStart.month.toString().padLeft(2, '0')}-01'),
+          if (!_statementUnavailable &&
+              !_sourceLoading &&
+              !_confirmationBusy &&
+              !_finalizationBusy &&
+              !_finalizationUncertain &&
+              _confirmationError == null)
+            PayrollInsuranceEvidenceCard(
+              detail: statement.detail,
+              month:
+                  '${statement.periodStart.year.toString().padLeft(4, '0')}-${statement.periodStart.month.toString().padLeft(2, '0')}-01',
+            ),
           Expanded(
             key: const ValueKey('payroll-preview-region'),
             child: _sourceLoading || _confirmationBusy || _finalizationBusy
                 ? const Center(child: CircularProgressIndicator())
-                : _statementUnavailable || _finalizationUncertain || _confirmationError != null
-                ? Center(child: Text(SkoLanguageController.tr('この給与明細を閲覧できません。')))
-                : statement.isDraft && statement.ownDraftBankPurpose && statement.ownDraftBankAdmission?.permits(statement.id,statement.revision)!=true
-                ? Center(child: Padding(padding:const EdgeInsets.all(16),child:Column(mainAxisSize:MainAxisSize.min,children:[
-                    Text('支給額 ${statement.grossPay}円 / 控除額 ${statement.deductions}円 / 差引支給額 ${statement.netPay}円'),
-                    Text(_bankLoading?'個人口座を確認しています。':(_bankError??'個人口座の確認が必要です。未登録とは判断していません。')),
-                    const Text('口座を確認するまで、この下書きのプレビュー・印刷・PDF共有を停止しています。確定済み明細には影響しません。'),
-                    OutlinedButton(onPressed:_bankLoading?null:()=>_resolveOwnBank(statement),child:const Text('口座を再確認')),
-                  ])))
-                : statement.detail['tax_calculation'] is Map &&
-                    (statement.detail['tax_calculation'] as Map)['blocked'] == true
-                ? Center(child: Text('税計算の条件を確認してください。\n${(statement.detail['tax_calculation'] as Map)['reason']}'))
-                : widget.previewBuilder?.call(statement) ?? InteractiveViewer(
-                    transformationController: _zoomController,
-                    minScale: 1,
-                    maxScale: 5,
-                    panEnabled: true,
-                    scaleEnabled: true,
-                    boundaryMargin: const EdgeInsets.all(120),
-                    clipBehavior: Clip.none,
-                    child: PdfPreview(
-                      key: ValueKey(_refreshedStatement ?? _confirmation),
-                      initialPageFormat: PdfPageFormat.a4,
-                      canChangePageFormat: false,
-                      canChangeOrientation: false,
-                      allowPrinting: true,
-                      allowSharing: true,
-                      pdfFileName:
-                          '${statement.monthLabel}_${statement.workerName}_給与明細.pdf',
-                      build: (_) => _pdfBytes.get(
-                        () => PayrollPdfService.buildPdf(statement),
+                : _statementUnavailable ||
+                      _finalizationUncertain ||
+                      _confirmationError != null
+                ? Center(
+                    child: Text(SkoLanguageController.tr('この給与明細を閲覧できません。')),
+                  )
+                : statement.isDraft &&
+                      statement.ownDraftBankPurpose &&
+                      statement.ownDraftBankAdmission?.permits(
+                            statement.id,
+                            statement.revision,
+                          ) !=
+                          true
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            '支給額 ${statement.grossPay}円 / 控除額 ${statement.deductions}円 / 差引支給額 ${statement.netPay}円',
+                          ),
+                          Text(
+                            _bankLoading
+                                ? '個人口座を確認しています。'
+                                : (_bankError ?? '個人口座の確認が必要です。未登録とは判断していません。'),
+                          ),
+                          const Text(
+                            '口座を確認するまで、この下書きのプレビュー・印刷・PDF共有を停止しています。確定済み明細には影響しません。',
+                          ),
+                          OutlinedButton(
+                            onPressed: _bankLoading
+                                ? null
+                                : () => _resolveOwnBank(statement),
+                            child: const Text('口座を再確認'),
+                          ),
+                        ],
                       ),
                     ),
-                  ),
+                  )
+                : statement.detail['tax_calculation'] is Map &&
+                      (statement.detail['tax_calculation'] as Map)['blocked'] ==
+                          true
+                ? Center(
+                    child: Text(
+                      '税計算の条件を確認してください。\n${(statement.detail['tax_calculation'] as Map)['reason']}',
+                    ),
+                  )
+                : widget.previewBuilder?.call(statement) ??
+                      InteractiveViewer(
+                        transformationController: _zoomController,
+                        minScale: 1,
+                        maxScale: 5,
+                        panEnabled: true,
+                        scaleEnabled: true,
+                        boundaryMargin: const EdgeInsets.all(120),
+                        clipBehavior: Clip.none,
+                        child: PdfPreview(
+                          key: ValueKey(_refreshedStatement ?? _confirmation),
+                          initialPageFormat: PdfPageFormat.a4,
+                          canChangePageFormat: false,
+                          canChangeOrientation: false,
+                          allowPrinting: true,
+                          allowSharing: true,
+                          pdfFileName:
+                              '${statement.monthLabel}_${statement.workerName}_給与明細.pdf',
+                          build: (_) => _pdfBytes.get(
+                            () => _buildStatementPdf(statement),
+                          ),
+                        ),
+                      ),
           ),
         ],
       ),

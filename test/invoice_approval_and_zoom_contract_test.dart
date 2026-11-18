@@ -112,7 +112,8 @@ void main() {
     expect(invoice, contains('InvoicePdfService.buildPdf('));
     expect(invoice, contains('Printing.layoutPdf('));
     expect(invoice, contains('Printing.sharePdf('));
-    expect(payroll, contains('PayrollPdfService.buildPdf(statement)'));
+    expect(payroll, contains('_buildStatementPdf(statement)'));
+    expect(payroll, contains('PayrollPdfService.buildPdf(statement, employmentContract: contract)'));
     expect(payroll, contains('allowPrinting: true'));
     expect(payroll, contains('allowSharing: true'));
   });

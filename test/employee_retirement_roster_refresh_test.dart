@@ -57,10 +57,8 @@ void main() {
           if(repository.employed) Map<String,dynamic>.from(repository.row),
         ]});
       }
-      if (request.url.path.endsWith('/workers')) {
-        if(request.method=='PATCH') repository.employed=false;
-        return fixture.Wire.json([{'id':worker,'company_id':company,
-          'status':repository.employed?'active':'inactive'}]);
+      if (request.url.path.endsWith('/rpc/request_retirement_render_pilot')) {
+        return fixture.Wire.json('60000000-0000-0000-0000-000000000030');
       }
       throw StateError('Unexpected fixture endpoint ${request.url.path}');
     };
@@ -82,16 +80,21 @@ void main() {
 
   testWidgets('confirmed retirement save then real detail return updates active and retired filters', (tester) async {
     await openDetail(tester);
-    await tester.runAsync(()=>EmployeeRetirementRepository(wire.client).retire(
-      companyId:company,workerId:worker,verifyContext:(){}));
-    expect(repository.employed,false);
+    await tester.runAsync(() => expectLater(
+      EmployeeRetirementRepository(wire.client).retire(
+        companyId: company, workerId: worker, verifyContext: () {},
+      ),
+      throwsA(isA<RetirementQueued>()),
+    ));
+    expect(repository.employed, true);
+    repository.employed = false;
     await tester.pageBack();
     await tester.pumpAndSettle();
     expect(find.text(workerName),findsNothing);
     await tester.tap(find.widgetWithText(ChoiceChip,'退職者'));
     await tester.pump();
     expect(find.text(workerName),findsOneWidget);
-    expect(wire.calls.where((r)=>r.method=='PATCH'),hasLength(1));
+    expect(wire.calls.where((r)=>r.url.path.endsWith('/rpc/request_retirement_render_pilot')),hasLength(1));
     expect(wire.calls.any((r)=>r.method=='DELETE'),false);
     await close(tester);
   });

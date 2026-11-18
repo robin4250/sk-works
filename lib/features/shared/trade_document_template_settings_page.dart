@@ -123,7 +123,7 @@ class _SectionState extends State<TradeDocumentTemplateSettingsSection> with Wid
       ExpansionTile(title: const Text('？ 設定の反映範囲'), children: [Padding(padding: const EdgeInsets.all(8),
         child: Text(_invoice
           ? '工事名・工事場所は新規注文請書の初期文です。初回は注文書の同じ初期文を引き継ぎます。保存後は注文請書の設定を使用します。自動生成OFFでも保存済みの注文請書は保持します。各帳票の確認・編集はプレビュー内から行います。'
-          : '工事名・工事場所は新規注文書の初期文です。自動生成OFFでも保存済みの注文書は保持します。設定変更で保存済み・確定済み帳票を上書きしません。単体生成は協力会社登録の会社詳細から利用できます。'))]),
+          : '工事名・工事場所は新規注文書の初期文です。自動生成OFFでも保存済みの注文書は保持します。設定変更で保存済み・確定済み帳票を上書きしません。単体生成は連携会社登録の協力会社の詳細から利用できます。'))]),
       if (_revoked) const Text('ログイン状態や画面の状態が変わりました。設定を開き直してください。')
       else if (!_ready) Text(_error ?? '読み込み中…')
       else ...[

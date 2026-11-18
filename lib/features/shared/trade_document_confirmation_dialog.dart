@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
 import '../../international/language_controller.dart';
@@ -52,6 +52,19 @@ Future<TradeConfirmationFlowOutcome> openTradeDocumentConfirmation(BuildContext 
   final repository = SupabaseTradeConfirmationRepository.maybeCreate();
   if (repository == null) return TradeConfirmationFlowOutcome.cancelled;
   try {
+    // The optional confirmation UI's file-based retry journal is native-only.
+    // On Web, probe the server first so an older deployment can still run
+    // ordinary invoice approval. Other probe failures leave approval blocked.
+    if (kIsWeb && !inspectOnly) {
+      bool available;
+      try {
+        available = await repository.available();
+      } catch (_) {
+        return TradeConfirmationFlowOutcome.cancelled;
+      }
+      if (!context.mounted) return TradeConfirmationFlowOutcome.cancelled;
+      if (!available) return TradeConfirmationFlowOutcome.legacy;
+    }
     return await Navigator.of(context).push<TradeConfirmationFlowOutcome>(MaterialPageRoute(builder: (_) =>
       TradeDocumentConfirmationPage(kind: kind, parentId: parentId, sourceRevision: sourceRevision,
         repository: repository, inspectOnly: inspectOnly))) ?? TradeConfirmationFlowOutcome.cancelled;

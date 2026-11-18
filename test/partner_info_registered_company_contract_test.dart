@@ -9,7 +9,9 @@ void main() {
     final app = File('lib/app_v2.dart').readAsStringSync();
     expect(page, contains('TradeCompanyRepository.maybeCreate()'));
     expect(page, contains('item.isSubcontractor'));
-    expect(page, contains('_openCompany(item)'));
+    expect(page, contains('onTap: () => _openDirectoryRow(records)'));
+    expect(page, contains('_openCompany(records.single)'));
+    expect(page, contains('_openCompany(selected)'));
     expect(page, contains('item.name'));
     expect(page, contains('item.address'));
     expect(page, contains('item.phone'));

@@ -14,22 +14,28 @@ enum _MapLayer { sites, customers, partners, company, home, employeeHomes }
 enum SiteMapMode { general, admin }
 
 class GeneralSiteMapPage extends StatelessWidget {
-  const GeneralSiteMapPage({super.key});
+  const GeneralSiteMapPage({super.key, this.repository});
+
+  final SiteMapRepository? repository;
 
   @override
-  Widget build(BuildContext context) => const SiteMapPage(
+  Widget build(BuildContext context) => SiteMapPage(
         mode: SiteMapMode.general,
         title: '現場マップ',
+        repository: repository,
       );
 }
 
 class AdminSiteMapPage extends StatelessWidget {
-  const AdminSiteMapPage({super.key});
+  const AdminSiteMapPage({super.key, this.repository});
+
+  final SiteMapRepository? repository;
 
   @override
-  Widget build(BuildContext context) => const SiteMapPage(
+  Widget build(BuildContext context) => SiteMapPage(
         mode: SiteMapMode.admin,
         title: '管理者用現場マップ',
+        repository: repository,
       );
 }
 
@@ -38,10 +44,12 @@ class SiteMapPage extends StatefulWidget {
     super.key,
     required this.mode,
     required this.title,
+    this.repository,
   });
 
   final SiteMapMode mode;
   final String title;
+  final SiteMapRepository? repository;
 
   bool get allowEmployeeHomes => mode == SiteMapMode.admin;
 
@@ -50,7 +58,7 @@ class SiteMapPage extends StatefulWidget {
 }
 
 class _SiteMapPageState extends State<SiteMapPage> {
-  final _repository = SiteMapRepository.maybeCreate();
+  late final _repository = widget.repository ?? SiteMapRepository.maybeCreate();
   SiteMapWorkspace? _data;
   bool _loading = true;
   String? _error;
@@ -351,7 +359,7 @@ class _SiteMapPageState extends State<SiteMapPage> {
                             if (widget.mode == SiteMapMode.admin)
                               _check(
                                 _MapLayer.partners,
-                                SkoLanguageController.tr('下請け会社'),
+                                SkoLanguageController.tr('協力会社'),
                                 enabled: data.partners.isNotEmpty,
                               ),
                             _check(
@@ -408,12 +416,12 @@ class _SiteMapPageState extends State<SiteMapPage> {
                       ),
                     if (widget.mode == SiteMapMode.admin &&
                         data.partners.isNotEmpty) ...[
-                      _Heading(SkoLanguageController.tr('下請け会社')),
+                      _Heading(SkoLanguageController.tr('協力会社')),
                       for (final partner in data.partners)
                         ListTile(
                           leading: const Icon(Icons.handshake_outlined),
                           title: Text(
-                            partner['partner_name']?.toString() ?? '下請け会社',
+                            partner['partner_name']?.toString() ?? '協力会社',
                           ),
                           subtitle: Text(partner['address']?.toString() ?? ''),
                           trailing: const Icon(Icons.map_outlined),

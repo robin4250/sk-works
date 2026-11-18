@@ -6,7 +6,8 @@ void main() {
     expect(s, contains('initialPageFormat: PdfPageFormat.a4,'));
     expect(s, isNot(contains('PdfPageFormat.a4.landscape')));
     expect(s.replaceAll(RegExp(r'\s+'), ' '),
-        contains('build: (_) => _pdfBytes.get( () => PayrollPdfService.buildPdf(statement), )'));
+        contains('build: (_) => _pdfBytes.get( () => _buildStatementPdf(statement), )'));
+    expect(s, contains('PayrollPdfService.buildPdf(statement, employmentContract: contract)'));
     expect(s, contains('allowPrinting: true'));
     expect(s, contains('allowSharing: true'));
   });

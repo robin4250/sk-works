@@ -53,8 +53,9 @@ void main() {
     );
 
     expect(page, contains('TestFlight'));
-    expect(page, contains('初回ログインQR'));
-    expect(page, contains('未送信'));
+    expect(page, contains('QrImageView(data: result.qrPayload'));
+    expect(page, contains('招待未作成'));
+    expect(page, contains('result.smsSent'));
     expect(repository, contains('createInviteForWorker'));
     expect(repository, contains("rpc('initial_registration_employee_rows')"));
     expect(repository, contains("'register_employee_preregistration'"));

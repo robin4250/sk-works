@@ -26,6 +26,8 @@ import '../companies/company_link_page.dart';
 import '../companies/trade_company_repository.dart';
 import '../people/own_document_registration_page.dart';
 import '../auth/secondary_protected_page.dart';
+import '../auth/employee_onboarding_approvals_page.dart';
+import '../auth/employee_onboarding_repository.dart';
 import '../invoices/invoice_notification_page.dart';
 import '../chat/chat_cloud_page.dart';
 import '../payroll/individual_payroll_settings_page.dart';
@@ -319,6 +321,12 @@ class _NotificationsPageState extends State<NotificationsPage> {
               else { await verifySiteOrderNotificationTarget(orderApi, id!); }
               requireFlow();
               return true;
+            }
+            if (key == 'employee_onboarding_approval') {
+              final repository = EmployeeOnboardingRepository.maybeCreate();
+              final allowed = await repository?.canReview() ?? false;
+              session.requireCurrent();
+              if (!allowed) return false;
             }
             if (key == 'daily_report_edit_request') {
               final available = await dailyReportNotificationAvailable(
@@ -787,6 +795,9 @@ Widget? notificationDestination(
     SiteInformationApprovalsPage(initialRequestId: item.actionId),
   'vehicle_documents' => VehicleRoutePage(initialVehicleId: item.actionId ?? ''),
   'checkout_report_registration' => CheckoutReportNotificationPage(reportId: item.actionId!),
+  'employee_onboarding_approval' => EmployeeOnboardingApprovalsPage(
+    initialInviteId: item.actionId!,
+  ),
   'daily_report_edit_request' => DailyReportApprovalsPage(
     initialRequestId: item.actionId,
   ),

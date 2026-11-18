@@ -2,12 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'employee_invite_repository.dart';
+import 'employee_invite_sms.dart';
 import '../../data/supabase_backend.dart';
-import '../referrals/app_referral_page.dart';
-import '../referrals/app_referral_repository.dart';
+import '../auth/employee_bootstrap_identity.dart';
 import 'employee_registration_page.dart';
 import '../../international/language_controller.dart';
 
@@ -25,9 +26,7 @@ class _EmployeeInitialRegistrationPageState
   final _testFlightUrl = TextEditingController();
   List<InitialRegistrationEmployee> _employees = const [];
   bool _loading = true;
-  String? _busyWorkerId;
   String? _error;
-  EmployeeInviteResult? _result;
   bool _savingUrl = false;
   String? _loadedActor;
 
@@ -53,10 +52,15 @@ class _EmployeeInitialRegistrationPageState
         repository.loadTestFlightUrl(),
       ]);
       if (!mounted) return;
-      if (actor == null || SupabaseBackend.client.auth.currentUser?.id != actor) {
+      if (actor == null ||
+          SupabaseBackend.client.auth.currentUser?.id != actor) {
         _testFlightUrl.clear();
-        setState(() { _employees = const []; _loadedActor = null; _loading = false;
-          _error = 'ログイン情報が変わりました。画面を開き直してください。'; });
+        setState(() {
+          _employees = const [];
+          _loadedActor = null;
+          _loading = false;
+          _error = 'ログイン情報が変わりました。画面を開き直してください。';
+        });
         return;
       }
       _loadedActor = actor;
@@ -84,8 +88,9 @@ class _EmployeeInitialRegistrationPageState
     try {
       await repository.saveTestFlightUrl(_testFlightUrl.text);
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('TestFlight URLを保存しました')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('TestFlight URLを保存しました')));
     } catch (error) {
       if (!mounted) return;
       setState(() => _error = error.toString().replaceFirst('Bad state: ', ''));
@@ -100,67 +105,29 @@ class _EmployeeInitialRegistrationPageState
     super.dispose();
   }
 
-  Future<void> _send(InitialRegistrationEmployee employee) async {
+  Future<void> _openGuide(InitialRegistrationEmployee employee) async {
     final repository = _repository;
-    if (repository == null || _busyWorkerId != null) return;
-    setState(() {
-      _busyWorkerId = employee.id;
-      _error = null;
-    });
-    try {
-      final result = await repository.createInviteForWorker(employee.id);
-      if (!mounted) return;
-      setState(() => _result = result);
-      await _load();
-    } catch (error) {
-      if (!mounted) return;
-      setState(() => _error = error.toString().replaceFirst('Bad state: ', ''));
-    } finally {
-      if (mounted) setState(() => _busyWorkerId = null);
+    final actor = _loadedActor;
+    if (repository == null ||
+        actor == null ||
+        SupabaseBackend.client.auth.currentUser?.id != actor) {
+      return;
     }
-  }
-
-  void _sendDistribution(InitialRegistrationEmployee employee) {
-    if (_loadedActor == null || SupabaseBackend.client.auth.currentUser?.id != _loadedActor) return;
-    Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => AppReferralPage(
-        repository: AppReferralRepository(SupabaseBackend.client),
-        invitationKind: 'employee',
-        initialName: employee.name,
-        initialPhone: employee.phone,
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => _EmployeeDistributionPage(
+          employee: employee,
+          actor: actor,
+          repository: repository,
+        ),
       ),
-    ));
-  }
-
-  String _shareText(EmployeeInviteResult result) {
-    final buffer = StringBuffer()
-      ..writeln('SKO初回登録のご案内')
-      ..writeln('氏名: ${result.name}');
-    final testFlight = result.testFlightUrl?.trim() ?? '';
-    if (testFlight.isNotEmpty) {
-      buffer.writeln('TestFlight: $testFlight');
-    }
-    buffer
-      ..writeln('電話番号: ${result.phone}')
-      ..writeln('初期パスワード: ${result.temporaryPassword}')
-      ..writeln('SKOをインストール後、初回ログインQRまたは上記情報でログインしてください。');
-    return buffer.toString();
-  }
-
-  Future<void> _share(EmployeeInviteResult result) =>
-      SharePlus.instance.share(ShareParams(text: _shareText(result)));
-
-  Future<void> _openSms(EmployeeInviteResult result) async {
-    final body = Uri.encodeComponent(_shareText(result));
-    final uri = Uri.parse('sms:${result.phone}?body=$body');
-    if (!await launchUrl(uri)) {
-      throw StateError('SMS作成画面を開けませんでした。共有ボタンをご利用ください。');
-    }
+    );
+    if (mounted) await _load();
   }
 
   @override
   Widget build(BuildContext context) {
-    final unsent = _employees.where((item) => !item.invited).length;
+    final unissued = _employees.where((item) => !item.invited).length;
     return Scaffold(
       appBar: AppBar(
         title: const Text(
@@ -182,17 +149,14 @@ class _EmployeeInitialRegistrationPageState
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
                 children: [
                   FilledButton.icon(
-                    onPressed: _busyWorkerId != null
-                        ? null
-                        : () async {
-                            await Navigator.of(context).push(
-                              MaterialPageRoute<void>(
-                                builder: (_) =>
-                                    const EmployeeRegistrationPage(),
-                              ),
-                            );
-                            if (mounted) _load();
-                          },
+                    onPressed: () async {
+                      await Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const EmployeeRegistrationPage(),
+                        ),
+                      );
+                      if (mounted) _load();
+                    },
                     icon: const Icon(Icons.person_add_alt_1),
                     label: Text(SkoLanguageController.tr('従業員を追加')),
                   ),
@@ -201,9 +165,8 @@ class _EmployeeInitialRegistrationPageState
                     child: Padding(
                       padding: const EdgeInsets.all(16),
                       child: Text(
-                        '従業員登録済みの人へ、TestFlightと本人専用の初回ログイン情報を順番に送ります。'
-                        '未送信 $unsent人 / 登録済み ${_employees.length}人。'
-                        '初回登録作成済みの人には「URLを追加送信」からTestFlight・WEB版の案内だけを送れます。ログイン情報は再発行しません。',
+                        '従業員名の横にある「招待案内」から、本人専用の初回ログイン情報を作成・共有できます。'
+                        '\n招待未作成 $unissued人 / 登録済み ${_employees.length}人',
                         style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
                     ),
@@ -280,39 +243,217 @@ class _EmployeeInitialRegistrationPageState
                         ),
                         subtitle: Text(
                           '${employee.phone}\n'
-                          '${employee.invited ? '初回登録作成済み' : '未送信'}',
+                          '${employee.invited ? '招待作成済み' : '招待未作成'}',
                         ),
                         isThreeLine: true,
-                        trailing: employee.invited
-                            ? OutlinedButton(
-                                onPressed: _busyWorkerId == null ? () => _sendDistribution(employee) : null,
-                                child: const Text('URLを追加送信'),
-                              )
-                            : FilledButton(
-                                onPressed: _busyWorkerId == null
-                                    ? () => _send(employee)
-                                    : null,
-                                child: _busyWorkerId == employee.id
-                                    ? const SizedBox.square(
-                                        dimension: 16,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                        ),
-                                      )
-                                    : const Text('送信'),
-                              ),
+                        trailing: FilledButton(
+                          onPressed: () => _openGuide(employee),
+                          child: const Text('招待案内'),
+                        ),
                       ),
                     ),
-                  if (_result != null) ...[
-                    const SizedBox(height: 14),
-                    _ResultCard(
-                      result: _result!,
-                      onShare: () => _share(_result!),
-                      onSms: () => _openSms(_result!),
-                    ),
-                  ],
                 ],
               ),
+      ),
+    );
+  }
+}
+
+class _EmployeeDistributionPage extends StatefulWidget {
+  const _EmployeeDistributionPage({
+    required this.employee,
+    required this.actor,
+    required this.repository,
+  });
+
+  final InitialRegistrationEmployee employee;
+  final String actor;
+  final EmployeeInviteRepository repository;
+
+  @override
+  State<_EmployeeDistributionPage> createState() =>
+      _EmployeeDistributionPageState();
+}
+
+class _EmployeeDistributionPageState extends State<_EmployeeDistributionPage> {
+  EmployeeInviteResult? _result;
+  String? _existingAccountCode;
+  bool _creating = false;
+  String? _error;
+
+  bool get _sameActor =>
+      SupabaseBackend.client.auth.currentUser?.id == widget.actor;
+
+  Future<void> _createInvite() async {
+    if (!_sameActor || _creating || _result != null || _existingAccountCode != null) return;
+    setState(() {
+      _creating = true;
+      _error = null;
+    });
+    try {
+      final result = await widget.repository.createInviteForWorker(
+        widget.employee.id,
+        deliverSms: false,
+      );
+      if (!mounted || !_sameActor) return;
+      setState(() => _result = result);
+    } catch (error) {
+      if (mounted && _sameActor) {
+        setState(
+          () {
+            final details = error is FunctionException ? error.details : null;
+            final message = details is Map ? details['error'] : null;
+            _error = message is String && message.isNotEmpty
+                ? message
+                : '初回ログイン情報を作成できませんでした。';
+          },
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _creating = false);
+    }
+  }
+
+  Future<void> _issueExistingAccountClaim() async {
+    if (!_sameActor || _creating || _result != null) return;
+    setState(() {
+      _creating = true;
+      _error = null;
+    });
+    try {
+      final code = await widget.repository.issueExistingAccountClaim(widget.employee.id);
+      if (mounted && _sameActor) setState(() => _existingAccountCode = code);
+    } catch (_) {
+      if (mounted && _sameActor) {
+        setState(() => _error = '招待コードを発行できませんでした。従業員の登録状況を確認してください。');
+      }
+    } finally {
+      if (mounted) setState(() => _creating = false);
+    }
+  }
+
+  Future<void> _deliver(
+    Future<void> Function() action, {
+    String? success,
+  }) async {
+    if (!_sameActor) return;
+    try {
+      await action();
+      if (success != null && mounted && _sameActor) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(success)));
+      }
+    } catch (error) {
+      if (!mounted || !_sameActor) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.toString().replaceFirst('Bad state: ', '')),
+        ),
+      );
+    }
+  }
+
+  Future<void> _share(EmployeeInviteResult result) =>
+      SharePlus.instance.share(ShareParams(text: employeeInviteSms(result)));
+
+  Future<void> _openSms(String phone, String message) async {
+    final body = Uri.encodeComponent(message);
+    final uri = Uri.parse('sms:$phone?body=$body');
+    if (!await launchUrl(uri)) {
+      throw StateError('SMS作成画面を開けませんでした。共有ボタンをご利用ください。');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: !_creating,
+      child: Scaffold(
+        appBar: AppBar(title: const Text('従業員の招待案内')),
+        body: StreamBuilder(
+          stream: SupabaseBackend.client.auth.onAuthStateChange,
+          builder: (context, _) {
+            if (!_sameActor) {
+              return const Center(child: Text('ログイン情報が変わりました。画面を開き直してください。'));
+            }
+            final result = _result;
+            final existingAccountCode = _existingAccountCode;
+            return ListView(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.person_outline),
+                  title: Text(widget.employee.name),
+                  subtitle: Text(widget.employee.phone),
+                ),
+                const ListTile(
+                  title: Text('従業員の登録手順'),
+                  subtitle: Text(
+                    '端末に合わせた開き方は案内ページをご確認ください。'
+                    '\n初めて使う方には、登録電話番号と初回ログインパスワードをお渡しください。',
+                  ),
+                ),
+                const ListTile(
+                  title: Text('登録後に使う機能'),
+                  subtitle: Text(employeeInviteWorkGuide),
+                ),
+                if (_error != null)
+                  Text(
+                    _error!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                OutlinedButton.icon(
+                  onPressed: _creating ? null : () => _deliver(
+                    () => _openSms(widget.employee.phone, employeeAppGuideSms),
+                  ),
+                  icon: const Icon(Icons.sms_outlined),
+                  label: const Text('案内URLだけのSMSを作成'),
+                ),
+                if (!widget.employee.invited && result == null && existingAccountCode == null)
+                  FilledButton.icon(
+                    onPressed: _creating ? null : _createInvite,
+                    icon: const Icon(Icons.person_add_alt_1),
+                    label: Text(_creating ? '作成中…' : '本人専用の招待を作成'),
+                  )
+                else if (result != null)
+                  _ResultCard(
+                    result: result,
+                    onShare: () => _deliver(() => _share(result)),
+                    onSms: () => _deliver(() => _openSms(result.phone, employeeInviteSms(result))),
+                    onCopy: (value, message) => _deliver(
+                      () => Clipboard.setData(ClipboardData(text: value)),
+                      success: message,
+                    ),
+                  ),
+                if (employeeExistingAccountClaimEnabled && !widget.employee.invited && result == null)
+                  OutlinedButton(
+                    onPressed: _creating ? null : _issueExistingAccountClaim,
+                    child: Text(existingAccountCode == null
+                        ? '既存アカウント用の招待コードを発行'
+                        : '招待コードを再発行'),
+                  ),
+                if (existingAccountCode != null) ...[
+                  const Text('招待コードは48時間有効です。従業員本人に共有してください。'),
+                  SelectableText(existingAccountCode),
+                  OutlinedButton.icon(
+                    onPressed: _creating ? null : () => _deliver(
+                      () => Clipboard.setData(ClipboardData(text:
+                        'SKOに登録済みの方法でログインし、「従業員の招待を受け取る」を選んでください。\n'
+                        '招待コード $existingAccountCode',
+                      )),
+                      success: '招待案内をコピーしました',
+                    ),
+                    icon: const Icon(Icons.copy_outlined),
+                    label: const Text('既存アカウント用の案内をコピー'),
+                  ),
+                ],
+              ],
+            );
+          },
+        ),
       ),
     );
   }
@@ -323,15 +464,16 @@ class _ResultCard extends StatelessWidget {
     required this.result,
     required this.onShare,
     required this.onSms,
+    required this.onCopy,
   });
 
   final EmployeeInviteResult result;
   final VoidCallback onShare;
   final VoidCallback onSms;
+  final Future<void> Function(String, String) onCopy;
 
   @override
   Widget build(BuildContext context) {
-    final testFlight = result.testFlightUrl?.trim() ?? '';
     return Card(
       color: Theme.of(context).colorScheme.primaryContainer,
       child: Padding(
@@ -348,50 +490,52 @@ class _ResultCard extends StatelessWidget {
               Text(
                 result.deliveryMessage?.trim().isNotEmpty == true
                     ? result.deliveryMessage!
-                    : 'SMS自動送信設定が未接続のため、共有ボタンから送れます。',
+                    : '登録した電話番号と初期パスワードを本人に共有してください。初回ログインにSMSコードは不要です。',
               ),
             ],
-            if (testFlight.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              SelectableText('TestFlight: $testFlight'),
-            ],
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
             const Text(
-              '初回ログインQR',
-              textAlign: TextAlign.center,
+              '初回ログインパスワード',
               style: TextStyle(fontWeight: FontWeight.w900),
             ),
+            SelectableText(result.temporaryPassword),
             const SizedBox(height: 8),
-            Center(
-              child: QrImageView(
-                data: result.qrPayload,
-                size: 220,
-                backgroundColor: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 8),
-            SelectableText(
-              '初期パスワード: ${result.temporaryPassword}',
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 10),
             OutlinedButton.icon(
-              onPressed: () async {
-                await Clipboard.setData(
-                  ClipboardData(text: result.temporaryPassword),
-                );
-                if (!context.mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('初期パスワードをコピーしました')),
-                );
-              },
+              onPressed: () => onCopy(
+                result.temporaryPassword,
+                'この端末にコピーしました。別のスマホへ渡すときは「配布リンクとログイン案内をコピー」を使います。',
+              ),
               icon: const Icon(Icons.copy_outlined),
-              label: const Text('初期パスワードをコピー'),
+              label: const Text('① 初回ログインパスワードをコピー'),
+            ),
+            const Text(
+              '別のスマホに渡すときは、下の「配布リンクとログイン案内をコピー」を押し、本人へのメッセージに貼り付けます。',
+            ),
+            ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              title: const Text('対面でQRを読み取る'),
+              children: [
+                const Text('本人のスマホで「従業員登録QRでログイン」を押して読み取ります。'),
+                const SizedBox(height: 8),
+                QrImageView(data: result.qrPayload, size: 220, backgroundColor: Colors.white),
+              ],
+            ),
+            ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              title: const Text('送信する案内文を確認'),
+              children: [SelectableText(employeeInviteSms(result))],
             ),
             FilledButton.icon(
               onPressed: onSms,
               icon: const Icon(Icons.sms_outlined),
               label: const Text('この従業員へSMSを作成'),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: () =>
+                  onCopy(employeeInviteSms(result), '初回ログインの案内をコピーしました'),
+              icon: const Icon(Icons.content_copy_outlined),
+              label: const Text('配布リンクとログイン案内をコピー'),
             ),
             const SizedBox(height: 8),
             OutlinedButton.icon(

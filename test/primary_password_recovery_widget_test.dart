@@ -19,7 +19,7 @@ class _Wire {
   _Wire() {
     client = SupabaseClient('https://primary-recovery-fixture.invalid', 'public_fixture', authOptions: const AuthClientOptions(autoRefreshToken: false), httpClient: MockClient((r) async {
       calls.add(r);
-      if (r.url.path == '/auth/v1/signup') return http.Response(jsonEncode({'user': _user()}), 200, headers: {'content-type': 'application/json'}, request: r);
+      if (r.url.path == '/functions/v1/register-approved-phone') return http.Response('', 204, request: r);
       if (r.url.path == '/auth/v1/token' || r.url.path == '/auth/v1/verify') return http.Response(jsonEncode({'access_token': _token(), 'refresh_token': 'synthetic', 'token_type': 'bearer', 'expires_in': 3600, 'user': _user()}), 200, headers: {'content-type': 'application/json'}, request: r);
       if (r.url.path == '/auth/v1/resend') return http.Response('{}', 200, headers: {'content-type': 'application/json'}, request: r);
       throw StateError('Unexpected authentication request: ${r.url.path}');
@@ -100,22 +100,27 @@ void main() {
     expect(w.calls, isEmpty); expect(authenticated, 0);
     expect(find.byType(TextField), findsNothing);
   });
-  testWidgets('initial registration retains separate SMS verification, QR entry and no recovery reset', (tester) async {
+  testWidgets('initial registration uses the approval code, keeps QR and does not use recovery', (tester) async {
     final w = wires[2]; var authenticated = 0;
     await _show(tester, w, () => authenticated++);
     expect(find.text('従業員登録QRでログイン'), findsOneWidget);
-    await tester.tap(find.text('管理者として初めて登録する')); await tester.pumpAndSettle();
+    await tester.tap(find.text('管理者として初めて登録する'));
+    await tester.pumpAndSettle();
+    final code = 'a' * 48;
     await tester.enterText(find.byType(TextField).at(0), '09012345678');
     await tester.enterText(find.byType(TextField).at(1), 'synthetic-password');
-    await tester.enterText(find.byType(TextField).at(2), 'synthetic-password');
-    await tester.tap(find.text('登録してSMS認証へ')); await _settleAuth(tester);
-    expect(w.calls.single.url.path, '/auth/v1/signup');
-    expect(find.text('承認コード'), findsWidgets); expect(authenticated, 0);
-    await tester.enterText(find.byType(TextField), '123456');
-    await tester.tap(find.text('承認する')); await _settleAuth(tester);
+    await tester.enterText(find.byKey(const ValueKey('registration-approval-code')), code);
+    await tester.enterText(find.byType(TextField).at(3), 'synthetic-password');
+    final submit = find.text('承認コードで登録する');
+    await tester.ensureVisible(submit);
+    await tester.tap(submit);
+    await _settleAuth(tester);
     expect(authenticated, 1);
-    expect(w.calls.last.url.path, '/auth/v1/verify');
-    expect(w.calls.where((r) => r.url.path == '/auth/v1/otp' || r.url.path == '/auth/v1/user'), isEmpty);
+    expect(w.calls.map((r) => r.url.path), [
+      '/functions/v1/register-approved-phone',
+      '/auth/v1/token',
+    ]);
+    expect(jsonDecode(w.calls.first.body), containsPair('approvalCode', code));
+    expect(w.calls.last.url.queryParameters['grant_type'], 'password');
   }, timeout: const Timeout(Duration(seconds: 30)));
 }
-

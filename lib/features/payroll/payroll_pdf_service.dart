@@ -1,3 +1,6 @@
+import 'employment_contract_layout.dart';
+import 'dart:convert';
+import 'package:flutter/services.dart' show rootBundle;
 import '../expenses/expense_document_repository.dart';
 import 'payroll_recorded_income_tax_evidence.dart';
 import '../expenses/expense_detail_pdf.dart';
@@ -25,7 +28,12 @@ class PayrollPdfService {
     PdfPageFormat format = PdfPageFormat.a4,
     pw.Font? regularFont,
     pw.Font? boldFont,
+    PayrollEmploymentContractPage? employmentContract,
   }) async {
+    if (employmentContract != null &&
+        !employmentContract.matches(statement)) {
+      throw StateError('確定済みの給与明細に対応する雇用契約書を確認できません。');
+    }
     void checkOwnBank() {
       if(statement.isDraft && statement.ownDraftBankPurpose && statement.ownDraftBankAdmission?.permits(statement.id,statement.revision)!=true) {
         throw StateError('個人口座を確認できません。給与金額は保持しています。');
@@ -160,6 +168,9 @@ class PayrollPdfService {
           ),
         ),
       );
+      if (pageIndex == 0 && employmentContract != null) {
+        employmentContract.appendTo(document);
+      }
       if (pageIndex == 0 && expenses != null) {
         ExpenseDetailPdf.append(document, claims:expenses.claims.forMonth(statement.periodEnd), kind:ExpenseDocument.payroll, subjectId:expenses.subjectId, regularFont:regular, boldFont:bold);
       }
@@ -1549,3 +1560,323 @@ class PayrollPdfService {
 
 
 
+
+/// A render-ready image of the contract frozen for a finalized statement.
+/// Callers must obtain it separately from an authorized source.
+class PayrollEmploymentContractPage {
+  PayrollEmploymentContractPage({
+    required this.statementId,
+    required this.statementRevision,
+    required Uint8List imageBytes,
+  }) : _imageBytes = Uint8List.fromList(imageBytes), _fields = const [],
+       _retirementTerms = null, _transportTerms = null, _issuer = null,
+       _workTerms = const {};
+
+  PayrollEmploymentContractPage._({
+    required this.statementId,
+    required this.statementRevision,
+    required Uint8List? background,
+    required List<({String key, String value, double x, double y})> fields,
+    required String? retirementTerms,
+    required String? transportTerms,
+    required Map<String, String> workTerms,
+    required Map? issuer,
+  }) : _imageBytes = background, _fields = fields,
+       _retirementTerms = retirementTerms, _transportTerms = transportTerms, _issuer = issuer,
+       _workTerms = workTerms;
+
+  static const templateAsset = 'assets/payroll/employment_contract.png';
+  static const defaultTransportTerms = '1日1,000円以上超えた分';
+  static const defaultRetirementTerms = '''
+1　定年60歳（65歳迄継続あり）
+2　自己都合退職の手続（退職する30日以上前に届け出ること）
+3　解雇の事由
+　① 精神または身体の故障により、従事する業務に耐えられないと認められるとき
+　② 勤務成績不良で、従事する業務に適さないと認められるとき
+　③ 欠勤・遅刻が頻発し、従事する業務を十分に遂行しないとき
+　④ 業務命令違反その他本契約の本旨に反する事実が認められるとき
+　⑤ 事業縮小その他のやむを得ない業務上の都合により、人員整理を必要とするとき
+　⑥ 試用期間中に適正を欠くと判断したとき
+　⑦ その他上記に準ずるやむを得ない事由があるとき
+［雇い止めの判断基準（有期社員の契約を更新しない判断基準）］
+　① 契約期間満了時の業務量により判断する
+　② 労働者の勤務成績、態度により判断する
+　③ 労働者の能力により判断する
+　④ 会社の経営状況により判断する
+　⑤ 従事している業務の進捗状況により判断する''';
+
+  static Future<PayrollEmploymentContractPage> fromDocument(
+    Map<String, dynamic> document, {
+    required String statementId,
+    required int statementRevision,
+  }) async {
+    final values = document['values'] as Map;
+    final positions = document['positions'] as Map;
+    final image = document['background'] as String?;
+    final background = document['layout'] == 'a4_typeset' && image == null
+        ? null
+        : image == null
+        ? (await rootBundle.load(templateAsset)).buffer.asUint8List()
+        : base64Decode(image);
+    return PayrollEmploymentContractPage._(
+      statementId: statementId,
+      statementRevision: statementRevision,
+      background: background,
+      issuer: document['issuer'] as Map?,
+      transportTerms: document['transportTerms'] as String?,
+      retirementTerms: document['retirementTerms'] as String?,
+      workTerms: {
+        for (final row in contractWorkRows)
+          if (document[row.key] case final String value) row.key: value,
+      },
+      fields: [
+        for (final key in ['name', 'signedOn', 'period', 'dailyPay'])
+          if (values[key] is String && (values[key] as String).isNotEmpty)
+            (
+              key: key,
+              value: values[key] as String,
+              x: (positions[key][0] as num).toDouble(),
+              y: (positions[key][1] as num).toDouble(),
+            ),
+      ],
+    );
+  }
+
+  final String statementId;
+  final int statementRevision;
+  final Uint8List? _imageBytes;
+  final String? _retirementTerms;
+  final String? _transportTerms;
+  final Map<String, String> _workTerms;
+  final Map? _issuer;
+  final List<({String key, String value, double x, double y})> _fields;
+
+  bool matches(PayrollStatementRecord statement) =>
+      statement.workflowState == 'finalized' &&
+      statement.id == statementId &&
+      statement.revision == statementRevision;
+
+  static List<({double x, double y, double width, String value})> issuerFields(
+    Map issuer, {
+    bool typeset = true,
+  }) {
+    String value(String key) => issuer[key]?.toString() ?? '';
+    final address = [value('postal_code'), value('address')]
+        .where((part) => part.isNotEmpty).join(' ／ ');
+    return [
+      (x: typeset ? 282.0 : 318.0, y: typeset ? 131.0 : 128.0,
+        width: typeset ? 139.0 : 99.0, value: value('name')),
+      (x: typeset ? 454.0 : 446.0, y: typeset ? 131.0 : 128.0,
+        width: 81.0, value: value('phone')),
+      if (typeset) ...[
+        (x: 301.0, y: 149.0, width: 59.0, value: value('postal_code')),
+        (x: 368.0, y: 149.0, width: 195.0, value: '住所／${value('address')}'),
+        (x: 332.0, y: 166.0, width: 188.0,
+          value: '代表取締役社長／${value('representative_name')}'),
+      ] else ...[
+        (x: 318.0, y: 146.0, width: 205.0, value: address),
+        (x: 421.0, y: 164.0, width: 112.0, value: value('representative_name')),
+      ],
+      (x: 337.0, y: 749.0, width: 145.0, value: value('name')),
+      (x: 335.0, y: 765.0, width: 184.0, value: value('representative_name')),
+    ];
+  }
+
+  void appendTypesetTo(pw.Document document) {
+    final format = PdfPageFormat.a4;
+    final sx = format.width / 637;
+    final sy = format.height / 900;
+    pw.Widget text(double x, double y, double size, String value, {double? width, double? height, pw.Alignment alignment = pw.Alignment.topLeft}) =>
+        pw.Positioned(
+          left: x * sx,
+          top: y * sy,
+          child: pw.SizedBox(
+            width: width == null ? null : width * sx,
+            height: height == null ? null : height * sy,
+            child: pw.FittedBox(
+              alignment: alignment,
+              fit: pw.BoxFit.scaleDown,
+              child: pw.Text(value, style: pw.TextStyle(fontSize: size * sx)),
+            ),
+          ),
+        );
+    // Earlier typeset drafts used a narrow default just before the honorific.
+    pw.Widget finalNameField(double x, double y, String value) {
+      if ((x - .21 * 637).abs() < .01) x = contractWorkerNameX;
+      final end = contractHonorificX - 6;
+      final width = x < end ? end - x : 140.0;
+      return text(x, y, 10, value, width: width, height: 13);
+    }
+    final datePattern = RegExp(contractDatePattern);
+    final dates = <String, List<RegExpMatch>>{};
+    for (final field in _fields) {
+      final matches = datePattern.allMatches(field.value).toList();
+      final remainder = field.value.replaceAll(datePattern, '').trim();
+      final isFixed = (field.y * 900 - 202).abs() < 10;
+      if ((field.key == 'signedOn' && matches.length == 1 && remainder.isEmpty) ||
+          (field.key == 'period' &&
+              ((matches.length == 1 && (remainder.isEmpty || remainder == '～' || remainder == '〜')) ||
+               (isFixed && matches.length == 2 && const ['～', '〜', '-', '–'].contains(remainder))))) {
+        dates[field.key] = matches;
+      }
+    }
+
+    Iterable<pw.Widget> dateDigits(
+      RegExpMatch date,
+      (double, double, double) units,
+      double y,
+      double size,
+    ) sync* {
+      final positions = [units.$1, units.$2, units.$3];
+      for (var index = 0; index < positions.length; index++) {
+        yield pw.Positioned(
+          left: (positions[index] - 26) * sx,
+          top: y * sy,
+          child: pw.SizedBox(
+            width: 24 * sx,
+            child: pw.Text(
+              date.group(index + 1)!,
+              textAlign: pw.TextAlign.right,
+              style: pw.TextStyle(fontSize: size * sx),
+            ),
+          ),
+        );
+      }
+    }
+
+    document.addPage(pw.Page(
+      pageFormat: format,
+      margin: pw.EdgeInsets.zero,
+      build: (_) => pw.Stack(children: [
+        for (final (x1, y1, x2, y2) in contractRules)
+          pw.Positioned(
+            left: x1 * sx,
+            top: y1 * sy,
+            child: pw.Container(
+              width: x1 == x2 ? .7 : (x2 - x1) * sx,
+              height: y1 == y2 ? .7 : (y2 - y1) * sy,
+              color: PdfColors.black,
+            ),
+          ),
+        for (final (x, y, size, value) in contractLabels)
+          if (!((y == 96 && _fields.any((field) => field.key == 'signedOn' && !dates.containsKey(field.key))) ||
+              ((y == 185 || y == 202) && x > 135 &&
+               _fields.any((field) => field.key == 'period' && !dates.containsKey(field.key) &&
+                 (field.y * 900 - y).abs() < 10))))
+          pw.Positioned(left: x * sx, top: y * sy,
+            child: pw.Text(value, style: pw.TextStyle(fontSize: size * sx))),
+        for (final field in issuerFields(_issuer ?? const {}))
+          text(field.x, field.y, 10, field.value, width: field.width, height: 15,
+            alignment: field.y == 166 ? pw.Alignment.topRight : pw.Alignment.topLeft),
+        for (final row in contractWorkRows)
+          text(135, row.y, 10, _workTerms[row.key] ?? row.initial,
+            width: 428, height: 13),
+        text(413, 442, 10, _transportTerms ?? defaultTransportTerms, width: 134, height: 13),
+        text(142, 505, 10, _retirementTerms ?? defaultRetirementTerms, width: 420, height: 221),
+        for (final field in _fields)
+          if (field.key == 'name') ...[
+            finalNameField(field.x * 637, field.y * 900, field.value),
+            text(contractWorkerSignature.x, contractWorkerSignature.y, 10,
+              field.value, width: contractWorkerSignature.width, height: 13),
+          ] else if (dates[field.key] case final matches?) ...[
+            if (field.key == 'signedOn')
+              ...dateDigits(matches.single, contractSigningDate, 96, 9)
+            else ...[
+              ...dateDigits(matches.first, contractStartDate,
+                (field.y * 900 - 202).abs() < 10 ? 202 : 185, 10),
+              if (matches.length == 2)
+                ...dateDigits(matches.last, contractEndDate, 202, 10),
+            ],
+          ] else
+            pw.Positioned(left: field.x * format.width, top: field.y * format.height,
+              child: pw.Text(field.value, style: const pw.TextStyle(fontSize: 8))),
+      ]),
+    ));
+  }
+
+  void appendTo(pw.Document document) {
+    final bytes = _imageBytes;
+    if (bytes == null) {
+      appendTypesetTo(document);
+      return;
+    }
+    final image = pw.MemoryImage(bytes);
+    final format = PdfPageFormat.a4;
+    pw.Widget issuerField(double x, double y, double width, String value) =>
+        pw.Positioned(
+          left: x / 637 * format.width,
+          top: y / 900 * format.height,
+          child: pw.Container(
+            width: width / 637 * format.width,
+            height: 15 / 900 * format.height,
+            decoration: pw.BoxDecoration(
+              gradient: pw.LinearGradient(
+                colors: y >= 749
+                    ? const [PdfColor(.658, .646, .61), PdfColor(.72, .71, .68)]
+                    : const [PdfColor(.87, .865, .856), PdfColor(.89, .887, .882)],
+              ),
+            ),
+            alignment: pw.Alignment.centerLeft,
+            child: pw.FittedBox(
+              fit: pw.BoxFit.scaleDown,
+              child: pw.Text(value, style: const pw.TextStyle(fontSize: 9)),
+            ),
+          ),
+        );
+    final issuer = _issuer;
+    document.addPage(
+      pw.Page(
+        pageFormat: format,
+        margin: pw.EdgeInsets.zero,
+        build: (_) => pw.Stack(children: [
+          pw.Positioned.fill(child: pw.Image(image, fit: pw.BoxFit.fill)),
+          if (issuer != null)
+            for (final field in issuerFields(issuer, typeset: false))
+              issuerField(field.x, field.y, field.width, field.value),
+          if (_transportTerms != null &&
+              _transportTerms != defaultTransportTerms)
+            pw.Positioned(
+              left: .598 * format.width,
+              top: .487 * format.height,
+              child: pw.Container(
+                width: .258 * format.width,
+                height: .023 * format.height,
+                color: PdfColors.white,
+                alignment: pw.Alignment.centerLeft,
+                child: pw.FittedBox(
+                  fit: pw.BoxFit.scaleDown,
+                  child: pw.Text(
+                    _transportTerms,
+                    style: const pw.TextStyle(fontSize: 8),
+                  ),
+                ),
+              ),
+            ),
+          if (_retirementTerms != null &&
+              _retirementTerms != defaultRetirementTerms)
+            pw.Positioned(
+              left: .20 * format.width,
+              top: .560 * format.height,
+              child: pw.Container(
+                width: .681 * format.width,
+                height: .250 * format.height,
+                color: PdfColors.white,
+                padding: const pw.EdgeInsets.all(2),
+                child: pw.FittedBox(
+                  fit: pw.BoxFit.scaleDown,
+                  alignment: pw.Alignment.topLeft,
+                  child: pw.Text(_retirementTerms, style: const pw.TextStyle(fontSize: 8)),
+                ),
+              ),
+            ),
+          for (final field in _fields)
+            pw.Positioned(
+              left: field.x * format.width,
+              top: field.y * format.height,
+              child: pw.Text(field.value, style: const pw.TextStyle(fontSize: 8)),
+            ),
+        ]),
+      ),
+    );
+  }
+}

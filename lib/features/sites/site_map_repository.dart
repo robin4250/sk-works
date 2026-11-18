@@ -25,7 +25,7 @@ class SiteMapWorkspace {
 }
 
 class SiteMapRepository {
-  SiteMapRepository._(this._client);
+  SiteMapRepository(this._client);
 
   final SupabaseClient _client;
 
@@ -33,7 +33,7 @@ class SiteMapRepository {
     if (!SupabaseBackend.isInitialized) return null;
     final client = SupabaseBackend.client;
     if (client.auth.currentUser == null) return null;
-    return SiteMapRepository._(client);
+    return SiteMapRepository(client);
   }
 
   Future<SiteMapWorkspace> load() async {
@@ -63,10 +63,8 @@ class SiteMapRepository {
     var customers = legacyCustomers;
     var partners = legacyPartners;
 
-    // The site-map RPC predates the unified trade-company master and still
-    // reads customers.billing_address / partner_companies.address. Prefer the
-    // current trade-company master so an address registered on the current
-    // 取引会社 / 下請け会社 screen immediately becomes selectable on the map.
+    // Prefer the linked company directory's address for each role record.
+    // Older role records can still supply addresses for unmigrated map entries.
     try {
       final tradeRaw = await _client.rpc('trade_company_workspace');
       if (tradeRaw is List) {
@@ -89,6 +87,7 @@ class SiteMapRepository {
               .toList(growable: false),
           legacy: legacyCustomers,
           nameKey: 'customer_name',
+          idKey: 'customer_id',
         );
 
         partners = _mergeCompanyPlaces(
@@ -105,6 +104,7 @@ class SiteMapRepository {
               .toList(growable: false),
           legacy: legacyPartners,
           nameKey: 'partner_name',
+          idKey: 'partner_id',
         );
       }
     } catch (_) {
@@ -132,15 +132,22 @@ class SiteMapRepository {
     required List<Map<String, dynamic>> master,
     required List<Map<String, dynamic>> legacy,
     required String nameKey,
+    required String idKey,
   }) {
     final result = <Map<String, dynamic>>[];
-    final seen = <String>{};
+    final seen = <(String, String)>{};
 
     void add(Map<String, dynamic> row) {
       final address = row['address']?.toString().trim() ?? '';
       final name = row[nameKey]?.toString().trim() ?? '';
       if (address.isEmpty || name.isEmpty) return;
-      final key = '${name.toLowerCase()}|${address.toLowerCase()}';
+      final roleId = row[idKey]?.toString().trim() ?? '';
+      final directoryId = row['trade_company_id']?.toString().trim() ?? '';
+      final key = roleId.isNotEmpty
+          ? (idKey, roleId)
+          : directoryId.isNotEmpty
+          ? ('trade_company_id', directoryId)
+          : ('address', '${name.toLowerCase()}|${address.toLowerCase()}');
       if (!seen.add(key)) return;
       result.add(row);
     }

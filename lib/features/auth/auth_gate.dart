@@ -2,10 +2,16 @@ import 'package:flutter/material.dart';
 
 import '../../data/supabase_backend.dart';
 import '../attendance/checkout_report_gate.dart';
+import '../companies/company_invitation_tab.dart';
+import '../companies/trade_company_invitation_page.dart';
+import '../companies/trade_company_page.dart';
+import '../companies/trade_company_repository.dart';
 import 'admin_initial_setup_page.dart';
 import 'apple_session_navigation_binding.dart';
 import 'admin_initial_setup_repository.dart';
 import 'employee_onboarding_pages.dart';
+import 'employee_bootstrap_identity.dart';
+import 'personal_home_page.dart';
 import 'secure_onboarding_pages.dart';
 import 'secure_onboarding_repository.dart';
 
@@ -13,9 +19,11 @@ class SupabaseAuthGate extends StatefulWidget {
   const SupabaseAuthGate({
     super.key,
     required this.homeBuilder,
+    this.companyInvitation,
   });
 
   final Widget Function(VoidCallback onSignOut) homeBuilder;
+  final ({String code, String title})? companyInvitation;
 
   @override
   State<SupabaseAuthGate> createState() => _SupabaseAuthGateState();
@@ -23,6 +31,25 @@ class SupabaseAuthGate extends StatefulWidget {
 
 class _SupabaseAuthGateState extends State<SupabaseAuthGate> {
   late Future<_GateState> _state;
+  String? _retiredCompanySetupActor;
+  late var _companyInvitation = widget.companyInvitation;
+
+  void _closeCompanyInvitation() {
+    writeCompanyInvitationTab(null);
+    setState(() => _companyInvitation = null);
+  }
+
+  void _openCompanyDirectory() {
+    _closeCompanyInvitation();
+    Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => const TradeCompanyPage(
+          mode: TradeCompanyPageMode.customer,
+          unified: true,
+        ),
+      ),
+    );
+  }
 
   SecureOnboardingRepository? get _repository =>
       SecureOnboardingRepository.maybeCreate();
@@ -42,8 +69,8 @@ class _SupabaseAuthGateState extends State<SupabaseAuthGate> {
     }
 
     final employee = await repository.employeeOnboardingState();
-    if (employee != null && employee.status == 'cancelled') {
-      return _GateState.employeeInviteInvalid(employee);
+    if (employee == null && hasEmployeeBootstrapEmail(user)) {
+      return const _GateState.employeeInviteInvalid();
     }
 
     if (employee != null && employee.status != 'approved') {
@@ -56,10 +83,20 @@ class _SupabaseAuthGateState extends State<SupabaseAuthGate> {
       if (employee.awaitingApproval) {
         return _GateState.employeeApprovalPending(employee);
       }
+      return const _GateState.employeeInviteInvalid();
     }
 
     final hasCompany = await repository.hasCompanyMembership();
     if (!hasCompany) {
+      if (_retiredCompanySetupActor == user.id) {
+        return const _GateState.needsCompany();
+      }
+      if (await repository.hasArchivedRetirement(user.id)) {
+        return const _GateState.retired();
+      }
+      if (user.appMetadata['sko_registration_purpose'] == 'work_pass') {
+        return const _GateState.workPass();
+      }
       if (repository.companySetupDeferred) {
         return const _GateState.companyDeferred();
       }
@@ -85,6 +122,7 @@ class _SupabaseAuthGateState extends State<SupabaseAuthGate> {
   }
 
   Future<void> _signOut() async {
+    _retiredCompanySetupActor = null;
     await _repository?.signOut();
     _reload();
   }
@@ -119,9 +157,13 @@ class _SupabaseAuthGateState extends State<SupabaseAuthGate> {
         } catch (_) {
           return _ErrorScreen(message: 'ログイン状態を確認できません。', onRetry: _reload);
         }
+        final invitation = _companyInvitation;
         return switch (state.status) {
           _GateStatus.unauthenticated =>
-            SecureAuthPage(onAuthenticated: _reload),
+            SecureAuthPage(
+              onAuthenticated: _reload,
+              companyInvitationCode: invitation?.code,
+            ),
           _GateStatus.employeePassword => EmployeePrimaryPasswordPage(
               name: state.employee!.name,
               onCompleted: _reload,
@@ -129,6 +171,9 @@ class _SupabaseAuthGateState extends State<SupabaseAuthGate> {
             ),
           _GateStatus.employeeProfile => EmployeeProfileOnboardingPage(
               name: state.employee!.name,
+              claimedInviteId: state.employee!.claimedExistingAccount
+                  ? state.employee!.inviteId
+                  : null,
               onSubmitted: _reload,
               onSignOut: _signOut,
             ),
@@ -141,25 +186,66 @@ class _SupabaseAuthGateState extends State<SupabaseAuthGate> {
               onSignOut: _signOut,
             ),
           _GateStatus.needsCompany => CompanyProfileSetupPage(
-              onCompleted: _reload,
-              onDeferred: _reload,
+              onCompleted: () {
+                _retiredCompanySetupActor = null;
+                _reload();
+              },
+              onDeferred: () {
+                _retiredCompanySetupActor = null;
+                _reload();
+              },
               onSignOut: _signOut,
             ),
-          _GateStatus.companyDeferred => DeferredCompanySetupPage(
-              onResume: _resumeCompanySetup,
+          _GateStatus.retired => PersonalHomePage(
+              key: ValueKey(binding),
+              onCompanySetup: () {
+                _retiredCompanySetupActor = SupabaseBackend.client.auth.currentUser?.id;
+                _reload();
+              },
               onSignOut: _signOut,
+              retirementVault: true,
             ),
+          _GateStatus.workPass => PersonalHomePage(
+              key: ValueKey(binding),
+              onCompanySetup: _resumeCompanySetup,
+              onSignOut: _signOut,
+              workPassOnly: true,
+            ),
+          _GateStatus.companyDeferred => personalHomePreviewEnabled
+            ? PersonalHomePage(
+                key: ValueKey(binding),
+                onCompanySetup: _resumeCompanySetup,
+                onSignOut: _signOut,
+              )
+            : DeferredCompanySetupPage(
+                onResume: _resumeCompanySetup,
+                onSignOut: _signOut,
+              ),
           _GateStatus.needsAdminInitialSetup => AdminInitialSetupWizardPage(
               onCompleted: _reload,
               onSignOut: _signOut,
             ),
           _GateStatus.authenticated => SupabaseBackend.client.auth.currentUser == null
-            ? SecureAuthPage(onAuthenticated: _reload)
+            ? SecureAuthPage(
+                onAuthenticated: _reload,
+                companyInvitationCode: invitation?.code,
+              )
             : CheckoutReportGateActivation(
             key: ValueKey(binding),
             actorId: SupabaseBackend.client.auth.currentUser!.id,
             onReauthenticate: _signOut,
-            child: widget.homeBuilder(_signOut),
+            child: invitation == null ||
+                    invitation.title == companySignupInvitationTitle ||
+                    invitation.title == workPassInvitationTitle
+                ? widget.homeBuilder(_signOut)
+                : TradeCompanyInvitationAcceptancePage(
+                    key: ValueKey((binding, invitation.code)),
+                    client: SupabaseBackend.client,
+                    code: invitation.code,
+                    title: invitation.title,
+                    onDone: _closeCompanyInvitation,
+                    onOpenDirectory: _openCompanyDirectory,
+                  ),
           ),
         };
       },
@@ -225,6 +311,8 @@ enum _GateStatus {
   employeeApprovalPending,
   employeeInviteInvalid,
   needsCompany,
+  workPass,
+  retired,
   companyDeferred,
   needsAdminInitialSetup,
   authenticated,
@@ -241,10 +329,12 @@ class _GateState {
       : this._(_GateStatus.employeeProfile, employee);
   const _GateState.employeeApprovalPending(EmployeeOnboardingState employee)
       : this._(_GateStatus.employeeApprovalPending, employee);
-  const _GateState.employeeInviteInvalid(EmployeeOnboardingState employee)
-      : this._(_GateStatus.employeeInviteInvalid, employee);
+  const _GateState.employeeInviteInvalid()
+      : this._(_GateStatus.employeeInviteInvalid);
   const _GateState.needsCompany()
       : this._(_GateStatus.needsCompany);
+  const _GateState.retired() : this._(_GateStatus.retired);
+  const _GateState.workPass() : this._(_GateStatus.workPass);
   const _GateState.companyDeferred()
       : this._(_GateStatus.companyDeferred);
   const _GateState.needsAdminInitialSetup()

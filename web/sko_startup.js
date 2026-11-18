@@ -1,5 +1,20 @@
 (() => {
   'use strict';
+  // External invitation links can replace only the fragment in an open tab.
+  // Flutter reads the invitation when it starts, so start it with the new link.
+  const initialHash = window.location.hash;
+  const invitationHash = /^#\/?\?(customer|subcontractor|sko|work_pass)_invite=[a-f0-9]{48}$/;
+  window.addEventListener('hashchange', event => {
+    const next = new URL(event.newURL);
+    if (next.hash !== initialHash && invitationHash.test(next.hash)) {
+      // Flutter can update the current fragment before hashchange is delivered.
+      // Change the document URL while keeping the invitation code in the fragment.
+      const current = new URL(window.location.href);
+      const revision = Number(current.searchParams.get('invite_navigation')) || 0;
+      next.searchParams.set('invite_navigation', String(revision + 1));
+      window.location.replace(next.href);
+    }
+  });
   const panel = document.getElementById('sko-startup');
   const message = document.getElementById('sko-startup-message');
   const retry = document.getElementById('sko-startup-retry');

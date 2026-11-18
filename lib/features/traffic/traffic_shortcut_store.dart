@@ -49,11 +49,18 @@ abstract class TrafficShortcutStore {
 }
 
 class DeviceTrafficShortcutStore implements TrafficShortcutStore {
+  const DeviceTrafficShortcutStore({this.slot = 1})
+    : assert(slot == 1 || slot == 2);
+  final int slot;
+
+  String _key(TrafficShortcutScope scope) =>
+      slot == 1 ? scope.storageKey : '${scope.storageKey}_2';
+
   @override
   Future<TrafficShortcut?> load(TrafficShortcutScope scope) async {
     if (!scope.valid) return null;
     final preferences = await SharedPreferences.getInstance();
-    final raw = preferences.getString(scope.storageKey);
+    final raw = preferences.getString(_key(scope));
     if (raw == null) return null;
     try { return TrafficShortcut.fromJson(jsonDecode(raw)); } catch (_) { return null; }
   }
@@ -62,8 +69,8 @@ class DeviceTrafficShortcutStore implements TrafficShortcutStore {
     if (!scope.valid) throw StateError('Shortcut account unavailable');
     final preferences = await SharedPreferences.getInstance();
     final success = shortcut == null
-        ? await preferences.remove(scope.storageKey)
-        : await preferences.setString(scope.storageKey, jsonEncode(shortcut.toJson()));
+        ? await preferences.remove(_key(scope))
+        : await preferences.setString(_key(scope), jsonEncode(shortcut.toJson()));
     if (!success) throw StateError('Shortcut save failed');
   }
 }

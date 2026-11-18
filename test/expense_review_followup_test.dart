@@ -175,7 +175,7 @@ void main() {
     ExpenseReviewDecision? result;
     await open(tester, [], (value) => result = value);
     await tap(tester, '下請け会社');
-    expect(find.textContaining('登録済みの会社がありません'), findsOneWidget);
+    expect(find.textContaining('選べる会社がありません。連携会社登録で会社と区分を確認してください'), findsOneWidget);
     await tap(tester, '戻る');
     expect(
       tester

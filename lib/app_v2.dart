@@ -95,6 +95,7 @@ import 'features/qualifications/qualification_page.dart';
 import 'features/settings/company_module_settings_repository.dart';
 import 'features/settings/rollout_readiness_page.dart';
 import 'features/settings/settings_page.dart';
+import 'features/settings/company_registration_page.dart';
 import 'features/sites/admin_site_financial_page.dart';
 import 'features/sites/site_cloud_page.dart';
 import 'features/sites/site_map_page.dart';
@@ -106,11 +107,13 @@ class SkWorksApp extends StatelessWidget {
   const SkWorksApp({
     super.key,
     this.allowLocalFallback = false,
+    this.companyInvitation,
   });
 
   /// Development/test-only escape hatch for the legacy local prototype.
   /// Production launches must fail closed when Supabase is unavailable.
   final bool allowLocalFallback;
+  final ({String code, String title})? companyInvitation;
 
   @override
   Widget build(BuildContext context) {
@@ -139,6 +142,7 @@ class SkWorksApp extends StatelessWidget {
               )),
               home: SupabaseBackend.isInitialized
                   ? SupabaseAuthGate(
+                      companyInvitation: companyInvitation,
                       homeBuilder: (onSignOut) => HomePage(onSignOut: onSignOut),
                     )
                   : allowLocalFallback
@@ -1200,6 +1204,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         if (!SupabaseBackend.isInitialized) return;
         page = AppReferralPage(
           repository: AppReferralRepository(SupabaseBackend.client),
+          onInviteCompany: _isAdmin
+              ? () => Navigator.of(context).push<void>(
+                    MaterialPageRoute(
+                      builder: (_) => CompanyRegistrationPage(client: SupabaseBackend.client),
+                    ),
+                  )
+              : null,
         );
         break;
       case 'clock_in':
@@ -1348,7 +1359,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           body: Padding(
             padding: const EdgeInsets.all(16),
             child: Align(alignment: Alignment.topCenter,
-              child: TrafficHomeCard(availability: _homeTrafficAvailability, shortcutScope: _trafficShortcutScope)),
+              child: TrafficHomeCard(availability: _homeTrafficAvailability, shortcutScope: _trafficShortcutScope, canEditShortcuts: _isAdmin)),
           ),
         );
         break;
@@ -1411,23 +1422,25 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         page = const CompanyDeliveryInboxPage();
         break;
       case 'company_deliveries':
-        page = TradeCompanyPage(mode: TradeCompanyPageMode.subcontractor, onOpenDeliveries: () => _openHomeAction('company_delivery_inbox'));
+        page = TradeCompanyPage(
+          mode: TradeCompanyPageMode.customer,
+          unified: true,
+          onOpenDeliveries: () => _openHomeAction('company_delivery_inbox'),
+        );
         break;
       case 'trade_companies':
-        page = const TradeCompanyPage(
+      case 'subcontractors':
+        page = TradeCompanyPage(
           mode: TradeCompanyPageMode.customer,
+          unified: true,
+          onOpenDeliveries: _subAdminFeatureEnabled('company_deliveries')
+              ? () => _openHomeAction('company_delivery_inbox') : null,
         );
         break;
       case 'trade_documents':
         if (!_identity.isManagement) return;
         page = const SecondaryProtectedPage(
           title: '注文・請書', child: TradeDocumentsHubPage());
-        break;
-      case 'subcontractors':
-        page = TradeCompanyPage(
-          mode: TradeCompanyPageMode.subcontractor,
-          onOpenDeliveries: _subAdminFeatureEnabled('company_deliveries') ? () => _openHomeAction('company_delivery_inbox') : null,
-        );
         break;
       case 'company_documents':
         page = const CompanySubmittedDocumentsPage();
@@ -1701,16 +1714,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       if (_identity.isManagement)
         _MenuAction(
           key: 'trade_companies',
-          label: SkoLanguageController.tr('取引会社登録'),
+          label: SkoLanguageController.tr('連携会社登録'),
           icon: Icons.business_center_outlined,
-          homeEligible: true,
-          accessLabel: SkoLanguageController.tr('管理者・サブ管理者'),
-        ),
-      if (_identity.isManagement)
-        _MenuAction(
-          key: 'subcontractors',
-          label: SkoLanguageController.tr('協力会社登録'),
-          icon: Icons.handshake_outlined,
           homeEligible: true,
           accessLabel: SkoLanguageController.tr('管理者・サブ管理者'),
         ),
@@ -1834,7 +1839,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           identity: _identity,
           requiredDocumentAttention: _requiredDocumentAttention,
           weatherCard: _weatherHomeCard(),
-          trafficCard: TrafficHomeCard(key: const ValueKey('home-traffic-card'), availability: _homeTrafficAvailability, shortcutScope: _trafficShortcutScope),
+          trafficCard: TrafficHomeCard(key: const ValueKey('home-traffic-card'), availability: _homeTrafficAvailability, shortcutScope: _trafficShortcutScope, canEditShortcuts: _isAdmin),
           showTrafficGuidance: !_hiddenHomeActionKeys.contains('traffic_guidance'),
           showWeatherForecast: !_hiddenHomeActionKeys.contains('weather_forecast'),
           tutorialCard: _tutorialUserId != null && _tutorialCompanyId != null

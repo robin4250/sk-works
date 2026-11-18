@@ -26,10 +26,14 @@ class StandaloneTradeDocumentPage extends StatefulWidget {
     super.key,
     required this.tradeCompanyId,
     required this.acceptance,
+    this.site,
+    this.verifySite,
     this.clientOverride,this.sessionOverride,this.repositoryOverride,this.operationGate,
   });
   final String tradeCompanyId;
   final bool acceptance;
+  final ({String id, String name, String address})? site;
+  final Future<void> Function()? verifySite;
   final SupabaseClient? clientOverride;
   final TradeDocumentFormSession? sessionOverride;
   final StandaloneTradeDocumentRepository? repositoryOverride;
@@ -58,13 +62,15 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
   bool _loading = true, _busy = false, _revoked = false;
   int _generation = 0;
   String get _title => widget.acceptance ? '注文請書を作成' : '注文書を作成';
+  String get _target => '${widget.tradeCompanyId}:${widget.acceptance}'
+      '${widget.site == null ? '' : ':${widget.site!.id}'}';
 
   @override
   void initState() {
     super.initState();
     final client=widget.clientOverride??(SupabaseBackend.isInitialized?SupabaseBackend.client:null);
     if(client!=null){
-      _session=widget.sessionOverride??TradeDocumentFormSession(client,target:'${widget.tradeCompanyId}:${widget.acceptance}',currentTarget:()=>'${widget.tradeCompanyId}:${widget.acceptance}');
+      _session=widget.sessionOverride??TradeDocumentFormSession(client,target:_target,currentTarget:()=>_target);
       if(!_session!.belongsTo(client))throw ArgumentError('Foreign contract session');
       _repository=widget.repositoryOverride??StandaloneTradeDocumentRepository(client,session:_session,managedCompanyId:widget.operationGate?.companyId);
       if(!_repository!.isBoundTo(_session!))throw ArgumentError('Unbound contract repository');
@@ -74,7 +80,7 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
     _printScope = StandaloneTradeDocumentPrintScope(
       verifyScope: _verify,
       currentBytes: () => _bytes,
-      currentTarget: () => '${widget.tradeCompanyId}:${widget.acceptance}',
+      currentTarget: () => _target,
       onRevoke: _invalidate,
     );
     _operationGate=widget.operationGate;
@@ -105,6 +111,7 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
   void didUpdateWidget(covariant StandaloneTradeDocumentPage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.tradeCompanyId != widget.tradeCompanyId ||
+        oldWidget.site != widget.site ||
         oldWidget.acceptance != widget.acceptance ||
         !identical(oldWidget.operationGate,widget.operationGate)) {
       _invalidate();
@@ -132,7 +139,7 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
 
   Future<void> _refreshOperationGate()async{
     _verify();
-    try{await _operationGate?.refresh();_verify();}
+    try{await _operationGate?.refresh();await widget.verifySite?.call();_verify();}
     catch(_){_invalidate('書類の作成・保存を利用できません。注文・請書を開き直してください。');rethrow;}
   }
 
@@ -194,8 +201,8 @@ class _StandaloneState extends State<StandaloneTradeDocumentPage>
       }
       final template = Map<String, dynamic>.from(value['template'] as Map);
       final initial = <String, String>{
-        'work_name': template['work_name']?.toString() ?? '',
-        'work_address': template['work_address']?.toString() ?? '',
+        'work_name': widget.site?.name ?? template['work_name']?.toString() ?? '',
+        'work_address': widget.site?.address ?? template['work_address']?.toString() ?? '',
         'issue_date': '',
         'order_date': '',
         if (!widget.acceptance) ...{

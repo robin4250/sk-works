@@ -1,11 +1,50 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../international/language_controller.dart';
 import 'traffic_shortcut_store.dart';
 
+const trafficButtonHeight = 44 * .70;
+
+double trafficLabelLineHeight(BuildContext context) {
+  final scaledFontSize = MediaQuery.textScalerOf(context).scale(10);
+  return math.min(1.15, trafficButtonHeight / (2 * scaledFontSize));
+}
+
+ButtonStyle trafficCompactStyle(BuildContext context) {
+  final colors = Theme.of(context).colorScheme;
+  return TextButton.styleFrom(
+    minimumSize: const Size(44, trafficButtonHeight),
+    fixedSize: const Size.fromHeight(trafficButtonHeight),
+    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    padding: const EdgeInsets.symmetric(horizontal: 2),
+    backgroundColor: colors.primaryContainer.withValues(alpha: .55),
+    disabledBackgroundColor: colors.surfaceContainerHighest,
+    side: BorderSide(color: colors.outlineVariant),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+  );
+}
+
 class TrafficPersonalShortcut extends StatefulWidget {
-  const TrafficPersonalShortcut({super.key, required this.scope, this.store, this.canOpen, this.open});
+  const TrafficPersonalShortcut({
+    super.key,
+    required this.scope,
+    this.store,
+    this.canOpen,
+    this.open,
+    this.slot = 1,
+    this.emptyLabel = '追加',
+    this.canEdit = true,
+    this.compact = false,
+    this.webOnly = false,
+  });
+  final int slot;
+  final String emptyLabel;
+  final bool canEdit;
+  final bool compact;
+  final bool webOnly;
   final TrafficShortcutScope? scope;
   final TrafficShortcutStore? store;
   final Future<bool> Function(Uri)? canOpen;
@@ -15,7 +54,7 @@ class TrafficPersonalShortcut extends StatefulWidget {
 }
 
 class _TrafficPersonalShortcutState extends State<TrafficPersonalShortcut> {
-  final _deviceStore = DeviceTrafficShortcutStore();
+  late final _deviceStore = DeviceTrafficShortcutStore(slot: widget.slot);
   TrafficShortcut? _shortcut;
   bool _busy = false;
   int _generation = 0;
@@ -27,7 +66,12 @@ class _TrafficPersonalShortcutState extends State<TrafficPersonalShortcut> {
   @override
   void didUpdateWidget(TrafficPersonalShortcut oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.scope != widget.scope || oldWidget.store != widget.store) { _dismissEditor(); _load(); }
+    if (oldWidget.scope != widget.scope ||
+        oldWidget.store != widget.store ||
+        oldWidget.canEdit != widget.canEdit) {
+      _dismissEditor();
+      _load();
+    }
   }
   void _dismissEditor() {
     final dialogContext = _dialogContext;
@@ -58,7 +102,7 @@ class _TrafficPersonalShortcutState extends State<TrafficPersonalShortcut> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(SkoLanguageController.tr(message)),
-      action: edit ? SnackBarAction(label: SkoLanguageController.tr('編集'), onPressed: _edit) : null,
+      action: edit && widget.canEdit ? SnackBarAction(label: SkoLanguageController.tr('編集'), onPressed: _edit) : null,
     ));
   }
   Future<void> _launch() async {
@@ -81,20 +125,27 @@ class _TrafficPersonalShortcutState extends State<TrafficPersonalShortcut> {
     if (!opened) _error('登録した項目を開けませんでした。編集して選び直してください。', edit: true);
   }
   Future<void> _edit() async {
-    if (_busy) return;
+    if (_busy || !widget.canEdit) return;
     final scope = widget.scope;
     if (scope == null || !scope.valid) return;
     final generation = _generation;
     setState(() => _busy = true);
     var googleAvailable = false;
-    try { googleAvailable = await (widget.canOpen?.call(Uri.parse('comgooglemaps://')) ?? canLaunchUrl(Uri.parse('comgooglemaps://'))); } catch (_) { /* Unavailable candidates stay hidden. */ }
+    if (!widget.webOnly) {
+      final maps = Uri.parse('comgooglemaps://');
+      try {
+        googleAvailable = await (widget.canOpen?.call(maps) ?? canLaunchUrl(maps));
+      } catch (_) {
+        // Unavailable candidates stay hidden.
+      }
+    }
     if (!mounted || !_current(scope, generation)) return;
     final selection = await showDialog<String>(context: context, builder: (context) {
       _dialogContext = context;
       return SimpleDialog(
       title: Text(SkoLanguageController.tr('追加する項目')),
       children: [
-        Padding(padding: const EdgeInsets.symmetric(horizontal: 24), child: Text(SkoLanguageController.tr('対応アプリのうち、この端末で開けるものを表示します。Webサイトも登録できます。'))),
+        if (!widget.webOnly) Padding(padding: const EdgeInsets.symmetric(horizontal: 24), child: Text(SkoLanguageController.tr('対応アプリのうち、この端末で開けるものを表示します。Webサイトも登録できます。'))),
         if (googleAvailable) SimpleDialogOption(onPressed: () => Navigator.pop(context, 'googleMaps'), child: Text(SkoLanguageController.tr('Googleマップ'))),
         SimpleDialogOption(onPressed: () => Navigator.pop(context, 'web'), child: Text(SkoLanguageController.tr('Webサイトを登録'))),
         if (_shortcut != null) SimpleDialogOption(onPressed: () => Navigator.pop(context, 'remove'), child: Text(SkoLanguageController.tr('登録を解除'))),
@@ -122,26 +173,70 @@ class _TrafficPersonalShortcutState extends State<TrafficPersonalShortcut> {
   Widget build(BuildContext context) {
     final ready = !_busy && (widget.scope?.valid ?? false);
     return Tooltip(
-      message: _shortcut == null ? SkoLanguageController.tr('追加する項目') : '${_shortcut!.label}：${SkoLanguageController.tr('長押しで編集・解除')}',
+      triggerMode: TooltipTriggerMode.manual,
+      message: _shortcut == null
+          ? SkoLanguageController.tr(widget.emptyLabel)
+          : widget.canEdit
+          ? '${_shortcut!.label}：${SkoLanguageController.tr('長押しで編集・解除')}'
+          : _shortcut!.label,
       child: TextButton(
-        key: const ValueKey('traffic-personal-shortcut'),
-        onPressed: ready ? _launch : null,
-        onLongPress: ready && _shortcut != null ? _edit : null,
-        style: TextButton.styleFrom(
-          minimumSize: const Size(44, 44),
-          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
-          backgroundColor: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.55),
-          disabledBackgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-          side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        key: ValueKey(
+          widget.slot == 1
+              ? 'traffic-personal-shortcut'
+              : 'traffic-personal-shortcut-2',
         ),
-        child: Row(children: [
-          Icon(_shortcut == null ? Icons.add : _shortcut!.kind == TrafficShortcutKind.web ? Icons.link : Icons.map_outlined, size: 16),
-          const SizedBox(width: 2),
-          Expanded(child: Text(_shortcut == null ? SkoLanguageController.tr('追加') : _shortcut!.kind == TrafficShortcutKind.googleMaps ? SkoLanguageController.tr(_shortcut!.label) : _shortcut!.label,
-            maxLines: 2, overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 10, height: 1.15))),
-        ]),
+        onPressed: ready && (_shortcut != null || widget.canEdit)
+            ? _launch
+            : null,
+        onLongPress: ready && widget.canEdit && _shortcut != null
+            ? _edit
+            : null,
+        style: widget.compact
+            ? trafficCompactStyle(context)
+            : TextButton.styleFrom(
+                minimumSize: const Size(44, 44),
+                padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
+                backgroundColor: Theme.of(
+                  context,
+                ).colorScheme.primaryContainer.withValues(alpha: 0.55),
+                disabledBackgroundColor: Theme.of(
+                  context,
+                ).colorScheme.surfaceContainerHighest,
+                side: BorderSide(
+                  color: Theme.of(context).colorScheme.outlineVariant,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+        child: Row(
+          children: [
+            Icon(
+              _shortcut == null
+                  ? Icons.add
+                  : _shortcut!.kind == TrafficShortcutKind.web
+                  ? Icons.link
+                  : Icons.map_outlined,
+              size: 16,
+            ),
+            const SizedBox(width: 2),
+            Expanded(
+              child: Text(
+                _shortcut == null
+                    ? SkoLanguageController.tr(widget.emptyLabel)
+                    : _shortcut!.kind == TrafficShortcutKind.googleMaps
+                    ? SkoLanguageController.tr(_shortcut!.label)
+                    : _shortcut!.label,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 10,
+                  height: widget.compact ? trafficLabelLineHeight(context) : 1.15,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

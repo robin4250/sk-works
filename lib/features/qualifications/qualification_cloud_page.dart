@@ -385,6 +385,7 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
     return Scaffold(
       resizeToAvoidBottomInset: !_registrationDialogOpen,
       appBar: AppBar(
+        toolbarHeight: kToolbarHeight,
         title: const Text('従業員資格'),
         actions: [
           IconButton(

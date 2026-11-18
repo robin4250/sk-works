@@ -17,8 +17,10 @@ class PartnerAttendanceWorker {
     required this.partnerId,
     required this.partnerName,
     required this.actorSession,
+    this.shared = false,
   });
   final String id, name, companyId, partnerId, partnerName, actorSession;
+  final bool shared;
 }
 
 class AttendanceWorker {
@@ -278,8 +280,9 @@ class WorkerAttendanceSheetRepository {
     }
   }
 
-  Future<List<PartnerAttendanceWorker>>
-  loadPartnerWorkers() => _withPartnerSession((session, bearer) async {
+  Future<List<PartnerAttendanceWorker>> loadPartnerWorkers({
+    DateTime? month,
+  }) => _withPartnerSession((session, bearer) async {
     final company = await _partnerCompany(session, bearer);
     final rows = await _client
         .from('workers')
@@ -329,7 +332,69 @@ class WorkerAttendanceSheetRepository {
         ),
       );
     }
+    if (month != null) {
+      final shared = await _readSharedAttendance(bearer, month);
+      final seen = <String>{};
+      for (final row in shared) {
+        final id = row['worker_id'] as String;
+        if (seen.add(id)) {
+          result.add(
+            PartnerAttendanceWorker(
+              id: id,
+              name: row['worker_name'] as String,
+              companyId: company,
+              partnerId: row['origin_company_id'] as String,
+              partnerName: row['origin_company_name'] as String,
+              actorSession: session,
+              shared: true,
+            ),
+          );
+        }
+      }
+      if (await _partnerCompany(session, bearer) != company) {
+        throw StateError('表示する会社が変わりました。');
+      }
+    }
     return List.unmodifiable(result);
+  });
+
+  Future<List<Map<String, dynamic>>> _readSharedAttendance(
+    String bearer,
+    DateTime month, {
+    String? workerId,
+  }) async {
+    final rows = await _client
+        .rpc(
+          'read_shared_site_attendance',
+          params: {
+            'p_month': _dbDate(DateTime(month.year, month.month)),
+            if (workerId != null) 'p_worker': workerId,
+          },
+        )
+        .setHeader('Authorization', 'Bearer $bearer');
+    return List<Map<String, dynamic>>.from(rows as List);
+  }
+
+  Future<List<Map<String, dynamic>>> manageAttendanceSharing({
+    String? itemId,
+    DateTime? start,
+    bool disable = false,
+  }) => _withPartnerSession((session, bearer) async {
+    final company = await _partnerCompany(session, bearer);
+    final rows = await _client
+        .rpc(
+          'manage_site_attendance_sharing',
+          params: {
+            if (itemId != null) 'p_item': itemId,
+            if (start != null) 'p_start': _dbDate(start),
+            if (disable) 'p_disable': true,
+          },
+        )
+        .setHeader('Authorization', 'Bearer $bearer');
+    if (await _partnerCompany(session, bearer) != company) {
+      throw StateError('表示する会社が変わりました。');
+    }
+    return List<Map<String, dynamic>>.from(rows as List);
   });
 
   Future<List<Map<String, dynamic>>> loadPartnerAttendanceMonth(
@@ -345,6 +410,29 @@ class WorkerAttendanceSheetRepository {
     if (company != worker.companyId) {
       throw StateError(
         _partnerText('表示する会社が変わりました。', 'The company being viewed has changed.'),
+      );
+    }
+    if (worker.shared) {
+      final rows = await _readSharedAttendance(
+        bearer,
+        month,
+        workerId: worker.id,
+      );
+      if (await _partnerCompany(session, bearer) != company ||
+          rows.any(
+            (row) =>
+                row['worker_id'] != worker.id ||
+                row['origin_company_id'] != worker.partnerId,
+          )) {
+        throw StateError('共有された出勤記録を確認できません。');
+      }
+      return List.unmodifiable(
+        rows.map(
+          (row) => {
+            ...row,
+            'sites': {'name': row['site_name']},
+          },
+        ),
       );
     }
     final workers = await _client
@@ -591,6 +679,44 @@ class WorkerAttendanceSheetRepository {
         )
         .order('confirmed_at');
 
+    final allApprovedLeaveRows = await _client
+        .from('paid_leave_requests')
+        .select('leave_date')
+        .eq('worker_id', targetWorkerId)
+        .eq('status', 'approved')
+        .order('leave_date');
+
+    final summaryRaw = await _client.rpc(
+      'paid_leave_worker_summary',
+      params: {'p_worker_id': targetWorkerId},
+    );
+    final summary = summaryRaw is Map
+        ? Map<String, dynamic>.from(summaryRaw)
+        : const <String, dynamic>{};
+    final grantedDays = _number(summary['granted_days']);
+
+    final rawUnits = await _client.rpc('my_attendance_allowance_units');
+    return projectMonth(month, attendanceRows: attendanceRows, registered: registered,
+      pendingReports: pendingReports, pendingDetailsUnavailable: pendingDetailsUnavailable,
+      verificationRows: verificationRows, allApprovedLeaveRows: allApprovedLeaveRows,
+      grantedDays: grantedDays, rawUnits: rawUnits);
+  }
+
+  /// The interactive screen and retirement renderer project the same signed,
+  /// confirmed and approved records using this method.
+  static WorkerAttendanceMonth projectMonth(
+    DateTime month, {
+    required Iterable<Map<String, dynamic>> attendanceRows,
+    required Map<String, List<DailyReportCompanyAllowanceSelection>> registered,
+    required Iterable<Map<String, dynamic>> verificationRows,
+    required Iterable<Map<String, dynamic>> allApprovedLeaveRows,
+    required double grantedDays,
+    required Object? rawUnits,
+    List<AttendancePendingReportDetails> pendingReports = const [],
+    bool pendingDetailsUnavailable = false,
+  }) {
+    final start = DateTime(month.year, month.month, 1);
+    final end = DateTime(month.year, month.month + 1, 1);
     final drafts = <DateTime, _DayDraft>{};
 
     for (final raw in attendanceRows) {
@@ -689,22 +815,6 @@ class WorkerAttendanceSheetRepository {
       }
     }
 
-    final allApprovedLeaveRows = await _client
-        .from('paid_leave_requests')
-        .select('leave_date')
-        .eq('worker_id', targetWorkerId)
-        .eq('status', 'approved')
-        .order('leave_date');
-
-    final summaryRaw = await _client.rpc(
-      'paid_leave_worker_summary',
-      params: {'p_worker_id': targetWorkerId},
-    );
-    final summary = summaryRaw is Map
-        ? Map<String, dynamic>.from(summaryRaw)
-        : const <String, dynamic>{};
-    final grantedDays = _number(summary['granted_days']);
-
     final approvedDates = <DateTime>{
       for (final row in allApprovedLeaveRows)
         if (_parseDate(row['leave_date']?.toString()) case final date?)
@@ -725,7 +835,6 @@ class WorkerAttendanceSheetRepository {
           .toDouble();
     }
 
-    final rawUnits = await _client.rpc('my_attendance_allowance_units');
     final allowanceUnits = rawUnits is Map
         ? {
             for (final entry in rawUnits.entries)
@@ -748,12 +857,12 @@ class WorkerAttendanceSheetRepository {
     );
   }
 
-  DateTime? _parseDate(String? value) {
+  static DateTime? _parseDate(String? value) {
     if (value == null || value.isEmpty) return null;
     return DateTime.tryParse(value.replaceAll('/', '-'));
   }
 
-  DateTime _dateOnly(DateTime value) =>
+  static DateTime _dateOnly(DateTime value) =>
       DateTime(value.year, value.month, value.day);
 
   String _dbDate(DateTime value) =>
@@ -761,7 +870,7 @@ class WorkerAttendanceSheetRepository {
       '${value.month.toString().padLeft(2, '0')}-'
       '${value.day.toString().padLeft(2, '0')}';
 
-  double _number(Object? value) =>
+  static double _number(Object? value) =>
       (value as num?)?.toDouble() ??
       double.tryParse(value?.toString() ?? '') ??
       0;

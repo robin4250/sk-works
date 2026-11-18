@@ -2,8 +2,7 @@ import '../shared/trade_document_confirmation_dialog.dart';
 import '../shared/standalone_trade_document_page.dart';
 import 'trade_company_dialog.dart';
 import '../../data/supabase_backend.dart';
-import '../referrals/app_referral_page.dart';
-import '../referrals/app_referral_repository.dart';
+import 'trade_company_invitation_page.dart';
 import 'company_invite_recipient_picker.dart';
 
 import 'package:flutter/material.dart';
@@ -21,9 +20,11 @@ class TradeCompanyPage extends StatefulWidget {
   const TradeCompanyPage({
     super.key,
     required this.mode,
+    this.unified = false,
     this.onOpenDeliveries,
     this.repository,
   });
+  final bool unified;
   final VoidCallback? onOpenDeliveries;
   final TradeCompanyPageMode mode;
   final TradeCompanyRepository? repository;
@@ -41,8 +42,9 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
   bool _linkEnabled = false;
   String? _error;
 
-  String get _title =>
-      widget.mode == TradeCompanyPageMode.customer ? '取引会社登録' : '協力会社登録';
+  String get _title => widget.unified
+      ? SkoLanguageController.tr('連携会社登録')
+      : widget.mode == TradeCompanyPageMode.customer ? '取引会社登録' : '協力会社登録';
 
   @override
   void initState() {
@@ -86,7 +88,7 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
     }
   }
 
-  List<TradeCompanyRecord> get _visible => _items
+  List<TradeCompanyRecord> get _visible => widget.unified ? _items : _items
       .where((item) {
         return widget.mode == TradeCompanyPageMode.customer
             ? item.isCustomer
@@ -94,34 +96,90 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
       })
       .toList(growable: false);
 
+  Future<TradeCompanyPageMode?> _selectMode({TradeCompanyRecord? company}) {
+    if (!widget.unified) return Future.value(widget.mode);
+    if (company != null && company.isCustomer != company.isSubcontractor) {
+      return Future.value(company.isCustomer
+          ? TradeCompanyPageMode.customer : TradeCompanyPageMode.subcontractor);
+    }
+    return showDialog<TradeCompanyPageMode>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: Text(SkoLanguageController.tr('区分')),
+        children: [
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(context, TradeCompanyPageMode.customer),
+            child: Text(SkoLanguageController.tr('取引会社')),
+          ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(context, TradeCompanyPageMode.subcontractor),
+            child: Text(SkoLanguageController.tr('協力会社')),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<List<TradeCompanyRecord>> _directoryRows(List<TradeCompanyRecord> visible) {
+    final grouped = <String, List<TradeCompanyRecord>>{};
+    for (final company in visible) {
+      final key = widget.unified && company.linkStatus == 'linked' &&
+              company.linkedCompanyId.isNotEmpty
+          ? 'linked:${company.linkedCompanyId}'
+          : 'record:${company.id}';
+      (grouped[key] ??= []).add(company);
+    }
+    return grouped.values.toList(growable: false);
+  }
+
+  Future<void> _openDirectoryRow(List<TradeCompanyRecord> records) async {
+    if (records.length == 1) {
+      await _openCompany(records.single);
+      return;
+    }
+    final selected = await showDialog<TradeCompanyRecord>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('既存の会社データを選択'),
+        children: [
+          for (final record in records)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, record),
+              child: Text('${record.name} / ${record.isCustomer && record.isSubcontractor
+                  ? '取引会社・協力会社' : record.isCustomer ? '取引会社' : '協力会社'}'
+                  '\n${record.address} ${_contractLabel(record.contractMethod)}'),
+            ),
+        ],
+      ),
+    );
+    if (mounted && selected != null) await _openCompany(selected);
+  }
+
   Future<void> _invite({TradeCompanyRecord? recipient}) async {
     final actor = SupabaseBackend.client.auth.currentUser?.id;
     if (actor == null) return;
-    void openInvite(TradeCompanyRecord? company) {
-      if (!mounted || SupabaseBackend.client.auth.currentUser?.id != actor) {
+    Future<void> openInvite(TradeCompanyRecord company) async {
+      if (!mounted ||
+          !_canInvite(company) ||
+          SupabaseBackend.client.auth.currentUser?.id != actor) {
         return;
       }
-      Navigator.of(context).push(
+      final mode = await _selectMode(company: company);
+      if (!mounted || mode == null || SupabaseBackend.client.auth.currentUser?.id != actor) return;
+      await Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder: (_) => AppReferralPage(
-            repository: AppReferralRepository(SupabaseBackend.client),
-            invitationKind: 'company',
-            guideKind: widget.mode == TradeCompanyPageMode.customer
-                ? 'client'
-                : 'partner',
-            initialName: company == null
-                ? ''
-                : company.representativeName.trim().isNotEmpty
-                ? company.representativeName
-                : company.name,
-            initialPhone: company?.representativePhone ?? '',
+          builder: (_) => TradeCompanyInvitationPage(
+            client: SupabaseBackend.client,
+            contact: company,
+            mode: mode,
           ),
         ),
       );
+      if (mounted) await _load();
     }
 
     if (recipient != null) {
-      openInvite(recipient);
+      await openInvite(recipient);
       return;
     }
     var selected = false;
@@ -129,9 +187,10 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
       context: context,
       isScrollControlled: true,
       builder: (sheetContext) => CompanyInviteRecipientPicker(
-        companies: _visible,
+        companies: _visible.where(_canInvite).toList(),
+        allowDirect: false,
         onSelected: (company) {
-          if (selected || !mounted) return;
+          if (selected || !mounted || company == null) return;
           selected = true;
           Navigator.of(sheetContext).pop();
           openInvite(company);
@@ -140,11 +199,16 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
     );
   }
 
+  bool _canInvite(TradeCompanyRecord company) =>
+      company.linkStatus != 'linked' && company.linkedCompanyId.isEmpty;
+
   @override
   Widget build(BuildContext context) {
     final visible = _visible;
+    final directoryRows = _directoryRows(visible);
     return Scaffold(
       appBar: AppBar(
+        toolbarHeight: kToolbarHeight,
         title: Text(
           _title,
           style: const TextStyle(fontWeight: FontWeight.w900),
@@ -162,11 +226,13 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
               onPressed: _repository == null
                   ? null
                   : () async {
+                      final mode = await _selectMode();
+                      if (!context.mounted || mode == null) return;
                       await Navigator.of(context).push(
                         MaterialPageRoute<void>(
                           builder: (_) => CompanyLinkPage(
                             repository: _repository,
-                            mode: widget.mode,
+                            mode: mode,
                           ),
                         ),
                       );
@@ -197,7 +263,9 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
                 child: Padding(
                   padding: const EdgeInsets.all(28),
                   child: Text(
-                    widget.mode == TradeCompanyPageMode.customer
+                    widget.unified
+                        ? '連携会社はまだ登録されていません'
+                        : widget.mode == TradeCompanyPageMode.customer
                         ? '取引会社はまだ登録されていません\nSKO連携なしでも登録できます'
                         : '協力会社はまだ登録されていません\nSKO連携なしでも登録できます',
                     textAlign: TextAlign.center,
@@ -208,10 +276,11 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
                 onRefresh: _load,
                 child: ListView.separated(
                   padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
-                  itemCount: visible.length,
+                  itemCount: directoryRows.length,
                   separatorBuilder: (_, __) => const SizedBox(height: 8),
                   itemBuilder: (context, index) {
-                    final item = visible[index];
+                    final records = directoryRows[index];
+                    final item = records.first;
                     return Card(
                       child: ListTile(
                         leading: CircleAvatar(
@@ -226,11 +295,12 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
                           style: const TextStyle(fontWeight: FontWeight.w900),
                         ),
                         subtitle: Text(
-                          '${_linkLabel(item.linkStatus)} / '
-                          '${_contractLabel(item.contractMethod)}',
+                          records.length > 1
+                              ? '${_linkLabel(item.linkStatus)} / 会社データ ${records.length}件'
+                              : '${_linkLabel(item.linkStatus)} / ${_contractLabel(item.contractMethod)}',
                         ),
                         trailing: const Icon(Icons.chevron_right),
-                        onTap: () => _openCompany(item),
+                        onTap: () => _openDirectoryRow(records),
                       ),
                     );
                   },
@@ -245,6 +315,8 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
     if (repository == null || _companyEditorOpen) return;
     _companyEditorOpen = true;
     try {
+      final mode = await _selectMode();
+      if (!mounted || mode == null) return;
       final id = await showDialog<String>(
         context: context,
         barrierDismissible: false,
@@ -253,11 +325,16 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
           onSave: (draft) {
             final same = _items.where(
               (item) =>
-                  item.name.trim().toLowerCase() ==
-                  draft.name.trim().toLowerCase(),
+                  widget.unified
+                      ? draft.corporateNumber.trim().isNotEmpty &&
+                          item.corporateNumber.trim() == draft.corporateNumber.trim()
+                      : item.name.trim().toLowerCase() == draft.name.trim().toLowerCase(),
             );
+            if (widget.unified && same.length > 1) {
+              throw StateError('同じ法人番号の会社が複数あります。登録済みの会社を確認してください。');
+            }
             final existing = same.isEmpty ? null : same.first;
-            final desiredRole = widget.mode == TradeCompanyPageMode.customer
+            final desiredRole = mode == TradeCompanyPageMode.customer
                 ? 'customer'
                 : 'subcontractor';
             final role = existing == null || existing.tradeRole == desiredRole
@@ -302,12 +379,19 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
               children: [
                 _detailLine(
                   '区分',
-                  widget.mode == TradeCompanyPageMode.customer
-                      ? '取引会社'
-                      : '協力会社',
+                  widget.unified && item.isCustomer && item.isSubcontractor
+                      ? '取引会社・協力会社'
+                      : (widget.unified ? item.isCustomer : widget.mode == TradeCompanyPageMode.customer)
+                      ? '取引会社' : '協力会社',
                 ),
                 _detailLine('SKO連携', _linkLabel(item.linkStatus)),
-                if (item.linkStatus != 'linked')
+                if (widget.unified)
+                  OutlinedButton.icon(
+                    onPressed: () => Navigator.of(dialogContext).pop(_CompanyAction.siteDefault),
+                    icon: const Icon(Icons.tune),
+                    label: const Text('現場での初期値'),
+                  ),
+                if (_canInvite(item))
                   OutlinedButton.icon(
                     key: const ValueKey('trade-company-sko-invite'),
                     onPressed: () =>
@@ -362,14 +446,18 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
             icon: const Icon(Icons.rule_outlined),
             label: const Text('計算元を確認・変更'),
           ),
-          OutlinedButton.icon(
-            onPressed: () =>
-                Navigator.of(dialogContext).pop(_CompanyAction.document),
-            icon: const Icon(Icons.description_outlined),
-            label: Text(
-              widget.mode == TradeCompanyPageMode.customer ? '注文請書生成' : '注文書生成',
+          if (widget.unified ? item.isCustomer : widget.mode == TradeCompanyPageMode.customer)
+            OutlinedButton.icon(
+              onPressed: () => Navigator.of(dialogContext).pop(_CompanyAction.acceptance),
+              icon: const Icon(Icons.description_outlined),
+              label: const Text('注文請書生成'),
             ),
-          ),
+          if (widget.unified ? item.isSubcontractor : widget.mode == TradeCompanyPageMode.subcontractor)
+            OutlinedButton.icon(
+              onPressed: () => Navigator.of(dialogContext).pop(_CompanyAction.order),
+              icon: const Icon(Icons.description_outlined),
+              label: const Text('注文書生成'),
+            ),
           if (item.linkStatus == 'linked')
             OutlinedButton.icon(
               onPressed: () => Navigator.of(dialogContext).pop(_CompanyAction.receivedDocuments),
@@ -387,12 +475,13 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
     );
     if (!mounted || action == null) return;
     switch (action) {
-      case _CompanyAction.document:
+      case _CompanyAction.acceptance:
+      case _CompanyAction.order:
         await Navigator.of(context).push<void>(
           MaterialPageRoute(
             builder: (_) => StandaloneTradeDocumentPage(
               tradeCompanyId: item.id,
-              acceptance: widget.mode == TradeCompanyPageMode.customer,
+              acceptance: action == _CompanyAction.acceptance,
             ),
           ),
         );
@@ -404,6 +493,8 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
         await _invite(recipient: item);
       case _CompanyAction.edit:
         await _editCompany(item);
+      case _CompanyAction.siteDefault:
+        await _editSiteDefault(item);
       case _CompanyAction.contract:
         await _editContract(item);
       case _CompanyAction.delete:
@@ -461,6 +552,51 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
         ],
       ),
     );
+  }
+
+  Future<void> _editSiteDefault(TradeCompanyRecord item) async {
+    final repository = _repository;
+    final token = SupabaseBackend.isInitialized
+        ? SupabaseBackend.client.auth.currentSession?.accessToken : null;
+    if (repository == null || token == null || _companyEditorOpen) return;
+    _companyEditorOpen = true;
+    try {
+      final current = await repository.siteDefaultRole(
+        tradeCompanyId: item.id, sessionToken: token,
+      );
+      if (!mounted) return;
+      final choices = {'customer': '取引会社', 'subcontractor': '協力会社', 'unset': '未設定'};
+      final selected = await showDialog<String>(
+        context: context,
+        builder: (context) => SimpleDialog(
+          title: Text('${item.name}の現場での初期値'),
+          children: [
+            for (final choice in choices.entries)
+              SimpleDialogOption(
+                onPressed: () => Navigator.pop(context, choice.key),
+                child: Text(choice.key == current ? '${choice.value}（現在）' : choice.value),
+              ),
+          ],
+        ),
+      );
+      if (!mounted || selected == null || selected == current) return;
+      await repository.siteDefaultRole(
+        tradeCompanyId: item.id, sessionToken: token, role: selected,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('現場での初期値を保存しました。')),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('現場での初期値を確認できませんでした。\n$error')),
+        );
+      }
+    } finally {
+      _companyEditorOpen = false;
+    }
   }
 
   Future<void> _editCompany(TradeCompanyRecord item) async {
@@ -658,6 +794,8 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
   }
 
   String _linkLabel(String value) => switch (value) {
+    'linked' when widget.unified => '連携済み',
+    _ when widget.unified => '仮登録',
     'linked' => 'SKO連携済み',
     'merge_pending' => '統合確認待ち',
     _ => '連携なし',
@@ -672,7 +810,7 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
   };
 }
 
-enum _CompanyAction { edit, contract, delete, source, invite, document, receivedDocuments }
+enum _CompanyAction { edit, siteDefault, contract, delete, source, invite, acceptance, order, receivedDocuments }
 
 class _CompanyDraft {
   const _CompanyDraft({

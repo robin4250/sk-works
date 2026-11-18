@@ -35,23 +35,31 @@ Widget _onboardingHelpButton(
   return IconButton(
     tooltip: SkoLanguageController.tr('この画面の使い方'),
     icon: const Icon(Icons.help_outline),
-    onPressed: () => _showOnboardingHelp(
-      context,
-      title: title,
-      message: message,
-    ),
+    onPressed: () =>
+        _showOnboardingHelp(context, title: title, message: message),
   );
+}
+
+String _employeeRegistrationStatus(String companyName) {
+  if (SkoLanguageController.isEnglish) {
+    return companyName.isEmpty
+        ? 'Employee registration in progress'
+        : 'Registering as an employee of $companyName';
+  }
+  return companyName.isEmpty ? '従業員として登録中です' : '$companyNameの従業員として登録中です';
 }
 
 class EmployeePrimaryPasswordPage extends StatefulWidget {
   const EmployeePrimaryPasswordPage({
     super.key,
     required this.name,
+    this.companyName = '',
     required this.onCompleted,
     required this.onSignOut,
   });
 
   final String name;
+  final String companyName;
   final VoidCallback onCompleted;
   final Future<void> Function() onSignOut;
 
@@ -83,11 +91,15 @@ class _EmployeePrimaryPasswordPageState
     final repository = _repository;
     if (repository == null) return;
     if (_password.text.length < 8) {
-      setState(() => _message = SkoLanguageController.tr('本パスワードは8文字以上で設定してください。'));
+      setState(
+        () => _message = SkoLanguageController.tr('本パスワードは8文字以上で設定してください。'),
+      );
       return;
     }
     if (_password.text != _confirm.text) {
-      setState(() => _message = SkoLanguageController.tr('確認用の本パスワードが一致していません。'));
+      setState(
+        () => _message = SkoLanguageController.tr('確認用の本パスワードが一致していません。'),
+      );
       return;
     }
 
@@ -138,15 +150,20 @@ class _EmployeePrimaryPasswordPageState
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      Text(
+                        _employeeRegistrationStatus(widget.companyName),
+                        style: Theme.of(context).textTheme.titleMedium,
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 12),
                       const Icon(Icons.lock_reset_outlined, size: 54),
                       const SizedBox(height: 14),
                       Text(
                         SkoLanguageController.isEnglish
                             ? 'Welcome, ${widget.name}. Initial sign-in is complete.'
                             : '${widget.name}さん、初期ログインできました',
-                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                              fontWeight: FontWeight.w900,
-                            ),
+                        style: Theme.of(context).textTheme.headlineSmall
+                            ?.copyWith(fontWeight: FontWeight.w900),
                       ),
                       const SizedBox(height: 8),
                       Text(
@@ -222,13 +239,17 @@ class EmployeeProfileOnboardingPage extends StatefulWidget {
   const EmployeeProfileOnboardingPage({
     super.key,
     required this.name,
+    this.companyName = '',
     required this.onSubmitted,
     required this.onSignOut,
     this.repository,
     this.imagePicker,
+    this.claimedInviteId,
   });
 
   final String name;
+  final String companyName;
+  final String? claimedInviteId;
   final VoidCallback onSubmitted;
   final Future<void> Function() onSignOut;
   final EmployeeOnboardingRepository? repository;
@@ -240,7 +261,8 @@ class EmployeeProfileOnboardingPage extends StatefulWidget {
 }
 
 class _EmployeeProfileOnboardingPageState
-    extends State<EmployeeProfileOnboardingPage> with WidgetsBindingObserver {
+    extends State<EmployeeProfileOnboardingPage>
+    with WidgetsBindingObserver {
   final _address = TextEditingController();
   final _family = TextEditingController();
   final _emergencyRelation = TextEditingController();
@@ -259,15 +281,19 @@ class _EmployeeProfileOnboardingPageState
   @override
   void initState() {
     super.initState();
-    _foreground = WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+    _foreground =
+        WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
     WidgetsBinding.instance.addObserver(this);
-    _repository = widget.repository ?? EmployeeOnboardingRepository.maybeCreate();
+    _repository =
+        widget.repository ?? EmployeeOnboardingRepository.maybeCreate();
     _actorId = _repository?.currentUserId;
     _authSubscription = _repository?.authChanges.listen((state) {
       if (state.session?.user.id != _actorId) {
         _identityChanged = true;
         _epoch++;
-        if (mounted) setState(() => _message = 'ログイン状態が変わったため送信を中断しました。入力内容は保持しています。');
+        if (mounted) {
+          setState(() => _message = 'ログイン状態が変わったため送信を中断しました。入力内容は保持しています。');
+        }
       }
     });
     unawaited(_loadPhotoCapability());
@@ -285,8 +311,15 @@ class _EmployeeProfileOnboardingPageState
 
   EmployeeOnboardingRequest _request() {
     final epoch = _epoch;
-    return _repository!.beginRequest(() => mounted && _foreground && !_identityChanged &&
-        _actorId != null && _repository!.currentUserId == _actorId && _epoch == epoch);
+    return _repository!.beginRequest(
+      () =>
+          mounted &&
+          _foreground &&
+          !_identityChanged &&
+          _actorId != null &&
+          _repository!.currentUserId == _actorId &&
+          _epoch == epoch,
+    );
   }
 
   Future<void> _loadPhotoCapability() async {
@@ -298,7 +331,11 @@ class _EmployeeProfileOnboardingPageState
       request.check();
       setState(() => _photoCapability = capability);
     } catch (_) {
-      if (mounted) setState(() => _message = '写真登録の状態を確認できませんでした。入力内容を保持しています。送信時に再確認します。');
+      if (mounted) {
+        setState(
+          () => _message = '写真登録の状態を確認できませんでした。入力内容を保持しています。送信時に再確認します。',
+        );
+      }
     }
   }
 
@@ -331,12 +368,20 @@ class _EmployeeProfileOnboardingPageState
           children: [
             ListTile(
               leading: const Icon(Icons.photo_camera_outlined),
-              title: Text(SkoLanguageController.isEnglish ? 'Take $label with camera' : '$labelをカメラで撮影'),
+              title: Text(
+                SkoLanguageController.isEnglish
+                    ? 'Take $label with camera'
+                    : '$labelをカメラで撮影',
+              ),
               onTap: () => Navigator.pop(sheetContext, ImageSource.camera),
             ),
             ListTile(
               leading: const Icon(Icons.photo_library_outlined),
-              title: Text(SkoLanguageController.isEnglish ? 'Choose $label from photos' : '$labelを写真から選ぶ'),
+              title: Text(
+                SkoLanguageController.isEnglish
+                    ? 'Choose $label from photos'
+                    : '$labelを写真から選ぶ',
+              ),
               onTap: () => Navigator.pop(sheetContext, ImageSource.gallery),
             ),
           ],
@@ -345,11 +390,7 @@ class _EmployeeProfileOnboardingPageState
     );
     if (source == null) return null;
     if (widget.imagePicker != null) return widget.imagePicker!(source);
-    return _picker.pickImage(
-      source: source,
-      imageQuality: 88,
-      maxWidth: 2400,
-    );
+    return _picker.pickImage(source: source, imageQuality: 88, maxWidth: 2400);
   }
 
   bool get _textComplete =>
@@ -368,26 +409,39 @@ class _EmployeeProfileOnboardingPageState
       return;
     }
     final fields = <String, String>{
-      'address': _address.text, 'blood_type': _bloodType,
-      'family_composition': _family.text, 'emergency_relation': _emergencyRelation.text,
-      'emergency_name': _emergencyName.text, 'emergency_phone': _emergencyPhone.text,
+      'address': _address.text,
+      'blood_type': _bloodType,
+      'family_composition': _family.text,
+      'emergency_relation': _emergencyRelation.text,
+      'emergency_name': _emergencyName.text,
+      'emergency_phone': _emergencyPhone.text,
       'emergency_address': _emergencyAddress.text,
     };
     final portrait = _portrait, front = _myNumberFront, back = _myNumberBack;
-    setState(() { _busy = true; _message = null; });
+    setState(() {
+      _busy = true;
+      _message = null;
+    });
     try {
       final request = _request();
       final capability = await repository.loadPhotoCapability(request: request);
       request.check();
       setState(() => _photoCapability = capability);
       final omitPhotos = capability?.photoUploadAllowed == false;
+      final claimedInviteId = widget.claimedInviteId;
       String? portraitPath, frontPath, backPath;
       Future<String> upload(String kind, XFile file) async {
         final bytes = await file.readAsBytes();
         request.check();
-        return repository.uploadImage(kind: kind, bytes: bytes,
-            filename: file.name, request: request);
+        return repository.uploadImage(
+          kind: kind,
+          bytes: bytes,
+          filename: file.name,
+          claimedInviteId: claimedInviteId,
+          request: request,
+        );
       }
+
       if (!omitPhotos) {
         if (portrait == null || front == null || back == null) {
           throw StateError('未入力または未撮影の項目があります。');
@@ -405,17 +459,33 @@ class _EmployeeProfileOnboardingPageState
       if ((confirmed?.photoUploadAllowed == false) != omitPhotos) {
         throw StateError('写真登録の状態が変わりました。入力内容を確認して再度お試しください。');
       }
-      if (omitPhotos) {
-        await repository.submitProfileWithoutPhotos(fields: fields, request: request);
+      if (claimedInviteId != null) {
+        await repository.submitClaimedProfile(
+          inviteId: claimedInviteId,
+          portraitPath: portraitPath,
+          myNumberFrontPath: frontPath,
+          myNumberBackPath: backPath,
+          fields: fields,
+          request: request,
+        );
+      } else if (omitPhotos) {
+        await repository.submitProfileWithoutPhotos(
+          fields: fields,
+          request: request,
+        );
       } else {
         await repository.submitProfile(
-          address: fields['address']!, bloodType: fields['blood_type']!,
+          address: fields['address']!,
+          bloodType: fields['blood_type']!,
           familyComposition: fields['family_composition']!,
           emergencyRelation: fields['emergency_relation']!,
-          emergencyName: fields['emergency_name']!, emergencyPhone: fields['emergency_phone']!,
+          emergencyName: fields['emergency_name']!,
+          emergencyPhone: fields['emergency_phone']!,
           emergencyAddress: fields['emergency_address']!,
-          portraitPath: portraitPath!, myNumberFrontPath: frontPath!,
-          myNumberBackPath: backPath!, request: request,
+          portraitPath: portraitPath!,
+          myNumberFrontPath: frontPath!,
+          myNumberBackPath: backPath!,
+          request: request,
         );
       }
       request.check();
@@ -443,7 +513,11 @@ class _EmployeeProfileOnboardingPageState
           color: file == null ? null : Colors.green,
         ),
         title: Text(label),
-        subtitle: Text(file == null ? SkoLanguageController.tr('未登録') : SkoLanguageController.tr('登録済み')),
+        subtitle: Text(
+          file == null
+              ? SkoLanguageController.tr('未登録')
+              : SkoLanguageController.tr('登録済み'),
+        ),
         trailing: const Icon(Icons.chevron_right),
         onTap: _busy ? null : onTap,
       ),
@@ -473,6 +547,11 @@ class _EmployeeProfileOnboardingPageState
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            Text(
+              _employeeRegistrationStatus(widget.companyName),
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 12),
             Card(
               color: Theme.of(context).colorScheme.primaryContainer,
               child: Padding(
@@ -500,11 +579,26 @@ class _EmployeeProfileOnboardingPageState
                 prefixIcon: Icon(Icons.bloodtype_outlined),
               ),
               items: [
-                DropdownMenuItem(value: 'A', child: Text(SkoLanguageController.isEnglish ? 'A' : 'A型')),
-                DropdownMenuItem(value: 'B', child: Text(SkoLanguageController.isEnglish ? 'B' : 'B型')),
-                DropdownMenuItem(value: 'O', child: Text(SkoLanguageController.isEnglish ? 'O' : 'O型')),
-                DropdownMenuItem(value: 'AB', child: Text(SkoLanguageController.isEnglish ? 'AB' : 'AB型')),
-                DropdownMenuItem(value: '不明', child: Text(SkoLanguageController.tr('不明'))),
+                DropdownMenuItem(
+                  value: 'A',
+                  child: Text(SkoLanguageController.isEnglish ? 'A' : 'A型'),
+                ),
+                DropdownMenuItem(
+                  value: 'B',
+                  child: Text(SkoLanguageController.isEnglish ? 'B' : 'B型'),
+                ),
+                DropdownMenuItem(
+                  value: 'O',
+                  child: Text(SkoLanguageController.isEnglish ? 'O' : 'O型'),
+                ),
+                DropdownMenuItem(
+                  value: 'AB',
+                  child: Text(SkoLanguageController.isEnglish ? 'AB' : 'AB型'),
+                ),
+                DropdownMenuItem(
+                  value: '不明',
+                  child: Text(SkoLanguageController.tr('不明')),
+                ),
               ],
               onChanged: (value) {
                 if (value != null) setState(() => _bloodType = value);
@@ -523,65 +617,85 @@ class _EmployeeProfileOnboardingPageState
             const SizedBox(height: 18),
             Text(
               SkoLanguageController.tr('緊急連絡先'),
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w900,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
             ),
             const SizedBox(height: 10),
             TextField(
               controller: _emergencyRelation,
-              decoration: InputDecoration(labelText: '${SkoLanguageController.tr('続柄')} *'),
+              decoration: InputDecoration(
+                labelText: '${SkoLanguageController.tr('続柄')} *',
+              ),
             ),
             const SizedBox(height: 10),
             TextField(
               controller: _emergencyName,
-              decoration: InputDecoration(labelText: '${SkoLanguageController.tr('緊急連絡先氏名')} *'),
+              decoration: InputDecoration(
+                labelText: '${SkoLanguageController.tr('緊急連絡先氏名')} *',
+              ),
             ),
             const SizedBox(height: 10),
             TextField(
               controller: _emergencyPhone,
               keyboardType: TextInputType.phone,
-              decoration: InputDecoration(labelText: '${SkoLanguageController.tr('電話番号')} *'),
+              decoration: InputDecoration(
+                labelText: '${SkoLanguageController.tr('電話番号')} *',
+              ),
             ),
             const SizedBox(height: 10),
             TextField(
               controller: _emergencyAddress,
-              decoration: InputDecoration(labelText: '${SkoLanguageController.tr('緊急住所')} *'),
+              decoration: InputDecoration(
+                labelText: '${SkoLanguageController.tr('緊急住所')} *',
+              ),
             ),
             const SizedBox(height: 18),
             Text(
               SkoLanguageController.tr('写真登録'),
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w900,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
             ),
             const SizedBox(height: 8),
             if (_photoCapability?.photoUploadAllowed == false)
-              Text(_photoCapability!.hasExistingImages
-                  ? '写真の新規送信は停止中です。登録済み写真を保持し、本人情報のみ申請します。選択中の写真は送信されません。'
-                  : '写真の新規送信は停止中です。写真の選択なしで本人情報を申請できます。選択中の写真は送信されません。'),
+              Text(
+                _photoCapability!.hasExistingImages
+                    ? '写真の新規送信は停止中です。登録済み写真を保持し、本人情報のみ申請します。選択中の写真は送信されません。'
+                    : '写真の新規送信は停止中です。写真の選択なしで本人情報を申請できます。選択中の写真は送信されません。',
+              ),
             _imageTile(
               label: '${SkoLanguageController.tr('本人の写真')} *',
               file: _portrait,
               onTap: () async {
                 final file = await _pick(SkoLanguageController.tr('本人写真'));
-                if (mounted && !_identityChanged && file != null) setState(() => _portrait = file);
+                if (mounted && !_identityChanged && file != null) {
+                  setState(() => _portrait = file);
+                }
               },
             ),
             _imageTile(
               label: '${SkoLanguageController.tr('マイナンバーカード 表面')} *',
               file: _myNumberFront,
               onTap: () async {
-                final file = await _pick(SkoLanguageController.tr('マイナンバーカード表面'));
-                if (mounted && !_identityChanged && file != null) setState(() => _myNumberFront = file);
+                final file = await _pick(
+                  SkoLanguageController.tr('マイナンバーカード表面'),
+                );
+                if (mounted && !_identityChanged && file != null) {
+                  setState(() => _myNumberFront = file);
+                }
               },
             ),
             _imageTile(
               label: '${SkoLanguageController.tr('マイナンバーカード 裏面')} *',
               file: _myNumberBack,
               onTap: () async {
-                final file = await _pick(SkoLanguageController.tr('マイナンバーカード裏面'));
-                if (mounted && !_identityChanged && file != null) setState(() => _myNumberBack = file);
+                final file = await _pick(
+                  SkoLanguageController.tr('マイナンバーカード裏面'),
+                );
+                if (mounted && !_identityChanged && file != null) {
+                  setState(() => _myNumberBack = file);
+                }
               },
             ),
             if (_message != null) ...[
@@ -659,9 +773,8 @@ class EmployeeApprovalWaitingPage extends StatelessWidget {
                         SkoLanguageController.isEnglish
                             ? '$name: registration information submitted'
                             : '$nameさんの本人情報を送信しました',
-                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                              fontWeight: FontWeight.w900,
-                            ),
+                        style: Theme.of(context).textTheme.headlineSmall
+                            ?.copyWith(fontWeight: FontWeight.w900),
                       ),
                       const SizedBox(height: 10),
                       Text(
@@ -687,12 +800,8 @@ class EmployeeApprovalWaitingPage extends StatelessWidget {
   }
 }
 
-
 class EmployeeInviteInvalidPage extends StatelessWidget {
-  const EmployeeInviteInvalidPage({
-    super.key,
-    required this.onSignOut,
-  });
+  const EmployeeInviteInvalidPage({super.key, required this.onSignOut});
 
   final Future<void> Function() onSignOut;
 
@@ -715,7 +824,7 @@ class EmployeeInviteInvalidPage extends StatelessWidget {
                       const Icon(Icons.timer_off_outlined, size: 58),
                       const SizedBox(height: 16),
                       Text(
-                        SkoLanguageController.tr('この従業員登録は期限切れです'),
+                        SkoLanguageController.tr('有効な従業員登録を確認できません'),
                         style: const TextStyle(
                           fontWeight: FontWeight.w900,
                           fontSize: 20,
@@ -725,7 +834,7 @@ class EmployeeInviteInvalidPage extends StatelessWidget {
                       const SizedBox(height: 10),
                       Text(
                         SkoLanguageController.tr(
-                          '登録した会社のSKO利用者に、従業員登録をもう一度作成してもらってください。',
+                          '所属会社の担当者に、従業員招待の状況を確認してください。',
                         ),
                         textAlign: TextAlign.center,
                       ),

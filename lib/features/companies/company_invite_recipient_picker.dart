@@ -7,10 +7,12 @@ class CompanyInviteRecipientPicker extends StatelessWidget {
     super.key,
     required this.companies,
     required this.onSelected,
+    this.allowDirect = true,
   });
 
   final List<TradeCompanyRecord> companies;
   final ValueChanged<TradeCompanyRecord?> onSelected;
+  final bool allowDirect;
 
   @override
   Widget build(BuildContext context) => SafeArea(
@@ -23,13 +25,15 @@ class CompanyInviteRecipientPicker extends StatelessWidget {
             padding: EdgeInsets.all(16),
             child: Text('SKO招待', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
           ),
-          ListTile(
+          if (allowDirect) ListTile(
             leading: const Icon(Icons.dialpad),
             title: const Text('電話番号を直接入力'),
             subtitle: const Text('会社が未登録の相手にも招待できます'),
             onTap: () => onSelected(null),
           ),
-          const Divider(),
+          if (allowDirect) const Divider(),
+          if (companies.isEmpty && !allowDirect)
+            const Padding(padding: EdgeInsets.all(16), child: Text('先に会社一覧に招待先を登録してください。')),
           Expanded(
             child: ListView.builder(
               itemCount: companies.length,

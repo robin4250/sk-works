@@ -13,6 +13,7 @@ class EmployeeOnboardingState {
     required this.phone,
     required this.status,
     required this.passwordChanged,
+    this.claimedExistingAccount = false,
   });
 
   final String inviteId;
@@ -22,6 +23,7 @@ class EmployeeOnboardingState {
   final String phone;
   final String status;
   final bool passwordChanged;
+  final bool claimedExistingAccount;
 
   bool get needsPrimaryPassword =>
       status == 'invited' || status == 'password_changed';
@@ -69,6 +71,29 @@ class SecureOnboardingRepository {
       },
     );
     return established;
+  }
+
+  Future<void> registerApprovedPhone({
+    required String phone,
+    required String password,
+    required String approvalCode,
+  }) async {
+    try {
+      await _client.functions
+          .invoke(
+            'register-approved-phone',
+            body: {
+              'phone': normalizeJapanesePhone(phone),
+              'password': password,
+              'approvalCode': approvalCode,
+            },
+          )
+          .timeout(const Duration(seconds: 20));
+    } on FunctionException {
+      throw const AuthException(
+        '登録できませんでした。電話番号と承認コードを確認してください。登録済みの方はログインしてください。',
+      );
+    }
   }
 
   Future<void> resendSmsCode({required String phone, String? captchaToken}) async {
@@ -147,7 +172,26 @@ class SecureOnboardingRepository {
       phone: row['phone']?.toString() ?? '',
       status: row['status']?.toString() ?? 'invited',
       passwordChanged: row['password_changed_at'] != null,
+      claimedExistingAccount: row['claimed_existing_account'] == true,
     );
+  }
+
+  Future<void> claimEmployeeInvite(String token) async {
+    final session = _client.auth.currentSession;
+    if (session == null || session.isExpired) {
+      throw StateError('ログイン状態を確認してください。');
+    }
+    final inviteId = await _client
+        .rpc(
+          'claim_employee_invite_as_existing_account',
+          params: {'p_token': token},
+        )
+        .setHeader('Authorization', 'Bearer ${session.accessToken}');
+    if (_client.auth.currentUser?.id != session.user.id ||
+        inviteId is! String ||
+        inviteId.isEmpty) {
+      throw StateError('招待の受領を確認できませんでした。');
+    }
   }
 
   Future<void> setEmployeePrimaryPassword(String password) async {
@@ -225,6 +269,22 @@ class SecureOnboardingRepository {
     return value == true;
   }
 
+  Future<bool> hasArchivedRetirement(String actorId) async {
+    final session = _client.auth.currentSession;
+    if (session == null || session.isExpired || session.user.id != actorId) {
+      return false;
+    }
+    try {
+      final entries = await _client.rpc('retirement_vault_list_mine')
+          .setHeader('Authorization', 'Bearer ${session.accessToken}');
+      return _client.auth.currentSession?.accessToken == session.accessToken &&
+          entries is List && entries.isNotEmpty;
+    } on PostgrestException catch (error) {
+      if (error.code == 'PGRST202' || error.code == '42883') return false;
+      rethrow;
+    }
+  }
+
   Future<bool> hasCompanyMembership() async {
     final user = _client.auth.currentUser;
     if (user == null) return false;
@@ -232,6 +292,7 @@ class SecureOnboardingRepository {
         .from('company_members')
         .select('company_id')
         .eq('user_id', user.id)
+        .isFilter('employment_ended_at', null)
         .limit(1);
     return rows.isNotEmpty;
   }
