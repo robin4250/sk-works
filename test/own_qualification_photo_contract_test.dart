@@ -73,7 +73,7 @@ void main() {
       'lib/features/qualifications/qualification_cloud_repository.dart',
     ).readAsStringSync();
     final preview = repository.substring(
-      repository.indexOf('Future<String> createOwnQualificationPhotoUrl'),
+      repository.indexOf('Future<Uint8List> downloadOwnQualificationPhoto'),
       repository.indexOf(
         'Future<Map<String, dynamic>> loadOwnQualificationWorkspace',
       ),
@@ -84,12 +84,14 @@ void main() {
     expect(preview, contains('await scope.verify(worker: worker)'));
     expect(preview, contains('scope.validatePhotoPath(storagePath, fresh.single)'));
     expect(preview, isNot(contains('currentWorker()')));
-    expect(preview, contains('scope.signPhoto(storagePath, rows.single)'));
+    expect(preview, contains('scope.downloadPhoto(storagePath, row)'));
+    expect(preview, contains('await load(scope, rows.single)'));
     expect(preview, isNot(contains('upload')));
     expect(preview, isNot(contains('.remove(')));
     final page = File(
       'lib/features/qualifications/own_qualification_registration_page.dart',
     ).readAsStringSync();
     expect(page, contains('InteractiveViewer'));
+    expect(page, contains('repository.downloadOwnQualificationPhoto('));
   });
 }

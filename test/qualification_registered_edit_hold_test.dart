@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'fixtures/qualification_ui_session_fixture.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -33,7 +35,7 @@ Map<String, dynamic> _data(List<Map<String, dynamic>> rows) => {
 class _Photos implements QualificationCertificateRepository {
   _Photos({this.photos = true});
   final bool photos;
-  final signed = <String>[];
+  final downloads = <String>[];
   final writes = <Symbol>[];
   @override
   String? get currentUserId => qualificationUiActorId;
@@ -45,8 +47,8 @@ class _Photos implements QualificationCertificateRepository {
   Future<Map<String, dynamic>> loadAll() async =>
       _data([_saved(photos: photos)]);
   @override
-  Future<String> createSignedUrl(String path) async {
-    signed.add(path);
+  Future<Uint8List> downloadAttachment(String path) async {
+    downloads.add(path);
     throw StateError('Synthetic unavailable image');
   }
 
@@ -145,14 +147,14 @@ void main() {
           expect(find.text(label), findsNothing);
         }
         if (photos) {
-          expect(repository.signed.toSet(), {
+          expect(repository.downloads.toSet(), {
             'front.jpg',
             'back.jpg',
             'extra.jpg',
           });
           expect(find.text('追加写真 3'), findsOneWidget);
         } else {
-          expect(repository.signed, isEmpty);
+          expect(repository.downloads, isEmpty);
         }
         expect(repository.writes, isEmpty);
         expect(tester.takeException(), isNull);
