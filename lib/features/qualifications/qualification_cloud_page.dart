@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
@@ -291,26 +292,23 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
         if (path is! String || path.trim().isEmpty) {
           continue;
         }
-        Future<String> signed(String value) async {
-          if (!current()) {
-            throw StateError('Attachment scope changed');
-          }
-          final url = await repository.createSignedUrl(value);
-          if (!current()) {
-            throw StateError('Attachment scope changed');
-          }
-          return url;
+        Future<T> checked<T>(Future<T> Function() operation) async {
+          if (!current()) throw StateError('Attachment scope changed');
+          final value = await operation();
+          if (!current()) throw StateError('Attachment scope changed');
+          return value;
         }
 
         entries.add(
-          signedResourceAttachment(
+          ResourceAttachment(
             label: i == 0
                 ? '表面'
                 : i == 1
                 ? '裏面'
                 : '追加写真 ${i - 1}',
             path: path,
-            signedUrl: signed,
+            loadBytes: () => checked(() => repository.downloadAttachment(path)),
+            validateAccess: () => checked(() => repository.validateAttachmentAccess(path)),
             previewKey: 'qualification:$id:$i',
             recordTitle: titles[row['qualification_master_id']] ?? '資格',
           ),
@@ -532,41 +530,20 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
                         final status = _expiryLabel(expiry, now);
                         final unregistered = row['_unregistered'] == true;
                         final actor = _certificateRepository?.currentUserId;
-                        Future<String> signedUrl(String path) async {
-                          final repository = _certificateRepository;
-                          if (repository == null ||
-                              actor == null ||
-                              actor != repository.currentUserId) {
-                            throw StateError('Session changed');
-                          }
-                          final url = await repository.createSignedUrl(path);
-                          if (actor != repository.currentUserId) {
-                            throw StateError('Session changed');
-                          }
-                          return url;
-                        }
-
                         final attachments = [
-                          signedResourceAttachment(
-                            label: '表面',
-                            previewKey: 'qualification:${row['id']}:0',
-                            recordTitle: master?['name']?.toString() ?? '資格',
-                            path: row['attachment_path']?.toString(),
-                            signedUrl: signedUrl,
-                            known:
-                                unregistered ||
-                                row.containsKey('attachment_path'),
-                          ),
-                          signedResourceAttachment(
-                            label: '裏面',
-                            previewKey: 'qualification:${row['id']}:1',
-                            recordTitle: master?['name']?.toString() ?? '資格',
-                            path: row['attachment_back_path']?.toString(),
-                            signedUrl: signedUrl,
-                            known:
-                                unregistered ||
-                                row.containsKey('attachment_back_path'),
-                          ),
+                          for (final (index, field, label) in [
+                            (0, 'attachment_path', '表面'),
+                            (1, 'attachment_back_path', '裏面'),
+                          ])
+                            _qualificationAttachment(
+                              label: label,
+                              previewKey: 'qualification:${row['id']}:$index',
+                              title: master?['name']?.toString() ?? '資格',
+                              path: row[field]?.toString(),
+                              known: unregistered || row.containsKey(field),
+                              repository: _certificateRepository,
+                              actor: actor,
+                            ),
                         ];
                         return ResourceRegistrationCard(
                           key: ValueKey(
@@ -1310,4 +1287,38 @@ class _ErrorState extends StatelessWidget {
       ),
     );
   }
+}
+
+ResourceAttachment _qualificationAttachment({
+  required String label,
+  required String previewKey,
+  required String title,
+  required String? path,
+  required bool known,
+  required QualificationCertificateRepository? repository,
+  required String? actor,
+}) {
+  Future<T> checked<T>(Future<T> Function() operation) async {
+    if (actor == null || actor != repository?.currentUserId) {
+      throw StateError('Session changed');
+    }
+    final value = await operation();
+    if (actor != repository?.currentUserId) throw StateError('Session changed');
+    return value;
+  }
+
+  final registered = path?.trim().isNotEmpty == true && repository != null;
+  return ResourceAttachment(
+    label: label,
+    path: path,
+    previewKey: previewKey,
+    recordTitle: title,
+    known: known,
+    loadBytes: registered
+        ? () => checked<Uint8List>(() => repository.downloadAttachment(path!))
+        : null,
+    validateAccess: registered
+        ? () => checked<void>(() => repository.validateAttachmentAccess(path!))
+        : null,
+  );
 }

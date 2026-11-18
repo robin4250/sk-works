@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -31,7 +33,7 @@ class EmployeePersonnelDetailPage extends StatelessWidget {
   final String companyName;
   final bool canManage;
   final bool canViewFamily;
-  final Future<String?> Function()? portraitLoader;
+  final Future<Uint8List?> Function()? portraitLoader;
   @visibleForTesting
   final Widget Function(PersonnelPrivacySession, String, String)? portraitRegistrationBuilder;
   final PersonnelPrivacySession? privacySession;
@@ -456,23 +458,27 @@ class EmployeePersonnelDetailPage extends StatelessWidget {
 
 class _PersonnelPortrait extends StatefulWidget {
   const _PersonnelPortrait({super.key, this.loader});
-  final Future<String?> Function()? loader;
+  final Future<Uint8List?> Function()? loader;
   @override
   State<_PersonnelPortrait> createState() => _PersonnelPortraitState();
 }
 
 class _PersonnelPortraitState extends State<_PersonnelPortrait> {
-  late final Future<String?> _portrait =
+  late final Future<Uint8List?> _portrait =
       widget.loader?.call() ?? Future.value(null);
-  String? _loadedUrl;
+  MemoryImage? _loadedImage;
+
   @override
-  void dispose(){final url=_loadedUrl;if(url!=null)NetworkImage(url).evict();super.dispose();}
+  void dispose() {
+    _loadedImage?.evict();
+    super.dispose();
+  }
   @override
   Widget build(BuildContext context) => Center(
     child: SizedBox(
       width: 132,
       height: 164,
-      child: FutureBuilder<String?>(
+      child: FutureBuilder<Uint8List?>(
         future: _portrait,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -486,11 +492,11 @@ class _PersonnelPortraitState extends State<_PersonnelPortrait> {
             ],
           );
           if (snapshot.hasError) return placeholder('顔写真を取得できません');
-          final url = snapshot.data;
-          if (url == null) return placeholder('顔写真未登録');
-          _loadedUrl=url;
-          return Image.network(
-            url,
+          final bytes = snapshot.data;
+          if (bytes == null) return placeholder('顔写真未登録');
+          final image = _loadedImage ??= MemoryImage(bytes);
+          return Image(
+            image: image,
             fit: BoxFit.contain,
             semanticLabel: '必要書類に登録済みの顔写真',
             errorBuilder: (_, _, _) => placeholder('顔写真を表示できません'),
@@ -507,7 +513,7 @@ class _EmployeePortraitEntry extends StatefulWidget {
     required this.workerId, required this.loader, required this.registrationBuilder});
   final PersonnelPrivacySession session;
   final String workerId;
-  final Future<String?> Function()? loader;
+  final Future<Uint8List?> Function()? loader;
   final Widget Function() registrationBuilder;
   @override State<_EmployeePortraitEntry> createState() => _EmployeePortraitEntryState();
 }

@@ -1,5 +1,6 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:printing/printing.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'company_income_tax_repository.dart';
@@ -176,12 +177,20 @@ class _CompanyIncomeTaxPageState extends State<CompanyIncomeTaxPage> {
     final generation = _generation;
     setState(() => _busy = true);
     try {
-      final url = await _repository.pdfUrl(table.value['storage_path'] as String);
+      final bytes = await _repository.downloadPdf(table.value['storage_path'] as String);
       if (!mounted || generation != _generation) return;
-      final uri = Uri.tryParse(url);
-      if (uri == null || uri.scheme != 'https' || uri.host.isEmpty || !await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-        throw StateError('PDF unavailable');
-      }
+      await Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => Scaffold(
+          appBar: AppBar(title: Text(table.value['file_name'].toString())),
+          body: PdfPreview(
+            build: (_) async => bytes,
+            allowPrinting: false,
+            allowSharing: false,
+            canChangeOrientation: false,
+            canChangePageFormat: false,
+          ),
+        ),
+      ));
     } catch (_) {
       if (mounted && generation == _generation) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('PDFを開けませんでした')));
@@ -206,7 +215,7 @@ class _CompanyIncomeTaxPageState extends State<CompanyIncomeTaxPage> {
   Widget build(BuildContext context) => Scaffold(appBar: AppBar(toolbarHeight: kToolbarHeight, title: const Text('所得税の税額表'), actions: [
     IconButton(tooltip: '税額表の使い方', icon: const Icon(Icons.help_outline), onPressed: () => showDialog<void>(
       context: context, builder: (context) => AlertDialog(title: const Text('税額表の使い方'),
-        content: _data?.canEdit == true ? const Text('PDFの登録と正式資料・計算ルールの検証は別です。新年度を事前登録しても未検証資料は給与に使用されません。共通公開や検証の操作はここでは行えません。\n\n旧年度PDFは保持します。適用最終日までの資料として登録します。公式資料の自動取得は準備中です。令和8年月額表による自動計算は、個別給与設定の「給与の税計算」で設定します。') : const Text('年度・適用期間・情報元とPDFを閲覧できます。未検証資料は給与に使用されません。令和8年月額表の自動計算は個別給与設定で設定します。'),
+        content: _data?.canEdit == true ? const Text('PDFの登録と正式資料・計算ルールの検証は別です。新年度を事前登録しても未検証資料は給与に使用されません。共通公開や検証の操作はここでは行えません。\n\n旧年度PDFは保持します。適用最終日までの資料として登録します。公式資料の自動取得は準備中です。月額表による自動計算は、個別給与設定の「給与の税計算」で設定します。') : const Text('年度・適用期間・情報元とPDFを閲覧できます。未検証資料は給与に使用されません。月額表の自動計算は個別給与設定で設定します。'),
         actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))],
       ),
     )),
@@ -216,6 +225,11 @@ class _CompanyIncomeTaxPageState extends State<CompanyIncomeTaxPage> {
       title: const Text('国税庁の公式資料'),
       subtitle: const Text('源泉徴収税額表・年度別の資料'),
       children: [
+        ListTile(
+          title: const Text('2027年（令和9年）分の月額表PDF'),
+          trailing: const Icon(Icons.open_in_new),
+          onTap: _openingOfficialReference ? null : () => _openOfficialReference('https://www.nta.go.jp/publication/pamph/gensen/zeigakuhyo2027/data/01-07.pdf'),
+        ),
         ListTile(
           title: const Text('2026年（令和8年）分の税額表PDF'),
           trailing: const Icon(Icons.open_in_new),

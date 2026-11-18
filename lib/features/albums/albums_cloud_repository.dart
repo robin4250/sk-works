@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../data/authenticated_storage_download.dart';
 import '../../data/supabase_backend.dart';
 import '../shared/chat_resource_groups.dart';
 
@@ -78,16 +79,11 @@ class AlbumsCloudRepository {
         .eq('album_id', albumId)
         .order('created_at', ascending: false);
 
-    final items = <Map<String, dynamic>>[];
-    for (final raw in rows) {
-      final item = Map<String, dynamic>.from(raw);
-      item['signed_url'] = await _client.storage
-          .from(_bucket)
-          .createSignedUrl(item['storage_path'] as String, 60 * 60);
-      items.add(item);
-    }
-    return items;
+    return List<Map<String, dynamic>>.from(rows);
   }
+
+  Future<Uint8List> downloadPhoto(String path) =>
+      downloadAuthenticatedStorageObject(_client, bucket: _bucket, path: path);
 
   Future<void> uploadPhoto({
     required String groupId,

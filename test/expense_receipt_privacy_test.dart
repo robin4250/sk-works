@@ -1,20 +1,24 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/expenses/expense_receipt_preview.dart';
+
+Uint8List fixtureBytes(String value) => Uint8List.fromList(utf8.encode(value));
 
 void main() {
   final binding = TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed));
   tearDown(() => binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed));
   Future<void> mount(WidgetTester tester, StreamController<String?> actors,
-      Future<String> Function(String) loader,
+      Future<Uint8List> Function(String) loader,
       {Duration lifetime = const Duration(seconds: 300)}) async {
     await tester.pumpWidget(MaterialApp(home: Scaffold(body:
       ExpenseReceiptPreview(objectPath: 'fixture/receipt.jpg',
-        initialActor: 'owner', actorChanges: actors.stream, urlLoader: loader,
-        urlLifetime: lifetime, imageBuilder: (url) => Text('image:$url')))));
+        initialActor: 'owner', actorChanges: actors.stream, bytesLoader: loader,
+        previewLifetime: lifetime, imageBuilder: (bytes) => Text('image:${utf8.decode(bytes)}')))));
     await tester.pump();
   }
 
@@ -23,11 +27,11 @@ void main() {
         (tester) async {
       final actors = StreamController<String?>();
       addTearDown(actors.close);
-      final result = Completer<String>();
+      final result = Completer<Uint8List>();
       await mount(tester, actors, (_) => result.future);
       actors.add(actor);
       await tester.pump();
-      result.complete('old-signed-url');
+      result.complete(fixtureBytes('old-receipt'));
       await tester.pump();
       expect(find.textContaining('image:'), findsNothing);
       actors.add('owner');
@@ -43,7 +47,7 @@ void main() {
     addTearDown(actors.close);
     var calls = 0;
     await mount(tester, actors, (_) async {
-      if (++calls == 1) return 'first';
+      if (++calls == 1) return fixtureBytes('first');
       throw StateError('forbidden');
     });
     expect(find.text('image:first'), findsOneWidget);
@@ -55,10 +59,10 @@ void main() {
     expect(find.textContaining('取得できません'), findsOneWidget);
   });
 
-  testWidgets('signed URL expires locally without reusing old image', (tester) async {
+  testWidgets('authenticated preview expires locally without reusing old image', (tester) async {
     final actors = StreamController<String?>();
     addTearDown(actors.close);
-    await mount(tester, actors, (_) async => 'temporary',
+    await mount(tester, actors, (_) async => fixtureBytes('temporary'),
         lifetime: const Duration(seconds: 2));
     expect(find.text('image:temporary'), findsOneWidget);
     await tester.pump(const Duration(seconds: 2));
@@ -71,7 +75,7 @@ void main() {
     final actors = StreamController<String?>();
     addTearDown(actors.close);
     var calls = 0;
-    await mount(tester, actors, (_) async => '${++calls}');
+    await mount(tester, actors, (_) async => fixtureBytes('${++calls}'));
     expect(find.text('image:1'), findsOneWidget);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
     await tester.pump();
@@ -85,7 +89,7 @@ void main() {
   testWidgets('auth errors discard an already loaded image', (tester) async {
     final actors = StreamController<String?>();
     addTearDown(actors.close);
-    await mount(tester, actors, (_) async => 'fixture');
+    await mount(tester, actors, (_) async => fixtureBytes('fixture'));
     expect(find.text('image:fixture'), findsOneWidget);
     actors.addError(StateError('auth_unavailable'));
     await tester.pump();
@@ -93,13 +97,13 @@ void main() {
     expect(find.textContaining('本人確認'), findsOneWidget);
   });
 
-  testWidgets('mounting while inactive never requests a URL until resume',
+  testWidgets('mounting while inactive never requests the receipt until resume',
       (tester) async {
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
     final actors = StreamController<String?>();
     addTearDown(actors.close);
     var calls = 0;
-    await mount(tester, actors, (_) async { calls++; return 'fresh'; });
+    await mount(tester, actors, (_) async { calls++; return fixtureBytes('fresh'); });
     expect(calls, 0);
     expect(find.textContaining('image:'), findsNothing);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);

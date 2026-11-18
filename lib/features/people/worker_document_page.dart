@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
@@ -152,13 +153,20 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
       if (matches.length != 1) { continue; }
       final paths = workerDocumentPaths(matches.single);
       for (var i = 0; i < paths.length; i++) {
-        Future<String> signed(String path) async {
-          if (!current()) { throw StateError('Attachment scope changed'); }
-          final url = await repository.createSignedAttachmentUrl(path);
-          if (!current()) { throw StateError('Attachment scope changed'); } return url;
+        final path = paths[i];
+        Future<T> read<T>(Future<T> Function(String) operation) async {
+          if (!current()) throw StateError('Attachment scope changed');
+          final result = await operation(path);
+          if (!current()) throw StateError('Attachment scope changed');
+          return result;
         }
-        entries.add(signedResourceAttachment(label: '${i + 1}', path: paths[i], signedUrl: signed,
-          previewKey: 'document:$id:$i', recordTitle: requirement['name']?.toString() ?? '書類'));
+        entries.add(ResourceAttachment(
+          label: '${i + 1}', path: path,
+          loadBytes: () => read<Uint8List>(repository.downloadAttachment),
+          validateAccess: () => read<void>(repository.validateAttachmentAccess),
+          previewKey: 'document:$id:$i',
+          recordTitle: requirement['name']?.toString() ?? '書類',
+        ));
       }
     }
     return ResourceAttachmentGallery(source: rows, workerId: workerId, companyId: company, isCurrent: current, signal: _galleryChanges, changes: repository.attachmentAuthChanges, entries: entries);
@@ -373,19 +381,30 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                               final paths = workerDocumentPaths(status);
                               final repository = _repository;
                               final actor = _loadedActorId;
-                              Future<String> signedUrl(String path) async {
-                                if (repository == null || actor == null || actor != repository.actorId ||
-                                    workerId != _selectedWorkerId) { throw StateError('Session changed'); }
-                                final url = await repository.createSignedAttachmentUrl(path);
+                              Future<T> read<T>(Future<T> Function(WorkerDocumentRepository) operation) async {
+                                if (repository == null || actor == null ||
+                                    actor != repository.actorId || workerId != _selectedWorkerId) {
+                                  throw StateError('Session changed');
+                                }
+                                final result = await operation(repository);
                                 if (actor != repository.actorId || workerId != _selectedWorkerId) {
                                   throw StateError('Session changed');
                                 }
-                                return url;
+                                return result;
                               }
                               final attachments = [
                                 for (var i = 0; i < paths.length; i++)
-                                  signedResourceAttachment(label: '${i + 1}', path: paths[i], signedUrl: signedUrl,
-                                    previewKey: 'document:${requirement['id']}:$i', recordTitle: requirement['name']?.toString() ?? '書類'),
+                                  ResourceAttachment(
+                                    label: '${i + 1}', path: paths[i],
+                                    loadBytes: () => read<Uint8List>(
+                                      (repo) => repo.downloadAttachment(paths[i]),
+                                    ),
+                                    validateAccess: () => read<void>(
+                                      (repo) => repo.validateAttachmentAccess(paths[i]),
+                                    ),
+                                    previewKey: 'document:${requirement['id']}:$i',
+                                    recordTitle: requirement['name']?.toString() ?? '書類',
+                                  ),
                               ];
                               final effective = _effectiveDocumentStatus(requirement, status, today);
                               final dates = DataDateLabels.labels(createdAt: status?['created_at'],
@@ -1099,12 +1118,12 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
         }
         await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => WorkerDocumentChangePage(
           repository: changes, actor: actor, companyId: membership.companyId, row: current!,
-          signedUrl: repository.createSignedAttachmentUrl,
+          download: repository.downloadAttachment,
           onVerification: (status, verified) async {
             if (!mounted || !changes.isCurrentActor || workerId != _selectedWorkerId) throw StateError('Scope changed');
             await repository.confirmDocumentStatus(current, status: status, originalVerified: verified);
           },
-          isCurrent: () => mounted && actor == repository.actorId && workerId == _selectedWorkerId,
+          isCurrent: currentTarget,
         )));
       } finally { await changes.dispose(); }
       if (mounted) _reload();
@@ -1206,12 +1225,11 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                         final photos = await editWorkerDocumentPhotos(
                           dialogContext,
                           paths: workerDocumentPaths(current),
-                          signedUrl: (path) async {
+                          download: (path) async {
                             requireActor();
-                            final url = await repository
-                                .createSignedAttachmentUrl(path);
+                            final bytes = await repository.downloadAttachment(path);
                             requireActor();
-                            return url;
+                            return bytes;
                           },
                           canEdit: repository.photoEditingAvailable,
                           initialPhotos: selectedPhotos,

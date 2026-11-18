@@ -15,6 +15,7 @@ class ResourceAttachment {
     required this.label,
     this.path,
     this.loadBytes,
+    this.reloadOnOpen = false,
     this.known = true,
     this.validateAccess, this.previewKey, this.recordTitle,
   });
@@ -22,7 +23,7 @@ class ResourceAttachment {
   final String? previewKey, recordTitle;
   final String? path;
   final Future<Uint8List> Function()? loadBytes;
-  final bool known;
+  final bool known, reloadOnOpen;
   final Future<void> Function()? validateAccess;
   bool get registered => path?.trim().isNotEmpty == true;
 }
@@ -187,8 +188,12 @@ bool _isPdf(Uint8List bytes) => bytes.length >= 5 &&
   bytes[0] == 37 && bytes[1] == 80 && bytes[2] == 68 && bytes[3] == 70 && bytes[4] == 45;
 
 class ResourceAttachmentThumbnail extends StatefulWidget {
-  const ResourceAttachmentThumbnail({super.key, required this.attachment, this.rasterizeFirstPage, this.gallery, this.recordTitle, this.requireGalleryScope = false});
+  const ResourceAttachmentThumbnail({super.key, required this.attachment, this.rasterizeFirstPage, this.gallery, this.recordTitle, this.requireGalleryScope = false, this.width = 52, this.height, this.fit = BoxFit.contain, this.showLabel = true});
   final ResourceAttachment attachment;
+  final double width;
+  final double? height;
+  final BoxFit fit;
+  final bool showLabel;
   final ResourceAttachmentGallery? gallery;
   final String? recordTitle;
   final bool requireGalleryScope;
@@ -264,7 +269,7 @@ class _ResourceAttachmentThumbnailState extends State<ResourceAttachmentThumbnai
     try {
       if (widget.requireGalleryScope && gallery == null) { throw StateError('Attachment scope unavailable'); }
       if (gallery?.isCurrent() == false) { return; }
-      final bytes = await content!;
+      final bytes = await (selected.reloadOnOpen ? selected.loadBytes!() : content!);
       if (!mounted || !_foreground || epoch != _openEpoch || gallery?.isCurrent() == false) { return; }
       await selected.validateAccess?.call();
       if (!mounted || !_foreground || epoch != _openEpoch || content != _original || path != widget.attachment.path) return;
@@ -303,12 +308,12 @@ class _ResourceAttachmentThumbnailState extends State<ResourceAttachmentThumbnai
   }
 
   @override
-  Widget build(BuildContext context) => SizedBox(width: 52, height: (10 * MediaQuery.textScalerOf(context).scale(1) * 1.3 + 47).clamp(80.0, double.infinity).toDouble(),
+  Widget build(BuildContext context) => SizedBox(width: widget.width, height: widget.height ?? (10 * MediaQuery.textScalerOf(context).scale(1) * 1.3 + 47).clamp(80.0, double.infinity).toDouble(),
     child: Column(children: [
       Expanded(child: InkWell(
         onTap: _content == null ? null : _open,
         borderRadius: BorderRadius.circular(6),
-        child: Container(width: 52, decoration: BoxDecoration(color: Colors.grey.shade50,
+        child: Container(width: widget.width, decoration: BoxDecoration(color: Colors.grey.shade50,
           borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.grey.shade300)),
           child: _content == null ? Center(child: Text(SkoLanguageController.tr(widget.attachment.known ? '未登録' : '未取得'),
             style: const TextStyle(fontSize: 10), textAlign: TextAlign.center))
@@ -319,14 +324,16 @@ class _ResourceAttachmentThumbnailState extends State<ResourceAttachmentThumbnai
                   style: const TextStyle(fontSize: 10), textAlign: TextAlign.center)); }
                 if (snapshot.data!.$2 == null) return const Icon(Icons.picture_as_pdf_outlined, size: 24);
                 return ClipRRect(borderRadius: BorderRadius.circular(5), child: Image.memory(
-                  snapshot.data!.$2!, cacheWidth: 120, fit: BoxFit.contain,
+                  snapshot.data!.$2!, cacheWidth: (widget.width.isFinite ? widget.width * 2.3 : 600).round(), fit: widget.fit,
                   errorBuilder: (_, __, ___) => Center(child: Text(SkoLanguageController.tr('読込不可'), style: const TextStyle(fontSize: 10)))));
               }),
         ),
       )),
-      const SizedBox(height: 3),
-      Text(SkoLanguageController.tr(widget.attachment.label), maxLines: 1, overflow: TextOverflow.ellipsis,
-        style: const TextStyle(fontSize: 10, color: Colors.black54)),
+      if (widget.showLabel) ...[
+        const SizedBox(height: 3),
+        Text(SkoLanguageController.tr(widget.attachment.label), maxLines: 1, overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 10, color: Colors.black54)),
+      ],
     ]),
   );
 }

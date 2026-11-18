@@ -6,6 +6,7 @@ import '../../data/supabase_backend.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'albums_cloud_repository.dart';
+import '../shared/resource_registration_card.dart';
 import '../notes/notes_cloud_page.dart' show CommunicationLoadGuard;
 
 class AlbumsCloudPage extends StatefulWidget {
@@ -472,11 +473,24 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
                                   child: Stack(
                                     fit: StackFit.expand,
                                     children: [
-                                      Image.network(
-                                        item['signed_url'].toString(),
+                                      ResourceAttachmentThumbnail(
+                                        key: ValueKey(item['id']),
+                                        width: double.infinity,
+                                        height: double.infinity,
                                         fit: BoxFit.cover,
-                                        errorBuilder: (_, __, ___) => const Center(
-                                          child: Icon(Icons.broken_image_outlined),
+                                        showLabel: false,
+                                        attachment: ResourceAttachment(
+                                          label: item['caption']?.toString() ?? '写真',
+                                          path: item['storage_path']?.toString(),
+                                          reloadOnOpen: true,
+                                          loadBytes: () async {
+                                            if (!_sameActor) throw StateError('Session changed');
+                                            final bytes = await widget.repository.downloadPhoto(
+                                              item['storage_path'] as String,
+                                            );
+                                            if (!mounted || !_sameActor) throw StateError('Session changed');
+                                            return bytes;
+                                          },
                                         ),
                                       ),
                                       Positioned(

@@ -9,6 +9,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../albums/albums_cloud_page.dart';
+import '../shared/resource_registration_card.dart';
 import '../notes/notes_cloud_page.dart';
 import '../notifications/notification_bell.dart';
 import '../../international/language_controller.dart';
@@ -2661,6 +2662,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
                             message: message,
                             currentUserId: _repository?.currentUserId,
                             bubbleOpacity: _appearance.bubbleAlpha,
+                            repository: _repository,
                             onDelete: () => _confirmDeleteOwnMessage(message),
                           );
                         },
@@ -3156,12 +3158,14 @@ class _MessageBubble extends StatelessWidget {
     required this.message,
     required this.currentUserId,
     required this.bubbleOpacity,
+    required this.repository,
     required this.onDelete,
   });
 
   final Map<String, dynamic> message;
   final String? currentUserId;
   final double bubbleOpacity;
+  final ChatCloudRepository? repository;
   final VoidCallback onDelete;
 
   @override
@@ -3210,17 +3214,28 @@ class _MessageBubble extends StatelessWidget {
             if (!own) const SizedBox(height: 3),
             for (final attachment in attachments) ...[
               if (attachment['attachment_type'] == 'image' &&
-                  attachment['signed_url'] != null)
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Image.network(
-                    attachment['signed_url'].toString(),
-                    width: 250,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => const SizedBox(
-                      height: 90,
-                      child: Center(child: Icon(Icons.broken_image_outlined)),
-                    ),
+                  attachment['storage_path']?.toString().isNotEmpty == true &&
+                  repository != null)
+                ResourceAttachmentThumbnail(
+                  key: ValueKey((currentUserId, attachment['id'])),
+                  width: 250,
+                  height: 150,
+                  fit: BoxFit.cover,
+                  showLabel: false,
+                  attachment: ResourceAttachment(
+                    label: attachment['original_filename']?.toString() ?? '写真',
+                    path: attachment['storage_path'].toString(),
+                    reloadOnOpen: true,
+                    loadBytes: () async {
+                      final source = repository!;
+                      if (currentUserId == null || currentUserId != source.currentUserId) {
+                        throw StateError('Session changed');
+                      }
+                      return source.downloadAttachment(
+                        attachment['storage_path'].toString(),
+                        fromLine: origin == 'line',
+                      );
+                    },
                   ),
                 )
               else

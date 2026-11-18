@@ -3917,15 +3917,21 @@ class DailyReportEvidencePage extends StatelessWidget {
                         ),
                       ),
                     if (repository != null && item.storagePath.isNotEmpty)
-                      FutureBuilder<String>(
+                      FutureBuilder<Uint8List>(
                         key: ValueKey('${item.storageBucket}:${item.storagePath}',
                         ),
                         future:
-                            repository.attendanceEvidenceUrl(item.storagePath, bucket: item.storageBucket,
+                            repository.downloadAttendanceEvidence(item.storagePath, bucket: item.storageBucket,
                         ),
                         builder: (context, snapshot) {
-                          final url = snapshot.data;
-                          if (url == null) {
+                          final bytes = snapshot.data;
+                          if (snapshot.hasError) {
+                            return const SizedBox(
+                              height: 180,
+                              child: Center(child: Icon(Icons.broken_image_outlined)),
+                            );
+                          }
+                          if (bytes == null) {
                             return const SizedBox(
                               height: 180,
                               child: Center(
@@ -3935,8 +3941,8 @@ class DailyReportEvidencePage extends StatelessWidget {
                           return InteractiveViewer(
                             minScale: 1,
                             maxScale: 5,
-                            child: Image.network(
-                              url,
+                            child: Image.memory(
+                              bytes,
                               fit: BoxFit.contain,
                               errorBuilder: (_, __, ___) =>
                                   const SizedBox(

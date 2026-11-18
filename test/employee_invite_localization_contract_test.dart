@@ -10,7 +10,8 @@ void main() {
     expect(page, contains("SkoLanguageController.isEnglish"));
     expect(page, contains("'Employee Registration'"));
     expect(page, contains("'Create Employee Registration'"));
-    expect(page, contains("'Share the Temporary Password'"));
+    expect(page, contains("'① Copy Temporary Password'"));
+    expect(page, contains("'Share by SMS or Message'"));
     expect(page, contains("'Share by QR Code'"));
     expect(page, contains("'Register Another Employee'"));
     expect(page, contains("'Role & Approval Access'"));

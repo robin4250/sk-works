@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -32,7 +33,7 @@ class RosterFixture extends PeopleCloudRepository {
     if(pending!=null) return pending.future;
     return [Map<String,dynamic>.from(row)];
   }
-  @override Future<String?> portraitUrl(String workerId,{String? companyId}) async => null;
+  @override Future<Uint8List?> downloadPortrait(String workerId,{String? companyId}) async => null;
   @override PersonnelPrivacySession privacySession(String selectedCompany) => PersonnelPrivacySession(
     actor: actorId, company:selectedCompany, currentActor:()=>actorId,
     actorChanges:wire.client.auth.onAuthStateChange.map((event)=>event.session?.user.id),

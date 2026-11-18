@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../international/language_controller.dart';
 import 'employee_invite_repository.dart';
+import 'employee_invite_sms.dart';
 import '../referrals/app_installation_invitation.dart';
 
 class EmployeeInvitePage extends StatefulWidget {
@@ -215,8 +216,8 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
               'Open the SKO app and sign in with the temporary password. Set your permanent password after the first sign-in.'
         : 'SKOの従業員登録が作成されました。\n'
               '電話番号: ${result.phone}\n'
-              '初期パスワード: ${result.temporaryPassword}\n'
-              'SKOアプリを開き、初期パスワードでログインしてください。初回ログイン後に本パスワードを設定します。',
+              '初回ログインパスワード: ${result.temporaryPassword}\n'
+              'パスワードだけをコピーしてください。SKOで電話番号を入力し、「③ 初回パスワードを貼り付け」→「④ ログイン」を押してください。',
     guideUrl: 'https://skojapan.com/install/employee/',
     english: SkoLanguageController.isEnglish,
   );
@@ -228,13 +229,7 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
   Future<void> _sendEmployeeSms(EmployeeInviteResult result) async {
     final phone = result.phone.trim();
     if (phone.isEmpty) return;
-    final body = appendSkoInstallationInvitation(
-      '【SKOアプリ 従業員登録のご案内】\n\n'
-      '登録電話番号: $phone\n'
-      '初期パスワード: ${result.temporaryPassword}\n\n'
-      '初回ログイン後にパスワードを変更してください。',
-      guideUrl: 'https://skojapan.com/install/employee/',
-    );
+    final body = employeeInviteSms(result);
     final uri = Uri(
       scheme: 'sms',
       path: phone,
@@ -429,7 +424,7 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Text(
-                        _tr('初期パスワードを渡してください', 'Share the Temporary Password'),
+                        _tr('初回ログインパスワード', 'Temporary Login Password'),
                         style: const TextStyle(
                           fontWeight: FontWeight.w900,
                           fontSize: 20,
@@ -471,8 +466,8 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
                             SnackBar(
                               content: Text(
                                 _tr(
-                                  '初期パスワードをコピーしました',
-                                  'Temporary password copied',
+                                  'この端末にコピーしました。別のスマホへ渡すときは、本人へのメッセージに貼り付けてください。',
+                                  'Copied to this device. Paste it into a message to send it to the employee’s device.',
                                 ),
                               ),
                             ),
@@ -480,7 +475,7 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
                         },
                         icon: const Icon(Icons.copy_outlined),
                         label: Text(
-                          _tr('初期パスワードをコピー', 'Copy Temporary Password'),
+                          _tr('① 初回ログインパスワードをコピー', '① Copy Temporary Password'),
                         ),
                       ),
                       const SizedBox(height: 8),

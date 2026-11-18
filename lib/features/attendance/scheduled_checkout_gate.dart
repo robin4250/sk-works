@@ -31,6 +31,7 @@ class _ScheduledCheckoutGateState extends State<ScheduledCheckoutGate> with Widg
   ScheduledCheckoutState? _state;
   Object? _error;
   bool _busy = false;
+  bool _initialRetryScheduled = false;
   int _generation = 0;
   Timer? _timer;
   GlobalKey<NavigatorState> _navigator = GlobalKey<NavigatorState>();
@@ -49,6 +50,7 @@ class _ScheduledCheckoutGateState extends State<ScheduledCheckoutGate> with Widg
     super.didUpdateWidget(oldWidget);
     if (oldWidget.actorId != widget.actorId) {
       _generation++;_timer?.cancel();_state = null;_error = null;_busy = false;
+      _initialRetryScheduled = false;
       _navigationIdentity = null;_navigator = GlobalKey<NavigatorState>();_routeOpen = false;
       unawaited(_check());
     }
@@ -71,7 +73,13 @@ class _ScheduledCheckoutGateState extends State<ScheduledCheckoutGate> with Widg
   void _scheduleCheck() {
     _timer?.cancel();
     final state = _state;
-    if (state == null) { return; }
+    if (state == null) {
+      if (_error != null && !_initialRetryScheduled) {
+        _initialRetryScheduled = true;
+        _timer = Timer(const Duration(seconds: 3), () => unawaited(_check()));
+      }
+      return;
+    }
     final upcoming = state.targets.where((v) => !v.due).map((v) => v.reminderAt).toList()..sort();
     // The server comparison remains authoritative. Device timers only request
     // another check and never manufacture a due/complete result.
@@ -92,6 +100,7 @@ class _ScheduledCheckoutGateState extends State<ScheduledCheckoutGate> with Widg
   }
   Future<void> _check() async {
     if (_busy) { return; }
+    _timer?.cancel();
     final generation = _generation;
     setState(() => _busy = true);
     try {

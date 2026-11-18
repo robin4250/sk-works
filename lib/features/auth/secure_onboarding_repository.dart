@@ -140,9 +140,45 @@ class SecureOnboardingRepository {
     required String phone,
     required String password,
     String? captchaToken,
+    String? employeeInviteId,
   }) async {
+    final normalized = normalizeJapanesePhone(phone);
+    const employeeGatewayKey = String.fromEnvironment(
+      'SKO_EMPLOYEE_LOGIN_GATEWAY_ANON_JWT',
+    );
+    if (RegExp(
+      r'^SKO-B-[ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789]{14}$',
+    ).hasMatch(password)) {
+      if (employeeGatewayKey.isEmpty) {
+        throw StateError('このアプリでは従業員の初回ログインを利用できません。配布された最新版を確認してください。');
+      }
+      await _auth.signInThroughBroker(() async {
+        final response = await _client.functions
+            .invoke(
+              'employee-first-login',
+              headers: {'Authorization': 'Bearer $employeeGatewayKey'},
+              body: {
+                'phone': normalized,
+                'password': password,
+                if (employeeInviteId != null) 'inviteId': employeeInviteId,
+              },
+            )
+            .timeout(const Duration(seconds: 30));
+        final data = response.data;
+        final session = data is Map<String, dynamic>
+            ? Session.fromJson(data)
+            : null;
+        if (session == null ||
+            session.refreshToken?.isNotEmpty != true ||
+            session.user.appMetadata['sko_employee_bootstrap'] != true) {
+          throw StateError('従業員の初回ログインを確認できませんでした。');
+        }
+        return session;
+      }, isCurrent: () => _client.auth.currentSession == null);
+      return;
+    }
     await _auth.signInWithPassword(
-      phone: normalizeJapanesePhone(phone),
+      phone: normalized,
       password: password,
       captchaToken: captchaToken,
     );

@@ -31,7 +31,7 @@ void main() {
     expect(source, isNot(contains('ImageSource.camera')));
     expect(source, isNot(contains('ImageSource.gallery')));
     expect(source, contains('registeredQualificationChangeNotice'));
-    expect(source, contains('createSignedUrl('));
+    expect(source, contains('repository.downloadAttachment(path)'));
   });
 }
 

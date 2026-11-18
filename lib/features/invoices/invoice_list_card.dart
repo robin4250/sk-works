@@ -45,7 +45,9 @@ class InvoiceListCard extends StatelessWidget {
                     Text(periodLabel),
                     const SizedBox(height: 5),
                     Text(
-                      pending
+                      invoice.emptyAfterAttendanceMove
+                          ? (english ? 'No billable items' : '請求対象なし')
+                          : pending
                           ? (invoice.routeSourcePending
                               ? (english ? 'Checkout report or billing settings pending' : '退勤日報・請求設定の確認待ち')
                               : (english ? 'Quantity approval pending' : '請求数量の承認待ち'))

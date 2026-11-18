@@ -1,7 +1,10 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:printing/printing.dart';
 
 import 'worker_document_photos.dart';
 
@@ -9,7 +12,8 @@ import 'worker_document_photos.dart';
 Future<List<WorkerDocumentPhoto>?> editWorkerDocumentPhotos(
   BuildContext context, {
   required List<String> paths,
-  required Future<String> Function(String) signedUrl,
+  Future<String> Function(String)? signedUrl,
+  Future<Uint8List> Function(String)? download,
   bool canEdit = true,
   bool useRootNavigator = true,
   bool allowNewPhotos = true,
@@ -21,6 +25,7 @@ Future<List<WorkerDocumentPhoto>?> editWorkerDocumentPhotos(
   builder: (_) => _PhotoEditor(
     paths: paths,
     signedUrl: signedUrl,
+    download: download,
     canEdit: canEdit,
     allowNewPhotos: allowNewPhotos,
     uploadNotice: uploadNotice,
@@ -32,6 +37,7 @@ class _PhotoEditor extends StatefulWidget {
   const _PhotoEditor({
     required this.paths,
     required this.signedUrl,
+    required this.download,
     required this.canEdit,
     required this.allowNewPhotos,
     required this.uploadNotice,
@@ -42,7 +48,8 @@ class _PhotoEditor extends StatefulWidget {
   final bool canEdit;
   final bool allowNewPhotos;
   final String? uploadNotice;
-  final Future<String> Function(String) signedUrl;
+  final Future<String> Function(String)? signedUrl;
+  final Future<Uint8List> Function(String)? download;
   @override
   State<_PhotoEditor> createState() => _PhotoEditorState();
 }
@@ -53,6 +60,7 @@ class _PhotoEditorState extends State<_PhotoEditor> {
   );
   final _picker = ImagePicker();
   final _urls = <String, Future<String>>{};
+  final _thumbnails = <String, Future<Uint8List>>{};
   bool _busy = false;
   String? _error;
 
@@ -136,8 +144,21 @@ class _PhotoEditorState extends State<_PhotoEditor> {
     if (path.toLowerCase().endsWith('.pdf')) {
       return const Text('PDF（写真プレビュー対象外）');
     }
+    final download = widget.download;
+    if (download != null) {
+      return FutureBuilder<Uint8List>(
+        future: _thumbnails.putIfAbsent(path, () => download(path)),
+        builder: (_, snapshot) {
+          if (snapshot.hasError) return const Text('写真を読み込めません。');
+          final bytes = snapshot.data;
+          if (bytes == null) return const LinearProgressIndicator();
+          return Image.memory(bytes, height: height, fit: BoxFit.contain,
+            errorBuilder: (_, __, ___) => const Text('写真を表示できません。'));
+        },
+      );
+    }
     return FutureBuilder<String>(
-      future: _urls.putIfAbsent(path, () => widget.signedUrl(path)),
+      future: _urls.putIfAbsent(path, () => widget.signedUrl!(path)),
       builder: (_, snapshot) {
         if (snapshot.hasError) return const Text('写真を読み込めません。');
         if (!snapshot.hasData) return const LinearProgressIndicator();
@@ -152,9 +173,34 @@ class _PhotoEditorState extends State<_PhotoEditor> {
   }
 
   Future<void> _preview(WorkerDocumentPhoto photo) async {
-    if (photo.path?.toLowerCase().endsWith('.pdf') == true) {
+    final path = photo.path;
+    final isPdf = (path ?? photo.filename ?? '').toLowerCase().endsWith('.pdf');
+    Uint8List? previewBytes = photo.bytes;
+    final download = widget.download;
+    if (path != null && download != null) {
       try {
-        final url = await widget.signedUrl(photo.path!);
+        previewBytes = await download(path);
+      } catch (_) {
+        if (mounted) setState(() => _error = '添付ファイルを開けませんでした。');
+        return;
+      }
+      if (!mounted) return;
+    }
+    if (isPdf && previewBytes != null) {
+      final bytes = previewBytes;
+      await Navigator.of(context).push<void>(MaterialPageRoute(
+        builder: (_) => Scaffold(
+          appBar: AppBar(title: const Text('添付PDF')),
+          body: PdfPreview(build: (_) async => bytes,
+            canChangePageFormat: false, canChangeOrientation: false,
+            allowPrinting: false, allowSharing: false),
+        ),
+      ));
+      return;
+    }
+    if (isPdf && path != null) {
+      try {
+        final url = await widget.signedUrl!(path);
         if (!mounted) return;
         if (!await launchUrl(
           Uri.parse(url),
@@ -183,7 +229,10 @@ class _PhotoEditorState extends State<_PhotoEditor> {
               Navigator.of(previewContext).pop();
             })),
           body: SafeArea(top: false, child: Center(child: InteractiveViewer(
-            child: _image(photo, height: 500)))),
+            child: previewBytes == null || photo.bytes != null
+                ? _image(photo, height: 500)
+                : Image.memory(previewBytes, height: 500, fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) => const Text('写真を表示できません。'))))),
         ));
       },
     );

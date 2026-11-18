@@ -34,6 +34,22 @@ class PayrollReviewItem {
   final bool reviewerConfirmed;
 }
 
+class PayrollDraftRecalculationPreview {
+  const PayrollDraftRecalculationPreview._(
+    this.grossPay,
+    this.deductions,
+    this.netPay,
+    this._params,
+    this._token,
+  );
+
+  final int grossPay;
+  final int deductions;
+  final int netPay;
+  final Map<String, dynamic> _params;
+  final String _token;
+}
+
 class PayrollReviewWorkspace {
   const PayrollReviewWorkspace({
     required this.role,
@@ -142,6 +158,84 @@ class PayrollReviewRepository {
     );
   }
 
+  Future<PayrollDraftRecalculationPreview> previewDraftRecalculation(
+    PayrollReviewItem item,
+  ) async {
+    final statement = item.statement;
+    final revision = statement.revision;
+    final token = _client.auth.currentSession?.accessToken;
+    if (!statement.isDraft ||
+        revision == null ||
+        token == null ||
+        _payrollWorkerId(item.workerId).isEmpty) {
+      throw StateError('給与下書きの対象を確認できません。');
+    }
+    final period = statement.periodStart.toIso8601String().split('T').first;
+    final params = <String, dynamic>{
+      'p_statement_id': statement.id,
+      'p_expected_revision': revision,
+      'p_worker_id': item.workerId,
+      'p_period_start': period,
+    };
+    final raw = await _client
+        .rpc('preview_payroll_review_recalculation', params: params)
+        .setHeader('Authorization', 'Bearer $token');
+    if (_client.auth.currentSession?.accessToken != token ||
+        raw is! Map ||
+        raw['contract_version'] != 1 ||
+        raw['preview_kind'] != 'current_draft_only' ||
+        raw['statement_id'] != statement.id ||
+        raw['worker_id'] != item.workerId ||
+        raw['period_start'] != period ||
+        raw['period_end'] !=
+            statement.periodEnd.toIso8601String().split('T').first ||
+        raw['expected_revision'] != revision ||
+        _payrollWorkerId(raw['company_id']).isEmpty ||
+        raw['expected_source'] is! String ||
+        !RegExp(r'^[0-9a-f]{32}$').hasMatch(raw['expected_source'] as String) ||
+        raw['gross_pay'] is! int ||
+        raw['deductions'] is! int ||
+        raw['net_pay'] is! int) {
+      throw const FormatException('給与下書きの事前確認を読み取れません。');
+    }
+    return PayrollDraftRecalculationPreview._(
+      raw['gross_pay'] as int,
+      raw['deductions'] as int,
+      raw['net_pay'] as int,
+      {
+        ...params,
+        'p_company_id': raw['company_id'],
+        'p_expected_source': raw['expected_source'],
+        'p_confirmed': true,
+      },
+      token,
+    );
+  }
+
+  Future<({bool changed, int revision})> recalculateDraft(
+    PayrollDraftRecalculationPreview preview,
+  ) async {
+    if (_client.auth.currentSession?.accessToken != preview._token) {
+      throw StateError('給与下書きの操作中にログイン状態が変わりました。');
+    }
+    final raw = await _client
+        .rpc('recalculate_one_payroll_draft', params: preview._params)
+        .setHeader('Authorization', 'Bearer ${preview._token}');
+    if (_client.auth.currentSession?.accessToken != preview._token ||
+        raw is! Map ||
+        raw['contract_version'] != 1 ||
+        raw['statement_id'] != preview._params['p_statement_id'] ||
+        raw['workflow_state'] != 'draft' ||
+        raw['finalized'] != false ||
+        raw['revision'] is! int ||
+        (raw['revision'] as int) <
+            (preview._params['p_expected_revision'] as int) ||
+        raw['changed'] is! bool) {
+      throw const FormatException('給与下書きの保存結果を確認できません。');
+    }
+    return (changed: raw['changed'] as bool, revision: raw['revision'] as int);
+  }
+
   Future<void> setManagerVisibility({
     required String workerId,
     required bool visible,
@@ -180,7 +274,7 @@ class PayrollReviewRepository {
   PayrollReviewItem _item(Map<String, dynamic> row) {
     return PayrollReviewItem(
       workerId: _payrollWorkerId(row['worker_id']),
-      statement: payrollStatementFromRow(row, null, managementBankHidden:true),
+      statement: payrollStatementFromRow(row, null, managementBankHidden: true),
       revision: (row['revision'] as num?)?.toInt() ?? 1,
       reviewChecked: row['review_checked'] == true,
       reviewConfirmed: row['review_confirmed'] == true,
@@ -194,8 +288,9 @@ Future<DateTime> resolvePayrollNotificationMonth(
   Future<Map<String, dynamic>?> Function(String id) readVisiblePeriod,
 ) async {
   final id = statementId.trim();
-  if (!RegExp(r'^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$')
-      .hasMatch(id)) {
+  if (!RegExp(
+    r'^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$',
+  ).hasMatch(id)) {
     throw StateError('Invalid payroll notification target');
   }
   final row = await readVisiblePeriod(id);
@@ -208,8 +303,9 @@ Future<DateTime> resolvePayrollNotificationMonth(
 
 String _payrollWorkerId(dynamic value) {
   if (value is! String ||
-      !RegExp(r'^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$')
-          .hasMatch(value)) {
+      !RegExp(
+        r'^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$',
+      ).hasMatch(value)) {
     return '';
   }
   return value.toLowerCase();

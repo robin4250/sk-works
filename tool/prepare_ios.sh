@@ -117,13 +117,16 @@ if generated < 10:
 print(f"SKO AppIconを{generated}サイズ生成しました。")
 PY
 
-python3 - "$BUNDLE_ID" <<'PY'
+python3 - "$BUNDLE_ID" "${SKO_IOS_APPLE_SIGN_IN:-false}" <<'PY'
 from pathlib import Path
 import plistlib
 import re
 import sys
 
-bundle_id = sys.argv[1]
+bundle_id, apple_sign_in_option = sys.argv[1:]
+if apple_sign_in_option not in ("false", "true"):
+    raise SystemExit("SKO_IOS_APPLE_SIGN_IN must be false or true")
+apple_sign_in = apple_sign_in_option == "true"
 ios_min_version = "15.5"
 
 podfile_path = Path("ios/Podfile")
@@ -225,7 +228,8 @@ entries = {
     "NSCameraUsageDescription": "SKOで出勤確認や資格証、現場写真を登録するためカメラを使用します。",
     "NSPhotoLibraryUsageDescription": "SKOでプロフィール写真や現場・チャットの写真を選択するため写真ライブラリを使用します。",
     "ITSAppUsesNonExemptEncryption": False,
-    "SKOAppleCredentialPreparationEnabled": False,
+    "SKOAppleCredentialPreparationEnabled": apple_sign_in,
+    "SKOAppleRegistrationProbe": False,
     "SKOQRScannerKeyPreparationEnabled": False,
 }
 
@@ -318,6 +322,43 @@ project = re.sub(
     r"\g<1>15.5\2",
     project,
 )
+managed_entitlements = "Runner/SKOAppleCredential.entitlements"
+managed_entitlements_path = Path("ios") / managed_entitlements
+managed_setting = f"CODE_SIGN_ENTITLEMENTS = {managed_entitlements};"
+project = re.sub(r"(?m)^[ \t]*" + re.escape(managed_setting) + r"\n", "", project)
+
+if apple_sign_in:
+    entitlement_key = "com.apple.developer.applesignin"
+
+    def enable_apple_sign_in(match):
+        settings = match.group()
+        if f"PRODUCT_BUNDLE_IDENTIFIER = {bundle_id};" not in settings:
+            return settings
+        existing = re.search(r"CODE_SIGN_ENTITLEMENTS = ([^;]+);", settings)
+        if existing:
+            entitlement_path = Path("ios") / existing[1].strip().strip('"')
+        else:
+            entitlement_path = managed_entitlements_path
+            settings = re.sub(
+                r"(?m)^([ \t]*)(PRODUCT_BUNDLE_IDENTIFIER = )",
+                lambda bundle: f"{bundle[1]}{managed_setting}\n{bundle[0]}",
+                settings,
+                count=1,
+            )
+        entitlements = (
+            plistlib.loads(entitlement_path.read_bytes())
+            if existing or entitlement_path.exists()
+            else {}
+        )
+        if entitlements.get(entitlement_key) != ["Default"]:
+            entitlements[entitlement_key] = ["Default"]
+            entitlement_path.write_bytes(plistlib.dumps(entitlements))
+        return settings
+
+    project = re.sub(
+        r"(?ms)^[ \t]*buildSettings = \{.*?^[ \t]*\};", enable_apple_sign_in, project
+    )
+
 project_path.write_text(project)
 
 scheme_path = Path("ios/Runner.xcodeproj/xcshareddata/xcschemes/Runner.xcscheme")
@@ -889,7 +930,7 @@ private enum SkoCaptureMetadata {
 
 SWIFT
 
-# OFF Apple credential acquisition only; no provider, entitlement or session mutation.
+# Build-time Apple credential acquisition, gated by the generated Info.plist.
 cat tool/ios/apple_credential_state.swift >> ios/Runner/AppDelegate.swift
 cat tool/ios/apple_credential.swift >> ios/Runner/AppDelegate.swift
 # Scanner custody remains OFF; no registration route or feature is enabled.

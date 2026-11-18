@@ -277,7 +277,19 @@ class QualificationCertificateRepository {
     return Map<String, dynamic>.from(updated);
   });
 
-  Future<String> createSignedUrl(String storagePath) async {
+  Future<String> createSignedUrl(String storagePath) =>
+      _readAttachment(storagePath, (scope, row) => scope.signPhoto(storagePath, row));
+
+  Future<Uint8List> downloadAttachment(String storagePath) =>
+      _readAttachment(storagePath, (scope, row) => scope.downloadPhoto(storagePath, row));
+
+  Future<void> validateAttachmentAccess(String storagePath) =>
+      _readAttachment<void>(storagePath, (_, __) async {});
+
+  Future<T> _readAttachment<T>(
+    String storagePath,
+    Future<T> Function(QualificationDocumentReadScope, Map<String, dynamic>) load,
+  ) async {
     final scope = await QualificationDocumentReadScope.capture(_client);
     final canManage = await scope.peoplePermission();
     final own = canManage ? null : await scope.ownWorker();
@@ -289,7 +301,7 @@ class QualificationCertificateRepository {
     final target = canManage ? await scope.visibleWorker(row['worker_id'] as String) : own!;
     scope.validatePhotoPath(storagePath, row);
     await scope.verify(worker: own, peoplePermission: canManage);
-    final url = await scope.signPhoto(storagePath, row);
+    final result = await load(scope, row);
     final fresh = await scope.photoRows(workerId: row['worker_id'] as String,
         qualificationId: row['id'] as String);
     if (fresh.length != 1) throw StateError('資格証写真が変更されました。');
@@ -298,7 +310,7 @@ class QualificationCertificateRepository {
       throw StateError('対象社員の在籍状態が変更されました。');
     }
     await scope.verify(worker: own, peoplePermission: canManage);
-    return url;
+    return result;
   }
 
   Future<Map<String, dynamic>> removeCertificate({

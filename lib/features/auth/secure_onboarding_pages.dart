@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -9,6 +10,7 @@ import '../../branding/product_brand.dart';
 import 'auth_error_message.dart';
 import 'employee_invite_scanner_page.dart';
 import 'employee_bootstrap_identity.dart';
+import 'registered_apple_login.dart';
 import 'secure_onboarding_repository.dart';
 import 'existing_google_login.dart';
 
@@ -79,6 +81,39 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
     _googleResult = null;
     _googleChecking = false;
     _googlePending = false;
+  }
+
+  Future<void> _startApple() async {
+    if (_busy || _googlePending) return;
+    setState(() {
+      _busy = true;
+      _message = null;
+    });
+    try {
+      await RegisteredAppleLogin.signIn(
+        isCurrent: () => mounted && ModalRoute.of(context)?.isCurrent == true,
+      );
+      if (mounted) widget.onAuthenticated();
+    } on AppleRegistrationProbeResult catch (result) {
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (dialog) => AlertDialog(
+          title: const Text('Apple認証の検証結果'),
+          content: Text(result.message),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialog),
+              child: const Text('閉じる'),
+            ),
+          ],
+        ),
+      );
+    } catch (_) {
+      if (mounted) setState(() => _message = '連携済みのAppleアカウントでログインできませんでした。');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _startGoogle() async {
@@ -159,6 +194,9 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
 
   bool _registerMode = false;
   bool _emailLogin = false;
+  String? _scannedInviteId;
+  final _loginPhoneField = GlobalKey();
+  bool _employeePasswordPasted = false;
   bool _passwordResetMode = false;
   bool _busy = false;
   bool _obscurePassword = true;
@@ -203,6 +241,11 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
       return;
     }
 
+    if (_registerMode && _password.text.startsWith('SKO-B-')) {
+      setState(() => _message = '従業員の初回パスワードは、ログインから入力してください。');
+      return;
+    }
+
     final approvalCode = widget.companyInvitationCode ??
         _registrationApproval.text.trim().toLowerCase();
     if (_registerMode && !RegExp(r'^[a-f0-9]{48}$').hasMatch(approvalCode)) {
@@ -228,10 +271,49 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
         await repository.signInWithPhone(
           phone: _phone.text,
           password: _password.text,
+          employeeInviteId: _scannedInviteId,
         );
         widget.onAuthenticated();
       }
     });
+  }
+
+  Future<void> _pasteEmployeePassword() async {
+    ClipboardData? data;
+    try {
+      data = await Clipboard.getData(Clipboard.kTextPlain);
+    } catch (_) {}
+    if (!mounted || _busy || _registerMode || _passwordResetMode) return;
+    final password = data?.text?.trim() ?? '';
+    if (password.isEmpty ||
+        password.contains(RegExp(r'\s')) ||
+        password.length > 72) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('招待メッセージからパスワードだけをコピーするか、パスワード欄を長押しして貼り付けてください。'),
+        ),
+      );
+      return;
+    }
+    setState(() {
+      if (_emailLogin) _phone.clear();
+      _emailLogin = false;
+      _scannedInviteId = null;
+      _password.text = password;
+      _employeePasswordPasted = true;
+      _message = null;
+    });
+    final field = _loginPhoneField.currentContext;
+    if (field != null && field.mounted) {
+      await Scrollable.ensureVisible(
+        field,
+        duration: const Duration(milliseconds: 250),
+      );
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('貼り付けました。電話番号を確認して「④ ログイン」を押してください。')),
+    );
   }
 
   Future<void> _scanEmployeeInvite() async {
@@ -246,6 +328,8 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
       _registerMode = false;
       _emailLogin = false;
       _passwordResetMode = false;
+      _employeePasswordPasted = false;
+      _scannedInviteId = credentials.inviteId;
       _phone.text = credentials.phone;
       _password.text = credentials.password;
       _passwordConfirm.clear();
@@ -338,6 +422,24 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
                         ),
                         const Text('SKOで使用していたGoogleアカウントを選んでください。別のアカウントを選ぶと新規登録される場合があります。'),
                       ],
+                      if (!_registerMode && !_passwordResetMode) ...[
+                        const SizedBox(height: 12),
+                        OutlinedButton(
+                          onPressed:
+                              _busy ||
+                                  _googlePending ||
+                                  !RegisteredAppleLogin.available
+                              ? null
+                              : _startApple,
+                          child: Text(
+                            RegisteredAppleLogin.available
+                                ? (RegisteredAppleLogin.registrationProbe
+                                      ? '未連携Appleの登録拒否を検証'
+                                      : '登録済みのAppleでログイン')
+                                : 'Appleでログイン（準備中）',
+                          ),
+                        ),
+                      ],
                       if (_googlePending) ...[
                         const Text('Googleでの認証完了を待っています。'),
                         TextButton(onPressed: () => setState(() { _cancelGoogle(); _message = '画面での待機を中止しました。開いているGoogle認証画面も閉じてください。'; }), child: const Text('Googleログインを中止')),
@@ -348,6 +450,7 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
                         TextButton(
                           onPressed: _busy || _googlePending ? null : () => setState(() {
                             _emailLogin = !_emailLogin;
+                            _scannedInviteId = null;
                             _phone.clear();
                             _password.clear();
                             _passwordConfirm.clear();
@@ -369,7 +472,9 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
                       ],
                       if (!_passwordResetMode) ...[
                             TextField(
+                              key: _loginPhoneField,
                               controller: _phone,
+                              onChanged: (_) => _scannedInviteId = null,
                               keyboardType: _emailLogin ? TextInputType.emailAddress : TextInputType.phone,
                               autofillHints: _emailLogin ? const [AutofillHints.email] : const [AutofillHints.telephoneNumber],
                               autocorrect: false,
@@ -453,7 +558,11 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
                                               : Icons.login,
                                     ),
                               label: Text(
-                                _registerMode ? '承認コードで登録する' : 'ログイン',
+                                _registerMode
+                                    ? '承認コードで登録する'
+                                    : _employeePasswordPasted && !_emailLogin
+                                    ? '④ ログイン'
+                                    : 'ログイン',
                                 style: const TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.w800,
@@ -519,6 +628,12 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
                               ],
                             ),
                             const SizedBox(height: 14),
+                            OutlinedButton.icon(
+                              onPressed: _busy || _googlePending ? null : _pasteEmployeePassword,
+                              icon: const Icon(Icons.copy_outlined),
+                              label: const Text('③ 初回パスワードを貼り付け'),
+                            ),
+                            const SizedBox(height: 8),
                             SizedBox(
                               height: 52,
                               child: OutlinedButton.icon(

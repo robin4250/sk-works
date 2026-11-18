@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../data/authenticated_storage_download.dart';
 import '../../data/supabase_backend.dart';
 
 class ChatCloudRepository {
@@ -11,6 +12,18 @@ class ChatCloudRepository {
 
   final SupabaseClient _client;
   static const _attachmentBucket = 'chat-attachments';
+
+  Future<Uint8List> downloadAttachment(String path, {required bool fromLine}) async {
+    final actor = currentUserId;
+    if (fromLine) await _requireLineRelease();
+    if (actor == null || actor != currentUserId) throw StateError('Session changed');
+    final bytes = await downloadAuthenticatedStorageObject(
+      _client, bucket: _attachmentBucket, path: path,
+    );
+    if (fromLine) await _requireLineRelease();
+    if (actor != currentUserId) throw StateError('Session changed');
+    return bytes;
+  }
 
   static ChatCloudRepository? maybeCreate() {
     if (!SupabaseBackend.isInitialized) return null;
@@ -800,14 +813,6 @@ class ChatCloudRepository {
             final row = Map<String, dynamic>.from(raw);
             final messageId = row['message_id']?.toString();
             if (messageId == null) continue;
-
-            try {
-              row['signed_url'] = await _client.storage
-                  .from(_attachmentBucket)
-                  .createSignedUrl(row['storage_path'].toString(), 3600);
-            } catch (_) {
-              row['signed_url'] = null;
-            }
 
             attachmentsByMessage.putIfAbsent(messageId, () => []).add(row);
           }

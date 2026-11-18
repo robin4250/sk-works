@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -372,8 +373,8 @@ class _QualificationCertificatePageState
             Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
             const SizedBox(height: 10),
             if (path.isNotEmpty)
-              FutureBuilder<String>(
-                future: repository.createSignedUrl(path),
+              FutureBuilder<Uint8List>(
+                future: repository.downloadAttachment(path),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState != ConnectionState.done) {
                     return const AspectRatio(
@@ -389,7 +390,7 @@ class _QualificationCertificatePageState
                   }
                   return ClipRRect(
                     borderRadius: BorderRadius.circular(12),
-                    child: Image.network(
+                    child: Image.memory(
                       snapshot.data!,
                       fit: BoxFit.contain,
                       errorBuilder: (_, __, ___) => const Padding(

@@ -27,6 +27,7 @@ This checklist is intentionally separate from feature development so release che
 - Existing Google login / logout / same-account return (Apple only when separately verified; paid SMS is not used), role home, attendance, daily report, payroll protection and qualification/document flows receive smoke checks.
 
 ## TestFlight gate
+- To reproduce the iOS authentication features used in build 36, provide the production project's public legacy anon JWT as `SKO_AUTH_GATEWAY_ANON_JWT` when running `tool/testflight_candidate.sh`. The builder uses it for the employee first-login and registered Apple gateways, and enables the iOS Apple sign-in entitlement. Supply the JWT through the local release environment.
 - Build/version number is incremented.
 - Archive is uploaded only after automated and device gates pass.
 - Internal testers receive the candidate first.

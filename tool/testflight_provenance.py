@@ -94,7 +94,29 @@ def validate_public_key(value):
             and len(decode(parts[2])) == 32, 'Unknown or privileged client key type')
 
 
+AUTH_FEATURE_FLAGS = {
+    'SKO_EMPLOYEE_EXISTING_ACCOUNT_CLAIM_ENABLED',
+    'SKO_REGISTERED_APPLE_LOGIN_ENABLED',
+    'SKO_APPLE_NATIVE_ENROLLMENT_ENABLED',
+}
+AUTH_GATEWAY_KEYS = {
+    'SKO_EMPLOYEE_LOGIN_GATEWAY_ANON_JWT',
+    'SKO_APPLE_LOGIN_GATEWAY_ANON_JWT',
+}
+
+
+def validate_gateway_key(value):
+    validate_public_key(value)
+    parts = value.split('.')
+    require(len(parts) == 3, 'Public gateway anon JWT required')
+    payload = json.loads(base64.urlsafe_b64decode(parts[1] + '=' * (-len(parts[1]) % 4)))
+    require(payload.get('ref') == 'ztktgquxvcxcjxtluspu',
+            'Gateway key belongs to a different backend')
+
+
 def verify_public_configuration():
+    if gateway_key := os.environ.get('SKO_AUTH_GATEWAY_ANON_JWT'):
+        validate_gateway_key(gateway_key)
     validate_public_key(os.environ.get('SUPABASE_PUBLISHABLE_KEY', ''))
     require(os.environ.get('SUPABASE_URL') == 'https://ztktgquxvcxcjxtluspu.supabase.co',
             'Approved public backend configuration required')
@@ -118,6 +140,16 @@ def verify_generated_flags(version=None, build=None, require_sdk_metadata=False)
     sdk_keys = {'FLUTTER_VERSION', 'FLUTTER_CHANNEL', 'FLUTTER_GIT_URL',
                 'FLUTTER_FRAMEWORK_REVISION', 'FLUTTER_ENGINE_REVISION', 'FLUTTER_DART_VERSION',
                 'FLUTTER_BUILD_NAME', 'FLUTTER_BUILD_NUMBER'}
+    info_path = Path('ios/Runner/Info.plist')
+    if info_path.is_file() and plistlib.loads(info_path.read_bytes()).get(
+            'SKOAppleCredentialPreparationEnabled') is True:
+        app_keys |= AUTH_FEATURE_FLAGS | AUTH_GATEWAY_KEYS
+        require(all(values.get(key) == 'true' for key in AUTH_FEATURE_FLAGS),
+                'Configured iOS authentication features were omitted or disabled')
+        gateway_values = {values.get(key) for key in AUTH_GATEWAY_KEYS}
+        require(len(gateway_values) == 1 and None not in gateway_values,
+                'Missing or inconsistent public gateway keys')
+        validate_gateway_key(gateway_values.pop())
     require(set(values) in (app_keys, app_keys | sdk_keys),
             'Unexpected compile defines')
     require(not require_sdk_metadata or set(values) == app_keys | sdk_keys,

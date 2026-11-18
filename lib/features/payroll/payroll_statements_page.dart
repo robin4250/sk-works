@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:typed_data';
+
 import 'own_draft_bank_admission.dart';
 import 'own_draft_bank_repository.dart';
 import 'payroll_pending_attendance_panel.dart';
 import 'payroll_condition_warning.dart';
 import 'payroll_finalization_panel.dart';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pdf/pdf.dart';
@@ -92,9 +94,7 @@ class _PayrollStatementsPageState extends State<PayrollStatementsPage> {
         : null;
     final visibleItems = selectedIssuer == null
         ? _items
-        : _items
-              .where((item) => _issuerKey(item) == selectedIssuer)
-              .toList();
+        : _items.where((item) => _issuerKey(item) == selectedIssuer).toList();
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -156,8 +156,9 @@ class _PayrollStatementsPageState extends State<PayrollStatementsPage> {
                               ),
                               selected: selectedIssuer == issuer.key,
                               onSelected: (selected) => setState(
-                                () =>
-                                    _selectedIssuer = selected ? issuer.key : null,
+                                () => _selectedIssuer = selected
+                                    ? issuer.key
+                                    : null,
                               ),
                             ),
                         ],
@@ -218,9 +219,9 @@ class _PayrollStatementsPageState extends State<PayrollStatementsPage> {
                                       SkoLanguageController.isEnglish
                                           ? 'Net Pay'
                                           : '差引支給額',
-                                      style: Theme.of(
-                                        context,
-                                      ).textTheme.bodyMedium,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodyMedium,
                                     ),
                                   ),
                                   Text(
@@ -332,7 +333,9 @@ class _PayrollStatementPreviewPageState
           ?.loadEmploymentContract(statement.id, revision);
       if (data != null) {
         contract = await PayrollEmploymentContractPage.fromDocument(
-          data, statementId: statement.id, statementRevision: revision,
+          data,
+          statementId: statement.id,
+          statementRevision: revision,
         );
       }
     }

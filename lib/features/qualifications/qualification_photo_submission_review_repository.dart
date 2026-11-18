@@ -1,3 +1,6 @@
+import 'dart:typed_data';
+
+import '../../data/authenticated_storage_download.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
@@ -82,13 +85,16 @@ class QualificationPhotoSubmissionReviewRepository {
     return paths(Map<String, dynamic>.from(value));
   }
 
-  Future<String> signedUrl(String path) async {
+  Future<Uint8List> downloadPhoto(String path) async {
     final actor = actorId;
-    final value = await client.storage
-        .from('qualification-certificates')
-        .createSignedUrl(path, 600);
     requireActor(actor);
-    return value;
+    final bytes = await downloadAuthenticatedStorageObject(
+      client,
+      bucket: 'qualification-certificates',
+      path: path,
+    );
+    requireActor(actor);
+    return bytes;
   }
 
   Future<String?> confirmedStatus(Map<String, dynamic> row) async {

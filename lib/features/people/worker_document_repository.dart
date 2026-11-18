@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
@@ -684,6 +685,39 @@ class WorkerDocumentRepository {
       row: row,
       photos: [WorkerDocumentPhoto.pending(bytes, originalFilename)],
     );
+  }
+
+  Future<T> _withAttachmentSession<T>(
+    Future<T> Function(StorageFileApi bucket) read,
+  ) async {
+    final session = _client.auth.currentSession;
+    final isCurrent = await captureAttachmentReadScope();
+    if (session == null || !isCurrent() ||
+        !identical(session, _client.auth.currentSession)) {
+      throw StateError('Attachment session changed');
+    }
+    final result = await read(_client.storage
+        .from(_bucket)
+        .setHeader('Authorization', 'Bearer ${session.accessToken}')
+        .setHeader('Cache-Control', 'no-cache, no-store'));
+    if (!isCurrent()) throw StateError('Attachment session changed');
+    return result;
+  }
+
+  Future<Uint8List> downloadAttachment(String path) {
+    final random = Random.secure();
+    final nonce = List.generate(16, (_) => random.nextInt(256))
+        .map((value) => value.toRadixString(16).padLeft(2, '0'))
+        .join();
+    return _withAttachmentSession(
+      (bucket) => bucket.download(path, cacheNonce: nonce),
+    );
+  }
+
+  Future<void> validateAttachmentAccess(String path) async {
+    if (!await _withAttachmentSession((bucket) => bucket.exists(path))) {
+      throw StateError('Attachment unavailable');
+    }
   }
 
   Future<String> createSignedAttachmentUrl(String storagePath) {

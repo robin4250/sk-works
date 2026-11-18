@@ -694,7 +694,7 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
                       ? (v) => setState(() => _income = v!)
                       : null,
                 ),
-                const Text('自動計算は令和8年分の国税庁月額表に対応。日払い・賞与は対象外です。'),
+                const Text('自動計算では給与の支給年に対応する国税庁月額表を使います。日払い・賞与は対象外です。'),
                 _amount(
                   'dependents',
                   _income == 'otsu'

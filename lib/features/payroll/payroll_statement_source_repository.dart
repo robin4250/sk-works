@@ -43,7 +43,9 @@ class PayrollStatementSourceRepository {
 
   bool _selfFallback(Object error) => error is PostgrestException &&
       (error.code == '42501' ||
-       (error.code == 'P0001' && error.message == 'payroll review permission required') ||
+       (error.code == 'P0001' &&
+           (error.message == 'payroll review permission required' ||
+            error.message == '給料一覧を閲覧する権限がありません')) ||
        ((error.code == 'PGRST202' || error.code == '42883') &&
         error.message.contains('payroll_review_workspace')));
 

@@ -32,6 +32,9 @@ class PayrollReviewPage extends StatefulWidget {
 }
 
 class _PayrollReviewPageState extends State<PayrollReviewPage> {
+  static const _draftRecalculationEnabled = bool.fromEnvironment(
+    'SKO_PAYROLL_DRAFT_RECALCULATION',
+  );
   late final PayrollReviewRepository? _repository;
   PayrollReviewWorkspace? _workspace;
   DateTime _month = DateTime(DateTime.now().year, DateTime.now().month);
@@ -108,6 +111,83 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
     await _load();
   }
 
+  Future<void> _recalculateDraft(PayrollReviewItem item) async {
+    final repository = _repository;
+    if (repository == null || _saving || _loading) return;
+    final generation = _loadGeneration;
+    setState(() => _saving = true);
+    var sent = false;
+    try {
+      final preview = await repository.previewDraftRecalculation(item);
+      if (!mounted || generation != _loadGeneration) return;
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('給与下書きを再計算'),
+          content: Text(
+            '${item.statement.workerName}　${item.statement.monthLabel}\n'
+            '現在の総支給 ${_yen(preview.grossPay)}\n'
+            '現在の控除 ${_yen(preview.deductions)}\n'
+            '現在の差引支給 ${_yen(preview.netPay)}\n\n'
+            '保存済みの勤怠と対象月の料率で、この下書きだけを更新します。'
+            '金額や版が変わった場合は内容を再確認してください。',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('キャンセル'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('再計算'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted || generation != _loadGeneration)
+        return;
+      sent = true;
+      final result = await repository.recalculateDraft(preview);
+      if (!mounted) return;
+      await _load();
+      if (!mounted || _error != null) return;
+      final saved =
+          _workspace?.items.any(
+            (entry) =>
+                entry.statement.id == item.statement.id &&
+                entry.workerId == item.workerId &&
+                entry.statement.periodStart == item.statement.periodStart &&
+                (entry.statement.revision ?? 0) >= result.revision,
+          ) ??
+          false;
+      if (!saved) {
+        throw StateError('再計算後の明細の版を確認できません。');
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result.changed ? '下書きを再計算しました。新しい内容を確認してください。' : '下書きに変更はありませんでした。',
+          ),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      if (sent) await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            sent
+                ? '再計算結果を確認できませんでした。保存済みの明細を確認してください。'
+                : '給与下書きの事前確認ができませんでした。',
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   Future<void> _confirm() async {
     final repository = _repository;
     final workspace = _workspace;
@@ -181,6 +261,7 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
   }
 
   Future<void> _moveMonth(int offset) async {
+    if (_saving) return;
     setState(() => _month = DateTime(_month.year, _month.month + offset));
     await _load();
   }
@@ -488,11 +569,34 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
                                       fontWeight: FontWeight.w700,
                                     ),
                                   ),
-                                  trailing: Text(
-                                    _yen(item.statement.netPay),
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w900,
-                                    ),
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        _yen(item.statement.netPay),
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                      ),
+                                      if (_draftRecalculationEnabled &&
+                                          workspace.isAdmin &&
+                                          const {
+                                            'owner',
+                                            'admin',
+                                          }.contains(workspace.role) &&
+                                          item.statement.isDraft &&
+                                          item.statement.revision != null &&
+                                          item.workerId.isNotEmpty)
+                                        IconButton(
+                                          tooltip: 'この給与下書きを再計算',
+                                          onPressed: _saving
+                                              ? null
+                                              : () => _recalculateDraft(item),
+                                          icon: const Icon(
+                                            Icons.calculate_outlined,
+                                          ),
+                                        ),
+                                    ],
                                   ),
                                 ),
                               ),

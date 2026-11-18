@@ -8,10 +8,12 @@ class EmployeeInviteCredentials {
   const EmployeeInviteCredentials({
     required this.phone,
     required this.password,
+    this.inviteId,
   });
 
   final String phone;
   final String password;
+  final String? inviteId;
 }
 
 class EmployeeInviteScannerPage extends StatefulWidget {
@@ -58,6 +60,9 @@ class _EmployeeInviteScannerPageState extends State<EmployeeInviteScannerPage> {
           EmployeeInviteCredentials(
             phone: phone,
             password: password,
+            inviteId: decoded['inviteId'] is String
+                ? decoded['inviteId'] as String
+                : null,
           ),
         );
         return;

@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../data/authenticated_storage_download.dart';
 import '../../data/supabase_backend.dart';
 
 class CompanyDocumentExchangeRepository {
@@ -122,12 +123,23 @@ class CompanyDocumentExchangeRepository {
     );
   }
 
-  Future<String?> signedDeliveryFileUrl({
-    required String bucket,
-    required String path,
+  Future<Uint8List> downloadDeliveryFile({
+    required String deliveryId,
+    required String itemId,
   }) async {
-    if (bucket.isEmpty || path.isEmpty) return null;
-    return _client.storage.from(bucket).createSignedUrl(path, 3600);
+    final session = _client.auth.currentSession;
+    if (session == null || session.isExpired) {
+      throw StateError('ログイン状態を確認してください。');
+    }
+    final items = await listDeliveryItems(deliveryId);
+    final item = items.singleWhere((row) => row['id'] == itemId);
+    final bucket = item['bucket'];
+    final path = item['path'];
+    if (bucket is! String || bucket.isEmpty || path is! String || path.isEmpty ||
+        _client.auth.currentSession?.accessToken != session.accessToken) {
+      throw StateError('書類の閲覧権限を確認できません。');
+    }
+    return downloadAuthenticatedStorageObject(_client, bucket: bucket, path: path);
   }
 
   Future<Map<String, dynamic>> loadConnectionInbox() async {
@@ -148,6 +160,74 @@ class CompanyDocumentExchangeRepository {
         'p_accept': accept,
       },
     );
+  }
+
+  Future<Map<String, String>> employmentContractIssuer(String itemId) async {
+    final session = _client.auth.currentSession;
+    if (session == null) throw StateError('ログイン状態を確認してください。');
+    final token = session.accessToken;
+    final workerId = await _client.rpc(
+      'resolve_partner_allowance_worker', params: {'p_item_id': itemId},
+    ).setHeader('Authorization', 'Bearer $token');
+    if (workerId is! String) throw StateError('給与対象を確認できません。');
+    final worker = await _client.from('workers').select('company_id')
+        .eq('id', workerId).single()
+        .setHeader('Authorization', 'Bearer $token');
+    final companyId = worker['company_id'];
+    final company = await _client.from('companies')
+        .select('id, name, postal_code, address, phone')
+        .eq('id', companyId).single()
+        .setHeader('Authorization', 'Bearer $token');
+    final profile = await _client.rpc(
+      'read_partner_company_profile', params: {'p_company_id': companyId},
+    ).setHeader('Authorization', 'Bearer $token');
+    if (_client.auth.currentSession?.accessToken != token ||
+        profile is! Map || profile['company_id'] != companyId ||
+        profile['profile'] is! Map || profile['profile']['name'] != company['name']) {
+      throw StateError('発行元の会社情報を確認できません。');
+    }
+    return {
+      for (final key in ['name', 'postal_code', 'address', 'phone'])
+        key: company[key]?.toString().trim() ?? '',
+      'representative_name':
+          profile['profile']['representative_name']?.toString().trim() ?? '',
+    };
+  }
+
+  Future<String?> resolvePartnerAllowanceWorker(String itemId) async {
+    final value = await _client.rpc(
+      'resolve_partner_allowance_worker',
+      params: {'p_item_id': itemId},
+    );
+    return value is String && value.isNotEmpty ? value : null;
+  }
+
+  Future<Map<String, dynamic>?> partnerEmploymentContractDraft(
+    String itemId, {
+    Map<String, dynamic>? document,
+    int? revision,
+  }) async {
+    final value = await _client.rpc(
+      'partner_employment_contract_draft',
+      params: {
+        'p_item_id': itemId,
+        'p_document': document,
+        'p_revision': revision,
+      },
+    );
+    return value == null ? null : Map<String, dynamic>.from(value as Map);
+  }
+
+  Future<void> approvePartnerEmploymentContract(
+    String itemId, int revision, DateTime month,
+  ) async {
+    final year = month.year.toString().padLeft(4, '0');
+    final number = month.month.toString().padLeft(2, '0');
+    await _client.rpc('approve_partner_employment_contract', params: {
+      'p_item_id': itemId,
+      'p_revision': revision,
+      'p_month': '$year-$number-01',
+    });
   }
 
   Future<Map<String, DateTime>> loadSavedDeliveryState() async {

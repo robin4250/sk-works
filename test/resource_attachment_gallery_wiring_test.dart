@@ -1,6 +1,7 @@
 import 'fixtures/qualification_ui_session_fixture.dart';
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -175,10 +176,15 @@ class _Qualifications
   }
 
   @override
-  Future<String> createOwnQualificationPhotoUrl({
+  Future<Uint8List> downloadOwnQualificationPhoto({
     required String qualificationId,
     required String storagePath,
-  }) async => 'https://synthetic.invalid/$storagePath';
+  }) async => _png;
+  @override
+  Future<void> validateOwnQualificationPhoto({
+    required String qualificationId,
+    required String storagePath,
+  }) async {}
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
@@ -189,8 +195,9 @@ class _Certificates implements QualificationCertificateRepository {
   @override
   Future<bool> canManageCertificates() async => false;
   @override
-  Future<String> createSignedUrl(String storagePath) async =>
-      'https://synthetic.invalid/$storagePath';
+  Future<Uint8List> downloadAttachment(String storagePath) async => _png;
+  @override
+  Future<void> validateAttachmentAccess(String storagePath) async {}
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
@@ -240,8 +247,9 @@ class _ManagedDocuments extends WorkerDocumentRepository {
     'exemptions': [],
   };
   @override
-  Future<String> createSignedAttachmentUrl(String path) async =>
-      'https://synthetic.invalid/$path';
+  Future<Uint8List> downloadAttachment(String path) async => _png;
+  @override
+  Future<void> validateAttachmentAccess(String path) async {}
 }
 
 void verify(WidgetTester tester, String title, bool qualifications) {

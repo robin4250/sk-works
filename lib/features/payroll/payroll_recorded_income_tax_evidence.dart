@@ -42,9 +42,13 @@ PayrollRecordedIncomeTaxEvidence recordedPayrollIncomeTaxEvidence(Map<String, dy
   if (mode == 'fixed') {
     return PayrollRecordedIncomeTaxEvidence(overridden ? '手動修正（保存額）' : '固定額の計算根拠は未記録');
   }
+  final table = switch (tax['income_table']) {
+    'nta-monthly-2026-c583c9c3' => (year: 2026, eraYear: 8),
+    'nta-monthly-2027-9de9d156' => (year: 2027, eraYear: 9),
+    _ => null,
+  };
   if (!const {'koh', 'otsu'}.contains(mode) ||
-      tax['income_table'] != 'nta-monthly-2026-c583c9c3' ||
-      !_paymentIn2026(tax['payment_date']) ||
+      table == null || !_paymentInYear(tax['payment_date'], table.year) ||
       conditions['dependents'] is! int || conditions['dependents'] < 0 ||
       conditions['dependents'] > 99) {
     return const PayrollRecordedIncomeTaxEvidence(unavailable);
@@ -63,14 +67,14 @@ PayrollRecordedIncomeTaxEvidence recordedPayrollIncomeTaxEvidence(Map<String, dy
     return const PayrollRecordedIncomeTaxEvidence(unavailable);
   }
   final column = mode == 'koh' ? '甲欄・扶養${conditions['dependents']}人' : '乙欄';
-  final summary = '対象${_money(base)}円／R8月額表 $column${overridden ? '・手動修正' : ''}';
+  final summary = '対象${_money(base)}円／R${table.eraYear}月額表 $column${overridden ? '・手動修正' : ''}';
   final beforeFloor = gross - nonTaxable - social - additional;
   final basis = '所得税対象額：支給額 ${_money(gross)}円 − 非課税額 ${_money(nonTaxable)}円'
       ' − 社会保険料等 ${_money(social)}円 − 他項目で控除済みの社会保険料等 ${_money(additional)}円'
       ' ＝ ${_money(base)}円${beforeFloor < 0 ? '（0円未満は0円）' : ''}';
   final tableColumn = mode == 'koh' ? column
       : '乙欄・従たる給与の申告扶養${conditions['dependents']}人';
-  final method = '令和8年月額表：$tableColumn、対象 ${_money(base)}円 → 自動計算 ${_money(automatic)}円'
+  final method = '令和${table.eraYear}年月額表：$tableColumn、対象 ${_money(base)}円 → 自動計算 ${_money(automatic)}円'
       '${overridden ? '／手動修正後 ${_money(amount)}円' : ''}';
   return PayrollRecordedIncomeTaxEvidence(summary, calculationLines: [basis, method]);
 }
@@ -79,12 +83,13 @@ int? _yen(Object? value) => value is num && value.isFinite && value >= 0 &&
     value <= 2147483647 && value == value.round() ? value.toInt() : null;
 bool _month(Object? value) => value is String &&
     RegExp(r'^20\d{2}-(0[1-9]|1[0-2])-01$').hasMatch(value);
-bool _paymentIn2026(Object? value) {
-  if (value is! String || !RegExp(r'^2026-\d{2}-\d{2}$').hasMatch(value)) {
+bool _paymentInYear(Object? value, int year) {
+  if (value is! String || !RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(value)) {
     return false;
   }
   final parsed = DateTime.tryParse(value);
-  return parsed != null && parsed.toIso8601String().substring(0, 10) == value;
+  return parsed != null && parsed.year == year &&
+      parsed.toIso8601String().substring(0, 10) == value;
 }
 
 String _money(int amount) => amount.toString().replaceAllMapped(

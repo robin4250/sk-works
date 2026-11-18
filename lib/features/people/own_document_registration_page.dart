@@ -107,6 +107,12 @@ class _OwnDocumentRepositoryGateway
   @override
   bool get photoEditingAvailable => repository.photoEditingAvailable;
 
+  Future<Uint8List> downloadAttachment(String path) =>
+      repository.downloadAttachment(path);
+
+  Future<void> validateAttachmentAccess(String path) =>
+      repository.validateAttachmentAccess(path);
+
   @override
   Future<String> signedUrl(String path) async {
     if (actorId == null || actorId != repository.actorId) throw StateError('Session changed');
@@ -383,7 +389,8 @@ class _OwnDocumentRegistrationPageState
       }
       await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => WorkerDocumentChangePage(
         repository: changes, actor: actor, companyId: companyId, row: row!,
-        signedUrl: gateway.signedUrl,
+        signedUrl: gateway is _OwnDocumentRepositoryGateway ? null : gateway.signedUrl,
+        download: gateway is _OwnDocumentRepositoryGateway ? gateway.downloadAttachment : null,
         isCurrent: () => mounted && gateway.isCurrentActor,
       )));
     } finally { await changes.dispose(); }
@@ -567,6 +574,8 @@ class _OwnDocumentRegistrationPageState
           context,
           paths: workerDocumentPaths(_statusFor(requirement)),
           signedUrl: repository.signedUrl,
+          download: repository is _OwnDocumentRepositoryGateway
+              ? repository.downloadAttachment : null,
         );
         if (photos == null || !mounted) return;
         await repository.savePhotos(
@@ -673,6 +682,8 @@ class _OwnDocumentRegistrationPageState
       context,
       paths: workerDocumentPaths(row),
       signedUrl: gateway.signedUrl,
+      download: gateway is _OwnDocumentRepositoryGateway
+          ? gateway.downloadAttachment : null,
       canEdit: gateway.photoEditingAvailable && !workerDocumentHasRegisteredContent(row),
       allowNewPhotos: !workerDocumentHasRegisteredContent(row),
       uploadNotice: [resourceDocumentReviewLabel(row['status']),
@@ -724,6 +735,33 @@ class _OwnDocumentRegistrationPageState
     );
   }
 
+  ResourceAttachment _ownAttachment({
+    required OwnDocumentRegistrationGateway? gateway,
+    required String label,
+    required String path,
+    required String key,
+    required String title,
+    bool Function()? current,
+  }) {
+    Future<T> checked<T>(Future<T> Function() operation) async {
+      if (current?.call() == false) throw StateError('Attachment scope changed');
+      final result = await operation();
+      if (current?.call() == false) throw StateError('Attachment scope changed');
+      return result;
+    }
+    if (gateway is _OwnDocumentRepositoryGateway) {
+      return ResourceAttachment(label: label, path: path, previewKey: key,
+        recordTitle: title,
+        loadBytes: () => checked(() => gateway.downloadAttachment(path)),
+        validateAccess: () => checked(() => gateway.validateAttachmentAccess(path)));
+    }
+    return signedResourceAttachment(label: label, path: path, previewKey: key,
+      recordTitle: title, signedUrl: (value) => checked(() async {
+        if (gateway is! OwnDocumentPhotoGateway) throw StateError('Attachment unavailable');
+        return gateway.signedUrl(value);
+      }));
+  }
+
   ResourceAttachmentGallery? _gallery() {
     final gateway = _repository, rows = _statuses, requirements = _requirements;
     final lease = _galleryLease, generation = _galleryGeneration;
@@ -740,13 +778,9 @@ class _OwnDocumentRegistrationPageState
       if (matches.length != 1) { continue; }
       final paths = workerDocumentPaths(matches.single);
       for (var i = 0; i < paths.length; i++) {
-        Future<String> signed(String path) async {
-          if (!current()) { throw StateError('Attachment scope changed'); }
-          final url = await gateway.signedUrl(path);
-          if (!current()) { throw StateError('Attachment scope changed'); } return url;
-        }
-        entries.add(signedResourceAttachment(label: '${i + 1}', path: paths[i], signedUrl: signed,
-          previewKey: 'document:$id:$i', recordTitle: requirement['name']?.toString() ?? '書類'));
+        entries.add(_ownAttachment(gateway: gateway, label: '${i + 1}',
+          path: paths[i], key: 'document:$id:$i',
+          title: requirement['name']?.toString() ?? '書類', current: current));
       }
     }
     return ResourceAttachmentGallery(source: rows, workerId: worker, companyId: company, isCurrent: current, signal: _galleryChanges, changes: gateway.attachmentAuthChanges, entries: entries);
@@ -900,9 +934,9 @@ class _OwnDocumentRegistrationPageState
                           final gateway = _repository;
                           final attachments = [
                             for (var i = 0; i < paths.length; i++)
-                              signedResourceAttachment(label: '${i + 1}', previewKey: 'document:$id:$i', recordTitle: requirement['name']?.toString() ?? '書類',
-                                path: paths[i], signedUrl: gateway is OwnDocumentPhotoGateway
-                                  ? gateway.signedUrl : (_) async => throw StateError('Attachment unavailable')),
+                              _ownAttachment(gateway: gateway, label: '${i + 1}',
+                                path: paths[i], key: 'document:$id:$i',
+                                title: requirement['name']?.toString() ?? '書類'),
                           ];
                           final action = _saving ? null : isBank ? _openBank : attachmentMissing &&
                                   workerDocumentHasRegisteredContent(status)

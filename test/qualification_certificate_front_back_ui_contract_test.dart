@@ -16,7 +16,7 @@ void main() {
     expect(page, contains('registeredQualificationChangeNotice'));
     expect(page, isNot(contains('repository.uploadCertificateBack(')));
     expect(page, isNot(contains('repository.removeCertificateBack(')));
-    expect(page, contains('repository.createSignedUrl(path)'));
+    expect(page, contains('repository.downloadAttachment(path)'));
     expect(page, contains('表面未登録'));
     expect(page, contains('裏面なし'));
   });

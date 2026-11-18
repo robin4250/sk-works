@@ -1,27 +1,29 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import '../../data/authenticated_storage_download.dart';
 import '../../data/supabase_backend.dart';
 
-/// A signed URL is a temporary bearer credential, never an authorization cache.
+/// Reloads the receipt with the current session when the preview becomes active.
 class ExpenseReceiptPreview extends StatefulWidget {
   const ExpenseReceiptPreview({
     super.key,
     required this.objectPath,
     @visibleForTesting this.initialActor,
     @visibleForTesting this.actorChanges,
-    @visibleForTesting this.urlLoader,
+    @visibleForTesting this.bytesLoader,
     @visibleForTesting this.imageBuilder,
-    @visibleForTesting this.urlLifetime = const Duration(seconds: 300),
+    @visibleForTesting this.previewLifetime = const Duration(seconds: 300),
   });
 
   final String objectPath;
   final String? initialActor;
   final Stream<String?>? actorChanges;
-  final Future<String> Function(String path)? urlLoader;
-  final Widget Function(String url)? imageBuilder;
-  final Duration urlLifetime;
+  final Future<Uint8List> Function(String path)? bytesLoader;
+  final Widget Function(Uint8List bytes)? imageBuilder;
+  final Duration previewLifetime;
 
   @override
   State<ExpenseReceiptPreview> createState() => _ExpenseReceiptPreviewState();
@@ -32,7 +34,7 @@ class _ExpenseReceiptPreviewState extends State<ExpenseReceiptPreview>
   StreamSubscription<String?>? _subscription;
   Timer? _expiry;
   String? _actor;
-  String? _url;
+  Uint8List? _bytes;
   bool _revoked = false;
   bool _suspended = false;
   bool _failed = false;
@@ -70,12 +72,12 @@ class _ExpenseReceiptPreviewState extends State<ExpenseReceiptPreview>
     _generation++;
     _expiry?.cancel();
     _expiry = null;
-    final previous = _url;
-    _url = null;
+    final previous = _bytes;
+    _bytes = null;
     if (previous != null) {
       // Remove this preview's decoded cache only; never flush other app images.
       PaintingBinding.instance.imageCache
-          .evict(NetworkImage(previous), includeLive: true);
+          .evict(MemoryImage(previous), includeLive: true);
     }
   }
 
@@ -103,7 +105,7 @@ class _ExpenseReceiptPreviewState extends State<ExpenseReceiptPreview>
     });
     final generation = _generation;
     // Start expiry before the request, so network latency never extends the lease.
-    _expiry = Timer(widget.urlLifetime, () {
+    _expiry = Timer(widget.previewLifetime, () {
       if (!mounted || generation != _generation) return;
       setState(() {
         _clear();
@@ -111,17 +113,19 @@ class _ExpenseReceiptPreviewState extends State<ExpenseReceiptPreview>
       });
     });
     try {
-      final url = await (widget.urlLoader?.call(widget.objectPath) ??
-          SupabaseBackend.client.storage
-              .from('expense-receipts')
-              .createSignedUrl(widget.objectPath, 300));
+      final bytes = await (widget.bytesLoader?.call(widget.objectPath) ??
+          downloadAuthenticatedStorageObject(
+            SupabaseBackend.client,
+            bucket: 'expense-receipts',
+            path: widget.objectPath,
+          ));
       if (!mounted || generation != _generation || _revoked || _suspended) return;
       if (!_sameActor) {
         _revoke();
         return;
       }
-      if (url.isEmpty) throw StateError('receipt_unavailable');
-      setState(() => _url = url);
+      if (bytes.isEmpty) throw StateError('receipt_unavailable');
+      setState(() => _bytes = bytes);
     } catch (_) {
       if (!mounted || generation != _generation) return;
       setState(() {
@@ -167,13 +171,13 @@ class _ExpenseReceiptPreviewState extends State<ExpenseReceiptPreview>
     if (_failed) {
       return const Text('領収書の写真を取得できません。開き直して確認してください。');
     }
-    final url = _url;
-    if (url == null) {
+    final bytes = _bytes;
+    if (bytes == null) {
       return const Padding(
         padding: EdgeInsets.all(12), child: CircularProgressIndicator());
     }
-    return widget.imageBuilder?.call(url) ?? Image.network(
-      url,
+    return widget.imageBuilder?.call(bytes) ?? Image.memory(
+      bytes,
       height: 220,
       fit: BoxFit.contain,
       errorBuilder: (_, error, stack) =>

@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/settings/company_income_tax_page.dart';
@@ -35,9 +37,12 @@ class FakeIncomeTaxRepository implements CompanyIncomeTaxRepository {
     return saved;
   }
   @override
-  Future<String> pdfUrl(String storagePath) async {
+  Future<String> pdfUrl(String storagePath) async =>
+      throw StateError('PDF opening must use the authenticated download');
+  @override
+  Future<Uint8List> downloadPdf(String storagePath) async {
     pdfReads.add(storagePath);
-    return 'https://example.org/signed.pdf';
+    return Uint8List.fromList(pdf().bytes);
   }
 }
 
@@ -79,7 +84,9 @@ void main() {
     final button = find.text('PDFを開く');
     await tester.ensureVisible(button);
     await tester.tap(button);
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+    expect(find.text('2030.pdf'), findsOneWidget);
     expect(repository.pdfReads, [saved.value['storage_path']]);
     expect(repository.uploaded, isEmpty);
     expect(find.text('登録者 null'), findsNothing);

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'apple_session_navigation_binding.dart';
 import 'app_auth_logout_persistence.dart';
@@ -233,6 +234,36 @@ class AppAuthMutationGateway {
       if (accepted != null) validate(accepted);
     }
   }
+
+  /// Adopt a verified broker result only when this client is signed out.
+  Future<void> adoptRegisteredAppleSession(Session session, {
+    required bool Function() isCurrent,
+  }) => adoptVerifiedSignInSession(session, isCurrent: isCurrent);
+
+  Future<void> adoptVerifiedSignInSession(Session session, {
+    required bool Function() isCurrent,
+  }) => signInThroughBroker(() async => session, isCurrent: isCurrent);
+
+  Future<void> signInThroughBroker(
+    Future<Session> Function() requestSession, {
+    required bool Function() isCurrent,
+  }) => _run((before) async {
+    if (!isCurrent() || before != null || _client.auth.currentSession != null) {
+      throw StateError('Sign-in requires a signed-out client.');
+    }
+    final generation = _generation;
+    final revision = _externalRevision;
+    final session = await requestSession();
+    final expected = _binding(session);
+    if (generation != _generation || revision != _externalRevision ||
+        !isCurrent() || _client.auth.currentSession != null ||
+        expected == null || session.isExpired) {
+      throw StateError('Sign-in requires a signed-out client.');
+    }
+    final result = await _client.auth.recoverSession(jsonEncode(session.toJson()));
+    return _Result<void>(null, expected, event: AuthChangeEvent.tokenRefreshed,
+        eventSession: result.session);
+  });
 
   Future<User?> signInWithPassword({String? email, String? phone, required String password, String? captchaToken}) =>
       _run((_) async {

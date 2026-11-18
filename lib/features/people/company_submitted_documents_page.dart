@@ -6,7 +6,7 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:printing/printing.dart';
 
 import 'document_photo_draft.dart';
 import 'company_document_photo_row.dart';
@@ -814,23 +814,31 @@ class _CompanySubmittedDocumentsPageState
 
   Future<void> _previewSavedPhoto(String path) async {
     try {
-      final url = await _repository!.createSignedUrl(path);
+      final bytes = await _repository!.downloadAttachment(path);
       if (!mounted) return;
       if (path.toLowerCase().endsWith('.pdf')) {
-        if (!await launchUrl(
-          Uri.parse(url),
-          mode: LaunchMode.externalApplication,
-        )) {
-          throw StateError('PDFを開けませんでした。');
-        }
+        await Navigator.of(context).push<void>(
+          MaterialPageRoute(
+            builder: (_) => Scaffold(
+              appBar: AppBar(title: const Text('添付PDF')),
+              body: PdfPreview(
+                build: (_) async => bytes,
+                canChangePageFormat: false,
+                canChangeOrientation: false,
+                allowPrinting: false,
+                allowSharing: false,
+              ),
+            ),
+          ),
+        );
         return;
       }
       await showDialog<void>(
         context: context,
         builder: (dialogContext) => AlertDialog(
           content: InteractiveViewer(
-            child: Image.network(
-              url,
+            child: Image.memory(
+              bytes,
               errorBuilder: (_, error, stack) => const Text('写真を表示できませんでした。'),
             ),
           ),

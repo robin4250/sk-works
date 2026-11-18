@@ -24,19 +24,23 @@ class InvoiceCloudPage extends StatefulWidget {
   const InvoiceCloudPage({
     super.key,
     this.initialInvoiceId,
+    this.repository,
   });
 
   final String? initialInvoiceId;
+  final InvoiceCloudRepository? repository;
 
   @override
   State<InvoiceCloudPage> createState() => _InvoiceCloudPageState();
 }
 
 class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
-  final _repository = InvoiceCloudRepository.maybeCreate();
+  late final _repository =
+      widget.repository ?? InvoiceCloudRepository.maybeCreate();
   final _invoices = <InvoiceCalculationResult>[];
 
   bool _loading = true;
+  bool _creatingAttendanceDraft = false;
   bool _canManageSettings = false;
   bool _hasPendingRouteQuantity = false;
   bool _routeQuantityCheckFailed = false;
@@ -46,6 +50,99 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
   DateTime _period = DateTime(DateTime.now().year, DateTime.now().month);
   String? _companyFilter;
   bool _openedInitialInvoice = false;
+
+  Future<void> _createAttendanceDraft() async {
+    final repository = _repository;
+    if (repository == null || _creatingAttendanceDraft) return;
+    final month = _period;
+    final english = SkoLanguageController.isEnglish;
+    setState(() => _creatingAttendanceDraft = true);
+    void showMessage(String message) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    }
+
+    try {
+      final target = await repository.loadAttendanceDraftCustomers();
+      if (!mounted) return;
+      if (target.customers.isEmpty) {
+        showMessage(english ? 'Register a customer first.' : '先に取引先を登録してください。');
+        return;
+      }
+      String? selected;
+      final customer = await showDialog<String>(
+        context: context,
+        builder: (context) => StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            title: Text(english ? 'Create draft from attendance' : '勤怠から下書きを作成'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(MaterialLocalizations.of(context).formatMonthYear(month)),
+                DropdownButton<String>(
+                  isExpanded: true,
+                  value: selected,
+                  hint: Text(english ? 'Select customer' : '取引先を選択'),
+                  items: [
+                    for (final item in target.customers)
+                      DropdownMenuItem(
+                        value: item.id,
+                        child: Text(item.name, overflow: TextOverflow.ellipsis),
+                      ),
+                  ],
+                  onChanged: (value) => setDialogState(() => selected = value),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text(MaterialLocalizations.of(context).cancelButtonLabel),
+              ),
+              FilledButton(
+                onPressed: selected == null
+                    ? null
+                    : () => Navigator.pop(context, selected),
+                child: Text(english ? 'Create draft' : '下書きを作成'),
+              ),
+            ],
+          ),
+        ),
+      );
+      if (!mounted || customer == null) return;
+      final created = await repository.createAttendanceDraft(
+        actor: target.actor,
+        companyId: target.companyId,
+        customerId: customer,
+        month: month,
+      );
+      if (!mounted) return;
+      showMessage(created
+          ? (english ? 'Invoice draft created.' : '請求下書きを作成しました。')
+          : (english
+              ? 'Check for existing invoices or attendance for this month.'
+              : 'この月の既存請求書と対象勤怠を確認してください。'));
+      if (created) {
+        setState(() {
+          _periodMode = _InvoicePeriodMode.month;
+          _period = month;
+          _browseMode = _InvoiceBrowseMode.all;
+          _companyFilter = null;
+        });
+        await _load();
+      }
+    } catch (_) {
+      if (mounted) {
+        showMessage(english
+            ? 'Could not confirm draft creation. Refresh the invoice list.'
+            : '下書きの作成を確認できませんでした。請求書一覧を再読み込みしてください。');
+      }
+    } finally {
+      if (mounted) setState(() => _creatingAttendanceDraft = false);
+    }
+  }
 
   Future<void> _openAdjustments() async {
     final repository = _repository;
@@ -260,6 +357,16 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
         ),
         actions: [
           const SkoNotificationBell(),
+          if (_canManageSettings && _periodMode == _InvoicePeriodMode.month)
+            IconButton(
+              tooltip: SkoLanguageController.isEnglish
+                  ? 'Create draft from attendance'
+                  : '勤怠から下書きを作成',
+              onPressed: _loading || _creatingAttendanceDraft
+                  ? null
+                  : _createAttendanceDraft,
+              icon: const Icon(Icons.note_add_outlined),
+            ),
           if (_canManageSettings)
             IconButton(
               tooltip: SkoLanguageController.isEnglish ? 'Invoice Settings' : '請求書設定',
@@ -457,6 +564,23 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
   }
 
   Future<void> _openPreview(InvoiceCalculationResult invoice) async {
+    if (invoice.emptyAfterAttendanceMove) {
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          content: Text(SkoLanguageController.isEnglish
+              ? 'No billable work or expenses remain on this draft.'
+              : '請求対象の勤務・経費がありません。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: Text(SkoLanguageController.isEnglish ? 'Close' : '閉じる'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
     if (invoice.amountPending) {
       final action = await showDialog<InvoicePendingAction>(
         context: context,
@@ -487,7 +611,9 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
     List<InvoiceCalculationResult> invoices,
   ) async {
     if (invoices.isEmpty) return;
-    final pending = invoices.where((invoice) => invoice.amountPending);
+    final pending = invoices.where(
+      (invoice) => invoice.emptyAfterAttendanceMove || invoice.amountPending,
+    );
     if (pending.isNotEmpty) {
       await _openPreview(pending.first);
       return;

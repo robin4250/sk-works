@@ -24,8 +24,25 @@ if [[ -z "${SUPABASE_URL:-}" || -z "${SUPABASE_PUBLISHABLE_KEY:-}" ]]; then
 fi
 
 python3 tool/testflight_provenance.py source
-export SUPABASE_URL SUPABASE_PUBLISHABLE_KEY
+export SUPABASE_URL SUPABASE_PUBLISHABLE_KEY SKO_AUTH_GATEWAY_ANON_JWT
 python3 tool/testflight_provenance.py configuration
+
+dart_defines=(
+  --dart-define=SKO_MASTER_PASSWORD_V1=false
+  --dart-define="SUPABASE_URL=$SUPABASE_URL"
+  --dart-define="SUPABASE_PUBLISHABLE_KEY=$SUPABASE_PUBLISHABLE_KEY"
+)
+apple_sign_in=false
+if [[ -n "${SKO_AUTH_GATEWAY_ANON_JWT:-}" ]]; then
+  apple_sign_in=true
+  dart_defines+=(
+    --dart-define=SKO_EMPLOYEE_EXISTING_ACCOUNT_CLAIM_ENABLED=true
+    --dart-define=SKO_REGISTERED_APPLE_LOGIN_ENABLED=true
+    --dart-define=SKO_APPLE_NATIVE_ENROLLMENT_ENABLED=true
+    --dart-define="SKO_EMPLOYEE_LOGIN_GATEWAY_ANON_JWT=$SKO_AUTH_GATEWAY_ANON_JWT"
+    --dart-define="SKO_APPLE_LOGIN_GATEWAY_ANON_JWT=$SKO_AUTH_GATEWAY_ANON_JWT"
+  )
+fi
 
 echo "[1/5] 最新mainを確認"
 branch="$(git branch --show-current 2>/dev/null || true)"
@@ -42,7 +59,7 @@ echo "✓ main @ $(git rev-parse --short HEAD)"
 
 echo
 echo "[2/5] 正式アイコンとiOS設定を準備"
-bash tool/prepare_ios.sh
+SKO_IOS_APPLE_SIGN_IN="$apple_sign_in" bash tool/prepare_ios.sh
 
 echo
 echo "[3/5] TestFlight preflight"
@@ -68,11 +85,9 @@ python3 tool/testflight_provenance.py start --marker "$provenance_marker"
 flutter build ipa \
   --release \
   --export-method app-store \
-  --dart-define=SKO_MASTER_PASSWORD_V1=false \
   --build-name="$build_name" \
   --build-number="$build_number" \
-  --dart-define="SUPABASE_URL=$SUPABASE_URL" \
-  --dart-define="SUPABASE_PUBLISHABLE_KEY=$SUPABASE_PUBLISHABLE_KEY"
+  "${dart_defines[@]}"
 
 ARCHIVE_APP="build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app"
 EXPECTED_BUNDLE_ID="com.skworks.skWorks"

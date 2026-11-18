@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../data/authenticated_storage_download.dart';
 import '../../data/supabase_backend.dart';
 
 class CompanySubmittedDocumentRepository {
@@ -319,9 +320,8 @@ class CompanySubmittedDocumentRepository {
     return Map<String, dynamic>.from(updated);
   }
 
-  Future<String> createSignedUrl(String path) {
-    return _client.storage.from(bucket).createSignedUrl(path, 60 * 10);
-  }
+  Future<Uint8List> downloadAttachment(String path) =>
+      downloadAuthenticatedStorageObject(_client, bucket: bucket, path: path);
 
   Future<void> archive(String id) async {
     await requireAdmin();

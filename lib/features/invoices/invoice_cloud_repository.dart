@@ -6,6 +6,7 @@ import '../../domain/company_seal_snapshot.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
+import '../../international/language_controller.dart';
 import '../../domain/invoice_engine.dart';
 import '../../domain/expense_cost_snapshot.dart';
 import '../../domain/trade_document_adjustment_snapshot.dart';
@@ -28,6 +29,59 @@ class InvoiceCloudRepository {
       throw StateError('操作する会社を一意に確認できません。');
     }
     return rows.single['company_id'] as String;
+  }
+
+  Future<({
+    String actor,
+    String companyId,
+    List<({String id, String name})> customers,
+  })> loadAttendanceDraftCustomers() async {
+    final actor = _client.auth.currentUser?.id;
+    if (actor == null) throw StateError('ログインが必要です。');
+    final companyId = await adjustmentCompanyId();
+    if (_client.auth.currentUser?.id != actor) {
+      throw StateError('操作したアカウントを再確認してください。');
+    }
+    final rows = await _client
+        .from('customers')
+        .select('id, name')
+        .eq('company_id', companyId)
+        .order('name')
+        .order('id');
+    if (_client.auth.currentUser?.id != actor) {
+      throw StateError('操作したアカウントを再確認してください。');
+    }
+    return (
+      actor: actor,
+      companyId: companyId,
+      customers: [
+        for (final row in rows)
+          (id: row['id'] as String, name: row['name'] as String),
+      ],
+    );
+  }
+
+  Future<bool> createAttendanceDraft({
+    required String actor,
+    required String companyId,
+    required String customerId,
+    required DateTime month,
+  }) async {
+    if (_client.auth.currentUser?.id != actor) {
+      throw StateError('操作したアカウントを再確認してください。');
+    }
+    final result = await _client.rpc(
+      'create_attendance_invoice_draft',
+      params: {
+        'p_company_id': companyId,
+        'p_customer_id': customerId,
+        'p_month': _date(DateTime(month.year, month.month)),
+      },
+    );
+    if (_client.auth.currentUser?.id != actor || result is! bool) {
+      throw StateError('請求下書きの作成結果を確認できませんでした。');
+    }
+    return result;
   }
 
   static InvoiceCloudRepository? maybeCreate() {
@@ -424,6 +478,11 @@ class InvoiceCloudRepository {
 
         final sealUnavailable = invoiceUsesCurrentSeal(invoice) &&
             (currentSealCompany == null || currentSealCompany['id'] != companyId);
+        final emptyAfterAttendanceMove =
+            invoice['status'] == 'draft' &&
+            invoice['finalized_at'] == null &&
+            invoice['approval_finalized_at'] == null &&
+            snapshotMap['empty_after_attendance_move'] == true;
         results.add(
           InvoiceEngine.calculate(
             customerId: customerName,
@@ -447,7 +506,12 @@ class InvoiceCloudRepository {
                 snapshotMap['route_quantity_pending'] == 'true',
             routeSourcePending: snapshotMap['route_source_pending'] == true ||
                 snapshotMap['route_source_pending'] == 'true',
-            outputReadinessError: sealUnavailable
+            emptyAfterAttendanceMove: emptyAfterAttendanceMove,
+            outputReadinessError: emptyAfterAttendanceMove
+                ? (SkoLanguageController.isEnglish
+                      ? 'No billable work or expenses remain on this draft.'
+                      : '請求対象の勤務・経費がありません。')
+                : sealUnavailable
                 ? '請求書の現在の角印設定を確認できません。再読み込みしてください。'
                 : null,
             companySealSnapshot: sealUnavailable

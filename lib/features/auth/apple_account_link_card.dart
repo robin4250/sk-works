@@ -1,14 +1,18 @@
 import 'dart:async';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../data/supabase_backend.dart';
 import 'apple_account_link.dart';
+import 'apple_native_credential_preparation.dart';
 
 class AppleAccountLinkCard extends StatefulWidget {
-  const AppleAccountLinkCard({super.key, this.source});
+  const AppleAccountLinkCard({super.key, this.source, this.onLinked});
   final AppleAccountLink? source;
+  final VoidCallback? onLinked;
   @override
   State<AppleAccountLinkCard> createState() => _AppleAccountLinkCardState();
 }
@@ -49,7 +53,7 @@ class _AppleAccountLinkCardState extends State<AppleAccountLinkCard>
         setState(() { _message = null; _complete = false; });
         _load();
       }
-      _verify();
+      if (!_nativeEnrollmentEnabled) _verify();
     });
     _load();
   }
@@ -62,6 +66,99 @@ class _AppleAccountLinkCardState extends State<AppleAccountLinkCard>
     catch (_) { readiness = AppleLinkReadiness.unavailable; }
     if (!mounted || generation != _generation) return;
     setState(() { _readiness = readiness; _loading = false; });
+  }
+
+  static const _nativeEnrollmentEnabled =
+      bool.fromEnvironment('SKO_APPLE_NATIVE_ENROLLMENT_ENABLED');
+
+  Future<void> _startNativeEnrollment() async {
+    final source = _source;
+    if (source == null || _busy || _pending || !_nativeEnrollmentEnabled) return;
+    final original = source.client.auth.currentSession;
+    if (original == null || original.isExpired) return;
+    final action = ++_actionGeneration;
+    setState(() { _busy = true; _pending = true; _message = null; });
+    final preparation = AppleNativeCredentialPreparation(source.client, enabled: true);
+    final transport = http.Client();
+    try {
+      var password = '';
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialog) => AlertDialog(
+          title: const Text('第一パスワードで本人確認'),
+          content: TextField(
+            obscureText: true,
+            enableSuggestions: false,
+            autocorrect: false,
+            decoration: const InputDecoration(labelText: '第一パスワード'),
+            onChanged: (value) => password = value,
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialog, false), child: const Text('戻る')),
+            TextButton(onPressed: () => Navigator.pop(dialog, true), child: const Text('Appleの本人確認へ')),
+          ],
+        ),
+      );
+      if (!mounted || confirmed != true || password.isEmpty ||
+          action != _actionGeneration ||
+          source.client.auth.currentSession?.accessToken != original.accessToken) return;
+      final credential = await preparation.requestForExistingGoogleAccount();
+      // The system sheet can deliver its result before Flutter reports resume.
+      final resumeDeadline = Stopwatch()..start();
+      while (mounted && !_foreground && action == _actionGeneration &&
+          source.client.auth.currentSession?.accessToken == original.accessToken &&
+          resumeDeadline.elapsed < const Duration(seconds: 3)) {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      }
+      if (!mounted || !_foreground || action != _actionGeneration ||
+          credential.exactAccessToken != original.accessToken ||
+          source.client.auth.currentSession?.accessToken != original.accessToken) {
+        throw StateError('enrollment session changed');
+      }
+      final request = http.Request('POST', Uri.parse(
+        '${SupabaseBackendConfig.url}/functions/v1/apple-native-enrollment',
+      ))
+        ..followRedirects = false
+        ..headers.addAll({
+          'apikey': SupabaseBackendConfig.publishableKey,
+          'authorization': 'Bearer ${original.accessToken}',
+          'content-type': 'application/json',
+        })
+        ..body = jsonEncode({'password': password, 'id_token': credential.idToken,
+          'nonce': credential.nonce});
+      password = '';
+      final response = await transport.send(request).timeout(const Duration(seconds: 30));
+      if (response.statusCode != 200) throw StateError('enrollment not confirmed');
+      final bytes = await response.stream.fold<List<int>>(<int>[], (buffer, chunk) {
+        if (buffer.length + chunk.length > 4096) throw StateError('enrollment not confirmed');
+        return buffer..addAll(chunk);
+      }).timeout(const Duration(seconds: 10));
+      final receipt = jsonDecode(utf8.decode(bytes));
+      if (receipt is! Map || receipt['linked'] != true || receipt['user_id'] != original.user.id) {
+        throw StateError('enrollment not confirmed');
+      }
+      final user = (await source.client.auth.getUser(original.accessToken)
+          .timeout(const Duration(seconds: 10))).user;
+      if (!mounted || !_foreground || action != _actionGeneration ||
+          source.client.auth.currentSession?.accessToken != original.accessToken ||
+          user?.id != original.user.id ||
+          user?.identities?.any((identity) => identity.provider == 'apple' &&
+              identity.userId == original.user.id) != true) {
+        throw StateError('enrollment not confirmed');
+      }
+      setState(() { _complete = true; _message = '同じSKOアカウントへのApple連携を確認しました。'; });
+      widget.onLinked?.call();
+    } catch (_) {
+      if (mounted && action == _actionGeneration) {
+        setState(() => _message = 'Apple連携を確認できませんでした。連携状況を再確認してください。');
+      }
+    } finally {
+      preparation.dispose();
+      transport.close();
+      if (mounted && action == _actionGeneration) {
+        setState(() { _busy = false; _pending = false; });
+      }
+    }
   }
 
   Future<void> _start() async {
@@ -116,6 +213,7 @@ class _AppleAccountLinkCardState extends State<AppleAccountLinkCard>
       if (complete) {
         setState(() { _pending = false; _complete = true;
           _message = '同じSKOアカウントへのApple連携を確認しました。'; });
+        widget.onLinked?.call();
       }
     } catch (_) {
       if (action != _actionGeneration) return;
@@ -129,7 +227,7 @@ class _AppleAccountLinkCardState extends State<AppleAccountLinkCard>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _foreground = state == AppLifecycleState.resumed;
-    if (_foreground) { _verify(); _load(); }
+    if (_foreground) { if (!_nativeEnrollmentEnabled) _verify(); _load(); }
   }
 
   @override
@@ -153,7 +251,7 @@ class _AppleAccountLinkCardState extends State<AppleAccountLinkCard>
     crossAxisAlignment: CrossAxisAlignment.start, children: [
       const Text('Appleを追加'),
       if (_loading) const LinearProgressIndicator(),
-      if (!_loading && !_pending && !_complete) Text(switch (_readiness) {
+      if (!_loading && !_pending && !_complete && !_nativeEnrollmentEnabled) Text(switch (_readiness) {
         AppleLinkReadiness.ready => '追加前の確認ができました。Appleの本人確認と連携はまだ完了していません。',
         AppleLinkReadiness.linked => 'このアカウントへのApple連携は確認済みです。',
         AppleLinkReadiness.enrollmentPreparing => 'Appleアカウントの追加は準備中です。Google・Face IDと現在の会社設定は引き続き使えます。',
@@ -163,7 +261,12 @@ class _AppleAccountLinkCardState extends State<AppleAccountLinkCard>
         AppleLinkReadiness.googleRequired => '登録済みGoogleとの連携を確認できないため、Apple追加は開始できません。',
         _ => 'Appleの提供状態または本人の登録状況を確認できませんでした。再確認してください。',
       }),
-      if (_readiness == AppleLinkReadiness.ready && !_loading && !_pending && !_complete)
+      if (_nativeEnrollmentEnabled && _source != null &&
+          SupabaseBackendConfig.url == 'https://ztktgquxvcxcjxtluspu.supabase.co' &&
+          !_loading && !_pending && !_complete && _readiness != AppleLinkReadiness.linked)
+        TextButton(onPressed: _busy ? null : _startNativeEnrollment,
+          child: const Text('本人確認してAppleを追加')),
+      if (!_nativeEnrollmentEnabled && _readiness == AppleLinkReadiness.ready && !_loading && !_pending && !_complete)
         TextButton(onPressed: _busy ? null : _start,
           child: const Text('このアカウントにAppleを追加')),
       if (!_pending) TextButton(onPressed: _busy || _loading ? null : _load,
@@ -175,7 +278,7 @@ class _AppleAccountLinkCardState extends State<AppleAccountLinkCard>
           '追加の本人確認が準備中の場合は開始できません。ログアウトせず、現在の方法を引き続き使えます。')),
       ]),
       if (_pending) const Text('Appleの本人確認と同じアカウントへの連携を確認しています。'),
-      if (_pending) TextButton(onPressed: () async {
+      if (_pending && !_nativeEnrollmentEnabled) TextButton(onPressed: () async {
         _actionGeneration++;
         await _source?.cancel();
         if (mounted) setState(() { _pending = false; _busy = false; });

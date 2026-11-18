@@ -158,6 +158,52 @@ class ProvenanceTests(unittest.TestCase):
         finally:
             os.chdir(old)
 
+    def test_release_auth_flags_require_ios_capability_and_public_gateway(self):
+        root = self.root / 'auth-flags'
+        config = root / 'ios/Flutter/Generated.xcconfig'
+        info = root / 'ios/Runner/Info.plist'
+        config.parent.mkdir(parents=True)
+        info.parent.mkdir(parents=True)
+
+        def encode(value):
+            return base64.urlsafe_b64encode(value).decode().rstrip('=')
+
+        def gateway(role='anon', ref='ztktgquxvcxcjxtluspu'):
+            return '.'.join([
+                encode(b'{"alg":"HS256"}'),
+                encode(json.dumps({'role': role, 'ref': ref}).encode()),
+                encode(bytes(32)),
+            ])
+
+        def verify(values, native_enabled):
+            config.write_text('DART_DEFINES=' + ','.join(
+                base64.b64encode(f'{key}={value}'.encode()).decode()
+                for key, value in values.items()))
+            info.write_bytes(plistlib.dumps(
+                {'SKOAppleCredentialPreparationEnabled': native_enabled}))
+            VERIFY_FLAGS()
+
+        base = {
+            'SUPABASE_URL': 'https://ztktgquxvcxcjxtluspu.supabase.co',
+            'SUPABASE_PUBLISHABLE_KEY': 'sb_publishable_fixture',
+            'SKO_MASTER_PASSWORD_V1': 'false',
+        }
+        flags = {**base, **dict.fromkeys(p.AUTH_FEATURE_FLAGS, 'true'),
+                 **dict.fromkeys(p.AUTH_GATEWAY_KEYS, gateway())}
+        old = Path.cwd()
+        try:
+            os.chdir(root)
+            verify(flags, True)
+            with self.assertRaises(ValueError):
+                verify(flags, False)
+            with self.assertRaises(ValueError):
+                verify(base, True)
+            for bad_key in (gateway(role='service_role'), gateway(ref='other')):
+                with self.assertRaises(ValueError):
+                    verify({**flags, **dict.fromkeys(p.AUTH_GATEWAY_KEYS, bad_key)}, True)
+        finally:
+            os.chdir(old)
+
     def test_flutter_347_generated_metadata_is_exact_and_bound_to_sdk_and_build(self):
         root = self.root / 'sdk-flags'
         path = root / 'ios/Flutter/Generated.xcconfig'

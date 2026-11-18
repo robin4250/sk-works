@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
@@ -311,7 +313,25 @@ class QualificationCloudRepository {
   Future<String> createOwnQualificationPhotoUrl({
     required String qualificationId,
     required String storagePath,
-  }) async {
+  }) => _readOwnPhoto(qualificationId, storagePath,
+      (scope, row) => scope.signPhoto(storagePath, row));
+
+  Future<Uint8List> downloadOwnQualificationPhoto({
+    required String qualificationId,
+    required String storagePath,
+  }) => _readOwnPhoto(qualificationId, storagePath,
+      (scope, row) => scope.downloadPhoto(storagePath, row));
+
+  Future<void> validateOwnQualificationPhoto({
+    required String qualificationId,
+    required String storagePath,
+  }) => _readOwnPhoto<void>(qualificationId, storagePath, (_, __) async {});
+
+  Future<T> _readOwnPhoto<T>(
+    String qualificationId,
+    String storagePath,
+    Future<T> Function(QualificationDocumentReadScope, Map<String, dynamic>) load,
+  ) async {
     final scope = await QualificationDocumentReadScope.capture(_client);
     final worker = await scope.ownWorker();
     final rows = await scope.photoRows(
@@ -326,7 +346,7 @@ class QualificationCloudRepository {
     }
     scope.validatePhotoPath(storagePath, rows.single);
     await scope.verify(worker: worker);
-    final url = await scope.signPhoto(storagePath, rows.single);
+    final result = await load(scope, rows.single);
     final fresh = await scope.photoRows(
       workerId: worker['id'] as String,
       qualificationId: qualificationId,
@@ -334,7 +354,7 @@ class QualificationCloudRepository {
     if (fresh.length != 1) throw StateError('資格証写真が変更されました。');
     scope.validatePhotoPath(storagePath, fresh.single);
     await scope.verify(worker: worker);
-    return url;
+    return result;
   }
 
   Future<Map<String, dynamic>> loadOwnQualificationWorkspace() async {

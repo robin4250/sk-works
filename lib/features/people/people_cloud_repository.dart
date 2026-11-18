@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:flutter/widgets.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../data/authenticated_storage_download.dart';
 import '../../data/supabase_backend.dart';
 import '../auth/app_auth_mutation_gateway.dart';
 
@@ -254,7 +256,7 @@ class PeopleCloudRepository {
     actorChanges: _client.auth.onAuthStateChange.map((event) => event.session?.user.id),
   );
 
-  Future<String?> portraitUrl(String workerId,{String? companyId}) async {
+  Future<Uint8List?> downloadPortrait(String workerId,{String? companyId}) async {
     final actor = actorId;
     final member = await membership(companyId:companyId);
     final path = await _client.rpc(
@@ -267,11 +269,13 @@ class PeopleCloudRepository {
     if (!value.startsWith('${member.companyId}/$workerId/')) {
       throw StateError('顔写真の所属が一致しません');
     }
-    final url = await _client.storage
-        .from('worker-documents')
-        .createSignedUrl(value, 600);
+    final bytes = await downloadAuthenticatedStorageObject(
+      _client,
+      bucket: 'worker-documents',
+      path: value,
+    );
     if (actorId != actor) throw StateError('ログイン情報が変更されました');
-    return url;
+    return bytes;
   }
 
   Future<List<Map<String, dynamic>>> loadAll({String? expectedCompany}) async {

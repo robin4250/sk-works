@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -5,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../international/language_controller.dart';
 import 'site_attendance_direction_page.dart';
 import 'site_cloud_repository.dart';
+import 'site_information_approvals_page.dart';
 import 'site_page.dart';
 
 class SiteDetailPage extends StatefulWidget {
@@ -27,6 +30,7 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
   final _repository = SiteCloudRepository.maybeCreate();
   final _picker = ImagePicker();
   List<SitePhotoRecord> _photos = const [];
+  Map<String, Future<Uint8List>> _photoThumbnails = {};
   bool _loadingPhotos = true;
 
   String _tr(String ja, String en) =>
@@ -49,6 +53,7 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
       if (!mounted) return;
       setState(() {
         _photos = photos;
+        _photoThumbnails = {};
         _loadingPhotos = false;
       });
     } catch (_) {
@@ -202,13 +207,15 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
     if (confirmed != true) return;
 
     try {
-      await repository.submitInformationChange(
+      final pending = await repository.submitInformationChange(
         siteId: widget.site.id,
         values: const {'status': 'completed'},
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_tr('現場終了の承認申請を送信しました', 'Site completion approval request sent'))),
+        SnackBar(content: Text(pending
+            ? _tr('現場終了の申請を受け付けました', 'Site completion request recorded')
+            : _tr('承認待ちの変更はありません', 'No changes are awaiting approval'))),
       );
     } catch (error) {
       if (!mounted) return;
@@ -253,22 +260,37 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
     );
   }
 
+  void _openInformationRequests() {
+    Navigator.of(context).push<void>(MaterialPageRoute(
+      builder: (_) => const SiteInformationApprovalsPage(),
+    ));
+  }
+
   Future<void> _edit() async {
     final submitted = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (_) => SiteEditRequestPage(site: widget.site),
       ),
     );
-    if (!mounted || submitted != true) return;
+    if (!mounted || submitted == null) return;
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text(_tr('申請の送信が完了しました', 'Request submitted')),
-        content: Text(_tr(
-          '承認担当者に申請を送りました。現場情報は承認後に反映されます。',
-          'Your request was sent to the approver. Site information changes take effect after approval.',
-        )),
+        title: Text(submitted
+            ? _tr('現場情報の申請を受け付けました', 'Site change request recorded')
+            : _tr('現場情報の保存結果', 'Site information saved')),
+        content: Text(submitted
+            ? _tr('現場データの承認待ちから申請状況を確認できます。', 'Check the status in pending site changes.')
+            : _tr('承認待ちの変更はありません。未登録の項目への入力はそのまま反映されます。', 'No changes are awaiting approval. Entries in previously blank fields take effect immediately.')),
         actions: [
+          if (submitted)
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                _openInformationRequests();
+              },
+              child: Text(_tr('申請状況を見る', 'Check request status')),
+            ),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext),
             child: Text(_tr('現場詳細へ', 'Back to site details')),
@@ -278,10 +300,28 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
     );
   }
 
+  Widget _photoImage(Future<Uint8List> future, BoxFit fit) {
+    const fallback = Center(child: Icon(Icons.broken_image_outlined));
+    return FutureBuilder<Uint8List>(
+      future: future,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final bytes = snapshot.data;
+        if (bytes == null) return fallback;
+        return Image.memory(bytes, fit: fit, errorBuilder: (_, __, ___) => fallback);
+      },
+    );
+  }
+
   Future<void> _showPhotoPreview(
     SitePhotoRecord photo,
     int slot,
   ) async {
+    final repository = _repository;
+    if (repository == null) return;
+    final download = repository.downloadPhoto(photo);
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => Dialog(
@@ -314,14 +354,7 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
                 child: InteractiveViewer(
                   minScale: 1,
                   maxScale: 5,
-                  child: Image.network(
-                    photo.signedUrl,
-                    fit: BoxFit.contain,
-                    errorBuilder: (_, __, ___) => const Padding(
-                      padding: EdgeInsets.all(32),
-                      child: Icon(Icons.broken_image_outlined, size: 48),
-                    ),
-                  ),
+                  child: _photoImage(download, BoxFit.contain),
                 ),
               ),
             ],
@@ -415,6 +448,11 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
       appBar: AppBar(
         title: Text(_tr('現場詳細', 'Site Details')),
         actions: [
+          IconButton(
+            tooltip: _tr('現場データの承認待ち', 'Pending site changes'),
+            onPressed: _openInformationRequests,
+            icon: const Icon(Icons.fact_check_outlined),
+          ),
           IconButton(
             tooltip: _tr('下請け会社・取引会社に共有', 'Share with Subcontractors / Business Partners'),
             onPressed: _share,
@@ -693,11 +731,12 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
                     Text(SkoLanguageController.isEnglish ? 'Photo $slot' : '写真$slot'),
                   ],
                 )
-              : Image.network(
-                  photo.signedUrl,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) =>
-                      const Center(child: Icon(Icons.broken_image_outlined)),
+              : _photoImage(
+                  _photoThumbnails.putIfAbsent(
+                    photo.storagePath,
+                    () => _repository!.downloadPhoto(photo!),
+                  ),
+                  BoxFit.cover,
                 ),
         ),
       ),
@@ -1071,6 +1110,7 @@ class _SiteEditRequestPageState extends State<SiteEditRequestPage> {
       _submitting = true;
       _submitError = null;
     });
+    var pending = true;
     try {
       var decisionMade = false;
       void decide(BuildContext dialogContext, bool approved) {
@@ -1104,7 +1144,7 @@ class _SiteEditRequestPageState extends State<SiteEditRequestPage> {
         if (repository == null) {
           throw StateError('接続を確認してください。');
         }
-        await repository.submitInformationChange(
+        pending = await repository.submitInformationChange(
           siteId: widget.site.id,
           values: values,
         );
@@ -1124,7 +1164,7 @@ class _SiteEditRequestPageState extends State<SiteEditRequestPage> {
         setState(() => _submitting = false);
         if (_returning) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) Navigator.of(context).pop(true);
+            if (mounted) Navigator.of(context).pop(pending);
           });
         }
       }

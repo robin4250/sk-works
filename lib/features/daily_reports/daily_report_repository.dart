@@ -1,8 +1,11 @@
+import 'dart:typed_data';
+
 import 'daily_report_edit_session.dart';
 import 'daily_report_company_allowance_selection.dart';
 import '../shared/company_allowance_label_repository.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../data/authenticated_storage_download.dart';
 import '../../data/supabase_backend.dart';
 import 'daily_report_shift_context.dart';
 import 'daily_report_evidence_address.dart';
@@ -1245,8 +1248,9 @@ class DailyReportRepository {
         continue;
       }
       try {
-        final bytes = await _client.storage.from(record.storageBucket)
-          .download(record.storagePath).timeout(const Duration(seconds: 15));
+        final bytes = await downloadAttendanceEvidence(
+          record.storagePath, bucket: record.storageBucket,
+        ).timeout(const Duration(seconds: 15));
         attachments.add(DailyReportPdfEvidence(record: record, photoBytes: bytes),
         );
       } catch (_) {
@@ -1257,12 +1261,10 @@ class DailyReportRepository {
     return attachments;
   }
 
-  Future<String> attendanceEvidenceUrl(String path, {String bucket = 'attendance-evidence',
-  }) {
-    return _client.storage
-        .from(bucket)
-        .createSignedUrl(path, 3600);
-  }
+  Future<Uint8List> downloadAttendanceEvidence(
+    String path, {
+    String bucket = 'attendance-evidence',
+  }) => downloadAuthenticatedStorageObject(_client, bucket: bucket, path: path);
 
   Future<DailyReportEditSession?> approvedEditSession(DailyReportRecord report) async {
     final actor = currentActorId;

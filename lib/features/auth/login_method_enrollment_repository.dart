@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
 import '../../international/countries/jp/japan_phone_rules.dart';
+import 'employee_bootstrap_identity.dart';
 
 class PrimaryPasswordReauthenticationRequired implements Exception {
   const PrimaryPasswordReauthenticationRequired();
@@ -32,10 +33,11 @@ class LoginMethodEnrollmentState {
     required this.emailAvailable, required this.phoneAvailable,
     this.phoneConfirmationPending = false, this.phoneRegistrationReady = false,
     this.primaryPasswordCodeRequired = false,
-    this.primaryPasswordCodeSent = false});
+    this.primaryPasswordCodeSent = false, this.employeeBootstrapEmail = false});
   final String email, phone;
   final bool emailConfirmed, phoneConfirmed, emailAvailable, phoneAvailable;
   final bool phoneConfirmationPending, phoneRegistrationReady, primaryPasswordCodeRequired, primaryPasswordCodeSent;
+  final bool employeeBootstrapEmail;
   bool get canRegisterPhone => phoneRegistrationReady && phoneAvailable;
   bool get canSetPassword =>
       (emailAvailable && emailConfirmed && email.isNotEmpty) ||
@@ -89,7 +91,10 @@ class LoginMethodEnrollmentRepository implements LoginMethodEnrollmentSource {
       SupabaseBackend.isInitialized && SupabaseBackendConfig.isConfigured
           ? LoginMethodEnrollmentRepository(SupabaseBackend.client,
               authUrl: Uri.parse('${SupabaseBackendConfig.url}/auth/v1/'),
-              publicKey: SupabaseBackendConfig.publishableKey)
+              publicKey: SupabaseBackendConfig.publishableKey,
+              enablePhoneEnrollment: const bool.fromEnvironment(
+                'SKO_PHONE_SMS_ENROLLMENT_ENABLED',
+              ))
           : null;
 
   Future<Map<String, dynamic>> _request(String route, String token,
@@ -177,10 +182,12 @@ class LoginMethodEnrollmentRepository implements LoginMethodEnrollmentSource {
     final external = settings['external'];
     if (external is! Map) throw StateError('ログイン方法の提供状態を確認できません。');
     final json = user.toJson();
-    return LoginMethodEnrollmentState(email: user.email ?? '', phone: user.phone ?? '',
-      emailConfirmed: json['email_confirmed_at'] != null,
+    final bootstrapEmail = hasEmployeeBootstrapEmail(user);
+    return LoginMethodEnrollmentState(email: bootstrapEmail ? '' : user.email ?? '', phone: user.phone ?? '',
+      emailConfirmed: !bootstrapEmail && json['email_confirmed_at'] != null,
       phoneConfirmed: json['phone_confirmed_at'] != null,
-      emailAvailable: external['email'] == true, phoneAvailable: external['phone'] == true,
+      emailAvailable: !bootstrapEmail && external['email'] == true, phoneAvailable: external['phone'] == true,
+      employeeBootstrapEmail: bootstrapEmail,
       phoneConfirmationPending: _pendingActor == user.id && _pendingPhone != null,
       phoneRegistrationReady: _phoneEnrollmentEnabled,
       primaryPasswordCodeRequired: _passwordChallengeNeeded, primaryPasswordCodeSent: _passwordCodeRequested);
@@ -275,7 +282,7 @@ class LoginMethodEnrollmentRepository implements LoginMethodEnrollmentSource {
     if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(value)) throw StateError('メールアドレスを確認してください。');
     final state = await _state(token, user, check);
     if (!state.emailAvailable) throw StateError('メールログインは現在準備中です。');
-    if (state.email.isNotEmpty) throw StateError('登録済みのメールアドレスを保持します。');
+    if (user.email?.isNotEmpty == true) throw StateError('登録済みのメールアドレスを保持します。');
     final roles = await _memberships(token, user.id, check);
     check();
     await _request('user?redirect_to=${Uri.encodeQueryComponent('com.skworks.sko://login-callback/')}',

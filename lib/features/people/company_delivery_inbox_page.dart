@@ -9,7 +9,10 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import 'company_document_exchange_repository.dart';
+import 'partner_employment_contract_page.dart';
+import '../payroll/payroll_adjustment_page.dart';
 import '../shared/pdf_bytes_cache.dart';
+import '../shared/resource_registration_card.dart';
 import '../shared/pdf_pinch_pages.dart';
 
 class CompanyDeliveryInboxPage extends StatefulWidget {
@@ -173,6 +176,62 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
     setState(() => _savedState = savedState);
   }
 
+  Future<void> _openReceivedAttachment(_ReceivedTransferItem item) async {
+    final repository = _repository;
+    if (repository == null) return;
+    await showResourceAttachments(
+      context,
+      title: item.title,
+      attachments: [
+        ResourceAttachment(
+          label: item.title,
+          path: item.attachmentPath,
+          reloadOnOpen: true,
+          loadBytes: () => repository.downloadDeliveryFile(
+            deliveryId: item.deliveryId,
+            itemId: item.id,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _openPartnerPayrollAction(
+    _ReceivedTransferItem item, {
+    bool openContract = false,
+  }
+  ) async {
+    final repository = _repository;
+    if (repository == null) return;
+    try {
+      final workerId = await repository.resolvePartnerAllowanceWorker(item.id);
+      if (!mounted) return;
+      if (workerId == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('この方の給与対象を確認できません。')),
+        );
+        return;
+      }
+      await Navigator.of(context).push<void>(MaterialPageRoute(
+        builder: (_) => openContract
+            ? PartnerEmploymentContractPage(
+                workerName: item.title,
+                repository: repository,
+                deliveryItemId: item.id,
+              )
+            : PayrollAdjustmentPage(
+                initialWorkerId: workerId,
+                partnerDeliveryItemId: item.id,
+              ),
+      ));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('給与対象を確認できませんでした。')),
+      );
+    }
+  }
+
   Future<void> _showReceivedDetail(_ReceivedTransferItem item) async {
     final alreadySaved = _savedState.containsKey(item.key);
     final shouldSave = await showDialog<bool>(
@@ -194,6 +253,31 @@ class _CompanyDeliveryInboxPageState extends State<CompanyDeliveryInboxPage> {
           ],
         ),
         actions: [
+          if (alreadySaved && item.isPersonnelDetail)
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext, false);
+                _openPartnerPayrollAction(item);
+              },
+              child: const Text('追加手当'),
+            ),
+          if (alreadySaved && item.isPersonnelDetail)
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext, false);
+                _openPartnerPayrollAction(item, openContract: true);
+              },
+              child: const Text('雇用契約'),
+            ),
+          if (item.attachmentPath != null)
+            TextButton.icon(
+              onPressed: () {
+                Navigator.pop(dialogContext, false);
+                _openReceivedAttachment(item);
+              },
+              icon: const Icon(Icons.attach_file),
+              label: const Text('添付を開く'),
+            ),
           TextButton.icon(
             onPressed: () {
               Navigator.pop(dialogContext, false);
@@ -698,6 +782,8 @@ class _ReceivedTransferItem {
     required this.originCompany,
     required this.title,
     required this.subtitle,
+    this.attachmentPath,
+    this.isPersonnelDetail = false,
   });
 
   final String id;
@@ -708,6 +794,8 @@ class _ReceivedTransferItem {
   final String originCompany;
   final String title;
   final String subtitle;
+  final String? attachmentPath;
+  final bool isPersonnelDetail;
 
   String get key => '${isStructured ? 'data' : 'file'}:$id';
 
@@ -733,6 +821,13 @@ class _ReceivedTransferItem {
       deliveryId: deliveryId,
       savedAt: savedAt,
       isStructured: false,
+      attachmentPath: switch (bucket) {
+        'company-required-documents' ||
+        'partner-archive-documents' ||
+        'qualification-certificates' ||
+        'worker-documents' => row['path']?.toString(),
+        _ => null,
+      },
       category: category,
       originCompany: _origin(path, fallbackCompany),
       title: row['name']?.toString() ?? '書類',
@@ -777,6 +872,7 @@ class _ReceivedTransferItem {
       deliveryId: deliveryId,
       savedAt: savedAt,
       isStructured: true,
+      isPersonnelDetail: kind == 'personnel_detail',
       category: category,
       originCompany: _origin(path, fallbackCompany),
       title: title,

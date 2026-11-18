@@ -40,7 +40,7 @@ void main() {
     for (final sections in [ManualContent.general, ManualContent.subAdmin,
       ManualContent.admin, ManualContent.pamphlet]) {
       expect(sections.map((section) => section.title).toSet().length, sections.length);
-      expect(sections.map((section) => section.title), contains('天気・交通とホームの並べ替え'));
+      expect(sections.map((section) => section.title), contains('交通・雨雲とホームの並べ替え'));
     }
     expect(ManualContent.general.map((section) => section.title),
       isNot(contains('LINEトークと月別請求書')));

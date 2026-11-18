@@ -4,7 +4,15 @@ import '../notifications/notification_bell.dart';
 import 'payroll_adjustment_repository.dart';
 
 class PayrollAdjustmentPage extends StatefulWidget {
-  const PayrollAdjustmentPage({super.key, this.repository});
+  const PayrollAdjustmentPage({
+    super.key,
+    this.repository,
+    this.initialWorkerId,
+    this.partnerDeliveryItemId,
+  });
+
+  final String? initialWorkerId;
+  final String? partnerDeliveryItemId;
 
   @visibleForTesting
   final PayrollAdjustmentRepository? repository;
@@ -26,12 +34,26 @@ class _PayrollAdjustmentPageState extends State<PayrollAdjustmentPage> {
   DateTime? _endFilter;
   bool _loading = true;
   bool _busy = false;
+  bool _openedInitialEntry = false;
   String? _error;
 
   @override
   void initState() {
     super.initState();
+    _workerFilter = widget.initialWorkerId;
     _load();
+  }
+
+  Future<T?> _showAdjustmentDialog<T>({required WidgetBuilder builder}) async {
+    final navigator = Navigator.of(context, rootNavigator: true);
+    final route = DialogRoute<T>(
+      context: context,
+      themes: InheritedTheme.capture(from: context, to: navigator.context),
+      builder: builder,
+    );
+    final result = await navigator.push(route);
+    await route.completed;
+    return result;
   }
 
   Future<void> _load() async {
@@ -68,13 +90,31 @@ class _PayrollAdjustmentPageState extends State<PayrollAdjustmentPage> {
       ]);
 
       if (!mounted) return;
+      final workers = values[0] as List<PayrollAdjustmentWorker>;
+      final initialWorkerId = widget.initialWorkerId;
+      if (initialWorkerId != null &&
+          (!access.canManage || !workers.any((worker) => worker.id == initialWorkerId))) {
+        setState(() {
+          _loading = false;
+          _error = 'この方の給与調整を登録できません。';
+        });
+        return;
+      }
       setState(() {
         _access = access;
-        _workers = values[0] as List<PayrollAdjustmentWorker>;
+        _workers = workers;
         _types = values[1] as List<PayrollAdjustmentTypeOption>;
         _items = values[2] as List<PayrollAdjustmentListItem>;
         _loading = false;
       });
+      if (initialWorkerId != null && !_openedInitialEntry) {
+        _openedInitialEntry = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && ModalRoute.of(context)?.isCurrent == true) {
+            _addAdjustment();
+          }
+        });
+      }
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -350,8 +390,7 @@ class _PayrollAdjustmentPageState extends State<PayrollAdjustmentPage> {
     final note = TextEditingController(text: item.note ?? '');
     var effectiveDate = item.effectiveDate;
 
-    final saved = await showDialog<bool>(
-      context: context,
+    final saved = await _showAdjustmentDialog<bool>(
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           title: const Text('給与調整を修正'),
@@ -470,8 +509,7 @@ class _PayrollAdjustmentPageState extends State<PayrollAdjustmentPage> {
     if (repository == null || access == null || !access.canRename) return;
 
     final controller = TextEditingController(text: access.pageLabel);
-    final label = await showDialog<String>(
-      context: context,
+    final label = await _showAdjustmentDialog<String>(
       builder: (dialogContext) => AlertDialog(
         title: const Text('ページ名を変更'),
         content: TextField(
@@ -554,27 +592,36 @@ class _PayrollAdjustmentPageState extends State<PayrollAdjustmentPage> {
       return;
     }
 
-    if (_types.where((item) => item.isActive).isEmpty) {
+    final initialWorkerId = widget.initialWorkerId;
+    bool eligibleType(PayrollAdjustmentTypeOption item) =>
+        item.isActive && (initialWorkerId == null || item.isAddition);
+    if (_types.where(eligibleType).isEmpty) {
+      if (initialWorkerId != null) {
+        _show('給与調整で加算項目を登録してください。');
+        return;
+      }
       final created = await _addType();
       if (!created || !mounted) return;
     }
 
-    String workerId = _workerFilter ?? _workers.first.id;
-    String? typeId = _types.where((item) => item.isActive).isNotEmpty
-        ? _types.where((item) => item.isActive).first.id
+    String workerId = initialWorkerId ?? _workerFilter ?? _workers.first.id;
+    String? typeId = _types.where(eligibleType).isNotEmpty
+        ? _types.where(eligibleType).first.id
         : null;
-    DateTime effectiveDate =
-        await repository.loadLatestStatementPeriodEnd(workerId) ?? DateTime.now();
+    final now = DateTime.now();
+    DateTime effectiveDate = initialWorkerId == null
+        ? await repository.loadLatestStatementPeriodEnd(workerId) ?? now
+        : DateTime(now.year, now.month + 1, 0);
     if (!mounted) return;
     final amount = TextEditingController();
     final note = TextEditingController();
     final noteFocus = FocusNode();
+    var saving = false;
 
-    final saved = await showDialog<bool>(
-      context: context,
+    final saved = await _showAdjustmentDialog<bool>(
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) {
-          final activeTypes = _types.where((item) => item.isActive).toList();
+          final activeTypes = _types.where(eligibleType).toList();
           if (typeId != null &&
               !activeTypes.any((item) => item.id == typeId)) {
             typeId = activeTypes.isEmpty ? null : activeTypes.first.id;
@@ -603,7 +650,7 @@ class _PayrollAdjustmentPageState extends State<PayrollAdjustmentPage> {
                             child: Text(worker.name, maxLines: 1, overflow: TextOverflow.ellipsis),
                           ),
                       ],
-                      onChanged: (value) async {
+                      onChanged: initialWorkerId != null ? null : (value) async {
                         if (value == null) return;
                         final targetDate =
                             await repository.loadLatestStatementPeriodEnd(value);
@@ -643,7 +690,7 @@ class _PayrollAdjustmentPageState extends State<PayrollAdjustmentPage> {
                           ),
                         ),
                         const SizedBox(width: 8),
-                        IconButton.outlined(
+                        if (initialWorkerId == null) IconButton.outlined(
                           tooltip: '項目追加',
                           onPressed: () async {
                             final created = await _addType();
@@ -722,11 +769,12 @@ class _PayrollAdjustmentPageState extends State<PayrollAdjustmentPage> {
                 child: const Text('入力完了'),
               ),
               TextButton(
-                onPressed: () => Navigator.pop(dialogContext, false),
+                onPressed: saving ? null : () => Navigator.pop(dialogContext, false),
                 child: const Text('キャンセル'),
               ),
               FilledButton(
-                onPressed: () async {
+                onPressed: saving ? null : () async {
+                  if (saving) return;
                   final parsed = int.tryParse(
                     amount.text.replaceAll(',', '').trim(),
                   );
@@ -737,19 +785,33 @@ class _PayrollAdjustmentPageState extends State<PayrollAdjustmentPage> {
                     return;
                   }
 
+                  setDialogState(() => saving = true);
                   try {
-                    await repository.createAdjustment(
-                      workerId: workerId,
-                      typeId: typeId!,
-                      amountYen: parsed,
-                      effectiveDate: effectiveDate,
-                      note: note.text,
-                    );
+                    final itemId = widget.partnerDeliveryItemId;
+                    if (itemId == null) {
+                      await repository.createAdjustment(
+                        workerId: workerId,
+                        typeId: typeId!,
+                        amountYen: parsed,
+                        effectiveDate: effectiveDate,
+                        note: note.text,
+                      );
+                    } else {
+                      await repository.registerPartnerAllowance(
+                        itemId: itemId,
+                        workerId: workerId,
+                        typeId: typeId!,
+                        amountYen: parsed,
+                        effectiveDate: effectiveDate,
+                        note: note.text,
+                      );
+                    }
                     if (dialogContext.mounted) {
                       Navigator.pop(dialogContext, true);
                     }
                   } catch (error) {
                     if (!dialogContext.mounted) return;
+                    setDialogState(() => saving = false);
                     ScaffoldMessenger.of(dialogContext).showSnackBar(
                       SnackBar(content: Text('登録できませんでした: $error')),
                     );
@@ -781,8 +843,7 @@ class _PayrollAdjustmentPageState extends State<PayrollAdjustmentPage> {
     final label = TextEditingController();
     var direction = 'deduction';
 
-    final saved = await showDialog<bool>(
-      context: context,
+    final saved = await _showAdjustmentDialog<bool>(
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => _entryDialog(
           title: '給与調整の項目を追加',
@@ -876,8 +937,7 @@ class _PayrollAdjustmentPageState extends State<PayrollAdjustmentPage> {
     }
 
     final reason = TextEditingController();
-    final confirmed = await showDialog<bool>(
-      context: context,
+    final confirmed = await _showAdjustmentDialog<bool>(
       builder: (dialogContext) => AlertDialog(
         title: const Text('この登録を取消しますか？'),
         content: Column(

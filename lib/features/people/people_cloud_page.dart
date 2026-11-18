@@ -432,7 +432,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
                                                   companyName: displayCompany,
                                                   canManage: canManage,
                                                   canViewFamily: canView,
-                                                  portraitLoader: () => repository!.portraitUrl(id,companyId:session!.company),
+                                                  portraitLoader: () => repository!.downloadPortrait(id,companyId:session!.company),
                                                 ),
                                               ),
                                             );

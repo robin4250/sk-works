@@ -4,6 +4,8 @@ import 'package:local_auth/local_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'employee_bootstrap_identity.dart';
+
 class PanelSevenSnapshot {
   const PanelSevenSnapshot({
     required this.actorId,
@@ -148,12 +150,13 @@ class PanelSevenRepository implements PanelSevenSource {
     } catch (_) {
       // No guessing from linked providers when session evidence is unavailable.
     }
+    final bootstrapEmail = hasEmployeeBootstrapEmail(user);
     return PanelSevenSnapshot(
       actorId: actor,
       providers: List.unmodifiable(providers),
-      email: user.email,
+      email: bootstrapEmail ? null : user.email,
       phone: user.phone,
-      emailConfirmed: json['email_confirmed_at'] != null,
+      emailConfirmed: !bootstrapEmail && json['email_confirmed_at'] != null,
       phoneConfirmed: json['phone_confirmed_at'] != null,
       sessionMethods: List.unmodifiable(methods.toList()..sort()),
       secondaryConfigured: secondary,

@@ -1,7 +1,9 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../data/authenticated_storage_download.dart';
 import '../auth/app_auth_mutation_gateway.dart';
 
 /// A read-only lifetime bound to one existing SDK session and one membership.
@@ -227,6 +229,15 @@ class QualificationDocumentReadScope {
             RegExp(r'[\\%?#:\x00-\x1f]').hasMatch(part))) {
       throw StateError('保存済み資格証写真の場所を確認できません。');
     }
+  }
+
+  Future<Uint8List> downloadPhoto(String path, Map<String, dynamic> row) {
+    validatePhotoPath(path, row);
+    return read(() => downloadAuthenticatedStorageObject(
+      client,
+      bucket: 'qualification-certificates',
+      path: path,
+    ));
   }
 
   Future<String> signPhoto(String path, Map<String, dynamic> row) async {

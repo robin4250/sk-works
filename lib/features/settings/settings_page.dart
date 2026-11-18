@@ -1,3 +1,5 @@
+import 'company_registration_page.dart';
+import 'company_review_access_page.dart';
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -18,8 +20,6 @@ import '../help/floating_help_controller.dart';
 import '../../branding/sko_theme.dart';
 import '../../international/language_controller.dart';
 import 'company_module_settings_page.dart';
-import 'company_registration_page.dart';
-import 'company_review_access_page.dart';
 import 'company_rate_settings_page.dart';
 import 'company_work_category_page.dart';
 import 'company_payroll_rates_page.dart';

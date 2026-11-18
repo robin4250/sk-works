@@ -1,10 +1,11 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import '../../international/language_controller.dart';
 
 import '../auth/secondary_reset_session_guard.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:printing/printing.dart';
 
 import '../people/worker_document_photo_editor.dart';
 import '../people/worker_document_photos.dart';
@@ -281,7 +282,7 @@ class _OwnQualificationRegistrationPageState
     final selection = await editWorkerDocumentPhotos(
       context,
       paths: photos.map((photo) => photo.path).toList(),
-      signedUrl: (path) => cloud.createOwnQualificationPhotoUrl(
+      download: (path) => cloud.downloadOwnQualificationPhoto(
         qualificationId: row['id'].toString(),
         storagePath: path,
       ),
@@ -730,31 +731,15 @@ class _OwnQualificationRegistrationPageState
         if (path is! String || path.trim().isEmpty) {
           continue;
         }
-        Future<String> signed(String value) async {
-          if (!current()) {
-            throw StateError('Attachment scope changed');
-          }
-          final url = await repository.createOwnQualificationPhotoUrl(
-            qualificationId: id,
-            storagePath: value,
-          );
-          if (!current()) {
-            throw StateError('Attachment scope changed');
-          }
-          return url;
-        }
-
         entries.add(
-          signedResourceAttachment(
-            label: i == 0
-                ? '表面'
-                : i == 1
-                ? '裏面'
-                : '追加写真 ${i - 1}',
+          _ownQualificationAttachment(
+            label: i == 0 ? '表面' : i == 1 ? '裏面' : '追加写真 ${i - 1}',
             path: path,
-            signedUrl: signed,
-            previewKey: 'qualification:$id:$i',
-            recordTitle: titles[row['qualification_master_id']] ?? '資格',
+            id: id,
+            index: i,
+            title: titles[row['qualification_master_id']] ?? '資格',
+            repository: repository,
+            isCurrent: current,
           ),
         );
       }
@@ -797,8 +782,8 @@ class _OwnQualificationRegistrationPageState
                       style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: 8),
-                    FutureBuilder<String>(
-                      future: repository.createOwnQualificationPhotoUrl(
+                    FutureBuilder<Uint8List>(
+                      future: repository.downloadOwnQualificationPhoto(
                         qualificationId: row['id'].toString(),
                         storagePath: photos[index].path,
                       ),
@@ -823,12 +808,23 @@ class _OwnQualificationRegistrationPageState
                             onPressed: () async {
                               if (actor != repository.currentUserId) return;
                               try {
-                                if (!await launchUrl(
-                                  Uri.parse(snapshot.data!),
-                                  mode: LaunchMode.externalApplication,
-                                )) {
-                                  throw StateError('PDFを開けませんでした。');
-                                }
+                                final bytes = await repository.downloadOwnQualificationPhoto(
+                                  qualificationId: row['id'].toString(),
+                                  storagePath: photos[index].path,
+                                );
+                                if (!context.mounted || actor != repository.currentUserId) return;
+                                await Navigator.of(context).push(MaterialPageRoute<void>(
+                                  builder: (_) => Scaffold(
+                                    appBar: AppBar(title: Text(title)),
+                                    body: PdfPreview(
+                                      build: (_) async => bytes,
+                                      allowPrinting: false,
+                                      allowSharing: false,
+                                      canChangeOrientation: false,
+                                      canChangePageFormat: false,
+                                    ),
+                                  ),
+                                ));
                               } catch (_) {
                                 if (context.mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
@@ -846,7 +842,7 @@ class _OwnQualificationRegistrationPageState
                         return InteractiveViewer(
                           minScale: 1,
                           maxScale: 5,
-                          child: Image.network(
+                          child: Image.memory(
                             snapshot.data!,
                             fit: BoxFit.contain,
                             errorBuilder: (_, __, ___) =>
@@ -1063,44 +1059,22 @@ class _OwnQualificationRegistrationPageState
                               final title = master?['name']?.toString() ?? '資格';
                               final repository = _repository;
                               final actor = repository?.currentUserId;
-                              Future<String> signedUrl(String path) async {
-                                if (repository == null ||
-                                    actor == null ||
-                                    actor != repository.currentUserId) {
-                                  throw StateError('Session changed');
-                                }
-                                final url = await repository
-                                    .createOwnQualificationPhotoUrl(
-                                      qualificationId: row['id'].toString(),
-                                      storagePath: path,
-                                    );
-                                if (actor != repository.currentUserId) {
-                                  throw StateError('Session changed');
-                                }
-                                return url;
-                              }
-
                               final attachments = [
-                                signedResourceAttachment(
-                                  label: '表面',
-                                  previewKey: 'qualification:${row['id']}:0',
-                                  recordTitle: title,
-                                  path: row['attachment_path']?.toString(),
-                                  signedUrl: signedUrl,
-                                  known:
-                                      unregistered ||
-                                      row.containsKey('attachment_path'),
-                                ),
-                                signedResourceAttachment(
-                                  label: '裏面',
-                                  previewKey: 'qualification:${row['id']}:1',
-                                  recordTitle: title,
-                                  path: row['attachment_back_path']?.toString(),
-                                  signedUrl: signedUrl,
-                                  known:
-                                      unregistered ||
-                                      row.containsKey('attachment_back_path'),
-                                ),
+                                for (final (index, field, label) in [
+                                  (0, 'attachment_path', '表面'),
+                                  (1, 'attachment_back_path', '裏面'),
+                                ])
+                                  _ownQualificationAttachment(
+                                    label: label,
+                                    path: row[field]?.toString(),
+                                    id: row['id'].toString(),
+                                    index: index,
+                                    title: title,
+                                    known: unregistered || row.containsKey(field),
+                                    repository: repository,
+                                    isCurrent: () => actor != null &&
+                                        actor == repository?.currentUserId,
+                                  ),
                               ];
                               final canEdit =
                                   !_photoBusy &&
@@ -1218,4 +1192,37 @@ class _OwnQualificationError extends StatelessWidget {
       ),
     );
   }
+}
+
+ResourceAttachment _ownQualificationAttachment({
+  required String label,
+  required String? path,
+  required String id,
+  required int index,
+  required String title,
+  required QualificationCloudRepository? repository,
+  required bool Function() isCurrent,
+  bool known = true,
+}) {
+  Future<T> checked<T>(Future<T> Function() operation) async {
+    if (!isCurrent()) throw StateError('Attachment scope changed');
+    final value = await operation();
+    if (!isCurrent()) throw StateError('Attachment scope changed');
+    return value;
+  }
+
+  final registered = path?.trim().isNotEmpty == true && repository != null;
+  return ResourceAttachment(
+    label: label,
+    path: path,
+    previewKey: 'qualification:$id:$index',
+    recordTitle: title,
+    known: known,
+    loadBytes: registered ? () => checked(() => repository.downloadOwnQualificationPhoto(
+      qualificationId: id, storagePath: path!,
+    )) : null,
+    validateAccess: registered ? () => checked(() => repository.validateOwnQualificationPhoto(
+      qualificationId: id, storagePath: path!,
+    )) : null,
+  );
 }

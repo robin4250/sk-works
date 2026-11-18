@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:printing/printing.dart';
 
 import 'qualification_photo_submission_review_repository.dart';
 
@@ -81,33 +81,50 @@ class _ReviewState extends State<QualificationPhotoSubmissionReviewPage> {
     });
     try {
       _checkActor();
-      final paths = await _repository!.photos(row);
+      final repository = _repository!;
+      final paths = await repository.photos(row);
       _checkActor();
       if (paths.isEmpty) {
         _message('登録済みの資格写真をすべて削除する申請です。');
       }
-      final urls = await Future.wait(paths.map(_repository.signedUrl));
+      final photos = await Future.wait(paths.map((path) async {
+        if (path.toLowerCase().endsWith('.pdf')) return null;
+        return repository.downloadPhoto(path);
+      }));
       _checkActor();
       if (!mounted) return;
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (context) => Scaffold(
             appBar: AppBar(title: const Text('資格申請の写真')),
-            body: urls.isEmpty
+            body: photos.isEmpty
                 ? const Center(child: Text('登録済みの資格写真をすべて削除する申請です。'))
                 : ListView.builder(
-                    itemCount: urls.length,
+                    itemCount: photos.length,
                     itemBuilder: (context, index) => Column(
                       children: [
-                        Text('${index + 1} / ${urls.length}'),
+                        Text('${index + 1} / ${photos.length}'),
                         if (paths[index].toLowerCase().endsWith('.pdf'))
                           TextButton(
                             onPressed: () async {
-                              _checkActor();
-                              if (!await launchUrl(
-                                Uri.parse(urls[index]),
-                                mode: LaunchMode.externalApplication,
-                              )) {
+                              try {
+                                _checkActor();
+                                final bytes = await repository.downloadPhoto(paths[index]);
+                                _checkActor();
+                                if (!context.mounted) return;
+                                await Navigator.of(context).push(MaterialPageRoute<void>(
+                                  builder: (_) => Scaffold(
+                                    appBar: AppBar(title: const Text('資格申請のPDF')),
+                                    body: PdfPreview(
+                                      build: (_) async => bytes,
+                                      allowPrinting: false,
+                                      allowSharing: false,
+                                      canChangeOrientation: false,
+                                      canChangePageFormat: false,
+                                    ),
+                                  ),
+                                ));
+                              } catch (_) {
                                 _message('PDFを開けませんでした。');
                               }
                             },
@@ -117,8 +134,8 @@ class _ReviewState extends State<QualificationPhotoSubmissionReviewPage> {
                           SizedBox(
                             height: 400,
                             child: InteractiveViewer(
-                              child: Image.network(
-                                urls[index],
+                              child: Image.memory(
+                                photos[index]!,
                                 fit: BoxFit.contain,
                                 errorBuilder: (_, error, stack) =>
                                     const Text('写真を取得できません。一覧から開き直してください。'),

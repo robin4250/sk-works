@@ -1,7 +1,13 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
 import 'panel_seven_repository.dart';
+import 'secondary_protected_page.dart';
+import 'secondary_password_reset_page.dart';
+import '../settings/master_protected_page.dart';
+import '../settings/master_recovery_contacts_page.dart';
 import 'apple_account_link_card.dart';
 import 'login_method_enrollment_card.dart';
 import 'login_method_enrollment_repository.dart';
@@ -32,13 +38,15 @@ class _PanelSevenPageState extends State<PanelSevenPage>
     _enrollment = LoginMethodEnrollmentRepository.maybeCreate();
     _subscription = widget.repository.changes.listen((event) {
       final receipt = _primaryPasswordReceipt;
-      if (receipt != null && (event.event == AuthChangeEvent.signedOut ||
-          !widget.repository.isCurrent(receipt))) {
+      if (receipt != null &&
+          (event.event == AuthChangeEvent.signedOut ||
+              !widget.repository.isCurrent(receipt))) {
         setState(() => _primaryPasswordReceipt = null);
       }
       final snapshot = _snapshot;
       // Never use the event's session: a delayed logout event may carry B.
-      if (_foreground && (snapshot == null || !widget.repository.isCurrent(snapshot))) {
+      if (_foreground &&
+          (snapshot == null || !widget.repository.isCurrent(snapshot))) {
         _load();
       }
     });
@@ -72,7 +80,10 @@ class _PanelSevenPageState extends State<PanelSevenPage>
       });
     } catch (_) {
       if (!mounted || !_foreground || generation != _generation) return;
-      setState(() { _failed = true; _loading = false; });
+      setState(() {
+        _failed = true;
+        _loading = false;
+      });
     }
   }
 
@@ -80,8 +91,12 @@ class _PanelSevenPageState extends State<PanelSevenPage>
     final generation = ++_generation;
     try {
       final snapshot = await widget.repository.load();
-      if (!mounted || !_foreground || generation != _generation ||
-          !widget.repository.isCurrent(snapshot)) { return; }
+      if (!mounted ||
+          !_foreground ||
+          generation != _generation ||
+          !widget.repository.isCurrent(snapshot)) {
+        return;
+      }
       setState(() {
         if (snapshot.primaryConfigured == false) {
           _primaryPasswordReceipt = null;
@@ -95,21 +110,29 @@ class _PanelSevenPageState extends State<PanelSevenPage>
 
   void _recordPrimaryPasswordSave() {
     final snapshot = _snapshot;
-    if (!mounted || !_foreground || snapshot == null ||
-        !widget.repository.isCurrent(snapshot)) { return; }
+    if (!mounted ||
+        !_foreground ||
+        snapshot == null ||
+        !widget.repository.isCurrent(snapshot)) {
+      return;
+    }
     setState(() => _primaryPasswordReceipt = snapshot);
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.inactive ||
-        state == AppLifecycleState.paused ||
+    // Apple’s system sheet briefly makes Flutter inactive. Keep the account
+    // card mounted so it can receive the result when the sheet closes.
+    if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden ||
         state == AppLifecycleState.detached) {
       _foreground = false;
       _generation++;
-      setState(() { _snapshot = null; _loading = true; });
-    } else if (state == AppLifecycleState.resumed) {
+      setState(() {
+        _snapshot = null;
+        _loading = true;
+      });
+    } else if (state == AppLifecycleState.resumed && !_foreground) {
       _foreground = true;
       _load();
     }
@@ -129,7 +152,8 @@ class _PanelSevenPageState extends State<PanelSevenPage>
       return '設定済みです。ログインには保存した第一パスワードを使います。';
     }
     final receipt = _primaryPasswordReceipt;
-    if (receipt != null && widget.repository.isCurrent(receipt) &&
+    if (receipt != null &&
+        widget.repository.isCurrent(receipt) &&
         receipt.actorId == snapshot.actorId) {
       return 'この画面で第一パスワードの保存を確認しました。'
           '現在のログイン状態での保存確認です。最新の登録有無は取得できていません。';
@@ -144,38 +168,65 @@ class _PanelSevenPageState extends State<PanelSevenPage>
   }
 
   void _help() {
-    showDialog<void>(context: context, builder: (context) => AlertDialog(
-      title: const Text('アカウント設定について'),
-      content: const SingleChildScrollView(child: Text(
-        'ログインと連絡先、重要情報を開く本人確認、ログイン方法の追加を分けて表示します。'
-        '登録済みのログイン方法と本人の認証設定を確認します。'
-        '連携済みの方法と、今回のログインに使った方法は別です。'
-        '第一パスワードの登録有無は本人専用の状態確認から表示します。取得できない場合は未設定と判断しません。'
-        '第一パスワードを設定・変更から保存できます。既にある場合は変更します。'
-        'この画面で保存に成功した場合だけ、同じログイン状態の間は保存確認を表示します。'
-        '他のログイン状態や次回起動での登録有無を示すものではありません。'
-        '利用可能な確認済みメールまたは確認済み電話番号があれば設定できます。電話番号の登録は必須ではありません。第二パスワードは変更しません。'
-        '電話番号の新規登録はSMS認証の準備中です。準備が完了するまでは登録できません。'
-        '連絡先の電話番号と、ログイン用に所有確認した電話番号は別です。'
-        'メール未登録の場合はメール確認後に第一パスワードを設定します。'
-        '確認済みメールに第一パスワードを保存した後は、次回のログイン画面で「登録済みのメールでログインする」を選べます。'
-        'Google用のパスワードとは別です。現在のGoogleログインをログアウトする必要はありません。'
-        '提供準備中の方法は登録できません。サーバーが本人再確認を求める場合は、登録済みの連絡先へ確認コードを送って保存します。'
-        '第二パスワードは重要情報用で、ログイン用とは別です。'
-        '第二パスワードの設定済み表示は、マスター管理の権限や専用パスワードの設定状況を示しません。'
-        'Face ID / Touch IDは端末内の本人確認で、'
-        'Apple / Googleとの連携や電話番号の所有確認とは異なります。'
-        'Apple追加は提供設定が整った場合だけ、登録済みGoogleで直近にログインした本人が行えます。'
-        'Appleの本人確認後、同じアカウントへの連携を確認します。会社・権限・パスワードは変更しません。'
-        'マスター専用設定は従来のマスター本人確認の中で管理します。')),
-      actions: [TextButton(onPressed: () => Navigator.pop(context),
-          child: const Text('閉じる'))],
-    ));
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('アカウント設定について'),
+        content: const SingleChildScrollView(
+          child: Text(
+            'ログインと連絡先、重要情報を開く本人確認、ログイン方法の追加を分けて表示します。'
+            '登録済みのログイン方法と本人の認証設定を確認します。'
+            '連携済みの方法と、今回のログインに使った方法は別です。'
+            '第一パスワードの登録有無は本人専用の状態確認から表示します。取得できない場合は未設定と判断しません。'
+            '第一パスワードを設定・変更から保存できます。既にある場合は変更します。'
+            'この画面で保存に成功した場合だけ、同じログイン状態の間は保存確認を表示します。'
+            '他のログイン状態や次回起動での登録有無を示すものではありません。'
+            '利用可能な確認済みメールまたは確認済み電話番号があれば設定できます。電話番号の登録は必須ではありません。第二パスワードは変更しません。'
+            '電話番号の新規登録はSMS認証の準備中です。準備が完了するまでは登録できません。'
+            '連絡先の電話番号と、ログイン用に所有確認した電話番号は別です。'
+            'メール未登録の場合はメール確認後に第一パスワードを設定します。'
+            '確認済みメールに第一パスワードを保存した後は、次回のログイン画面で「登録済みのメールでログインする」を選べます。'
+            'Google用のパスワードとは別です。現在のGoogleログインをログアウトする必要はありません。'
+            '提供準備中の方法は登録できません。サーバーが本人再確認を求める場合は、登録済みの連絡先へ確認コードを送って保存します。'
+            '第二パスワードは重要情報用で、ログイン用とは別です。'
+            '第二パスワードの設定済み表示は、マスター管理の権限や専用パスワードの設定状況を示しません。'
+            'Face ID / Touch IDは端末内の本人確認で、'
+            'Apple / Googleとの連携や電話番号の所有確認とは異なります。'
+            'Apple追加は提供設定が整った場合だけ、登録済みGoogleで直近にログインした本人が行えます。'
+            'Appleの本人確認後、同じアカウントへの連携を確認します。会社・権限・パスワードは変更しません。'
+            'マスター専用設定は従来のマスター本人確認の中で管理します。',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('閉じる'),
+          ),
+        ],
+      ),
+    );
   }
 
-  Widget _item(String title, String detail, {String? keyName}) => Card(
-    child: ListTile(key: keyName == null ? null : ValueKey(keyName),
-      title: Text(title), subtitle: Text(detail)),
+  Widget _section(String title) => Padding(
+    padding: const EdgeInsets.fromLTRB(4, 20, 4, 8),
+    child: Text(title, style: Theme.of(context).textTheme.titleMedium),
+  );
+
+  Widget _item(
+    String title,
+    String detail, {
+    String? keyName,
+    required IconData icon,
+    VoidCallback? onTap,
+  }) => Card(
+    child: ListTile(
+      key: keyName == null ? null : ValueKey(keyName),
+      leading: Icon(icon),
+      onTap: onTap,
+      trailing: onTap == null ? null : const Icon(Icons.chevron_right),
+      title: Text(title),
+      subtitle: Text(detail),
+    ),
   );
 
   String _provider(String provider) => switch (provider) {
@@ -190,73 +241,175 @@ class _PanelSevenPageState extends State<PanelSevenPage>
   Widget build(BuildContext context) {
     final snapshot = _snapshot;
     return Scaffold(
-      appBar: AppBar(title: const Text('アカウント設定'),
-        actions: [IconButton(tooltip: '使い方', onPressed: _help,
-            icon: const Icon(Icons.help_outline))]),
+      appBar: AppBar(
+        title: const Text('アカウント設定'),
+        actions: [
+          IconButton(
+            tooltip: '使い方',
+            onPressed: _help,
+            icon: const Icon(Icons.help_outline),
+          ),
+        ],
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _failed || snapshot == null
-              ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
                   const Text('本人のアカウント情報を確認できませんでした。'),
                   TextButton(onPressed: _load, child: const Text('再読み込み')),
-                ]))
-              : ListView(padding: const EdgeInsets.all(16), children: [
-                  const Text('ログインと連絡先', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  _item('連携済みのログイン方法',
-                    snapshot.providers.isEmpty ? '確認できません'
-                        : snapshot.providers.map(_provider).join('・'),
-                    keyName: 'account-providers'),
-                  _item('現在のセッションの認証記録',
-                    snapshot.sessionMethods.isEmpty ? '確認できません'
-                        : snapshot.sessionMethods.map((method) =>
-                            switch (method) {
-                              'password' => 'パスワード認証',
-                              'oauth' => '外部アカウント認証（提供元は特定できません）',
-                              'otp' => 'ワンタイムコード認証',
-                              'totp' => '認証アプリ',
-                              _ => '組織アカウント認証',
-                            }).join('・'),
-                    keyName: 'account-session-methods'),
-                  _item('第一パスワード（ログイン用）', _primaryPasswordText(snapshot),
-                    keyName: 'account-primary-password'),
-                  if (snapshot.emailConfirmed && snapshot.email?.isNotEmpty == true)
-                    const ExpansionTile(
-                      key: ValueKey('account-email-login-guide'),
-                      title: Text('メールでログインするには'), children: [
-                        Padding(padding: EdgeInsets.all(8), child: Text(
+                ],
+              ),
+            )
+          : ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                _section('現在のログイン'),
+                _item(
+                  'このログインで使った認証',
+                  snapshot.sessionMethods.isEmpty
+                      ? '確認できません'
+                      : snapshot.sessionMethods
+                            .map(
+                              (method) => switch (method) {
+                                'password' => 'パスワード認証',
+                                'oauth' => '外部アカウント認証（提供元は特定できません）',
+                                'otp' => 'ワンタイムコード認証',
+                                'totp' => '認証アプリ',
+                                _ => '組織アカウント認証',
+                              },
+                            )
+                            .join('・'),
+                  icon: Icons.login,
+                  keyName: 'account-session-methods',
+                ),
+                _item(
+                  '連携済みのログイン方法',
+                  snapshot.providers.isEmpty
+                      ? '確認できません'
+                      : snapshot.providers.map(_provider).join('・'),
+                  icon: Icons.link,
+                  keyName: 'account-providers',
+                ),
+                _section('パスワードと本人確認'),
+                _item(
+                  '第一パスワード（ログイン用）',
+                  _primaryPasswordText(snapshot),
+                  icon: Icons.password,
+                  keyName: 'account-primary-password',
+                ),
+                if (snapshot.emailConfirmed &&
+                    snapshot.email?.isNotEmpty == true)
+                  const ExpansionTile(
+                    key: ValueKey('account-email-login-guide'),
+                    title: Text('メールでログインするには'),
+                    children: [
+                      Padding(
+                        padding: EdgeInsets.all(8),
+                        child: Text(
                           '「第一パスワードを設定・変更」で保存した後、次回のログイン画面で'
                           '「登録済みのメールでログインする」を選び、この確認済みメールと保存した第一パスワードを使います。'
-                          '電話番号の登録は不要です。現在のGoogleログインをログアウトする必要はありません。')),
-                      ]),
-                  _item('メールアドレス',
-                      snapshot.email?.isNotEmpty == true
-                          ? '${snapshot.email}\n${snapshot.emailConfirmed ? "登録確認済み" : "未確認"}'
-                          : '未登録'),
-                  _item('電話番号',
-                      snapshot.phone?.isNotEmpty == true
-                          ? '${snapshot.phone}\n${snapshot.phoneConfirmed ? "登録確認済み（今回の番号所有確認ではありません）" : "未確認"}'
-                          : '未登録',
-                      keyName: 'account-phone'),
-                  const SizedBox(height: 12),
-                  const Text('重要情報を開く本人確認', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  _item('第二パスワード（重要情報用）',
-                      snapshot.secondaryConfigured == null ? '確認できません'
-                          : snapshot.secondaryConfigured! ? '設定済み' : '未設定',
-                      keyName: 'account-secondary-password'),
-                  _item('Face ID / Touch ID',
-                      '重要情報用の端末内設定：${snapshot.biometricEnabled == null ? "確認できません" : snapshot.biometricEnabled! ? "有効" : "未設定"}\n'
-                      'この端末での利用：${snapshot.biometricAvailable == null ? "確認できません" : snapshot.biometricAvailable! ? "生体認証の登録あり（本人確認は未実施）" : "生体認証の未登録または利用不可"}\n'
+                          '電話番号の登録は不要です。現在のGoogleログインをログアウトする必要はありません。',
+                        ),
+                      ),
+                    ],
+                  ),
+                _item(
+                  '第二パスワード（重要情報用）',
+                  snapshot.secondaryConfigured == null
+                      ? '確認できません'
+                      : snapshot.secondaryConfigured!
+                      ? '設定済み'
+                      : '未設定',
+                  icon: Icons.lock_outline,
+                  keyName: 'account-secondary-password',
+                  onTap: snapshot.secondaryConfigured == null
+                      ? null
+                      : () async {
+                          final route = snapshot.secondaryConfigured!
+                              ? SecondaryPasswordResetPage(
+                                  biometricAvailable:
+                                      snapshot.biometricAvailable == true,
+                                )
+                              : const SecondaryProtectedPage(
+                                  title: '第二パスワードを設定',
+                                  child: Center(child: Text('第二パスワードを設定しました。')),
+                                );
+                          await Navigator.of(context).push<void>(
+                            MaterialPageRoute(builder: (_) => route),
+                          );
+                          if (mounted) await _load();
+                        },
+                ),
+                _item(
+                  'Face ID / Touch ID',
+                  '重要情報用の端末内設定：${snapshot.biometricEnabled == null
+                          ? "確認できません"
+                          : snapshot.biometricEnabled!
+                          ? "有効"
+                          : "未設定"}\n'
+                      'この端末での利用：${snapshot.biometricAvailable == null
+                          ? "確認できません"
+                          : snapshot.biometricAvailable!
+                          ? "生体認証の登録あり（本人確認は未実施）"
+                          : "生体認証の未登録または利用不可"}\n'
                       '端末内の本人確認です。ログイン方法の連携や番号所有確認とは別です。',
-                      keyName: 'panel-seven-biometric'),
-                  const SizedBox(height: 12),
-                  const Text('ログイン方法の追加', style: TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.bold)),
-                  LoginMethodEnrollmentCard(source: _enrollment,
-                    onChanged: _refreshRegistration,
-                    onPrimaryPasswordSaved: _recordPrimaryPasswordSave),
-                  const AppleAccountLinkCard(),
-                  TextButton(onPressed: _load, child: const Text('最新の状態を確認')),
-                ]),
+                  icon: Icons.fingerprint,
+                  keyName: 'panel-seven-biometric',
+                ),
+                LoginMethodEnrollmentCard(
+                  source: _enrollment,
+                  onChanged: _refreshRegistration,
+                  onPrimaryPasswordSaved: _recordPrimaryPasswordSave,
+                ),
+                _section('ログイン情報'),
+                _item(
+                  'メールアドレス',
+                  snapshot.email?.isNotEmpty == true
+                      ? '${snapshot.email}\n${snapshot.emailConfirmed ? "登録確認済み" : "未確認"}'
+                      : '未登録',
+                  icon: Icons.mail_outline,
+                ),
+                _item(
+                  'ログイン用の電話番号',
+                  snapshot.phone?.isNotEmpty == true
+                      ? '${snapshot.phone}\n${snapshot.phoneConfirmed ? "登録確認済み（今回の番号所有確認ではありません）" : "未確認"}'
+                      : '未登録',
+                  icon: Icons.phone_outlined,
+                  keyName: 'account-phone',
+                ),
+                _section('連携アカウント'),
+                for (final provider in ['google', 'apple'])
+                  _item(
+                    _provider(provider),
+                    snapshot.providers.contains(provider)
+                        ? '連携済み'
+                        : snapshot.providers.isEmpty
+                        ? '連携状況を確認できません'
+                        : '未連携',
+                    icon: Icons.link,
+                  ),
+                _section('現在のアカウントに連携を追加'),
+                AppleAccountLinkCard(onLinked: _refreshRegistration),
+                _section('アカウントの復旧'),
+                _item(
+                  'マスター復旧用メール（2件）',
+                  '本人確認して確認・変更',
+                  onTap: () => Navigator.of(context).push<void>(
+                    MaterialPageRoute(
+                      builder: (_) => const MasterProtectedPage(
+                        title: 'Master 緊急復旧設定',
+                        child: MasterRecoveryContactsPage(),
+                      ),
+                    ),
+                  ),
+                  icon: Icons.mark_email_read_outlined,
+                ),
+                TextButton(onPressed: _load, child: const Text('最新の状態を確認')),
+              ],
+            ),
     );
   }
 }

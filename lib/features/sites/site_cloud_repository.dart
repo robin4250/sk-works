@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../data/authenticated_storage_download.dart';
 import '../../data/supabase_backend.dart';
 
 class SiteTradeCompanyOption {
@@ -27,12 +28,10 @@ class SitePhotoRecord {
   const SitePhotoRecord({
     required this.slot,
     required this.storagePath,
-    required this.signedUrl,
   });
 
   final int slot;
   final String storagePath;
-  final String signedUrl;
 }
 
 class SiteCloudRepository {
@@ -192,18 +191,25 @@ class SiteCloudRepository {
     return {...record, 'id': insertedId?.toString() ?? ''};
   }
 
-  Future<void> submitInformationChange({
+  Future<bool> submitInformationChange({
     required String siteId,
     required Map<String, String> values,
   }) async {
     if (siteId.isEmpty) throw StateError('現場を確認できません。');
-    await _client.rpc(
+    final result = await _client.rpc(
       'site_information_request',
       params: {
         'p_action': 'submit',
         'p_data': {'site_id': siteId, 'values': values},
       },
     );
+    if (result is! Map || result['pending'] is! bool ||
+        (result['pending'] == true &&
+            (result['request_id'] is! String ||
+                (result['request_id'] as String).isEmpty))) {
+      throw StateError('現場情報の保存結果を確認できません。');
+    }
+    return result['pending'] as bool;
   }
 
   Future<List<Map<String, dynamic>>> loadInformationRequests() async {
@@ -238,22 +244,26 @@ class SiteCloudRepository {
         .select('slot,storage_path')
         .eq('site_id', siteId)
         .order('slot');
-    final bucket = _client.storage.from('site-entrance-photos');
     final result = <SitePhotoRecord>[];
     for (final row in rows) {
       final path = row['storage_path']?.toString() ?? '';
       if (path.isEmpty) continue;
-      final url = await bucket.createSignedUrl(path, 3600);
       result.add(
         SitePhotoRecord(
           slot: (row['slot'] as num?)?.toInt() ?? 0,
           storagePath: path,
-          signedUrl: url,
         ),
       );
     }
     return result;
   }
+
+  Future<Uint8List> downloadPhoto(SitePhotoRecord photo) =>
+      downloadAuthenticatedStorageObject(
+        _client,
+        bucket: 'site-entrance-photos',
+        path: photo.storagePath,
+      );
 
   Future<bool> uploadPhoto({
     required String siteId,

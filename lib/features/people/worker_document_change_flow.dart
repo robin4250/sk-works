@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -97,14 +98,16 @@ class WorkerDocumentChangePage extends StatefulWidget {
     required this.actor,
     required this.companyId,
     required this.row,
-    required this.signedUrl,
+    this.signedUrl,
+    this.download,
     required this.isCurrent,
     this.onVerification,
   });
   final WorkerDocumentChangeRepository repository;
   final String actor, companyId;
   final Map<String, dynamic> row;
-  final Future<String> Function(String) signedUrl;
+  final Future<String> Function(String)? signedUrl;
+  final Future<Uint8List> Function(String)? download;
   final bool Function() isCurrent;
   final Future<void> Function(String status, bool originalVerified)?
   onVerification;
@@ -125,6 +128,13 @@ class _WorkerDocumentChangePageState extends State<WorkerDocumentChangePage>
   bool _busy = true, _available = false, _closed = false;
   StreamSubscription<void>? _subscription;
   String? _message;
+  Future<Uint8List> _downloadAttachment(String path) async {
+    if (!_current) throw StateError('Scope changed');
+    final bytes = await widget.download!(path);
+    if (!_current) throw StateError('Scope changed');
+    return bytes;
+  }
+
   bool get _current =>
       mounted &&
       !_closed &&
@@ -390,6 +400,7 @@ class _WorkerDocumentChangePageState extends State<WorkerDocumentChangePage>
                       context,
                       paths: _paths,
                       signedUrl: widget.signedUrl,
+                      download: widget.download == null ? null : _downloadAttachment,
                       allowNewPhotos: false,
                       useRootNavigator: false,
                       uploadNotice: '保存済み写真の並べ替え・削除のみ申請できます。',

@@ -155,7 +155,12 @@ class _LoginMethodEnrollmentCardState extends State<LoginMethodEnrollmentCard> {
           if (!state.canSetPassword) const Text('先に利用可能なメール・電話番号の確認を完了してください。'),
           OutlinedButton(onPressed: _busy || !state.canRegisterPhone || state.phoneConfirmed || _awaitingPhone ? null : _phone,
             child: Text(state.canRegisterPhone ? '電話番号を登録' : '電話番号登録（準備中）')),
-          if (state.phoneConfirmed) const Text('電話番号は登録確認済みです。'),
+          if (state.phoneConfirmed) ...[
+            const Text('電話番号は登録確認済みです。'),
+            Text(state.phoneAvailable
+              ? '電話番号でログインするには、確認済みの番号と第一パスワードを使います。'
+              : '電話番号ログインは提供準備中です。'),
+          ],
           if (!state.phoneConfirmed && !_awaitingPhone && state.phone.isEmpty)
             const Text('電話番号は未登録です。'),
           if (!state.phoneConfirmed && !_awaitingPhone && state.phone.isNotEmpty)
@@ -169,10 +174,13 @@ class _LoginMethodEnrollmentCardState extends State<LoginMethodEnrollmentCard> {
               setState(() { _awaitingPhone = false; _message = 'SMS確認を中止しました。電話番号は未確認のままです。'; });
             }, child: const Text('SMS確認を中止')),
           ],
-          if (state.email.isEmpty) OutlinedButton(
+          if (state.email.isEmpty && !state.employeeBootstrapEmail) OutlinedButton(
             onPressed: _busy || !state.emailAvailable ? null : _email,
             child: const Text('メールアドレスを登録')),
-          if (!state.emailAvailable) const Text('メールログインは提供準備中です。'),
+          if (state.employeeBootstrapEmail)
+            const Text('従業員のメールログインへの切り替えは準備中です。')
+          else if (!state.emailAvailable)
+            const Text('メールログインは提供準備中です。'),
         ],
         if (_loadError != null) Text(_loadError!, key: const ValueKey('login-enrollment-load-error')),
         if (_message != null) Text(_message!, key: const ValueKey('login-enrollment-message')),

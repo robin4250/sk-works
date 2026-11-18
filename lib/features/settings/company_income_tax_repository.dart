@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../data/authenticated_storage_download.dart';
 import '../../data/supabase_backend.dart';
 import '../payroll/domain/company_rate_contract.dart';
 
@@ -192,7 +193,7 @@ class CompanyIncomeTaxTablesData {
 abstract class CompanyIncomeTaxRepository {
   Future<CompanyIncomeTaxTablesData> read({required String companyId, required String date, required String kind});
   Future<CompanyIncomeTaxTable> registerPdf(IncomeTaxUploadRequest request);
-  Future<String> pdfUrl(String storagePath);
+  Future<Uint8List> downloadPdf(String storagePath);
 }
 
 typedef IncomeTaxRpc = Future<dynamic> Function(String name, Map<String, dynamic> parameters);
@@ -239,5 +240,7 @@ class SupabaseCompanyIncomeTaxRepository implements CompanyIncomeTaxRepository {
     return saved;
   }
   @override
-  Future<String> pdfUrl(String storagePath) => SupabaseBackend.client.storage.from(incomeTaxPdfBucket).createSignedUrl(storagePath, 600);
+  Future<Uint8List> downloadPdf(String storagePath) => downloadAuthenticatedStorageObject(
+    SupabaseBackend.client, bucket: incomeTaxPdfBucket, path: storagePath,
+  );
 }
