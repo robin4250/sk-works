@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../notifications/notification_bell.dart';
 import '../../international/language_controller.dart';
 import 'attendance_pdf_service.dart';
+import 'attendance_sharing_page.dart';
 import 'partner_attendance_month_page.dart';
 import 'worker_attendance_sheet_page.dart';
 import 'worker_attendance_sheet_repository.dart';
@@ -87,7 +88,7 @@ class _AttendanceWorkerListPageState extends State<AttendanceWorkerListPage> {
           ? const <AttendanceWorker>[]
           : await repository.loadCompanyWorkers();
       final partnerWorkers = partners
-          ? await repository.loadPartnerWorkers()
+          ? await repository.loadPartnerWorkers(month: _month)
           : const <PartnerAttendanceWorker>[];
       if (!mounted || generation != _generation || partners != _partners) {
         return;
@@ -117,6 +118,7 @@ class _AttendanceWorkerListPageState extends State<AttendanceWorkerListPage> {
     setState(() {
       _month = DateTime(_month.year, _month.month + delta);
     });
+    if (_partners) _load();
   }
 
   Future<void> _openWorker(AttendanceWorker worker) async {
@@ -184,6 +186,21 @@ class _AttendanceWorkerListPageState extends State<AttendanceWorkerListPage> {
                   )
                 : const Icon(Icons.print_outlined),
           ),
+          if (_partners && _repository != null)
+            IconButton(
+              tooltip: '勤怠共有',
+              icon: const Icon(Icons.share_outlined),
+              onPressed: () async {
+                final repository = _repository;
+                await Navigator.of(context).push<void>(
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        AttendanceSharingPage(repository: repository),
+                  ),
+                );
+                if (mounted) _load();
+              },
+            ),
           const SkoNotificationBell(),
         ],
       ),
@@ -284,10 +301,13 @@ class _AttendanceWorkerListPageState extends State<AttendanceWorkerListPage> {
                             itemCount: _partnerWorkers.length,
                             itemBuilder: (context, index) {
                               final worker = _partnerWorkers[index];
+                              final source = worker.shared
+                                  ? _partnerText('共有勤怠', 'Shared attendance')
+                                  : _partnerText('自社登録', 'Locally registered');
                               return ListTile(
                                 title: Text(worker.name),
                                 subtitle: Text(
-                                  '${_partnerText('協力会社', 'Partner company')}: ${worker.partnerName}',
+                                  '${_partnerText('協力会社', 'Partner company')}: ${worker.partnerName}（$source）',
                                   softWrap: true,
                                 ),
                                 trailing: const Icon(Icons.chevron_right),

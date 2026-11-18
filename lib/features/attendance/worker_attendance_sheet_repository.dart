@@ -17,8 +17,10 @@ class PartnerAttendanceWorker {
     required this.partnerId,
     required this.partnerName,
     required this.actorSession,
+    this.shared = false,
   });
   final String id, name, companyId, partnerId, partnerName, actorSession;
+  final bool shared;
 }
 
 class AttendanceWorker {
@@ -278,8 +280,9 @@ class WorkerAttendanceSheetRepository {
     }
   }
 
-  Future<List<PartnerAttendanceWorker>>
-  loadPartnerWorkers() => _withPartnerSession((session, bearer) async {
+  Future<List<PartnerAttendanceWorker>> loadPartnerWorkers({
+    DateTime? month,
+  }) => _withPartnerSession((session, bearer) async {
     final company = await _partnerCompany(session, bearer);
     final rows = await _client
         .from('workers')
@@ -329,7 +332,69 @@ class WorkerAttendanceSheetRepository {
         ),
       );
     }
+    if (month != null) {
+      final shared = await _readSharedAttendance(bearer, month);
+      final seen = <String>{};
+      for (final row in shared) {
+        final id = row['worker_id'] as String;
+        if (seen.add(id)) {
+          result.add(
+            PartnerAttendanceWorker(
+              id: id,
+              name: row['worker_name'] as String,
+              companyId: company,
+              partnerId: row['origin_company_id'] as String,
+              partnerName: row['origin_company_name'] as String,
+              actorSession: session,
+              shared: true,
+            ),
+          );
+        }
+      }
+      if (await _partnerCompany(session, bearer) != company) {
+        throw StateError('表示する会社が変わりました。');
+      }
+    }
     return List.unmodifiable(result);
+  });
+
+  Future<List<Map<String, dynamic>>> _readSharedAttendance(
+    String bearer,
+    DateTime month, {
+    String? workerId,
+  }) async {
+    final rows = await _client
+        .rpc(
+          'read_shared_site_attendance',
+          params: {
+            'p_month': _dbDate(DateTime(month.year, month.month)),
+            if (workerId != null) 'p_worker': workerId,
+          },
+        )
+        .setHeader('Authorization', 'Bearer $bearer');
+    return List<Map<String, dynamic>>.from(rows as List);
+  }
+
+  Future<List<Map<String, dynamic>>> manageAttendanceSharing({
+    String? itemId,
+    DateTime? start,
+    bool disable = false,
+  }) => _withPartnerSession((session, bearer) async {
+    final company = await _partnerCompany(session, bearer);
+    final rows = await _client
+        .rpc(
+          'manage_site_attendance_sharing',
+          params: {
+            if (itemId != null) 'p_item': itemId,
+            if (start != null) 'p_start': _dbDate(start),
+            if (disable) 'p_disable': true,
+          },
+        )
+        .setHeader('Authorization', 'Bearer $bearer');
+    if (await _partnerCompany(session, bearer) != company) {
+      throw StateError('表示する会社が変わりました。');
+    }
+    return List<Map<String, dynamic>>.from(rows as List);
   });
 
   Future<List<Map<String, dynamic>>> loadPartnerAttendanceMonth(
@@ -345,6 +410,29 @@ class WorkerAttendanceSheetRepository {
     if (company != worker.companyId) {
       throw StateError(
         _partnerText('表示する会社が変わりました。', 'The company being viewed has changed.'),
+      );
+    }
+    if (worker.shared) {
+      final rows = await _readSharedAttendance(
+        bearer,
+        month,
+        workerId: worker.id,
+      );
+      if (await _partnerCompany(session, bearer) != company ||
+          rows.any(
+            (row) =>
+                row['worker_id'] != worker.id ||
+                row['origin_company_id'] != worker.partnerId,
+          )) {
+        throw StateError('共有された出勤記録を確認できません。');
+      }
+      return List.unmodifiable(
+        rows.map(
+          (row) => {
+            ...row,
+            'sites': {'name': row['site_name']},
+          },
+        ),
       );
     }
     final workers = await _client

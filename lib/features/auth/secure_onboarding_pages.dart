@@ -93,7 +93,6 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
     final generation = ++_googleGeneration;
     _password.clear();
     _passwordConfirm.clear();
-    _otp.clear();
     setState(() { _googlePending = true; _message = null; });
     _googleSubscription = google.changes.listen((event) {
       if (!mounted || generation != _googleGeneration || !_googlePending) return;
@@ -156,12 +155,11 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
   final _phone = TextEditingController();
   final _password = TextEditingController();
   final _passwordConfirm = TextEditingController();
-  final _otp = TextEditingController();
+  final _registrationApproval = TextEditingController();
 
   bool _registerMode = false;
   bool _emailLogin = false;
   bool _passwordResetMode = false;
-  bool _awaitingSms = false;
   bool _busy = false;
   bool _obscurePassword = true;
   bool _obscureConfirm = true;
@@ -177,7 +175,7 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
     _phone.dispose();
     _password.dispose();
     _passwordConfirm.dispose();
-    _otp.dispose();
+    _registrationApproval.dispose();
     super.dispose();
   }
 
@@ -185,19 +183,6 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
     if (_passwordResetMode) return;
     final repository = _repository;
     if (repository == null || _googlePending) return;
-
-    if (_awaitingSms) {
-      final code = _otp.text.replaceAll(RegExp(r'\D'), '');
-      if (code.length < 6) {
-        setState(() => _message = 'SMSで届いた承認コードを入力してください。');
-        return;
-      }
-      await _run(() async {
-        await repository.verifySmsCode(phone: _phone.text, code: code);
-        widget.onAuthenticated();
-      });
-      return;
-    }
 
     if (_emailLogin && !SecureOnboardingRepository.isSupportedEmailValue(_phone.text)) {
       setState(() => _message = '登録済みのメールアドレスを入力してください。');
@@ -218,36 +203,20 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
       return;
     }
 
+    final approvalCode = widget.companyInvitationCode ??
+        _registrationApproval.text.trim().toLowerCase();
+    if (_registerMode && !RegExp(r'^[a-f0-9]{48}$').hasMatch(approvalCode)) {
+      setState(() => _message = 'SKO管理者から届いた登録承認コードを入力してください。');
+      return;
+    }
     await _run(() async {
       if (_registerMode) {
-        final approvalCode = widget.companyInvitationCode;
-        if (approvalCode != null) {
-          await repository.registerApprovedPhone(
-            phone: _phone.text,
-            password: _password.text,
-            approvalCode: approvalCode,
-          );
-          if (!mounted) return;
-          await repository.signInWithPhone(
-            phone: _phone.text,
-            password: _password.text,
-          );
-          if (mounted) widget.onAuthenticated();
-          return;
-        }
-        final signedIn = await repository.registerAdmin(
-          phone: _phone.text,
-          password: _password.text,
-        );
+        await repository.registerApprovedPhone(phone: _phone.text,
+          password: _password.text, approvalCode: approvalCode);
         if (!mounted) return;
-        if (signedIn) {
-          widget.onAuthenticated();
-        } else {
-          setState(() {
-            _awaitingSms = true;
-            _message = 'SMSで承認コードを送信しました。';
-          });
-        }
+        _registrationApproval.clear();
+        await repository.signInWithPhone(phone: _phone.text, password: _password.text);
+        if (mounted) widget.onAuthenticated();
       } else if (_emailLogin) {
         await repository.signInWithEmail(
           email: _phone.text,
@@ -277,23 +246,10 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
       _registerMode = false;
       _emailLogin = false;
       _passwordResetMode = false;
-      _awaitingSms = false;
       _phone.text = credentials.phone;
       _password.text = credentials.password;
       _passwordConfirm.clear();
       _message = '従業員登録QRを読み取りました。「ログイン」を押してください。';
-    });
-  }
-
-  Future<void> _resendSms() async {
-    if (_passwordResetMode) return;
-    final repository = _repository;
-    if (repository == null) return;
-
-    await _run(() async {
-      await repository.resendSmsCode(phone: _phone.text);
-      if (!mounted) return;
-      setState(() => _message = 'SMSを再送しました。最新の6桁コードを入力してください。');
     });
   }
 
@@ -351,9 +307,7 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Text(
-                        _awaitingSms
-                            ? '承認コード'
-                            : _passwordResetMode
+                        _passwordResetMode
                                 ? 'ログイン用パスワードを忘れた場合'
                                 : _registerMode
                                     ? '管理者の初回登録'
@@ -365,12 +319,10 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
                       ),
                       const SizedBox(height: 10),
                       Text(
-                        _awaitingSms
-                            ? 'SMSで届いた6桁のコードを入力してください。'
-                            : _passwordResetMode
+                        _passwordResetMode
                                 ? _primaryRecoveryMessage
                                 : _registerMode
-                                    ? '携帯電話番号をIDとして登録します。'
+                                    ? '携帯電話番号と、SKO管理者から届いた登録承認コードで登録します。'
                                     : '登録済みの方法でログインしてください。初めて使う方は下の初回登録へ進んでください。',
                         style: theme.textTheme.bodyMedium?.copyWith(
                           height: 1.5,
@@ -378,7 +330,7 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
                         ),
                       ),
                       if (_canUseGoogle &&
-                          !_registerMode && !_awaitingSms && !_passwordResetMode) ...[
+                          !_registerMode && !_passwordResetMode) ...[
                         const SizedBox(height: 16),
                         OutlinedButton(
                           onPressed: _busy || _googlePending ? null : _startGoogle,
@@ -391,7 +343,7 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
                         TextButton(onPressed: () => setState(() { _cancelGoogle(); _message = '画面での待機を中止しました。開いているGoogle認証画面も閉じてください。'; }), child: const Text('Googleログインを中止')),
                       ],
                       const SizedBox(height: 24),
-                      if (!_registerMode && !_awaitingSms && !_passwordResetMode) ...[
+                      if (!_registerMode && !_passwordResetMode) ...[
                         Text(_emailLogin ? 'メールアドレスでログイン' : '電話番号でログイン', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
                         TextButton(
                           onPressed: _busy || _googlePending ? null : () => setState(() {
@@ -399,7 +351,6 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
                             _phone.clear();
                             _password.clear();
                             _passwordConfirm.clear();
-                            _otp.clear();
                             _message = null;
                           }),
                           child: Text(_emailLogin ? '電話番号でログインする' : '登録済みのメールでログインする'),
@@ -417,19 +368,6 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
                         const SizedBox(height: 10),
                       ],
                       if (!_passwordResetMode) ...[
-                          if (_awaitingSms) ...[
-                            TextField(
-                              controller: _otp,
-                              keyboardType: TextInputType.number,
-                              autofocus: true,
-                              maxLength: 6,
-                              decoration: const InputDecoration(
-                                labelText: '承認コード',
-                                prefixIcon: Icon(Icons.sms_outlined),
-                              ),
-                              onSubmitted: (_) => _busy || _googlePending ? null : _submit(),
-                            ),
-                          ] else ...[
                             TextField(
                               controller: _phone,
                               keyboardType: _emailLogin ? TextInputType.emailAddress : TextInputType.phone,
@@ -456,6 +394,22 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
                                       : _submit(),
                             ),
                             if (_registerMode) ...[
+                                if (widget.companyInvitationCode == null) ...[
+                                  const SizedBox(height: 14),
+                                  TextField(
+                                    key: const ValueKey(
+                                      'registration-approval-code',
+                                    ),
+                                    controller: _registrationApproval,
+                                    enabled: !_busy,
+                                    obscureText: true,
+                                    autocorrect: false,
+                                    enableSuggestions: false,
+                                    decoration: const InputDecoration(
+                                      labelText: '登録承認コード',
+                                    ),
+                                  ),
+                                ],
                               const SizedBox(height: 14),
                               _PasswordField(
                                 controller: _passwordConfirm,
@@ -473,15 +427,12 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
                                 ),
                               ),
                             ],
-                          ],
                           if (_message != null) ...[
                             const SizedBox(height: 14),
                             Text(
                               _message!,
                               style: TextStyle(
-                                color: _awaitingSms
-                                    ? scheme.primary
-                                    : scheme.error,
+                                color: scheme.error,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -497,20 +448,12 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
                                       child: CircularProgressIndicator(strokeWidth: 2),
                                     )
                                   : Icon(
-                                      _awaitingSms
-                                          ? Icons.verified_outlined
-                                          : _registerMode
+                                      _registerMode
                                               ? Icons.person_add_alt_1
                                               : Icons.login,
                                     ),
                               label: Text(
-                                _awaitingSms
-                                    ? '承認する'
-                                    : _registerMode
-                                        ? widget.companyInvitationCode == null
-                                            ? '登録してSMS認証へ'
-                                            : '承認コードで登録する'
-                                        : 'ログイン',
+                                _registerMode ? '承認コードで登録する' : 'ログイン',
                                 style: const TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.w800,
@@ -518,7 +461,7 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
                               ),
                             ),
                           ),
-                          if (!_awaitingSms && !_passwordResetMode) ...[
+                          if (!_passwordResetMode) ...[
                             if (!_registerMode) ...[
                               const SizedBox(height: 24),
                               Text('初めて使う方', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
@@ -533,6 +476,7 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
                                     ? null
                                     : () => setState(() {
                                           _registerMode = !_registerMode;
+                                          _registrationApproval.clear();
                                           _emailLogin = false;
                                           _phone.clear();
                                           _password.clear();
@@ -555,8 +499,7 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
                               ),
                             ),
                           ],
-                          if (!_awaitingSms &&
-                              !_registerMode &&
+                          if (!_registerMode &&
                               !_passwordResetMode) ...[
                             const SizedBox(height: 18),
                             Row(
@@ -593,25 +536,8 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
                               ),
                             ),
                           ],
-                          if (_awaitingSms) ...[
-                            const SizedBox(height: 10),
-                            TextButton.icon(
-                              onPressed: _busy || _googlePending ? null : _resendSms,
-                              icon: const Icon(Icons.refresh),
-                              label: const Text('SMSを再送'),
-                            ),
-                            TextButton(
-                              onPressed: _busy || _googlePending
-                                  ? null
-                                  : () => setState(() {
-                                        _awaitingSms = false;
-                                        _message = null;
-                                      }),
-                              child: const Text('電話番号を修正'),
-                            ),
-                          ],
                       ],
-                      if (!_awaitingSms) ...[
+                      ...[
                         const SizedBox(height: 12),
 
                         if (!_registerMode)
@@ -622,8 +548,6 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
                                     if (!mounted) return;
                                     setState(() {
                                       _passwordResetMode = !_passwordResetMode;
-                                      _awaitingSms = false;
-                                      _otp.clear();
                                       _password.clear();
                                       _passwordConfirm.clear();
                                       _message = null;

@@ -150,6 +150,34 @@ void main() {
     expect(tester.widget<TextField>(find.byType(TextField).at(0)).controller!.text, isEmpty);
     expect(requests, isEmpty);
   });
+  testWidgets('manual registration requires and submits an approval code', (tester) async {
+    await show(tester, () {});
+    await tester.tap(find.text('管理者として初めて登録する'));
+    await tester.pumpAndSettle();
+    final codeField = find.byKey(const ValueKey('registration-approval-code'));
+    await tester.enterText(find.byType(TextField).at(0), '09012345678');
+    await tester.enterText(find.byType(TextField).at(1), 'fixture-password');
+    await tester.enterText(find.byType(TextField).at(3), 'fixture-password');
+    final submit = find.text('承認コードで登録する');
+    await tester.ensureVisible(submit);
+    await tester.tap(submit);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('登録承認コードを入力してください'), findsOneWidget);
+    expect(requests, isEmpty);
+
+    await tester.enterText(codeField, 'A' * 48);
+    response.complete(http.Response('{"error":"registration_unavailable"}', 403,
+      headers: {'content-type': 'application/json'}));
+    await tester.ensureVisible(submit);
+    await tester.tap(submit);
+    await _settleAuth(tester);
+    expect(requests.single.url.path, '/functions/v1/register-approved-phone');
+    expect(jsonDecode(requests.single.body), {
+      'phone': '+819012345678',
+      'password': 'fixture-password',
+      'approvalCode': 'a' * 48,
+    });
+  });
   testWidgets('Google account email guidance uses saved SKO password without signout', (tester) async {
     await show(tester, () {});
     await tester.tap(find.text('登録済みのメールでログインする'));
