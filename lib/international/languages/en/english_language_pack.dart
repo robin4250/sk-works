@@ -1581,6 +1581,7 @@ const englishLanguagePack = LanguagePack(
     '機能別目次': 'Feature Contents',
     'この機能のPDFを開く': 'Open This Feature PDF',
     '天気・交通とホームの並べ替え': 'Weather, Travel and Home Order',
+    '交通・雨雲とホームの並べ替え': 'Travel, Rain Radar and Home Order',
     '日報の現場別・月別閲覧': 'Daily Reports by Site and Month',
     'チャット一覧・未読・グループ写真': 'Chat List, Unread Messages and Group Photos',
     '本人の書類・資格カード': 'Your Document and Qualification Cards',

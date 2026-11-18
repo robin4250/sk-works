@@ -23,6 +23,8 @@ class Fixture {
   bool waitForPermission=false;
   bool waitForStorage=false;
   final storageStarted=Completer<void>();
+  final downloadStarted=Completer<void>();
+  final downloadComplete=Completer<void>();
   final storageComplete=Completer<void>();
   final permission=Completer<void>();
   final permissionStarted=Completer<void>();
@@ -48,6 +50,16 @@ class Fixture {
     if(path.endsWith('/worker_qualifications') && request.method=='PATCH'){
       mutations.add('database');return jsonResponse({'id':'qualification','worker_id':worker,...(jsonDecode(request.body) as Map<String,dynamic>)},request);
     }
+    if (request.method == 'GET' &&
+        path == '/storage/v1/object/qualification-certificates/$company/$worker/front.jpg') {
+      expect(request.headers['authorization'], 'Bearer ${client.auth.currentSession!.accessToken}');
+      expect(request.headers['cache-control'], 'no-cache, no-store');
+      if (!downloadStarted.isCompleted) downloadStarted.complete();
+      await downloadComplete.future;
+      return http.Response.bytes(base64Decode(
+        'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGOQi1rwH4QZYAwARXwIXR74X/8AAAAASUVORK5CYII=',
+      ), 200, request: request, headers: {'content-type': 'image/png'});
+    }
     if(path.contains('/storage/v1/object/') && !path.contains('/object/sign/')){
       mutations.add('storage');
       if(!storageStarted.isCompleted)storageStarted.complete();
@@ -67,7 +79,7 @@ class Fixture {
     throw StateError('Unexpected synthetic request: $path');
   }));
   Future<void> login()=>client.auth.signInWithPassword(email:'fixture@example.invalid',password:'synthetic-only').then((_){});
-  Future<void> close()async{if(!storageComplete.isCompleted)storageComplete.complete();if(!permission.isCompleted)permission.complete();if(!rows.isCompleted)rows.complete();if(!signed.isCompleted)signed.complete();await client.dispose();}
+  Future<void> close()async{if(!downloadComplete.isCompleted)downloadComplete.complete();if(!storageComplete.isCompleted)storageComplete.complete();if(!permission.isCompleted)permission.complete();if(!rows.isCompleted)rows.complete();if(!signed.isCompleted)signed.complete();await client.dispose();}
 }
 
 void main(){
@@ -82,21 +94,21 @@ void main(){
     expect(find.text('Private qualification'),findsNothing);
     expect(find.textContaining('PRIVATE-CERT'),findsNothing);
   }, timeout: const Timeout(Duration(seconds: 45)));
-  testWidgets('late signed URL and open photo sheet disappear after SDK logout',(tester)async{
+  testWidgets('late authenticated download and open photo sheet disappear after SDK logout',(tester)async{
     final f=Fixture();addTearDown(f.close);await tester.runAsync(f.login);f.rows.complete();
     await tester.pumpWidget(MaterialApp(home:QualificationCertificatePage(repository:QualificationCertificateRepository.forTesting(f.client))));
     await tester.pump();await tester.pump();await tester.pump();
     expect(find.text('Private qualification'),findsOneWidget);
     await tester.tap(find.text('Private qualification'));await tester.pump();await tester.pump(const Duration(milliseconds:400));
-    expect(f.signStarted.isCompleted,true);
+    expect(f.downloadStarted.isCompleted,true);
     await tester.runAsync(()=>f.client.auth.signOut(scope:SignOutScope.local));
     expect(f.client.auth.currentUser,isNull);await tester.pump();
-    f.signed.complete();await tester.pump();await tester.pump();
+    f.downloadComplete.complete();await tester.pump();await tester.pump();
     expect(find.byType(Image),findsNothing);
     expect(find.textContaining('PRIVATE-CERT'),findsNothing);
   }, timeout: const Timeout(Duration(seconds: 45)));
   testWidgets('already displayed photo is removed and retained list callback cannot reopen after logout',(tester)async{
-    final f=Fixture();addTearDown(f.close);await tester.runAsync(f.login);f.rows.complete();f.signed.complete();
+    final f=Fixture();addTearDown(f.close);await tester.runAsync(f.login);f.rows.complete();f.downloadComplete.complete();
     await tester.pumpWidget(MaterialApp(home:QualificationCertificatePage(repository:QualificationCertificateRepository.forTesting(f.client))));
     await tester.pump();await tester.pump();await tester.pump();
     final tile=tester.widget<ListTile>(find.ancestor(of:find.text('Private qualification'),matching:find.byType(ListTile)).first);
@@ -106,7 +118,7 @@ void main(){
       await tester.runAsync(()=>Future<void>.delayed(const Duration(milliseconds:5)));
       await tester.pump(const Duration(milliseconds:10));
     }
-    expect(f.signStarted.isCompleted,true);
+    expect(f.downloadStarted.isCompleted,true);
     expect(find.byType(Image),findsOneWidget);
     // Saved-photo edit callbacks are removed while approval requests are unavailable.
     expect(find.text('撮り直す'),findsNothing);

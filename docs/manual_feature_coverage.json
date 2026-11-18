@@ -4,7 +4,7 @@
     {
       "key": "traffic_guidance",
       "chapters": [
-        "天気・交通とホームの並べ替え"
+        "交通・雨雲とホームの並べ替え"
       ],
       "sources": [
         "lib/features/traffic/traffic_home_card.dart"
@@ -13,7 +13,7 @@
     {
       "key": "weather_forecast",
       "chapters": [
-        "天気・交通とホームの並べ替え"
+        "交通・雨雲とホームの並べ替え"
       ],
       "sources": [
         "lib/features/home/weather_forecast_card.dart"
