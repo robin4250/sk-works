@@ -1449,6 +1449,7 @@ const englishLanguagePack = LanguagePack(
     '住所': 'Address',
     '電話番号': 'Phone',
     '最寄駅': 'Nearest Station',
+    '最寄り駅': 'Nearest Station',
     '現場責任者': 'Site Supervisor',
     '登録者': 'Registered By',
     '登録日': 'Created',

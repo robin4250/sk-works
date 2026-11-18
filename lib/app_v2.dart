@@ -1351,7 +1351,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           body: Padding(
             padding: const EdgeInsets.all(16),
             child: Align(alignment: Alignment.topCenter,
-              child: TrafficHomeCard(availability: _homeTrafficAvailability, shortcutScope: _trafficShortcutScope)),
+              child: TrafficHomeCard(availability: _homeTrafficAvailability, shortcutScope: _trafficShortcutScope, canEditShortcuts: _isAdmin)),
           ),
         );
         break;
@@ -1831,7 +1831,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           identity: _identity,
           requiredDocumentAttention: _requiredDocumentAttention,
           weatherCard: _weatherHomeCard(),
-          trafficCard: TrafficHomeCard(key: const ValueKey('home-traffic-card'), availability: _homeTrafficAvailability, shortcutScope: _trafficShortcutScope),
+          trafficCard: TrafficHomeCard(key: const ValueKey('home-traffic-card'), availability: _homeTrafficAvailability, shortcutScope: _trafficShortcutScope, canEditShortcuts: _isAdmin),
           showTrafficGuidance: !_hiddenHomeActionKeys.contains('traffic_guidance'),
           showWeatherForecast: !_hiddenHomeActionKeys.contains('weather_forecast'),
           tutorialCard: _tutorialUserId != null && _tutorialCompanyId != null

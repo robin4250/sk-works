@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -13,18 +14,30 @@ import 'package:sk_works/features/home/home_attention_repository.dart';
 import 'package:sk_works/features/home/home_membership_repository.dart';
 import 'package:sk_works/features/home/home_action_order_policy.dart';
 import 'package:sk_works/features/traffic/traffic_home_card.dart';
+import 'package:sk_works/features/traffic/traffic_route_repository.dart';
 import 'package:sk_works/features/traffic/traffic_destination_icon.dart';
 import 'package:sk_works/features/traffic/traffic_link_policy.dart';
 import 'package:sk_works/features/settings/master_feature_availability.dart';
 
 void main() {
   const enabled = TrafficAvailability(nearestStation: true, trainTransfer: true, busStop: true);
-  Future<void> pump(WidgetTester tester, {TrafficAvailability availability = enabled, TrafficLinkLauncher? launcher, double scale = 1.6}) async {
+  Future<void> pump(
+    WidgetTester tester, {
+    TrafficAvailability availability = enabled,
+    TrafficLinkLauncher? launcher,
+    TrafficRouteLoader? routeLoader,
+    TrafficShortcutScope? scope,
+    bool admin = false,
+    double scale = 1.6,
+  }) async {
     await tester.binding.setSurfaceSize(const Size(320, 640));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(MaterialApp(theme: SkoTheme.light(SkoTheme.palettes.first), home: Scaffold(body: MediaQuery(
       data: MediaQueryData(size: const Size(320, 640), textScaler: TextScaler.linear(scale)),
-      child: TrafficHomeCard(availability: availability, launcher: launcher),
+      child: TrafficHomeCard(
+        availability: availability, launcher: launcher, routeLoader: routeLoader,
+        shortcutScope: scope, canEditShortcuts: admin,
+      ),
     ))));
   }
   test('approved external destinations contain no SKO location or identity', () {
@@ -39,47 +52,130 @@ void main() {
     expect(old.routeAssignment, isFalse);
     expect(old.trafficNearestStation, isFalse);
   });
-  testWidgets('four fixed slots fit narrow enlarged text and launch three links', (tester) async {
-    final opened = <Uri>[];
-    await pump(tester, launcher: (uri) async { opened.add(uri); return true; });
-    final buttons = TrafficDestination.values.map((d) => find.byKey(ValueKey('traffic-${d.name}'))).toList();
-    final positions = buttons.map(tester.getRect).toList();
-    expect(positions[0].width, positions[1].width);
-    expect(positions[1].width, positions[2].width);
-    expect(positions[0].top, positions[2].top);
-    expect(positions[0].width, greaterThan(60), reason: 'Removed handle space is shared by the four destinations');
-    expect(find.byKey(const ValueKey('traffic-future-slot')), findsOneWidget);
-    for (final button in buttons) {
-      final style = tester.widget<TextButton>(button).style!;
-      expect(style.side?.resolve({}), isNotNull);
-      expect(style.backgroundColor?.resolve({}), isNotNull);
-    }
-    final trainLabel = tester.widget<Text>(find.text('電車乗換'));
-    expect(trainLabel.maxLines, 1);
-    expect(trainLabel.softWrap, isFalse);
-    for (final button in buttons) { await tester.tap(button); await tester.pumpAndSettle(); }
-    expect(opened, TrafficDestination.values.map(trafficDestinationUri).toList());
-    expect(tester.takeException(), isNull);
-  });
-  testWidgets('compact traffic has right-hand labels and private help at 1.3 scale', (tester) async {
-    await pump(tester, scale: 1.3);
-    expect(find.text('交通案内'), findsNothing);
-    expect(tester.getSize(find.byType(TrafficHomeCard)).height, lessThanOrEqualTo(56));
-    final labels = ['最寄駅', '電車乗換', 'バス停'];
-    for (var index = 0; index < 3; index++) {
-      final button = find.byKey(ValueKey('traffic-${TrafficDestination.values[index].name}'));
-      final rect = tester.getRect(button);
-      expect(rect.width, greaterThanOrEqualTo(44));
-      expect(rect.height, greaterThanOrEqualTo(44));
-      expect(tester.getRect(find.text(labels[index])).left,
-          greaterThan(tester.getRect(find.byKey(ValueKey('traffic-icon-${TrafficDestination.values[index].name}'))).right));
-    }
-    expect(tester.takeException(), isNull);
-    await tester.tap(find.byTooltip('交通案内のヘルプ'));
+  testWidgets(
+    'eight buttons keep their order, width and 70% height at narrow width',
+    (tester) async {
+      final opened = <Uri>[];
+      const scope = TrafficShortcutScope(
+        actorId: 'layout-user',
+        companyId: 'layout-company',
+      );
+      SharedPreferences.setMockInitialValues({});
+      await pump(
+        tester,
+        scope: scope,
+        admin: true,
+        launcher: (uri) async {
+          opened.add(uri);
+          return true;
+        },
+        routeLoader: (resolvedScope, target) async {
+          expect(resolvedScope, scope);
+          return trafficTransitUri(
+            latitude: 35.5,
+            longitude: 139.5,
+            destination: target.name,
+          );
+        },
+      );
+      await tester.pumpAndSettle();
+      final buttons = [
+        'home',
+        'nearestStation',
+        'trainTransfer',
+        'busStop',
+        'company',
+        'rain',
+        'personal-shortcut',
+        'personal-shortcut-2',
+      ].map((name) => find.byKey(ValueKey('traffic-$name'))).toList();
+      final positions = buttons.map(tester.getRect).toList();
+      for (var i = 0; i < 8; i++) {
+        expect(positions[i].height, closeTo(30.8, .05));
+        expect(positions[i].width, closeTo(63, .05));
+        expect(positions[i].left, positions[i % 4].left);
+        expect(positions[i].top, positions[i < 4 ? 0 : 4].top);
+        final label = tester.widget<Text>(
+          find.descendant(of: buttons[i], matching: find.byType(Text)),
+        );
+        expect(label.style?.fontSize, 10);
+      }
+      expect(positions[4].top, greaterThan(positions[0].bottom));
+      expect(find.byIcon(CupertinoIcons.cloud_rain), findsOneWidget);
+      for (final button in buttons.take(6)) {
+        await tester.tap(button);
+        await tester.pumpAndSettle();
+      }
+      expect(opened[0].queryParameters, {
+        'api': '1',
+        'origin': '35.5,139.5',
+        'destination': 'home',
+        'travelmode': 'transit',
+      });
+      expect(
+        opened.sublist(1, 4),
+        TrafficDestination.values.map(trafficDestinationUri).toList(),
+      );
+      expect(opened[4].queryParameters['destination'], 'company');
+      expect(
+        opened[5].toString(),
+        'https://weather.yahoo.co.jp/weather/zoomradar/',
+      );
+      for (final entry in [
+        (buttons[6], '現場バス', 'bus'),
+        (buttons[7], '工事案内', 'work'),
+      ]) {
+        await tester.tap(entry.$1);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Webサイトを登録'));
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const ValueKey('traffic-web-name')),
+          entry.$2,
+        );
+        await tester.enterText(
+          find.byKey(const ValueKey('traffic-web-url')),
+          'https://example.com/${entry.$3}',
+        );
+        await tester.tap(find.text('登録'));
+        await tester.pumpAndSettle();
+        await tester.tap(entry.$1);
+        await tester.pumpAndSettle();
+      }
+      expect(opened.sublist(6).map((uri) => uri.path), ['/bus', '/work']);
+      expect(await const DeviceTrafficShortcutStore().load(scope), isNotNull);
+      expect(
+        (await const DeviceTrafficShortcutStore(slot: 2).load(scope))?.label,
+        '工事案内',
+      );
+      await pump(tester, scope: scope);
+      await tester.pumpAndSettle();
+      expect(tester.widget<TextButton>(buttons[6]).onLongPress, isNull);
+      expect(tester.widget<TextButton>(buttons[6]).onPressed, isNotNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('route permission and missing address have separate guidance', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      scope: const TrafficShortcutScope(actorId: 'a', companyId: 'c'),
+      routeLoader: (_, target) async => throw TrafficRouteException(
+        target == TrafficRouteTarget.home
+            ? TrafficRouteProblem.permissionDenied
+            : TrafficRouteProblem.addressMissing,
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey('traffic-home')));
     await tester.pumpAndSettle();
-    expect(find.textContaining('マスター'), findsNothing);
-    expect(find.textContaining('権限'), findsNothing);
-    expect(find.textContaining('Googleマップ'), findsOneWidget);
+    expect(find.textContaining('位置情報の利用を許可してください'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('traffic-company')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('住所が登録されていません'), findsOneWidget);
   });
 
   testWidgets('three native signs preserve compact size and destination identities', (tester) async {
@@ -122,7 +218,7 @@ void main() {
   testWidgets('help explains external location processing', (tester) async {
     await pump(tester);
     await tester.tap(find.byTooltip('交通案内のヘルプ')); await tester.pumpAndSettle();
-    expect(find.textContaining('現在地の確認や検索は外部サービス側'), findsOneWidget);
+    expect(find.textContaining('検索は外部サービス側'), findsOneWidget);
   });
   test('master traffic read is independent and discards stale actor responses', () async {
     final pending = Completer<MasterFeatureAvailability>();
@@ -170,7 +266,7 @@ void main() {
       showAttendanceReport: false,
       showTodayAttendance: false,
       weatherCard: const SizedBox(key: ValueKey('test-weather'), height: 80),
-      trafficCard: TrafficHomeCard(key: const ValueKey('test-traffic'), availability: enabled, shortcutScope: scope,
+      trafficCard: TrafficHomeCard(key: const ValueKey('test-traffic'), availability: enabled, shortcutScope: scope, canEditShortcuts: true,
         launcher: (uri) async { opened.add(uri); return true; }),
       showTrafficGuidance: show,
       onOpen: (_) async {}, onRefresh: () async {},
@@ -180,7 +276,7 @@ void main() {
     expect(tester.getTopLeft(find.byKey(const ValueKey('test-weather'))).dy, lessThan(tester.getTopLeft(find.byKey(const ValueKey('test-traffic'))).dy));
     expect(find.byKey(const ValueKey('home-reorder-traffic_guidance')), findsNothing);
     expect(find.byKey(const ValueKey('home-reorder-weather_forecast')), findsNothing);
-    final first = find.byKey(const ValueKey('traffic-nearestStation'));
+    final first = find.byKey(const ValueKey('traffic-home'));
     expect(tester.getRect(first).left - tester.getRect(find.byKey(const ValueKey('test-traffic'))).left,
       lessThan(12), reason: 'No leading handle gutter remains');
     for (final destination in TrafficDestination.values) {

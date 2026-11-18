@@ -10,6 +10,7 @@ import 'admin_initial_setup_page.dart';
 import 'apple_session_navigation_binding.dart';
 import 'admin_initial_setup_repository.dart';
 import 'employee_onboarding_pages.dart';
+import 'personal_home_page.dart';
 import 'secure_onboarding_pages.dart';
 import 'secure_onboarding_repository.dart';
 
@@ -84,6 +85,9 @@ class _SupabaseAuthGateState extends State<SupabaseAuthGate> {
 
     final hasCompany = await repository.hasCompanyMembership();
     if (!hasCompany) {
+      if (user.appMetadata['sko_registration_purpose'] == 'work_pass') {
+        return const _GateState.workPass();
+      }
       if (repository.companySetupDeferred) {
         return const _GateState.companyDeferred();
       }
@@ -173,10 +177,22 @@ class _SupabaseAuthGateState extends State<SupabaseAuthGate> {
               onDeferred: _reload,
               onSignOut: _signOut,
             ),
-          _GateStatus.companyDeferred => DeferredCompanySetupPage(
-              onResume: _resumeCompanySetup,
+          _GateStatus.workPass => PersonalHomePage(
+              key: ValueKey(binding),
+              onCompanySetup: _resumeCompanySetup,
               onSignOut: _signOut,
+              workPassOnly: true,
             ),
+          _GateStatus.companyDeferred => personalHomePreviewEnabled
+            ? PersonalHomePage(
+                key: ValueKey(binding),
+                onCompanySetup: _resumeCompanySetup,
+                onSignOut: _signOut,
+              )
+            : DeferredCompanySetupPage(
+                onResume: _resumeCompanySetup,
+                onSignOut: _signOut,
+              ),
           _GateStatus.needsAdminInitialSetup => AdminInitialSetupWizardPage(
               onCompleted: _reload,
               onSignOut: _signOut,
@@ -267,6 +283,7 @@ enum _GateStatus {
   employeeApprovalPending,
   employeeInviteInvalid,
   needsCompany,
+  workPass,
   companyDeferred,
   needsAdminInitialSetup,
   authenticated,
@@ -287,6 +304,7 @@ class _GateState {
       : this._(_GateStatus.employeeInviteInvalid, employee);
   const _GateState.needsCompany()
       : this._(_GateStatus.needsCompany);
+  const _GateState.workPass() : this._(_GateStatus.workPass);
   const _GateState.companyDeferred()
       : this._(_GateStatus.companyDeferred);
   const _GateState.needsAdminInitialSetup()
