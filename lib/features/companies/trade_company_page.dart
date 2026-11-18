@@ -281,6 +281,12 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
                   itemBuilder: (context, index) {
                     final records = directoryRows[index];
                     final item = records.first;
+                    final companyRoles = [
+                      if (widget.unified && records.any((record) => record.isCustomer))
+                        SkoLanguageController.tr('取引会社'),
+                      if (widget.unified && records.any((record) => record.isSubcontractor))
+                        SkoLanguageController.tr('協力会社'),
+                    ].join('・');
                     return Card(
                       child: ListTile(
                         leading: CircleAvatar(
@@ -295,9 +301,14 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
                           style: const TextStyle(fontWeight: FontWeight.w900),
                         ),
                         subtitle: Text(
-                          records.length > 1
-                              ? '${_linkLabel(item.linkStatus)} / 会社データ ${records.length}件'
-                              : '${_linkLabel(item.linkStatus)} / ${_contractLabel(item.contractMethod)}',
+                          [
+                            if (companyRoles.isNotEmpty) companyRoles,
+                            _linkLabel(item.linkStatus),
+                            if (records.length > 1)
+                              '会社データ ${records.length}件'
+                            else
+                              _contractLabel(item.contractMethod),
+                          ].join(' / '),
                         ),
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () => _openDirectoryRow(records),

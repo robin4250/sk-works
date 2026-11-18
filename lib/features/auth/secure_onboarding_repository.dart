@@ -244,11 +244,12 @@ class SecureOnboardingRepository {
   }
 
   Future<bool> secondaryPasswordConfigured({String? accessToken}) async {
-    if (_client.auth.currentUser == null) return false;
+    if (accessToken == null && _client.auth.currentUser == null) return false;
     if (accessToken != null && accessToken.isEmpty) throw StateError('Missing captured session');
-    final request = _client.rpc('secondary_password_configured');
-    final value = await (accessToken == null ? request : request.setHeader('Authorization', 'Bearer $accessToken'));
-    return value == true;
+    final request = _client.rpc<bool>('secondary_password_configured');
+    return await (accessToken == null
+        ? request
+        : request.setHeader('Authorization', 'Bearer $accessToken'));
   }
 
   Future<void> setSecondaryPassword(String password, {String? accessToken}) async {

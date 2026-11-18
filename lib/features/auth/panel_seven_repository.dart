@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -111,6 +112,8 @@ class PanelSevenRepository implements PanelSevenSource {
       final availability = biometricAvailability;
       if (availability != null) {
         biometricAvailable = await availability().timeout(const Duration(seconds: 5));
+      } else if (kIsWeb) {
+        biometricAvailable = false;
       } else {
         final local = LocalAuthentication();
         // Hardware support alone does not establish enrolled Face ID / Touch ID.

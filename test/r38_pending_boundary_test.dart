@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -102,6 +103,59 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
       const MethodChannel('plugins.flutter.io/local_auth'),null);
   });
+  if (kIsWeb) {
+    testWidgets('all protected page titles accept the existing password on Web', (tester) async {
+      var nativeCalls = 0;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+        const MethodChannel('plugins.flutter.io/local_auth'), (call) async {
+          nativeCalls++;
+          throw MissingPluginException(call.method);
+        },
+      );
+      await tester.runAsync(() => Supabase.instance.client.auth.setInitialSession(session(actorA)));
+      const titles = [
+        '請求書', '社内共通手当', '給与明細', '個別給与設定', '給与調整',
+        '給料一覧', '支払証明書', '支払証明書設定', '現場管理', '注文・請書',
+        '退職手続き', '管理者用現場データ', '住民税の年度一括更新', '出勤表一覧', '勤怠管理',
+      ];
+      for (final title in titles) {
+        await tester.pumpWidget(MaterialApp(
+          key: ValueKey(title),
+          home: SecondaryProtectedPage(title: title, child: const Text('private payload')),
+        ));
+        await settle(tester);
+        expect(find.text('第2認証が必要です'), findsOneWidget, reason: title);
+        expect(find.text('第2パスワードを設定'), findsNothing, reason: title);
+        expect(find.text('private payload'), findsNothing, reason: title);
+        await begin(tester);
+        pending!.complete(title != '現場管理');
+        await settle(tester);
+        if (title == '現場管理') {
+          expect(find.text('private payload'), findsNothing, reason: title);
+          await begin(tester);
+          pending!.complete(true);
+          await settle(tester);
+        }
+        expect(find.text('private payload'), findsOneWidget, reason: title);
+      }
+      expect(nativeCalls, 0);
+      expect(requests.where((request) => request.url.path.endsWith('/set_secondary_password')), isEmpty);
+    });
+    testWidgets('stale Web setup preserves a password already configured on the server', (tester) async {
+      configured = false;
+      await open(tester, setup: true);
+      configured = true;
+      for (final field in find.byType(TextField).evaluate().toList()) {
+        await tester.enterText(find.byWidget(field.widget), 'synthetic-secondary');
+      }
+      await tester.tap(find.text('設定して開く'));
+      await settle(tester);
+      expect(find.text('第2パスワードで開く'), findsOneWidget);
+      expect(find.text('private payload'), findsNothing);
+      expect(requests.where((request) => request.url.path.endsWith('/set_secondary_password')), isEmpty);
+    });
+    return;
+  }
   testWidgets('background rejects delayed password success; fresh foreground retry still works',(tester) async {
     await open(tester);await begin(tester);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);

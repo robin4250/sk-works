@@ -15,6 +15,7 @@ void main() {
     );
     expect(source, contains(r"'sko_secondary_biometric_enabled_$userId'"));
     expect(source, contains('_biometricEnabled = true;'));
+    expect(source, contains('!kIsWeb && await _localAuth.isDeviceSupported()'));
     expect(source, contains('Face ID / Touch IDで開く'));
   });
 }

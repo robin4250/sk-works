@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -141,7 +142,8 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
       if (!_acceptAttempt(generation, userId, token)) return;
       final enabled =
           prefs.getBool('sko_secondary_biometric_enabled_$userId') ?? false;
-      final supported = await _localAuth.isDeviceSupported();
+      // Web uses the same server-verified password and has no native biometric channel.
+      final supported = !kIsWeb && await _localAuth.isDeviceSupported();
       if (!_acceptAttempt(generation, userId, token)) return;
       final available = supported && await _localAuth.canCheckBiometrics;
       if (!_acceptAttempt(generation, userId, token)) return;
@@ -255,7 +257,21 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
       // The native prompt exception ends before server or preferences work.
       // Later inactive events must invalidate the pending save normally.
       _nativePrompt = false;
-      await repository.setSecondaryPassword(password);
+      final alreadyConfigured =
+          await repository.secondaryPasswordConfigured(accessToken: token);
+      if (!_acceptAttempt(generation, userId, token) ||
+          _lifecycle != AppLifecycleState.resumed) return;
+      if (alreadyConfigured) {
+        setState(() {
+          _secondaryConfigured = true;
+          _busy = false;
+          _password.clear();
+          _confirm.clear();
+          _message = '設定済みの第2パスワードを入力してください。';
+        });
+        return;
+      }
+      await repository.setSecondaryPassword(password, accessToken: token);
       if (!_acceptAttempt(generation, userId, token) || _lifecycle != AppLifecycleState.resumed) return;
       if (_entryAccess?.requiredByServer == true &&
           !await _entryAccess!.unlock(password)) {
