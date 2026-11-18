@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -19,6 +20,27 @@ void main() {
     for (var i = 0; i < 12; i++) {
       await tester.pump(const Duration(milliseconds: 30));
     }
+  }
+
+  for (final platform in [TargetPlatform.iOS, TargetPlatform.android]) {
+    testWidgets('home weather visibility on $platform (web=$kIsWeb)',
+        (tester) async {
+      final originalPlatform = debugDefaultTargetPlatformOverride;
+      debugDefaultTargetPlatformOverride = platform;
+      try {
+        await tester.pumpWidget(const MaterialApp(home: HomePage()));
+        await settleStartup(tester);
+        final home = tester.widget<FriendlyHomeContent>(
+          find.byType(FriendlyHomeContent),
+        );
+        expect(
+          home.showWeatherForecast,
+          !kIsWeb && platform == TargetPlatform.android,
+        );
+      } finally {
+        debugDefaultTargetPlatformOverride = originalPlatform;
+      }
+    });
   }
 
   for (final globalTheme in [false, true]) {

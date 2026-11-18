@@ -1842,7 +1842,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           trafficCard: TrafficHomeCard(key: const ValueKey('home-traffic-card'), availability: _homeTrafficAvailability, shortcutScope: _trafficShortcutScope, canEditShortcuts: _isAdmin),
           showTrafficGuidance: !_hiddenHomeActionKeys.contains('traffic_guidance'),
           showWeatherForecast:
-              (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) &&
+              (!kIsWeb && defaultTargetPlatform != TargetPlatform.iOS) &&
               !_hiddenHomeActionKeys.contains('weather_forecast'),
           tutorialCard: _tutorialUserId != null && _tutorialCompanyId != null
               ? TutorialHomeCard(userId: _tutorialUserId!, companyId: _tutorialCompanyId!,
