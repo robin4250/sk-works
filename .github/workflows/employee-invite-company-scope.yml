@@ -1,0 +1,20 @@
+name: Employee invite company scope
+on:
+  pull_request:
+    paths:
+      - 'supabase/functions/create-employee-invite/**'
+      - 'tool/employee_invite_company_scope.test.cjs'
+      - '.github/workflows/employee-invite-company-scope.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  scope:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node --test tool/employee_invite_company_scope.test.cjs

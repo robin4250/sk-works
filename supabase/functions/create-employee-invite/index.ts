@@ -144,7 +144,7 @@ Deno.serve(async (req: Request) => {
   const membershipResponse = await serviceFetch(
     "/rest/v1/company_members?user_id=eq." +
       encodeURIComponent(caller.id) +
-      "&select=company_id,role&limit=1",
+      "&select=company_id,role&limit=2",
     { method: "GET" },
   );
   if (!membershipResponse.ok) {
@@ -153,6 +153,15 @@ Deno.serve(async (req: Request) => {
   const memberships = await membershipResponse.json();
   if (!Array.isArray(memberships) || memberships.length === 0) {
     return json({ error: "従業員登録は会社メンバーのみ利用できます。" }, 403);
+  }
+  if (memberships.length !== 1) {
+    return json({ error: "所属会社が複数あるため、招待元の会社を確定できません。招待は作成していません。" }, 409);
+  }
+  const membership = memberships[0];
+  if (!membership || typeof membership.company_id !== "string" ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(membership.company_id) ||
+      !["owner", "admin", "manager", "viewer"].includes(membership.role)) {
+    return json({ error: "会社情報を確認できませんでした。招待は作成していません。" }, 503);
   }
   const companyId = memberships[0].company_id;
   const callerRole = String(memberships[0].role ?? "viewer");
