@@ -206,5 +206,11 @@ class InvoiceSettingsRepository {
         'p_seal_base64': value.companySealBase64,
       },
     );
+
+    final saved = await load();
+    if (saved.taxRate != value.taxRate ||
+        saved.welfareRate != value.welfareRate) {
+      throw StateError('請求書の税率・福利費率を保存できたか確認できません。設定を開き直して確認してください。');
+    }
   }
 }

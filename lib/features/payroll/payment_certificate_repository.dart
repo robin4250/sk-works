@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show listEquals, mapEquals;
 import '../shared/company_seal_current_preview.dart';
 import '../../domain/expense_cost_direction_v2_candidate.dart';
 import '../../domain/expense_payment_reader_candidate.dart';
@@ -545,7 +546,7 @@ class PaymentCertificateRepository {
     final saved = refreshed.where(
       (item) => item.partnerCompanyId == value.partnerCompanyId,
     );
-    if (saved.isEmpty) {
+    if (saved.length != 1) {
       throw StateError('支払証明書設定を保存できませんでした。');
     }
     final actual = saved.first;
@@ -559,7 +560,21 @@ class PaymentCertificateRepository {
         actual.holidayOvertimeHourRateYen != value.holidayOvertimeHourRateYen ||
         actual.holidayNightDayRateYen != value.holidayNightDayRateYen ||
         actual.holidayNightOvertimeHourRateYen !=
-            value.holidayNightOvertimeHourRateYen) {
+            value.holidayNightOvertimeHourRateYen ||
+        actual.welfareRate != value.welfareRate ||
+        actual.taxRate != value.taxRate ||
+        !mapEquals(
+          actual.formulas.toMap(hourlyRateYen: actual.hourlyBaseRateYen),
+          value.formulas.toMap(hourlyRateYen: value.hourlyBaseRateYen),
+        ) ||
+        !listEquals(
+          [for (final item in actual.allowances) (item.name, item.amountYen)],
+          [
+            for (final item in value.allowances)
+              if (item.name.trim().isNotEmpty)
+                (item.name.trim(), item.amountYen),
+          ],
+        )) {
       throw StateError('支払証明書設定を保存できませんでした。');
     }
   }
